@@ -1,9 +1,9 @@
-import { log } from "@repo/logger";
-import { createServer } from "./server";
+import { Hono } from "hono";
 
-const port = process.env.PORT || 5001;
-const server = createServer();
+const app = new Hono();
 
-server.listen(port, () => {
-  log(`api running on ${port}`);
+app.get("/", (c) => {
+  return c.text("Waguan");
 });
+
+export default app;
