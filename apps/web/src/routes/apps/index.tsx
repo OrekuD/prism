@@ -44,8 +44,7 @@ const data = [
   },
 ];
 
-export default function Projects() {
-  const { theme } = useTheme();
+export default function Apps() {
   return (
     <div className="py-4">
       <div className="flex items-center gap-3">
@@ -54,7 +53,7 @@ export default function Projects() {
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               type="search"
-              placeholder="Search projects..."
+              placeholder="Search apps..."
               className="pl-8 w-full"
             />
           </div>
@@ -62,11 +61,11 @@ export default function Projects() {
         <Button>Create New</Button>
       </div>
       <div className="grid grid-cols-3 py-4">
-        <Link to="/projects/dd/summary">
+        <Link to="/apps/dd/summary">
           <Card className="">
             <CardHeader>
-              <CardTitle className="text-md">Project Name</CardTitle>
-              <CardDescription>Project description</CardDescription>
+              <CardTitle className="text-md">App Name</CardTitle>
+              <CardDescription>App description</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="h-[200px]">

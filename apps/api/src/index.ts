@@ -1,9 +1,19 @@
-import { Hono } from "hono";
+import Server from './Server';
+import { Bindings } from 'hono/types';
+import { Event } from '@cloudflare/workers-types';
+import { Resend } from 'resend';
 
-const app = new Hono();
+async function main() {
+	Server.startServer();
+}
 
-app.get("/", (c) => {
-  return c.text("Waguan");
-});
+main();
 
-export default app;
+export default {
+	fetch: Server.getInstance().fetch,
+	scheduled: (event: Event, env: Bindings, ctx: any) => {
+		ctx.waitUntil(() => {
+			console.log(new Date().toISOString());
+		});
+	},
+};

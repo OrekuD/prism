@@ -41,10 +41,7 @@ export default function ProfileSettings() {
           </CardHeader>
           <CardContent>
             <form className="flex flex-col gap-4">
-              <Input
-                placeholder="Project Name"
-                defaultValue="/content/plugins"
-              />
+              <Input placeholder="App Name" defaultValue="/content/plugins" />
               <div className="flex items-center space-x-2">
                 <Checkbox id="include" defaultChecked />
                 <label

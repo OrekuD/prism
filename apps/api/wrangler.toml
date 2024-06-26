@@ -1,4 +1,4 @@
-name = "insight-metrics-api"
+name = "prism-api"
 compatibility_date = "2023-12-01"
 
 # [vars]

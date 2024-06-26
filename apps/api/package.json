@@ -3,14 +3,39 @@
   "version": "0.0.1",
   "scripts": {
     "dev": "wrangler dev src/index.ts",
-    "deploy": "wrangler deploy --minify src/index.ts"
+    "deploy": "wrangler deploy --minify src/index.ts",
+    "start": "wrangler dev",
+    "test": "vitest",
+    "cf-typegen": "wrangler types",
+    "migrate": "tsx src/database/migrate.ts",
+    "drop-tables": "tsx src/database/drop-tables.ts",
+    "generate": "drizzle-kit generate",
+    "reinstall": "rm -rf drizzle/* yarn drop-tables && yarn generate && yarn migrate"
   },
   "dependencies": {
+    "@hono/node-server": "^1.11.4",
+    "@hono/swagger-ui": "^0.3.0",
+    "@hono/zod-openapi": "^0.14.5",
+    "@hono/zod-validator": "^0.2.2",
+    "@neondatabase/serverless": "^0.9.3",
+    "@tsndr/cloudflare-worker-jwt": "^2.5.3",
+    "bcryptjs": "^2.4.3",
+    "date-fns": "^3.6.0",
+    "dotenv": "^16.4.5",
+    "drizzle-orm": "^0.31.2",
     "hono": "^4.4.8",
-    "ulidx": "^2.3.0"
+    "postgres": "^3.4.4",
+    "resend": "^3.4.0",
+    "ulidx": "^2.3.0",
+    "uuid": "^10.0.0",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240529.0",
+    "@types/bcryptjs": "^2.4.6",
+    "drizzle-kit": "^0.22.7",
+    "tsx": "^4.15.7",
+    "typescript": "^5.5.2",
     "wrangler": "^3.57.2"
   }
 }

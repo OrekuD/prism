@@ -1,3 +1,4 @@
+import React from "react";
 import {
   Card,
   CardTitle,
@@ -5,12 +6,10 @@ import {
   CardContent,
   CardDescription,
 } from "@/components/ui/card";
-import { TabsContent } from "@/components/ui/tabs";
-import React from "react";
 
-export default function ProjectSummary() {
+export default function AppEvents() {
   return (
-    <TabsContent value="overview" className="space-y-4">
+    <div className="space-y-4">
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -123,6 +122,6 @@ export default function ProjectSummary() {
           <CardContent>{/* <RecentSales /> */}</CardContent>
         </Card>
       </div>
-    </TabsContent>
+    </div>
   );
 }

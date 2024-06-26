@@ -2,7 +2,7 @@ import React from "react";
 import { Card } from "@/components/ui/card";
 import { Link, Outlet } from "react-router-dom";
 
-export function ProfileLayout() {
+export default function ProfileLayout() {
   return (
     <div className="flex w-full flex-col">
       <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-10">
