@@ -1,14 +1,12 @@
 import { Context } from "hono";
-import { HonoConfig, Roles } from "../types/types";
+import { HonoConfig } from "../types/types";
 import validateData from "../utils/validateData";
 import DatabaseManager from "../managers/DatabaseManager";
 import ErrorResponse from "../network/responses/ErrorResponse";
 
 import TeamResponse from "../network/responses/TeamResponse";
 import Team from "../models/Team";
-import CreateTeamRequest, {
-  CreateTeamRequestSchema,
-} from "../network/requests/CreateTeamRequest";
+import { CreateTeamRequest, CreateTeamRequestSchema } from "@prism/types";
 
 export default class TeamsController {
   public static async team(ctx: Context<HonoConfig>) {

@@ -1,13 +1,5 @@
+import { TeamResource } from "@prism/types";
 import Team from "../../models/Team";
-
-export type TeamResource = {
-  id: string;
-  name: string;
-  logo: string;
-  coverPhoto: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
 
 export default class TeamResponse {
   private team: Team;

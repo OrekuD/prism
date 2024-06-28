@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { AuthResource } from "../resources/AuthResource";
 import { useUserStore } from "@/store/userStore";
 import { useAuthenticationStore } from "@/store/authenticationStore";
-import {} from "@prism/types";
+import { SignInRequest } from "@prism/types";
 
 async function signIn(payload: SignInRequest) {
   const url = `/auth/sign-in`;

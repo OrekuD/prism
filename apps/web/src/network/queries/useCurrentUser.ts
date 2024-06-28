@@ -1,6 +1,6 @@
 import { LocalStorageKeys } from "@/constants/LocalStorageKeys";
-import { User } from "@/models/User";
 import { axiosInstance } from "@/utils/axiosInstance";
+import { UserResource } from "@prism/types";
 import { useQuery } from "@tanstack/react-query";
 
 async function getCurrentUser() {
@@ -23,7 +23,7 @@ async function getCurrentUser() {
   return Promise.reject(response.data);
 }
 export function useCurrentUser() {
-  return useQuery<User>({
+  return useQuery<UserResource>({
     queryKey: ["current-user"],
     queryFn: getCurrentUser,
   });

@@ -1,17 +1,15 @@
-export type ProfilePictureResource = {
-	profilePicture: string;
-};
+import { ProfilePictureResource } from "@prism/types";
 
 export default class ProfilePictureResponse {
-	private profilePicture: string;
+  private profilePicture: string;
 
-	constructor(profilePicture: string) {
-		this.profilePicture = profilePicture;
-	}
+  constructor(profilePicture: string) {
+    this.profilePicture = profilePicture;
+  }
 
-	toJSON(): ProfilePictureResource {
-		return {
-			profilePicture: this.profilePicture,
-		};
-	}
+  toJSON(): ProfilePictureResource {
+    return {
+      profilePicture: this.profilePicture,
+    };
+  }
 }

@@ -1,11 +1,11 @@
-import { User } from "@prism/types";
+import { UserResource } from "@prism/types";
 import { AuthResource } from "@/network/resources/AuthResource";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 type UserStore = {
-  user: User | null;
-  setUser: (value: User | null) => void;
+  user: UserResource | null;
+  setUser: (value: UserResource | null) => void;
 };
 
 export const useUserStore = create<UserStore>()(

@@ -1,22 +1,21 @@
 import { Context } from "hono";
-import { DatabaseTables, HonoConfig, JWTPayload, Roles } from "../types/types";
-// import { Roles } from "@prism/types";
+import { HonoConfig } from "../types/types";
+import {
+  Roles,
+  ChangeEmailRequest,
+  ChangeEmailRequestSchema,
+  ChangePasswordRequest,
+  ChangePasswordRequestSchema,
+  UpdateUserRequest,
+  UpdateUserRequestSchema,
+} from "@prism/types";
 import validateData from "../utils/validateData";
 import DatabaseManager from "../managers/DatabaseManager";
 import User from "../models/User";
 import bcrypt from "bcryptjs";
-import ChangePasswordRequest, {
-  ChangePasswordRequestSchema,
-} from "../network/requests/ChangePasswordRequest";
 import ErrorResponse from "../network/responses/ErrorResponse";
 import OkResponse from "../network/responses/OkResponse";
-import ChangeEmailRequest, {
-  ChangeEmailRequestSchema,
-} from "../network/requests/ChangeEmailRequest";
 import Profile from "../models/Profile";
-import UpdateUserRequest, {
-  UpdateUserRequestSchema,
-} from "../network/requests/UpdateUserRequest";
 import UserResponse from "../network/responses/UserResponse";
 import AuthController from "./AuthController";
 import MailManager from "../managers/MailManager";

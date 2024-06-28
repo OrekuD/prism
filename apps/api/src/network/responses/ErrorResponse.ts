@@ -1,17 +1,15 @@
-export type ErrorResource = {
-	errors: Array<string>;
-};
+import { ErrorResource } from "@prism/types";
 
 export default class ErrorResponse {
-	private errors: Array<string>;
+  private errors: Array<string>;
 
-	constructor(errors: string | Array<string>) {
-		this.errors = typeof errors === 'string' ? [errors] : errors;
-	}
+  constructor(errors: string | Array<string>) {
+    this.errors = typeof errors === "string" ? [errors] : errors;
+  }
 
-	toJSON(): ErrorResource {
-		return {
-			errors: this.errors,
-		};
-	}
+  toJSON(): ErrorResource {
+    return {
+      errors: this.errors,
+    };
+  }
 }

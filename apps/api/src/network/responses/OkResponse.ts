@@ -1,17 +1,15 @@
-export type OkResource = {
-	message: string;
-};
+import { OkResource } from "@prism/types";
 
 export default class OkResponse {
-	private message: string;
+  private message: string;
 
-	constructor(message?: string) {
-		this.message = message || 'success';
-	}
+  constructor(message?: string) {
+    this.message = message || "success";
+  }
 
-	toJSON(): OkResource {
-		return {
-			message: this.message,
-		};
-	}
+  toJSON(): OkResource {
+    return {
+      message: this.message,
+    };
+  }
 }

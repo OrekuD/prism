@@ -1,13 +1,28 @@
 import { Context } from "hono";
-import { DatabaseTables, HonoConfig, JWTPayload } from "../types/types";
-import { Roles } from "@prism/types";
-import SignInRequest, {
+import { HonoConfig } from "../types/types";
+import {
+  Roles,
+  JWTPayload,
+  ForgotPasswordRequest,
+  ForgotPasswordRequestSchema,
+  MagicLinkSignInRequest,
+  MagicLinkSignInRequestSchema,
+  OTPSignInRequest,
+  OTPSignInRequestSchema,
+  RequestMagicLinkSignInRequest,
+  RequestMagicLinkSignInRequestSchema,
+  RequestOTPSignInRequest,
+  RequestOTPSignInRequestSchema,
+  ResetPasswordRequest,
+  ResetPasswordRequestSchema,
+  SignInRequest,
   SignInRequestSchema,
-} from "../network/requests/SignInRequest";
-import validateData from "../utils/validateData";
-import SignUpRequest, {
+  SignUpRequest,
   SignUpRequestSchema,
-} from "../network/requests/SignUpRequest";
+  VerifyEmailRequest,
+  VerifyEmailRequestSchema,
+} from "@prism/types";
+import validateData from "../utils/validateData";
 import DatabaseManager from "../managers/DatabaseManager";
 import User from "../models/User";
 import bcrypt from "bcryptjs";
@@ -15,37 +30,16 @@ import crypto from "node:crypto";
 import OAuthAccessToken from "../models/OAuthAccessToken";
 import jwt, { JwtPayload } from "@tsndr/cloudflare-worker-jwt";
 import AuthResponse from "../network/responses/AuthResponse";
-import ResetPasswordRequest, {
-  ResetPasswordRequestSchema,
-} from "../network/requests/ResetPasswordRequest";
-import ForgotPasswordRequest, {
-  ForgotPasswordRequestSchema,
-} from "../network/requests/ForgotPasswordRequest";
 import ErrorResponse from "../network/responses/ErrorResponse";
 import OkResponse from "../network/responses/OkResponse";
 import LoginAttempt from "../models/LoginAttempt";
 import { differenceInMinutes } from "date-fns/differenceInMinutes";
 import MailManager from "../managers/MailManager";
-import VerifyEmailRequest, {
-  VerifyEmailRequestSchema,
-} from "../network/requests/VerifyEmailRequest";
-import MagicLinkSignInRequest, {
-  MagicLinkSignInRequestSchema,
-} from "../network/requests/MagicLinkSignInRequest";
-import RequestMagicLinkSignInRequest, {
-  RequestMagicLinkSignInRequestSchema,
-} from "../network/requests/RequestMagicLinkSignInRequest";
-import RequestOTPSignInRequest, {
-  RequestOTPSignInRequestSchema,
-} from "../network/requests/RequestOTPSignInRequest";
-import OTPSignIn from "../models/OTPSignIn";
-import OTPSignInRequest, {
-  OTPSignInRequestSchema,
-} from "../network/requests/OTPSignInRequest";
 import { isPast } from "date-fns/isPast";
 import { addMinutes } from "date-fns/addMinutes";
 import { addDays } from "date-fns/addDays";
 import { addHours } from "date-fns/addHours";
+import OTPSignIn from "../models/OTPSignIn";
 
 export default class AuthController {
   public static async signIn(ctx: Context<HonoConfig>) {

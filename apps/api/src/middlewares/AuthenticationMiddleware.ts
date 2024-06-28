@@ -1,4 +1,4 @@
-import { JWTPayload, Roles } from "../types/types";
+import { JWTPayload, Roles } from "@prism/types";
 import { createMiddleware } from "hono/factory";
 import { HonoConfig } from "../types/types";
 import { Context } from "hono";
