@@ -1,46 +1,47 @@
-import { DatabaseTables, JWTPayload, Roles } from '../types/types';
-import { createMiddleware } from 'hono/factory';
-import { HonoConfig } from '../types/types';
-import { Context } from 'hono';
-import jwt from '@tsndr/cloudflare-worker-jwt';
-import DatabaseManager from '../managers/DatabaseManager';
-import User from '../models/User';
+import { DatabaseTables, JWTPayload, Roles } from "../types/types";
+import { createMiddleware } from "hono/factory";
+import { HonoConfig } from "../types/types";
+import { Context } from "hono";
+import jwt from "@tsndr/cloudflare-worker-jwt";
+import DatabaseManager from "../managers/DatabaseManager";
+import User from "../models/User";
 
-const GuestMiddleware = createMiddleware(async (ctx: Context<HonoConfig>, next) => {
-	try {
-		const authHeaderValue = ctx.req.header('Authorization');
+const GuestMiddleware = createMiddleware(
+  async (ctx: Context<HonoConfig>, next) => {
+    try {
+      const authHeaderValue = ctx.req.header("Authorization");
 
-		if (!authHeaderValue) {
-			return await next();
-		}
+      if (!authHeaderValue) {
+        return await next();
+      }
 
-		const split = authHeaderValue.split('Bearer ');
+      const split = authHeaderValue.split("Bearer ");
 
-		if (split.length !== 2) {
-			return await next();
-		}
+      if (split.length !== 2) {
+        return await next();
+      }
 
-		const isValid = await jwt.verify(split[1], ctx.env.JWT_SECRET_KEY);
+      const isValid = await jwt.verify(split[1], ctx.env.JWT_SECRET_KEY);
 
-		if (!isValid) {
-			return await next();
-		}
+      if (!isValid) {
+        return await next();
+      }
 
-		const accessToken = jwt.decode(split[1]) as { payload: JWTPayload };
+      const accessToken = jwt.decode(split[1]) as { payload: JWTPayload };
 
-		if (!accessToken.payload.token) {
-			return await next();
-		}
+      if (!accessToken.payload.token) {
+        return await next();
+      }
 
-		const oauthAccessToken = await DatabaseManager.getInstance(
-			ctx
-		)`SELECT * FROM oauth_access_tokens WHERE access_token = ${accessToken.payload.token} AND is_revoked = false AND expiry_at > NOW()`;
+      const oauthAccessToken = await DatabaseManager.getInstance(
+        ctx,
+      )`SELECT * FROM oauth_access_tokens WHERE access_token = ${accessToken.payload.token} AND is_revoked = false AND expiry_at > NOW()`;
 
-		if (oauthAccessToken.length === 0) {
-			return await next();
-		}
+      if (oauthAccessToken.length === 0) {
+        return await next();
+      }
 
-		const user = (await DatabaseManager.getInstance(ctx)`
+      const user = (await DatabaseManager.getInstance(ctx)`
 			SELECT
 				users.id as id,
 				users.email as email,
@@ -59,16 +60,17 @@ const GuestMiddleware = createMiddleware(async (ctx: Context<HonoConfig>, next) 
 			WHERE users.id = ${oauthAccessToken[0].user_id} AND users.role = ${Roles.USER};
 			`) as Array<User>;
 
-		if (user.length === 0) {
-			return await next();
-		}
+      if (user.length === 0) {
+        return await next();
+      }
 
-		ctx.set('user', user[0]);
-		ctx.set('oauthAccessTokenId', oauthAccessToken[0].id);
-	} catch (error) {
-		return await next();
-	}
-	return await next();
-});
+      ctx.set("user", user[0]);
+      ctx.set("oauthAccessTokenId", oauthAccessToken[0].id);
+    } catch (error) {
+      return await next();
+    }
+    return await next();
+  },
+);
 
 export default GuestMiddleware;

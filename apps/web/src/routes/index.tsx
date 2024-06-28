@@ -1,13 +1,13 @@
 import { Button } from "@/components/ui/button";
-import useAuthenticationStore from "@/store/authenticationStore";
+import { useCurrentUser } from "@/network/queries/useCurrentUser";
 import React from "react";
 import { Link } from "react-router-dom";
 
-export default function Index() {
-  const authenticationStore = useAuthenticationStore();
+export function Index() {
+  const { isSuccess } = useCurrentUser();
   return (
     <div className="flex flex-col items-center gap-2">
-      {authenticationStore.isAuthenticated ? (
+      {isSuccess ? (
         <Button asChild>
           <Link to="/projects">Projects</Link>
         </Button>

@@ -7,7 +7,7 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 const tabs = [
   {
     label: "Overview",
-    url: "summary",
+    url: "",
   },
   {
     label: "Events",
@@ -21,11 +21,11 @@ const tabs = [
 
 const projectId = "ddd";
 
-export default function AppLayout() {
+export function AppLayout() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
 
-  const path = pathname.split("/")?.[3] || "summary";
+  const path = pathname.split("/")?.[3] || "";
 
   return (
     <>
@@ -43,8 +43,13 @@ export default function AppLayout() {
               {tabs.map(({ label, url }) => (
                 <TabsTrigger
                   value={url}
+                  key={url}
                   onClick={() => {
-                    navigate(`/apps/${projectId}/${url}`);
+                    if (!url) {
+                      navigate(`/apps/${projectId}`);
+                    } else {
+                      navigate(`/apps/${projectId}/${url}`);
+                    }
                   }}
                 >
                   {label}

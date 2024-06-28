@@ -9,16 +9,53 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Link, useNavigate } from "react-router-dom";
-import useAuthenticationStore from "@/store/authenticationStore";
+import { Link } from "react-router-dom";
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { useForm, Resolver } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { useSignInMutation } from "@/network/mutations/useSignInMutation";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { toast } from "sonner";
+import { useUserStore } from "@/store/userStore";
 
-export default function LogIn() {
-  const navigate = useNavigate();
-  const authenticationStore = useAuthenticationStore();
+const formSchema = z.object({
+  email: z.string().email(),
+  password: z
+    .string()
+    .min(2, {
+      message: "Password must be at least 2 characters.",
+    })
+    .max(50),
+});
+
+export function LogIn() {
+  const signInMutation = useSignInMutation();
+  const { user } = useUserStore();
+
+  const form = useForm({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      email: "",
+      password: "",
+    },
+  });
+
+  function onSubmit(values: z.infer<typeof formSchema>) {
+    signInMutation.mutate(values);
+  }
 
   return (
-    <div className="h-[100dvh] w-full grid place-content-center">
-      <Card className="mx-auto max-w-sm">
+    <div className="h-[100dvh] w-full grid place-content-center px-4">
+      <Card className="mx-auto w-full md:w-96">
         <CardHeader>
           <CardTitle className="text-2xl">Login</CardTitle>
           <CardDescription>
@@ -27,28 +64,56 @@ export default function LogIn() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="m@example.com"
-                required
-              />
-            </div>
-            <div className="grid gap-2">
-              <div className="flex items-center">
-                <Label htmlFor="password">Password</Label>
-                <Link to="/" className="ml-auto inline-block text-sm underline">
-                  Forgot your password?
-                </Link>
-              </div>
-              <Input id="password" type="password" required />
-            </div>
-            <Button type="submit" className="w-full">
-              Login
-            </Button>
-            <Button
+            <Form {...form}>
+              <form
+                onSubmit={form.handleSubmit(onSubmit)}
+                className="space-y-4"
+              >
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl>
+                        <Input placeholder="m@example.com" {...field} />
+                      </FormControl>
+                      {/* <FormDescription /> */}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Password</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="*******"
+                          type="password"
+                          {...field}
+                        />
+                      </FormControl>
+                      {/* <FormDescription /> */}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <Button type="submit" className="w-full">
+                  {signInMutation.isPending ? <LoadingSpinner /> : "Login"}
+                </Button>
+              </form>
+              <Link
+                to="/auth/forgot-password"
+                className="mt-1 text-center inline-block text-sm underline"
+              >
+                Forgot your password?
+              </Link>
+            </Form>
+
+            {/* <Button
               variant="outline"
               className="w-full"
               onClick={() => {
@@ -56,7 +121,7 @@ export default function LogIn() {
               }}
             >
               Login with Google
-            </Button>
+            </Button> */}
           </div>
           <div className="mt-4 text-center text-sm">
             Don&apos;t have an account?{" "}

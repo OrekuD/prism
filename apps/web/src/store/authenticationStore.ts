@@ -1,18 +1,22 @@
+import { AuthResource } from "@/network/resources/AuthResource";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 type AuthenticationStore = {
+  authentication: Omit<AuthResource, "user"> | null;
   isAuthenticated: boolean;
-  setIsAuthenticated: (value: boolean) => void;
+  setAuthentication: (value: Omit<AuthResource, "user"> | null) => void;
 };
 
-const useAuthenticationStore = create<AuthenticationStore>()(
+export const useAuthenticationStore = create<AuthenticationStore>()(
   persist(
     (set) => ({
+      authentication: null,
       isAuthenticated: false,
-      setIsAuthenticated: (value) => {
+      setAuthentication: (value) => {
         set({
-          isAuthenticated: value,
+          authentication: value,
+          isAuthenticated: Boolean(value),
         });
       },
     }),
@@ -21,5 +25,3 @@ const useAuthenticationStore = create<AuthenticationStore>()(
     },
   ),
 );
-
-export default useAuthenticationStore;

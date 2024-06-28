@@ -1,5 +1,7 @@
 name = "prism-api"
-compatibility_date = "2023-12-01"
+main = "src/index.ts"
+compatibility_date = "2024-05-12"
+compatibility_flags = ["nodejs_compat"]
 
 # [vars]
 # MY_VAR = "my-variable"

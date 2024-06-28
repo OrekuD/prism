@@ -21,9 +21,9 @@ This Turborepo includes the following packages and apps:
 - `api`: an [Cloudflare Worker](https://workers.cloudflare.com/) server
 - `web`: a [Vite](https://vitejs.dev/) single page app
 - `docs`: a [Astro Starlight](https://starlight.astro.build/) blog
-- `@repo/jest-presets`: Jest configurations
-- `@repo/logger`: isomorphic logger (a small wrapper around console.log)
-- `@repo/typescript-config`: tsconfig.json's used throughout the monorepo
+- `@prism/jest-presets`: Jest configurations
+- `@prism/logger`: isomorphic logger (a small wrapper around console.log)
+- `@prism/typescript-config`: tsconfig.json's used throughout the monorepo
 
 Each package and app is 100% [TypeScript](https://www.typescriptlang.org/).
 

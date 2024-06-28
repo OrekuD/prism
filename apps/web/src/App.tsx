@@ -6,27 +6,37 @@ import {
   RouterProvider,
   Navigate,
 } from "react-router-dom";
-import RootLayout from "./components/layout/rootLayout";
-import Index from "./routes/index";
-import SignIn from "./routes/auth/log-in";
-import CreateAccount from "./routes/auth/create-account";
-import Apps from "./routes/apps";
-import NewApp from "./routes/apps/new";
-import AppLayout from "./components/layout/appLayout";
-import AppSummary from "./routes/apps/app/summary";
-import AppEvents from "./routes/apps/app/events";
-import AppSettings from "./routes/apps/app/settings";
-import ProfileSettings from "./routes/profile/settings";
-import ProfileLayout from "./components/layout/profileLayout";
-import useAuthenticationStore from "./store/authenticationStore";
+import { RootLayout } from "./components/layout/rootLayout";
+import { Index } from "./routes/index";
+import { LogIn } from "./routes/auth/log-in";
+import { CreateAccount } from "./routes/auth/create-account";
+import { Apps } from "./routes/apps";
+import { NewApp } from "./routes/apps/new";
+import { AppLayout } from "./components/layout/appLayout";
+import { AppSummary } from "./routes/apps/app/summary";
+import { AppEvents } from "./routes/apps/app/events";
+import { AppSettings } from "./routes/apps/app/settings";
+import { AccountGeneral } from "./routes/profile/general";
+import { AccountSecurity } from "./routes/profile/security";
+import { AccountAuthentication } from "./routes/profile/authentication";
+import { AccountTeams } from "./routes/profile/teams";
+import { AccountLayout } from "./components/layout/accountLayout";
+import { ThemeProvider } from "./components/theme-provider";
+import { ForgotPassword } from "./routes/auth/forgot-password";
+import { ResetPassword } from "./routes/auth/reset-password";
+import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
+import { useCurrentUser } from "./network/queries/useCurrentUser";
+import { useAuthenticationStore } from "./store/authenticationStore";
 
 const defaultRouter = createBrowserRouter(
   createRoutesFromElements(
     <Route path="/" element={<RootLayout />}>
       <Route path="" element={<Index />} />
       <Route path="auth">
-        <Route path="log-in" element={<SignIn />} />
+        <Route path="log-in" element={<LogIn />} />
         <Route path="create-account" element={<CreateAccount />} />
+        <Route path="forgot-password" element={<ForgotPassword />} />
+        <Route path="reset-password" element={<ResetPassword />} />
       </Route>
       <Route path="*" element={<Navigate to="/auth/log-in" />} />
     </Route>,
@@ -41,13 +51,16 @@ const authenticatedRouter = createBrowserRouter(
         <Route path="" element={<Apps />} />
         <Route path="new" element={<NewApp />} />
         <Route path=":id" element={<AppLayout />}>
-          <Route path="summary" element={<AppSummary />} />
+          <Route path="" element={<AppSummary />} />
           <Route path="events" element={<AppEvents />} />
           <Route path="settings" element={<AppSettings />} />
         </Route>
       </Route>
-      <Route path="profile" element={<ProfileLayout />}>
-        <Route path="settings" element={<ProfileSettings />} />
+      <Route path="account" element={<AccountLayout />}>
+        <Route path="" element={<AccountGeneral />} />
+        <Route path="security" element={<AccountSecurity />} />
+        <Route path="authentication" element={<AccountAuthentication />} />
+        <Route path="teams" element={<AccountTeams />} />
       </Route>
       <Route path="*" element={<Navigate to="/apps" />} />
     </Route>,
@@ -55,6 +68,7 @@ const authenticatedRouter = createBrowserRouter(
 );
 
 export default function App() {
+  const { isSuccess } = useCurrentUser();
   const { isAuthenticated } = useAuthenticationStore();
 
   return (

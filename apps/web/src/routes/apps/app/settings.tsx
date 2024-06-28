@@ -7,7 +7,7 @@ import {
 } from "@/components/ui/card";
 import React from "react";
 
-export default function AppSettings() {
+export function AppSettings() {
   return (
     <div className="space-y-4">
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

@@ -1,9 +1,10 @@
 import React from "react";
 import { Outlet } from "react-router-dom";
 import { Nav } from "../ui/nav";
-import useAuthenticationStore from "@/store/authenticationStore";
+import { useCurrentUser } from "@/network/queries/useCurrentUser";
+import { useAuthenticationStore } from "@/store/authenticationStore";
 
-export default function RootLayout() {
+export function RootLayout() {
   const { isAuthenticated } = useAuthenticationStore();
 
   if (isAuthenticated) {

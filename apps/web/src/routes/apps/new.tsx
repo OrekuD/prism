@@ -1,5 +1,5 @@
 import React from "react";
 
-export default function NewApp() {
+export function NewApp() {
   return <div></div>;
 }

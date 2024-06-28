@@ -39,7 +39,7 @@ const data = [
   },
 ];
 
-export default function AppSummary() {
+export function AppSummary() {
   return (
     <div className="space-y-4">
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

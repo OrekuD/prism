@@ -44,13 +44,13 @@ const data = [
   },
 ];
 
-export default function Apps() {
+export function Apps() {
   return (
     <div className="py-4">
       <div className="flex items-center gap-3">
         <form className="flex-1">
           <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Search className="absolute left-2.5 top-3 h-4 w-4 text-muted-foreground" />
             <Input
               type="search"
               placeholder="Search apps..."
@@ -61,7 +61,7 @@ export default function Apps() {
         <Button>Create New</Button>
       </div>
       <div className="grid grid-cols-3 py-4">
-        <Link to="/apps/dd/summary">
+        <Link to="/apps/dd">
           <Card className="">
             <CardHeader>
               <CardTitle className="text-md">App Name</CardTitle>
