@@ -59,7 +59,7 @@ export function UserNav() {
         <Button variant="ghost" className="relative h-8 w-8 rounded-full">
           <Avatar className="h-8 w-8">
             <AvatarImage
-              src={user?.profile?.profilePicture || undefined}
+              src={user?.profile?.profilePictureUrl || undefined}
               alt={name}
             />
             <AvatarFallback>{`${getInitials(name)}`}</AvatarFallback>

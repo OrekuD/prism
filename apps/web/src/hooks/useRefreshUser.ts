@@ -13,10 +13,10 @@ export function useRefreshUser() {
     if (isError) {
       authenticationStore.setAuthentication(null);
     }
-  }, [isError]);
+  }, [isError, authenticationStore.setAuthentication]);
 
   React.useEffect(() => {
     if (!data) return;
     userStore.setUser(data);
-  }, [data]);
+  }, [data, userStore.setUser]);
 }

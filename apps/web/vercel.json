@@ -6,5 +6,6 @@
     }
   ],
   "outputDirectory": "dist",
-  "framework": "vite"
+  "framework": "vite",
+  "buildCommand": "cd ../../ && yarn turbo build --filter=prism-web..."
 }

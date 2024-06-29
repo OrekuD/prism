@@ -1,6 +1,7 @@
 import { LocalStorageKeys } from "@/constants/LocalStorageKeys";
 import {
   ChangeEmailResource,
+  ProfilePictureResource,
   ProfileResource,
   UpdateUsernameResource,
   UserResource,
@@ -14,6 +15,7 @@ type UserStore = {
   updateProfile: (value: ProfileResource) => void;
   changeEmail: (value: ChangeEmailResource) => void;
   updateUsername: (value: UpdateUsernameResource) => void;
+  updateProfilePicture: (value: ProfilePictureResource) => void;
 };
 
 export const useUserStore = create<UserStore>()(
@@ -47,6 +49,20 @@ export const useUserStore = create<UserStore>()(
 
         set({
           user: { ...user, userName: value.username },
+        });
+      },
+      updateProfilePicture: (value) => {
+        const user = state().user;
+        if (!user || !user.profile) return;
+
+        set({
+          user: {
+            ...user,
+            profile: {
+              ...user.profile,
+              profilePictureUrl: value.profilePictureUrl,
+            },
+          },
         });
       },
     }),

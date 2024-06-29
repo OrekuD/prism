@@ -5,8 +5,8 @@ import { useUserStore } from "@/store/userStore";
 import { useAuthenticationStore } from "@/store/authenticationStore";
 import { LocalStorageKeys } from "@/constants/LocalStorageKeys";
 
-async function signOut() {
-  const url = "/auth/sign-out";
+async function signOutFromAllSessions() {
+  const url = "/auth/sign-out-from-all-sessions";
 
   const response = await axiosInstance.post(url);
 
@@ -15,12 +15,12 @@ async function signOut() {
   }
 }
 
-export function useSignOutMutation() {
+export function useSignOutFromAllSessionsMutation() {
   const authenticationStore = useAuthenticationStore();
   const userStore = useUserStore();
 
   return useMutation({
-    mutationFn: signOut,
+    mutationFn: signOutFromAllSessions,
     onSuccess: () => {
       localStorage.removeItem(LocalStorageKeys.TOKEN);
       userStore.setUser(null);

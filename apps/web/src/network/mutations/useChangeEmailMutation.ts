@@ -2,7 +2,7 @@ import { useMutation } from "@tanstack/react-query";
 import { axiosInstance } from "@/utils/axiosInstance";
 import { toast } from "sonner";
 import { useUserStore } from "@/store/userStore";
-import {
+import type {
   ChangeEmailRequest,
   ChangeEmailResource,
   ErrorResource,
@@ -11,7 +11,7 @@ import { AxiosError } from "axios";
 import { useSendVerifyEmailMutation } from "./useSendVerifyEmailMutation";
 
 async function changeEmail(payload: ChangeEmailRequest) {
-  const url = `/user/change-email`;
+  const url = "/user/change-email";
 
   const response = await axiosInstance.put(url, payload);
 

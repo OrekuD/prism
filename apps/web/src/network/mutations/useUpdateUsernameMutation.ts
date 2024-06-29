@@ -2,16 +2,15 @@ import { useMutation } from "@tanstack/react-query";
 import { axiosInstance } from "@/utils/axiosInstance";
 import { toast } from "sonner";
 import { useUserStore } from "@/store/userStore";
-import {
+import type {
   ErrorResource,
   UpdateUsernameRequest,
   UpdateUsernameResource,
-  UserResource,
 } from "@prism/types";
 import { AxiosError } from "axios";
 
 async function updateUsername(payload: UpdateUsernameRequest) {
-  const url = `/user/update-username`;
+  const url = "/user/update-username";
 
   const response = await axiosInstance.put(url, payload);
 

@@ -1,6 +1,6 @@
 import { LocalStorageKeys } from "@/constants/LocalStorageKeys";
 import { axiosInstance } from "@/utils/axiosInstance";
-import { UserResource } from "@prism/types";
+import type { UserResource } from "@prism/types";
 import { useQuery } from "@tanstack/react-query";
 
 async function currentUser() {
@@ -13,6 +13,7 @@ async function currentUser() {
   });
 
   if (response.status === 200) {
+    console.log({ __data: response.data });
     return response.data;
   }
 }
@@ -24,5 +25,6 @@ export function useCurrentUserQuery() {
       logOut: true,
     },
     enabled: Boolean(localStorage.getItem(LocalStorageKeys.TOKEN) || ""),
+    retry: 20,
   });
 }

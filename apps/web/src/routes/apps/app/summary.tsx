@@ -201,7 +201,7 @@ export function AppSummary() {
                       {
                         stroke: "var(--theme-primary)",
                         opacity: 0.25,
-                        "--theme-primary": `hsl(var(--primary))`,
+                        "--theme-primary": "hsl(var(--primary))",
                       } as React.CSSProperties
                     }
                   />
@@ -216,7 +216,7 @@ export function AppSummary() {
                     style={
                       {
                         stroke: "var(--theme-primary)",
-                        "--theme-primary": `hsl(var(--primary))`,
+                        "--theme-primary": "hsl(var(--primary))",
                       } as React.CSSProperties
                     }
                   />

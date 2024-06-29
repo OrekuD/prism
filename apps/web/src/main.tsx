@@ -14,9 +14,9 @@ import { toast } from "sonner";
 
 const client = new QueryClient({
   queryCache: new QueryCache({
-    onError: (error, query: any) => {
+    onError: (error, query) => {
       if (!query.meta?.error) return;
-      toast.error(query.meta.error);
+      toast.error(query.meta.error as string);
     },
   }),
 });

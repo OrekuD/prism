@@ -4,12 +4,11 @@ import { LocalStorageKeys } from "@/constants/LocalStorageKeys";
 import { toast } from "sonner";
 import { useAuthenticationStore } from "@/store/authenticationStore";
 import { useUserStore } from "@/store/userStore";
-import { AuthResource } from "../resources/AuthResource";
-import { ErrorResource, SignUpRequest } from "@prism/types";
+import type { AuthResource, ErrorResource, SignUpRequest } from "@prism/types";
 import { AxiosError } from "axios";
 
 async function signUp(payload: SignUpRequest) {
-  const url = `/auth/sign-up`;
+  const url = "/auth/sign-up";
 
   const response = await axiosInstance.post(url, payload);
 

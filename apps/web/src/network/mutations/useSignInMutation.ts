@@ -2,13 +2,12 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { axiosInstance } from "@/utils/axiosInstance";
 import { LocalStorageKeys } from "@/constants/LocalStorageKeys";
 import { toast } from "sonner";
-import { AuthResource } from "../resources/AuthResource";
 import { useUserStore } from "@/store/userStore";
 import { useAuthenticationStore } from "@/store/authenticationStore";
-import { SignInRequest } from "@prism/types";
+import type { AuthResource, SignInRequest } from "@prism/types";
 
 async function signIn(payload: SignInRequest) {
-  const url = `/auth/sign-in`;
+  const url = "/auth/sign-in";
 
   const response = await axiosInstance.post(url, payload);
 

@@ -29,14 +29,20 @@ import {
 } from "@prism/types";
 import { useUpdateUsernameMutation } from "@/network/mutations/useUpdateUsernameMutation";
 import { useChangeEmailMutation } from "@/network/mutations/useChangeEmailMutation";
+import { useSignOutFromAllSessionsMutation } from "@/network/mutations/useSignOutFromAllSessionsMutation";
+import { Pencil } from "lucide-react";
+import defaultAvatar from "@/assets/images/default_profile.png";
+import { useUpdateProfilePictureMutation } from "@/network/mutations/useUpdateProfilePictureMutation";
 
 export function AccountGeneral() {
   const { user } = useUserStore();
+  const [uploadedProfileImage, setUploadedProfileImage] =
+    React.useState<File | null>(null);
   const updateUserInformationMutation = useUpdateUserInformationMutation();
   const updateUsernameMutation = useUpdateUsernameMutation();
   const changeEmailMutation = useChangeEmailMutation();
-
-  // console.log({ user });
+  const signOutFromAllSessionsMutation = useSignOutFromAllSessionsMutation();
+  const updateProfilePictureMutation = useUpdateProfilePictureMutation();
 
   const profileForm = useForm({
     resolver: zodResolver(UpdateUserInformationRequestSchema),
@@ -203,12 +209,97 @@ export function AccountGeneral() {
           <CardDescription>Select an avatar</CardDescription>
         </CardHeader>
         <CardContent>
-          <form>
-            <Input placeholder="Display Name" />
+          <form className="w-fit">
+            <label htmlFor="profile-picture-input">
+              <div
+                className={`size-20 rounded-full border-2 border-primary relative bg-border ${updateProfilePictureMutation.isPending ? "opacity-60" : ""}`}
+              >
+                <img
+                  src={
+                    uploadedProfileImage
+                      ? URL.createObjectURL(uploadedProfileImage)
+                      : user?.profile?.profilePictureUrl
+                        ? user.profile.profilePictureUrl
+                        : defaultAvatar
+                  }
+                  className="w-full h-full object-cover rounded-full selection:bg-transparent"
+                />
+                <div className="absolute bottom-0 right-0 size-6 bg-white rounded-full grid place-items-center">
+                  <Pencil className="size-3 text-background" />
+                </div>
+              </div>
+            </label>
+            <Input
+              placeholder="Display Name"
+              type="file"
+              id="profile-picture-input"
+              accept="image/*"
+              className="hidden"
+              disabled={updateProfilePictureMutation.isPending}
+              onChange={(e) => {
+                if (e.target.files) {
+                  const files = Array.from(e.target.files);
+                  setUploadedProfileImage(files[0]);
+                }
+              }}
+            />
           </form>
         </CardContent>
+        <CardFooter className="border-t px-6 py-4 gap-4">
+          <Button
+            disabled={
+              updateProfilePictureMutation.isPending || !uploadedProfileImage
+            }
+            onClick={async () => {
+              const { profilePictureUrl } =
+                await updateProfilePictureMutation.mutateAsync({
+                  file: uploadedProfileImage!,
+                });
+
+              if (profilePictureUrl) {
+                setUploadedProfileImage(null);
+              }
+            }}
+          >
+            {updateProfilePictureMutation.isPending ? (
+              <LoadingSpinner />
+            ) : (
+              "Update"
+            )}
+          </Button>
+          {uploadedProfileImage ? (
+            <Button
+              variant="outline"
+              className="border-destructive/75"
+              onClick={() => setUploadedProfileImage(null)}
+              disabled={updateProfilePictureMutation.isPending}
+            >
+              Reset
+            </Button>
+          ) : null}
+        </CardFooter>
+      </Card>
+      <Card className="border-destructive">
+        <CardHeader className="gap-1">
+          <CardTitle className="text-destructive">
+            Sign Out From All Sessions
+          </CardTitle>
+          <CardDescription>
+            This will sign you out of all other active sessions.
+          </CardDescription>
+        </CardHeader>
         <CardFooter className="border-t px-6 py-4">
-          <Button>Save</Button>
+          <Button
+            variant="destructive"
+            disabled={signOutFromAllSessionsMutation.isPending}
+            onClick={() => signOutFromAllSessionsMutation.mutate()}
+          >
+            {signOutFromAllSessionsMutation.isPending ? (
+              <LoadingSpinner />
+            ) : (
+              "Sign out"
+            )}
+          </Button>
         </CardFooter>
       </Card>
       <Card className="border-destructive">
@@ -221,7 +312,9 @@ export function AccountGeneral() {
           </CardDescription>
         </CardHeader>
         <CardFooter className="border-t px-6 py-4">
-          <Button variant="destructive">Delete my account</Button>
+          <Button variant="destructive" disabled>
+            Delete my account
+          </Button>
         </CardFooter>
       </Card>
     </div>
