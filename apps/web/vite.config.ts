@@ -4,14 +4,10 @@ import path from "path";
 
 export default defineConfig({
   plugins: [react()],
-  build: {
-    rollupOptions: {
-      external: ["@prism/types"],
-    },
-  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@prism/types": path.resolve(__dirname, "../../packages/types/src"),
     },
   },
 });
