@@ -5,6 +5,7 @@ import { useUserStore } from "@/store/userStore";
 import {
   ErrorResource,
   UpdateUsernameRequest,
+  UpdateUsernameResource,
   UserResource,
 } from "@prism/types";
 import { AxiosError } from "axios";
@@ -24,8 +25,8 @@ export function useUpdateUsernameMutation() {
 
   return useMutation({
     mutationFn: updateUsername,
-    onSuccess: (data: UserResource) => {
-      userStore.setUser(data);
+    onSuccess: (data: UpdateUsernameResource) => {
+      // userStore.setUser(data);
     },
     onError: (error: AxiosError<ErrorResource>) => {
       if (

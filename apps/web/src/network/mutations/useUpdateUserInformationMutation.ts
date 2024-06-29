@@ -26,6 +26,7 @@ export function useUpdateUserInformationMutation() {
     mutationFn: updateUserInformation,
     onSuccess: (data: ProfileResource) => {
       userStore.updateProfile(data);
+      toast("Profile information updated");
     },
     onError: (error: AxiosError<ErrorResource>) => {
       toast("Something went wrong");

@@ -26,6 +26,7 @@ import ProfilePicture from "../models/ProfilePicture";
 import ProfilePictureResponse from "../network/responses/ProfilePictureResponse";
 import ProfileResponse from "../network/responses/ProfileResponse";
 import ChangeEmailResponse from "../network/responses/ChangeEmailResponse";
+import UpdateUsernameResponse from "../network/responses/UpdateUsernameResponse";
 
 export default class UserController {
   public static async currentUser(ctx: Context<HonoConfig>) {
@@ -195,12 +196,12 @@ export default class UserController {
       return ctx.json(new ErrorResponse(data).toJSON(), 400);
     }
 
-    const user = ctx.get("user");
+    const user = ctx.get("user")!;
 
     const db = DatabaseManager.getInstance(ctx);
 
     const updatedProfile =
-      (await db`UPDATE profiles SET first_name = ${data.firstName}, last_name = ${data.lastName} WHERE user_id = ${user!.id} RETURNING *`) as Array<Profile>;
+      (await db`UPDATE profiles SET first_name = ${data.firstName}, last_name = ${data.lastName} WHERE user_id = ${user.id} RETURNING *`) as Array<Profile>;
 
     if (updatedProfile.length === 0) {
       return ctx.json(new ErrorResponse("profile_not_updated").toJSON(), 400);
@@ -240,6 +241,6 @@ export default class UserController {
       return ctx.json(new ErrorResponse("profile_not_updated").toJSON(), 400);
     }
 
-    return ctx.json(new UserResponse(updatedUser[0]).toJSON());
+    return ctx.json(new UpdateUsernameResponse(data.userName).toJSON());
   }
 }

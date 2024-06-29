@@ -119,7 +119,11 @@ export function CreateAccount() {
                     </FormItem>
                   )}
                 />
-                <Button type="submit" className="w-full">
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={signUpMutation.isPending}
+                >
                   {signUpMutation.isPending ? (
                     <LoadingSpinner />
                   ) : (

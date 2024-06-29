@@ -23,15 +23,20 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useUpdateUserInformationMutation } from "@/network/mutations/useUpdateUserInformationMutation";
 import {
+  ChangeEmailRequestSchema,
   UpdateUserInformationRequestSchema,
   UpdateUsernameRequestSchema,
 } from "@prism/types";
 import { useUpdateUsernameMutation } from "@/network/mutations/useUpdateUsernameMutation";
+import { useChangeEmailMutation } from "@/network/mutations/useChangeEmailMutation";
 
 export function AccountGeneral() {
   const { user } = useUserStore();
   const updateUserInformationMutation = useUpdateUserInformationMutation();
   const updateUsernameMutation = useUpdateUsernameMutation();
+  const changeEmailMutation = useChangeEmailMutation();
+
+  // console.log({ user });
 
   const profileForm = useForm({
     resolver: zodResolver(UpdateUserInformationRequestSchema),
@@ -48,11 +53,18 @@ export function AccountGeneral() {
     },
   });
 
+  const emailForm = useForm({
+    resolver: zodResolver(ChangeEmailRequestSchema),
+    defaultValues: {
+      email: user?.email || "",
+    },
+  });
+
   return (
     <div className="grid gap-6">
       <Card>
         <CardHeader className="gap-1">
-          <CardTitle>Profile Details</CardTitle>
+          <CardTitle>Profile Information</CardTitle>
         </CardHeader>
         <CardContent className="px-0 pb-0">
           <Form {...profileForm}>
@@ -91,7 +103,10 @@ export function AccountGeneral() {
                 />
               </div>
               <CardFooter className="border-t px-6 py-4">
-                <Button type="submit">
+                <Button
+                  type="submit"
+                  disabled={updateUserInformationMutation.isPending}
+                >
                   {updateUserInformationMutation.isPending ? (
                     <LoadingSpinner />
                   ) : (
@@ -129,7 +144,10 @@ export function AccountGeneral() {
                 )}
               />
               <CardFooter className="border-t px-6 py-4">
-                <Button type="submit">
+                <Button
+                  type="submit"
+                  disabled={updateUsernameMutation.isPending}
+                >
                   {updateUsernameMutation.isPending ? (
                     <LoadingSpinner />
                   ) : (
@@ -146,14 +164,38 @@ export function AccountGeneral() {
           <CardTitle>Email</CardTitle>
           <CardDescription>Your Prism email.</CardDescription>
         </CardHeader>
-        <CardContent>
-          <form>
-            <Input placeholder="Email" defaultValue={user?.email} />
-          </form>
+        <CardContent className="px-0 pb-0">
+          <Form {...emailForm}>
+            <form
+              onSubmit={emailForm.handleSubmit((values) =>
+                changeEmailMutation.mutate(values),
+              )}
+              className="space-y-6"
+            >
+              <FormField
+                control={emailForm.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem className="px-6">
+                    <FormControl>
+                      <Input placeholder="" type="email" required {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <CardFooter className="border-t px-6 py-4">
+                <Button type="submit" disabled={changeEmailMutation.isPending}>
+                  {changeEmailMutation.isPending ? (
+                    <LoadingSpinner />
+                  ) : (
+                    "Update"
+                  )}
+                </Button>
+              </CardFooter>
+            </form>
+          </Form>
         </CardContent>
-        <CardFooter className="border-t px-6 py-4">
-          <Button>Save</Button>
-        </CardFooter>
       </Card>
       <Card>
         <CardHeader className="gap-1">

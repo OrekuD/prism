@@ -88,7 +88,11 @@ export function LogIn() {
                     </FormItem>
                   )}
                 />
-                <Button type="submit" className="w-full">
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={signInMutation.isPending}
+                >
                   {signInMutation.isPending ? <LoadingSpinner /> : "Login"}
                 </Button>
               </form>

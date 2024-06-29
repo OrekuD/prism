@@ -20,19 +20,20 @@ export type ChangeEmailResource = {
   email: string;
 };
 
+export type UpdateUsernameResource = {
+  username: string;
+};
+
 export type ProfilePictureResource = {
   profilePicture: string;
 };
 
 export type ProfileResource = {
-  id: string;
   firstName: string;
   lastName: string;
   gender: string | null;
   profilePicture: string | null;
   emailVerifiedAt: string | null;
-  createdAt: string | null;
-  updatedAt: string | null;
 };
 
 export type TeamResource = {
@@ -49,7 +50,5 @@ export type UserResource = {
   email: string;
   userName: string | null;
   role: Roles;
-  createdAt: string | null;
-  updatedAt: string | null;
   profile: ProfileResource | null;
 };

@@ -1,10 +1,10 @@
+import React from "react";
 import { useCurrentUserQuery } from "@/network/queries/useCurrentUserQuery";
 import { useAuthenticationStore } from "@/store/authenticationStore";
 import { useUserStore } from "@/store/userStore";
-import React from "react";
 
 export function useRefreshUser() {
-  const { isError, data, error } = useCurrentUserQuery();
+  const { isError, data } = useCurrentUserQuery();
   const authenticationStore = useAuthenticationStore();
   const userStore = useUserStore();
 
@@ -15,8 +15,8 @@ export function useRefreshUser() {
     }
   }, [isError]);
 
-  // React.useEffect(() => {
-  //   if (!data) return;
-  //   userStore.setUser(data);
-  // }, [data]);
+  React.useEffect(() => {
+    if (!data) return;
+    userStore.setUser(data);
+  }, [data]);
 }

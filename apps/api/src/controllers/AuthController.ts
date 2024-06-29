@@ -54,9 +54,10 @@ export default class AuthController {
 
     const user = (await db`
 			SELECT
-				users.id as id,
+			  users.id as id,
 				users.email as email,
 				users.user_name as user_name,
+				users.role as role,
 				users.password as password,
 				json_build_object(
 					'first_name', profiles.first_name,
@@ -314,23 +315,23 @@ export default class AuthController {
     }
 
     user = (await db`
-		SELECT
-			users.id as id,
-			users.email as email,
-			users.user_name as user_name,
-			users.password as password,
-			json_build_object(
-				'first_name', profiles.first_name,
-				'last_name', profiles.last_name,
-				'gender', profiles.gender,
-				'email_verified_at', profiles.email_verified_at
-			) AS profile
-			FROM
-				users
-			JOIN
-				profiles ON users.id = profiles.user_id
-			WHERE users.email = ${data.email.trim().toLowerCase()} AND users.role = ${Roles.USER};
-			`) as Array<User>;
+      		SELECT
+            users.id as id,
+    				users.email as email,
+    				users.user_name as user_name,
+    				users.role as role,
+    				json_build_object(
+     					'first_name', profiles.first_name,
+     					'last_name', profiles.last_name,
+     					'gender', profiles.gender,
+     					'email_verified_at', profiles.email_verified_at
+     			) AS profile
+     			FROM
+      				users
+     			JOIN
+      				profiles ON users.id = profiles.user_id
+     			WHERE users.email = ${data.email.trim().toLowerCase()} AND users.role = ${Roles.USER};
+     			`) as Array<User>;
 
     await db`COMMIT`;
 

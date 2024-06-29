@@ -44,10 +44,10 @@ const GuestMiddleware = createMiddleware(
 
       const user = (await DatabaseManager.getInstance(ctx)`
 			SELECT
-				users.id as id,
+			  users.id as id,
 				users.email as email,
 				users.user_name as user_name,
-				users.password as password,
+				users.role as role,
 				json_build_object(
 					'first_name', profiles.first_name,
 					'last_name', profiles.last_name,
