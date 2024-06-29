@@ -10,7 +10,7 @@ export function RootLayout() {
     return (
       <>
         <Nav />
-        <div className="py-3 max-w-[1400px] mx-auto">
+        <div className="pt-16 max-w-[1400px] mx-auto">
           <Outlet />
         </div>
       </>

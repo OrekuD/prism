@@ -1,5 +1,5 @@
 import React from "react";
 
 export function NewApp() {
-  return <div></div>;
+  return <div>new app</div>;
 }

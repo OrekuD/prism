@@ -30,7 +30,7 @@ export function Nav() {
   const { pathname } = useLocation();
 
   return (
-    <div className="border-b">
+    <div className="fixed top-0 z-50 border-b bg-background w-full">
       <div className="flex h-16 items-center px-8 gap-6">
         {pathname === "/" ? null : (
           <Link to="/">
@@ -40,7 +40,7 @@ export function Nav() {
         <TeamSwitcher />
         <nav className={"flex items-center space-x-4 lg:space-x-6 ml-auto"}>
           <Dialog>
-            <DialogTrigger className="text-sm font-medium px-3 py-2 border rounded-sm">
+            <DialogTrigger className="text-sm font-medium px-3 py-2 border rounded-md">
               Feedback
             </DialogTrigger>
             <DialogContent>
