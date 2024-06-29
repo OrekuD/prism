@@ -16,6 +16,10 @@ export type OkResource = {
   message: string;
 };
 
+export type ChangeEmailResource = {
+  email: string;
+};
+
 export type ProfilePictureResource = {
   profilePicture: string;
 };
@@ -25,7 +29,8 @@ export type ProfileResource = {
   firstName: string;
   lastName: string;
   gender: string | null;
-  email_verified_at: string | null;
+  profilePicture: string | null;
+  emailVerifiedAt: string | null;
   createdAt: string | null;
   updatedAt: string | null;
 };

@@ -58,7 +58,7 @@ export function Apps() {
             />
           </div>
         </form>
-        <Button>Create New</Button>
+        <Button>New App</Button>
       </div>
       <div className="grid grid-cols-3 py-4">
         <Link to="/apps/dd">

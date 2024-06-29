@@ -1,3 +1,4 @@
+import { LocalStorageKeys } from "@/constants/LocalStorageKeys";
 import { AuthResource } from "@/network/resources/AuthResource";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
@@ -21,7 +22,11 @@ export const useAuthenticationStore = create<AuthenticationStore>()(
       },
     }),
     {
-      name: "authentication-store",
+      name: LocalStorageKeys.AUTHENTICATION_STORE,
+      // partialize: (state) => ({
+      //   user: state.authentication,
+      //   isAuthenticated: state.isAuthenticated,
+      // }),
     },
   ),
 );

@@ -1,7 +1,6 @@
 import React from "react";
 import { Outlet } from "react-router-dom";
 import { Nav } from "../ui/nav";
-import { useCurrentUser } from "@/network/queries/useCurrentUser";
 import { useAuthenticationStore } from "@/store/authenticationStore";
 
 export function RootLayout() {

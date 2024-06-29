@@ -6,8 +6,10 @@ import {
   ChangeEmailRequestSchema,
   ChangePasswordRequest,
   ChangePasswordRequestSchema,
-  UpdateUserRequest,
-  UpdateUserRequestSchema,
+  UpdateUserInformationRequest,
+  UpdateUserInformationRequestSchema,
+  UpdateUsernameRequest,
+  UpdateUsernameRequestSchema,
 } from "@prism/types";
 import validateData from "../utils/validateData";
 import DatabaseManager from "../managers/DatabaseManager";
@@ -22,10 +24,11 @@ import MailManager from "../managers/MailManager";
 import UploadController from "./UploadController";
 import ProfilePicture from "../models/ProfilePicture";
 import ProfilePictureResponse from "../network/responses/ProfilePictureResponse";
+import ProfileResponse from "../network/responses/ProfileResponse";
+import ChangeEmailResponse from "../network/responses/ChangeEmailResponse";
 
 export default class UserController {
   public static async currentUser(ctx: Context<HonoConfig>) {
-    console.log("here");
     return ctx.json(new UserResponse(ctx.get("user")!).toJSON());
   }
 
@@ -75,18 +78,18 @@ export default class UserController {
       return ctx.json(new ErrorResponse(data).toJSON(), 400);
     }
 
-    const userObject = ctx.get("user");
+    const user = ctx.get("user")!;
 
     const db = DatabaseManager.getInstance(ctx);
 
-    const profile =
-      (await db`SELECT email_verified_at FROM profiles WHERE user_id = ${userObject!.id}`) as Array<Profile>;
+    const emailTaken =
+      await db`SELECT id FROM users WHERE email = ${data.email.trim().toLowerCase()} AND NOT id = ${user.id}`;
 
-    if (profile.length === 0) {
-      return ctx.json(new ErrorResponse("profile_not_found").toJSON(), 404);
+    if (emailTaken.length > 0) {
+      return ctx.json(new ErrorResponse("email_taken").toJSON(), 400);
     }
 
-    if (profile[0].email_verified_at === null) {
+    if (user.profile!.email_verified_at === null) {
       // const confirmEmailLink = await AuthController._generateVerifyEmailURL(ctx, userObject!.id);
       // await MailManager.dispatch(
       // 	ctx,
@@ -103,33 +106,33 @@ export default class UserController {
       return ctx.json(new ErrorResponse("email_not_verified").toJSON(), 400);
     }
 
-    await db`UPDATE users SET email = ${data.email.trim().toLowerCase()} WHERE id = ${userObject!.id}`;
-    await db`UPDATE profiles SET email_verified_at = NULL WHERE id = ${userObject!.id}`;
+    await db`UPDATE users SET email = ${data.email.trim().toLowerCase()} WHERE id = ${user.id}`;
+    await db`UPDATE profiles SET email_verified_at = NULL WHERE id = ${user.id}`;
 
     const confirmEmailLink = await AuthController._generateVerifyEmailURL(
       ctx,
-      userObject!.id,
+      user.id,
     );
     await MailManager.dispatch(
       ctx,
       {
         name: "new-email",
         props: {
-          name: userObject?.profile?.first_name || userObject!.email,
+          name: user.profile?.first_name || user.email,
           confirmEmailLink,
         },
       },
-      userObject!.email,
+      user.email,
     );
 
-    return ctx.json(new OkResponse().toJSON());
+    return ctx.json(new ChangeEmailResponse(data.email.trim()).toJSON());
   }
 
   public static async sendVerifyEmail(ctx: Context<HonoConfig>) {
-    const user = ctx.get("user");
+    const user = ctx.get("user")!;
     const confirmEmailLink = await AuthController._generateVerifyEmailURL(
       ctx,
-      user!.id,
+      user.id,
     );
 
     await MailManager.dispatch(
@@ -141,7 +144,7 @@ export default class UserController {
           confirmEmailLink,
         },
       },
-      user!.email,
+      user.email,
     );
 
     return ctx.json(new OkResponse().toJSON());
@@ -183,10 +186,10 @@ export default class UserController {
     return ctx.json(new ProfilePictureResponse(uploadResult.url).toJSON());
   }
 
-  public static async updateUser(ctx: Context<HonoConfig>) {
-    const body = await ctx.req.json<UpdateUserRequest>();
+  public static async updateUserInformation(ctx: Context<HonoConfig>) {
+    const body = await ctx.req.json<UpdateUserInformationRequest>();
 
-    const data = validateData(UpdateUserRequestSchema, body);
+    const data = validateData(UpdateUserInformationRequestSchema, body);
 
     if (Array.isArray(data)) {
       return ctx.json(new ErrorResponse(data).toJSON(), 400);
@@ -196,42 +199,46 @@ export default class UserController {
 
     const db = DatabaseManager.getInstance(ctx);
 
-    await db`BEGIN`;
-
-    let updatedUser =
-      (await db`UPDATE users SET user_name = ${data.userName} WHERE id = ${user!.id} RETURNING id`) as Array<User>;
-
     const updatedProfile =
-      await db`UPDATE profiles SET first_name = ${data.firstName}, last_name = ${data.lastName}, gender = ${
-        data.gender
-      } WHERE user_id = ${user!.id} RETURNING id`;
+      (await db`UPDATE profiles SET first_name = ${data.firstName}, last_name = ${data.lastName} WHERE user_id = ${user!.id} RETURNING *`) as Array<Profile>;
 
-    if (updatedUser.length === 0 || updatedProfile.length === 0) {
-      await db`ROLLBACK`;
-
-      return ctx.json(new ErrorResponse("user_not_updated").toJSON(), 400);
+    if (updatedProfile.length === 0) {
+      return ctx.json(new ErrorResponse("profile_not_updated").toJSON(), 400);
     }
 
-    updatedUser = (await db`
-			SELECT
-				users.id as id,
-				users.email as email,
-				users.user_name as user_name,
-				users.password as password,
-				json_build_object(
-					'first_name', profiles.first_name,
-					'last_name', profiles.last_name,
-					'gender', profiles.gender,
-					'email_verified_at', profiles.email_verified_at
-				) AS profile
-			FROM
-				users
-			JOIN
-				profiles ON users.id = profiles.user_id
-			WHERE users.id = ${user!.id} AND users.role = ${Roles.USER};
-			`) as Array<User>;
+    return ctx.json(new ProfileResponse(updatedProfile[0]).toJSON());
+  }
 
-    await db`COMMIT`;
+  public static async updateUsername(ctx: Context<HonoConfig>) {
+    const body = await ctx.req.json<UpdateUsernameRequest>();
+
+    const data = validateData(UpdateUsernameRequestSchema, body);
+
+    if (Array.isArray(data)) {
+      return ctx.json(new ErrorResponse(data).toJSON(), 400);
+    }
+
+    const user = ctx.get("user")!;
+
+    if (user.user_name?.toLowerCase() === data.userName.toLowerCase()) {
+      return ctx.json(new UserResponse(user).toJSON());
+    }
+
+    const db = DatabaseManager.getInstance(ctx);
+
+    const usernameTaken =
+      await db`SELECT id FROM users WHERE user_name = ${data.userName} AND NOT id = ${user.id}`;
+
+    if (usernameTaken.length > 0) {
+      return ctx.json(new ErrorResponse("username_taken").toJSON(), 400);
+    }
+
+    const updatedUser =
+      (await db`UPDATE users SET user_name = ${data.userName} RETURNING *`) as Array<User>;
+
+    if (updatedUser.length === 0) {
+      return ctx.json(new ErrorResponse("profile_not_updated").toJSON(), 400);
+    }
 
     return ctx.json(new UserResponse(updatedUser[0]).toJSON());
   }

@@ -14,7 +14,8 @@ export default class ProfileResponse {
       firstName: this.profile.first_name,
       lastName: this.profile.last_name,
       gender: this.profile.gender,
-      email_verified_at: this.profile.email_verified_at
+      profilePicture: null,
+      emailVerifiedAt: this.profile.email_verified_at
         ? new Date(this.profile.email_verified_at).toISOString()
         : null,
       createdAt: this.profile.created_at

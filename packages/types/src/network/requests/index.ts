@@ -102,14 +102,20 @@ export type UpdateProfilePictureRequest = z.infer<
   typeof UpdateProfilePictureRequestSchema
 >;
 
-export const UpdateUserRequestSchema = z.strictObject({
-  userName: z.string().nullable(),
+export const UpdateUserInformationRequestSchema = z.strictObject({
   firstName: z.string(),
   lastName: z.string(),
-  gender: z.union([z.literal("male"), z.literal("female"), z.literal("other")]),
 });
 
-export type UpdateUserRequest = z.infer<typeof UpdateUserRequestSchema>;
+export type UpdateUserInformationRequest = z.infer<
+  typeof UpdateUserInformationRequestSchema
+>;
+
+export const UpdateUsernameRequestSchema = z.strictObject({
+  userName: z.string(),
+});
+
+export type UpdateUsernameRequest = z.infer<typeof UpdateUsernameRequestSchema>;
 
 export const VerifyEmailRequestSchema = z.strictObject({
   token: z.string(),

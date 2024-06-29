@@ -15,28 +15,23 @@ async function signIn(payload: SignInRequest) {
   if (response.status === 200) {
     return response.data;
   }
-  const error = response.data?.errors?.[0] || "Something went wrong.";
-
-  return Promise.reject(error);
 }
 
 export function useSignInMutation() {
-  const queryClient = useQueryClient();
   const authenticationStore = useAuthenticationStore();
   const userStore = useUserStore();
+  const queryClient = useQueryClient();
 
-  const mutation = useMutation({
+  return useMutation({
     mutationFn: signIn,
     onSuccess: ({ user, ...data }: AuthResource) => {
-      localStorage.setItem(LocalStorageKeys.AUTHENTICATION, data.accessToken);
-      queryClient.invalidateQueries({ queryKey: ["current-user"] });
+      localStorage.setItem(LocalStorageKeys.TOKEN, data.accessToken);
       userStore.setUser(user);
       authenticationStore.setAuthentication(data);
+      queryClient.invalidateQueries({ queryKey: ["current-user"] });
     },
     onError: () => {
       toast("Invalid Credentials");
     },
   });
-
-  return mutation;
 }

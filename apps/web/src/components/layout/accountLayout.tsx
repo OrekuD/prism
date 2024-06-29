@@ -20,17 +20,14 @@ export function AccountLayout() {
           <h1 className="text-3xl font-semibold">Account Settings</h1>
         </div>
         <div className="mx-auto grid w-full max-w-6xl items-start gap-6 md:grid-cols-[180px_1fr] lg:grid-cols-[250px_1fr]">
-          <nav
-            className="grid gap-1 text-sm text-muted-foreground"
-            x-chunk="dashboard-04-chunk-0"
-          >
+          <nav className="grid gap-1 text-sm text-muted-foreground">
             {links.map(({ label, url }) => {
               const isActive = url === path;
               return (
                 <Link
                   to={url}
                   key={url}
-                  className={`font-medium text-black py-2 ${isActive ? "" : "text-opacity-70"}`}
+                  className={`font-medium py-2 ${isActive ? "text-card-foreground" : "text-muted-foreground"}`}
                 >
                   {label}
                 </Link>

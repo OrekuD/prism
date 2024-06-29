@@ -8,48 +8,35 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Link } from "react-router-dom";
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { useForm, Resolver } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import { useSignInMutation } from "@/network/mutations/useSignInMutation";
-import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { toast } from "sonner";
 import { useUserStore } from "@/store/userStore";
-
-const formSchema = z.object({
-  email: z.string().email(),
-  password: z
-    .string()
-    .min(2, {
-      message: "Password must be at least 2 characters.",
-    })
-    .max(50),
-});
+import { SignInRequest, SignInRequestSchema } from "@prism/types";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 
 export function LogIn() {
   const signInMutation = useSignInMutation();
   const { user } = useUserStore();
 
   const form = useForm({
-    resolver: zodResolver(formSchema),
+    resolver: zodResolver(SignInRequestSchema),
     defaultValues: {
       email: "",
       password: "",
     },
   });
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
+  function onSubmit(values: SignInRequest) {
     signInMutation.mutate(values);
   }
 

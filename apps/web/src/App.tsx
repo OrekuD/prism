@@ -21,12 +21,10 @@ import { AccountSecurity } from "./routes/profile/security";
 import { AccountAuthentication } from "./routes/profile/authentication";
 import { AccountTeams } from "./routes/profile/teams";
 import { AccountLayout } from "./components/layout/accountLayout";
-import { ThemeProvider } from "./components/theme-provider";
 import { ForgotPassword } from "./routes/auth/forgot-password";
 import { ResetPassword } from "./routes/auth/reset-password";
-import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
-import { useCurrentUser } from "./network/queries/useCurrentUser";
 import { useAuthenticationStore } from "./store/authenticationStore";
+import { useRefreshUser } from "./hooks/useRefreshUser";
 
 const defaultRouter = createBrowserRouter(
   createRoutesFromElements(
@@ -68,12 +66,17 @@ const authenticatedRouter = createBrowserRouter(
 );
 
 export default function App() {
-  const { isSuccess } = useCurrentUser();
-  const { isAuthenticated } = useAuthenticationStore();
+  const authenticationStore = useAuthenticationStore();
+
+  useRefreshUser();
 
   return (
     <RouterProvider
-      router={isAuthenticated ? authenticatedRouter : defaultRouter}
+      router={
+        authenticationStore.isAuthenticated
+          ? authenticatedRouter
+          : defaultRouter
+      }
     />
   );
 }

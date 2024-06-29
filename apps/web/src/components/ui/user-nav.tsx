@@ -11,11 +11,12 @@ import {
 } from "./dropdown-menu";
 import { Button } from "./button";
 import { Link } from "react-router-dom";
-import { Laptop, LogOut, Moon, Settings, Sun, SunMoon } from "lucide-react";
+import { Laptop, LogOut, Moon, Settings, Sun } from "lucide-react";
 import { useTheme } from "../theme-provider";
-import { useCurrentUser } from "@/network/queries/useCurrentUser";
-import { useAuthenticationStore } from "@/store/authenticationStore";
 import { useUserStore } from "@/store/userStore";
+import { getInitials } from "@/utils/getInitials";
+import { useSignOutMutation } from "@/network/mutations/useSignOutMutation";
+import { LoadingSpinner } from "./loading-spinner";
 
 const themes = [
   {
@@ -35,21 +36,42 @@ const themes = [
 export function UserNav() {
   const { user } = useUserStore();
   const theme = useTheme();
+  const signOutMutation = useSignOutMutation();
+
+  const name = React.useMemo(() => {
+    if (user?.userName) return user.userName;
+
+    let name = "";
+    if (user?.profile?.firstName) {
+      name = user.profile.firstName;
+    }
+
+    if (user?.profile?.lastName) {
+      name = name + " " + user.profile.lastName;
+    }
+
+    return name;
+  }, [user?.userName, user?.profile?.firstName, user?.profile?.lastName]);
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-8 w-8 rounded-full">
           <Avatar className="h-8 w-8">
-            <AvatarImage src="/avatars/01.png" alt="@shadcn" />
-            <AvatarFallback>SC</AvatarFallback>
+            <AvatarImage
+              src={user?.profile?.profilePicture || undefined}
+              alt={name}
+            />
+            <AvatarFallback>{`${getInitials(name)}`}</AvatarFallback>
           </Avatar>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-56" align="end" forceMount>
         <DropdownMenuLabel className="font-normal">
           <div className="flex flex-col space-y-1">
-            <p className="text-sm font-medium leading-none">shadcn</p>
+            {Boolean(name) ? (
+              <p className="text-sm font-medium leading-none">{name}</p>
+            ) : null}
             <p className="text-xs leading-none text-muted-foreground">
               {user?.email}
             </p>
@@ -86,9 +108,20 @@ export function UserNav() {
           </div>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => {}} className="justify-between">
+        <DropdownMenuItem
+          onClick={(e) => {
+            signOutMutation.mutate();
+            e.preventDefault();
+          }}
+          className="justify-between"
+          disabled={signOutMutation.isPending}
+        >
           Log out
-          <LogOut className="size-4" />
+          {signOutMutation.isPending ? (
+            <LoadingSpinner className="size-4" />
+          ) : (
+            <LogOut className="size-4" />
+          )}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -8,9 +8,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Link } from "react-router-dom";
-import { z } from "zod";
 import { useSignUpMutation } from "@/network/mutations/useSignUpMutation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -23,24 +21,13 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-
-const formSchema = z.object({
-  email: z.string().email(),
-  password: z
-    .string()
-    .min(2, {
-      message: "Password must be at least 2 characters.",
-    })
-    .max(50),
-  firstname: z.string(),
-  lastname: z.string(),
-});
+import { SignUpRequest, SignUpRequestSchema } from "@prism/types";
 
 export function CreateAccount() {
   const signUpMutation = useSignUpMutation();
 
   const form = useForm({
-    resolver: zodResolver(formSchema),
+    resolver: zodResolver(SignUpRequestSchema),
     defaultValues: {
       email: "",
       firstname: "",
@@ -49,7 +36,7 @@ export function CreateAccount() {
     },
   });
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
+  function onSubmit(values: SignUpRequest) {
     signUpMutation.mutate(values);
   }
 
@@ -77,7 +64,7 @@ export function CreateAccount() {
                       <FormItem>
                         <FormLabel>First name</FormLabel>
                         <FormControl>
-                          <Input placeholder="Jane" {...field} />
+                          <Input placeholder="Jane" required {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -90,7 +77,7 @@ export function CreateAccount() {
                       <FormItem>
                         <FormLabel>Last name</FormLabel>
                         <FormControl>
-                          <Input placeholder="Doe" {...field} />
+                          <Input placeholder="Doe" required {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -104,7 +91,11 @@ export function CreateAccount() {
                     <FormItem>
                       <FormLabel>Email</FormLabel>
                       <FormControl>
-                        <Input placeholder="m@example.com" {...field} />
+                        <Input
+                          placeholder="m@example.com"
+                          required
+                          {...field}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -120,6 +111,7 @@ export function CreateAccount() {
                         <Input
                           placeholder="*******"
                           type="password"
+                          required
                           {...field}
                         />
                       </FormControl>
@@ -139,7 +131,7 @@ export function CreateAccount() {
           </div>
           <div className="mt-4 text-center text-sm">
             Already have an account?{" "}
-            <Link to="/" className="underline">
+            <Link to="/auth/log-in" className="underline">
               Sign in
             </Link>
           </div>

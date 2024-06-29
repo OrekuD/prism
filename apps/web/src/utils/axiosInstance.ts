@@ -1,7 +1,7 @@
 import { LocalStorageKeys } from "@/constants/LocalStorageKeys";
 import axios from "axios";
 
-const accessToken = localStorage.getItem(LocalStorageKeys.AUTHENTICATION) || "";
+const accessToken = localStorage.getItem(LocalStorageKeys.TOKEN);
 
 export const axiosInstance = axios.create({
   baseURL: import.meta.env.VITE_API_URL + "/api/v1",

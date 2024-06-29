@@ -1,3 +1,5 @@
 export const LocalStorageKeys = {
-  AUTHENTICATION: "authentication",
+  TOKEN: "token",
+  AUTHENTICATION_STORE: "authentication-store",
+  USER_STORE: "user-store",
 };
