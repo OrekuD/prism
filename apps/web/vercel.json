@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/"
+    }
+  ],
+  "buildCommand": "cd ../.. && yarn turbo run build --filter=web...",
+  "outputDirectory": "dist",
+  "installCommand": "cd ../.. && yarn install --frozen-lockfile",
+  "framework": "vite"
+}
