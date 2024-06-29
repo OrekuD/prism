@@ -6,7 +6,8 @@
     "outDir": "dist",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@prism/types": ["../../packages/types/src"]
     }
   },
   "include": ["src", "vite.config.ts"]

@@ -5,7 +5,7 @@
       "destination": "/"
     }
   ],
-  "buildCommand": "cd ../.. && yarn install && ls -R && yarn turbo run build --filter=prism-web...",
+  "buildCommand": "cd ../.. && yarn install && yarn turbo run build --filter=prism-web...",
   "outputDirectory": "dist",
   "installCommand": "cd ../.. && yarn install --frozen-lockfile",
   "framework": "vite"
