@@ -52,12 +52,15 @@ const AuthenticationMiddleware = createMiddleware(
 					'first_name', profiles.first_name,
 					'last_name', profiles.last_name,
 					'gender', profiles.gender,
-					'email_verified_at', profiles.email_verified_at
+					'email_verified_at', profiles.email_verified_at,
+					'profile_picture_url', COALESCE(profile_pictures.profile_picture_url, '')
 				) AS profile
 			FROM
 				users
 			JOIN
 				profiles ON users.id = profiles.user_id
+			LEFT JOIN
+			  profile_pictures ON users.id = profile_pictures.user_id
 			WHERE users.id = ${oauthAccessToken[0].user_id} AND users.role = ${Roles.USER};
 			`) as Array<User>;
 
@@ -68,6 +71,7 @@ const AuthenticationMiddleware = createMiddleware(
       ctx.set("user", user[0]);
       ctx.set("oauthAccessTokenId", oauthAccessToken[0].id);
     } catch (error) {
+      console.log({ error });
       return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
     }
     await next();

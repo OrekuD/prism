@@ -7,10 +7,11 @@ import { KVNamespace } from "@cloudflare/workers-types/experimental";
 export type Bindings = {
   DATABASE_URL: string;
   JWT_SECRET_KEY: string;
-  BAZAAR_KV_STORE: KVNamespace;
+  Prism_KV_STORE: KVNamespace;
   CLIENT_URL: string;
   RESEND_API_KEY: string;
   IMAGE_KIT_API_KEY: string;
+  PROJECT_NAME: string;
 };
 
 export type HonoConfig = {

@@ -63,12 +63,15 @@ export default class AuthController {
 					'first_name', profiles.first_name,
 					'last_name', profiles.last_name,
 					'gender', profiles.gender,
-					'email_verified_at', profiles.email_verified_at
+					'email_verified_at', profiles.email_verified_at,
+					'profile_picture_url', COALESCE(profile_pictures.profile_picture_url, '')
 				) AS profile
 			FROM
 				users
 			JOIN
 				profiles ON users.id = profiles.user_id
+			LEFT JOIN
+		    profile_pictures ON users.id = profile_pictures.user_id
 			WHERE users.email = ${data.email.trim().toLowerCase()} AND users.role = ${Roles.USER};
 		`) as Array<User>;
 
@@ -365,6 +368,16 @@ export default class AuthController {
     await DatabaseManager.getInstance(
       ctx,
     )`DELETE FROM oauth_access_tokens WHERE id = ${oauthAccessTokenId}`;
+
+    return ctx.json(new OkResponse().toJSON());
+  }
+
+  public static async signOutFromAllSessions(ctx: Context<HonoConfig>) {
+    const user = ctx.get("user")!;
+
+    await DatabaseManager.getInstance(
+      ctx,
+    )`DELETE FROM oauth_access_tokens WHERE user_id = ${user.id}`;
 
     return ctx.json(new OkResponse().toJSON());
   }

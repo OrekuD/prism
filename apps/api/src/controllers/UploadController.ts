@@ -4,8 +4,6 @@ import crypto from "node:crypto";
 import { ImageKitIOResource } from "@prism/types";
 
 export default class UploadController {
-  private static imageKitUploadUrl = "https://upload.imagekit.io/api/v1/files";
-
   public static async uploadSingle(
     ctx: Context<HonoConfig>,
     file: File,
@@ -14,19 +12,22 @@ export default class UploadController {
   ): Promise<ImageKitIOResource | null> {
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("folder", "Bazaar/" + folder);
+    formData.append("folder", ctx.env.PROJECT_NAME + folder);
     formData.append(
       "fileName",
       fileName || crypto.randomBytes(32).toString("hex"),
     );
 
-    const response = await fetch(`${this.imageKitUploadUrl}/upload`, {
-      method: "POST",
-      body: formData,
-      headers: {
-        Authorization: `Basic ${btoa(ctx.env.IMAGE_KIT_API_KEY + ":")}`,
+    const response = await fetch(
+      "https://upload.imagekit.io/api/v1/files/upload",
+      {
+        method: "POST",
+        body: formData,
+        headers: {
+          Authorization: `Basic ${btoa(ctx.env.IMAGE_KIT_API_KEY + ":")}`,
+        },
       },
-    });
+    );
 
     const data = (await response.json()) as ImageKitIOResource;
 
@@ -41,10 +42,11 @@ export default class UploadController {
     ctx: Context<HonoConfig>,
     fileId: string,
   ): Promise<void> {
-    await fetch(`${this.imageKitUploadUrl}/files/${fileId}`, {
+    await fetch(`https://api.imagekit.io/v1/files/${fileId}`, {
       method: "DELETE",
       headers: {
         Authorization: `Basic ${btoa(ctx.env.IMAGE_KIT_API_KEY + ":")}`,
+        "Content-Type": "application/json",
       },
     });
   }
