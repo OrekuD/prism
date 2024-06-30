@@ -10,9 +10,9 @@ export function useRefreshUser() {
 
   React.useEffect(() => {
     if (!navigator.onLine) return;
-    if (isError) {
-      authenticationStore.setAuthentication(null);
-    }
+    // if (isError) {
+    //   authenticationStore.setAuthentication(null);
+    // }
   }, [isError, authenticationStore.setAuthentication]);
 
   React.useEffect(() => {
