@@ -92,138 +92,98 @@ export default function TeamSwitcher({ className }: TeamSwitcherProps) {
   }, [activeTeam, data]);
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          aria-label="Select a team"
-          className={cn("w-[230px] justify-between", className)}
-          disabled={!activeTeam}
-        >
-          {isLoading ? (
-            <div className="flex items-center gap-2">
-              <Skeleton className="size-5 rounded-full" />
-              <Skeleton className="h-4 w-28" />
-            </div>
-          ) : (
-            <>
-              {activeTeam ? (
-                <>
-                  <Avatar className="mr-2 size-5">
-                    <AvatarImage
-                      src={activeTeam.avatarUrl}
-                      alt={activeTeam.name}
-                    />
-                    <AvatarFallback>
-                      {getInitials(activeTeam.name)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <p className="truncate mr-1">{activeTeam.name}</p>
-                  <CaretSortIcon className="ml-auto h-4 w-4 shrink-0 opacity-50" />
-                </>
-              ) : (
-                <>No team found</>
-              )}
-            </>
-          )}
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-[230px]">
-        {groups.map(({ label, teams }) => {
-          return (
-            <React.Fragment key={label}>
-              <DropdownMenuLabel>{label}</DropdownMenuLabel>
-              {teams.map((team) => {
-                return (
-                  <DropdownMenuItem
-                    key={team.value}
-                    onSelect={() => {
-                      activeTeamStore.setTeamId(team.value);
-                      setOpen(false);
-                    }}
-                    className="text-sm"
-                  >
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            aria-label="Select a team"
+            className={cn("w-[230px] justify-between", className)}
+            disabled={!activeTeam}
+          >
+            {isLoading ? (
+              <div className="flex items-center gap-2">
+                <Skeleton className="size-5 rounded-full" />
+                <Skeleton className="h-4 w-28" />
+              </div>
+            ) : (
+              <>
+                {activeTeam ? (
+                  <>
                     <Avatar className="mr-2 size-5">
-                      <AvatarImage src={team.avatar} alt={team.label} />
-                      <AvatarFallback>{getInitials(team.label)}</AvatarFallback>
+                      <AvatarImage
+                        src={activeTeam.avatarUrl}
+                        alt={activeTeam.name}
+                      />
+                      <AvatarFallback>
+                        {getInitials(activeTeam.name)}
+                      </AvatarFallback>
                     </Avatar>
-                    {team.label}
-                    <CheckIcon
-                      className={cn(
-                        "ml-auto size-4",
-                        activeTeam?.id === team.value
-                          ? "opacity-100"
-                          : "opacity-0",
-                      )}
-                    />
-                  </DropdownMenuItem>
-                );
-              })}
-            </React.Fragment>
-          );
-        })}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onClick={() => {
-            setOpen(false);
-            setShowNewTeamDialog(true);
-          }}
-        >
-          <CreateTeam open={showNewTeamDialog} setOpen={setShowNewTeamDialog}>
+                    <p className="truncate mr-1">{activeTeam.name}</p>
+                    <CaretSortIcon className="ml-auto h-4 w-4 shrink-0 opacity-50" />
+                  </>
+                ) : (
+                  <>No team found</>
+                )}
+              </>
+            )}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="w-[230px]">
+          {groups.map(({ label, teams }) => {
+            return (
+              <React.Fragment key={label}>
+                <DropdownMenuLabel className="text-muted-foreground text-xs">
+                  {label}
+                </DropdownMenuLabel>
+                {teams.map((team) => {
+                  return (
+                    <DropdownMenuItem
+                      key={team.value}
+                      onSelect={() => {
+                        activeTeamStore.setTeamId(team.value);
+                        setOpen(false);
+                      }}
+                      className="text-sm"
+                    >
+                      <Avatar className="mr-2 size-5">
+                        <AvatarImage src={team.avatar} alt={team.label} />
+                        <AvatarFallback>
+                          {getInitials(team.label)}
+                        </AvatarFallback>
+                      </Avatar>
+                      {team.label}
+                      <CheckIcon
+                        className={cn(
+                          "ml-auto size-4",
+                          activeTeam?.id === team.value
+                            ? "opacity-100"
+                            : "opacity-0",
+                        )}
+                      />
+                    </DropdownMenuItem>
+                  );
+                })}
+              </React.Fragment>
+            );
+          })}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={() => {
+              setOpen(false);
+              setShowNewTeamDialog(true);
+            }}
+          >
             <>
               <PlusCircledIcon className="mr-2 size-5" />
               Create Team
             </>
-          </CreateTeam>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverContent>
-        <Command>
-          <CommandList>
-            <CommandInput placeholder="Search team..." />
-            <CommandEmpty>No team found.</CommandEmpty>
-            {groups.map((group) => (
-              <CommandGroup key={group.label} heading={group.label}>
-                {group.teams.map((team) => (
-                  <CommandItem
-                    key={team.value}
-                    onSelect={() => {
-                      activeTeamStore.setTeamId(team.value);
-                      setOpen(false);
-                    }}
-                    className="text-sm"
-                  >
-                    <Avatar className="mr-2 size-5">
-                      <AvatarImage src={team.avatar} alt={team.label} />
-                      <AvatarFallback>{getInitials(team.label)}</AvatarFallback>
-                    </Avatar>
-                    {team.label}
-                    <CheckIcon
-                      className={cn(
-                        "ml-auto size-4",
-                        activeTeam?.id === team.value
-                          ? "opacity-100"
-                          : "opacity-0",
-                      )}
-                    />
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            ))}
-          </CommandList>
-          <CommandSeparator />
-          <CommandList>
-            <CommandGroup></CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <CreateTeam open={showNewTeamDialog} setOpen={setShowNewTeamDialog} />
+    </>
   );
 }
