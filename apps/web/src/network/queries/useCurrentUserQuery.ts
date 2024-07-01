@@ -24,6 +24,5 @@ export function useCurrentUserQuery() {
       logOut: true,
     },
     enabled: Boolean(localStorage.getItem(LocalStorageKeys.TOKEN) || ""),
-    retry: import.meta.env.DEV ? 20 : 2,
   });
 }

@@ -20,6 +20,11 @@ const client = new QueryClient({
       toast.error(query.meta.error as string);
     },
   }),
+  defaultOptions: {
+    queries: {
+      retry: import.meta.env.DEV ? 20 : 2,
+    },
+  },
 });
 
 const el = document.getElementById("root");
