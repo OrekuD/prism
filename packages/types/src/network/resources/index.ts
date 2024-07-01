@@ -25,24 +25,23 @@ export type UpdateUsernameResource = {
 };
 
 export type ProfilePictureResource = {
-  profilePicture: string;
+  profilePictureUrl: string;
 };
 
 export type ProfileResource = {
   firstName: string;
   lastName: string;
   gender: string | null;
-  profilePicture: string | null;
+  profilePictureUrl: string | null;
   emailVerifiedAt: string | null;
 };
 
 export type TeamResource = {
   id: string;
   name: string;
-  logo: string;
-  coverPhoto: string | null;
-  createdAt: string;
-  updatedAt: string;
+  avatarUrl: string;
+  ownerId: string;
+  isPersonal: boolean;
 };
 
 export type UserResource = {

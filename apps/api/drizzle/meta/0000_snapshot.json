@@ -1,5 +1,5 @@
 {
-  "id": "b0df67b8-5f5f-4ca0-96bf-848476aa769e",
+  "id": "6c7c1df0-8fcc-4621-9be9-a1e486976dec",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -417,8 +417,8 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     },
-    "public.team_image_assets": {
-      "name": "team_image_assets",
+    "public.team_avatars": {
+      "name": "team_avatars",
       "schema": "",
       "columns": {
         "id": {
@@ -463,9 +463,9 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "team_image_assets_team_id_teams_id_fk": {
-          "name": "team_image_assets_team_id_teams_id_fk",
-          "tableFrom": "team_image_assets",
+        "team_avatars_team_id_teams_id_fk": {
+          "name": "team_avatars_team_id_teams_id_fk",
+          "tableFrom": "team_avatars",
           "tableTo": "teams",
           "columnsFrom": [
             "team_id"
@@ -474,6 +474,88 @@
             "id"
           ],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "public.team_invites": {
+      "name": "team_invites",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp(6) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp(6) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "team_invites_team_id_teams_id_fk": {
+          "name": "team_invites_team_id_teams_id_fk",
+          "tableFrom": "team_invites",
+          "tableTo": "teams",
+          "columnsFrom": [
+            "team_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "team_invites_user_id_users_id_fk": {
+          "name": "team_invites_user_id_users_id_fk",
+          "tableFrom": "team_invites",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
@@ -607,6 +689,12 @@
         "name": {
           "name": "name",
           "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_personal": {
+          "name": "is_personal",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": true
         },

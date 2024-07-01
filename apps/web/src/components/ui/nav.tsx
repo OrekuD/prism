@@ -13,7 +13,6 @@ import {
   DialogTrigger,
 } from "./dialog";
 import { Label } from "./label";
-import { Input } from "./input";
 import { Button } from "./button";
 import { Textarea } from "./textarea";
 import {
@@ -40,8 +39,8 @@ export function Nav() {
         <TeamSwitcher />
         <nav className={"flex items-center space-x-4 lg:space-x-6 ml-auto"}>
           <Dialog>
-            <DialogTrigger className="text-sm font-medium px-3 py-2 border rounded-md">
-              Feedback
+            <DialogTrigger asChild>
+              <Button variant="outline">Feedback</Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>

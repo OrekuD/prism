@@ -13,7 +13,7 @@ export default class ProfileResponse {
       firstName: this.profile.first_name,
       lastName: this.profile.last_name,
       gender: this.profile.gender,
-      profilePicture: null,
+      profilePictureUrl: this.profile.profile_picture_url || null,
       emailVerifiedAt: this.profile.email_verified_at
         ? new Date(this.profile.email_verified_at).toISOString()
         : null,

@@ -61,6 +61,7 @@ export function UserNav() {
             <AvatarImage
               src={user?.profile?.profilePictureUrl || undefined}
               alt={name}
+              className="object-cover"
             />
             <AvatarFallback>{`${getInitials(name)}`}</AvatarFallback>
           </Avatar>

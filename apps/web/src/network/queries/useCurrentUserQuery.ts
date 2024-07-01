@@ -13,7 +13,6 @@ async function currentUser() {
   });
 
   if (response.status === 200) {
-    console.log({ __data: response.data });
     return response.data;
   }
 }
@@ -25,6 +24,6 @@ export function useCurrentUserQuery() {
       logOut: true,
     },
     enabled: Boolean(localStorage.getItem(LocalStorageKeys.TOKEN) || ""),
-    retry: 20,
+    retry: import.meta.env.DEV ? 20 : 2,
   });
 }

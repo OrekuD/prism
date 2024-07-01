@@ -5,7 +5,8 @@ import AuthenticationMiddleware from "../middlewares/AuthenticationMiddleware";
 const router = new Hono();
 
 router.use(AuthenticationMiddleware);
-router.get("/", TeamsController.team);
+router.get("/", TeamsController.teams);
 router.post("/", TeamsController.createTeam);
+router.delete("/:teamId", TeamsController.deleteTeam);
 
 export default router;

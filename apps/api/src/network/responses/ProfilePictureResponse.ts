@@ -9,7 +9,7 @@ export default class ProfilePictureResponse {
 
   toJSON(): ProfilePictureResource {
     return {
-      profilePicture: this.profilePicture,
+      profilePictureUrl: this.profilePicture,
     };
   }
 }

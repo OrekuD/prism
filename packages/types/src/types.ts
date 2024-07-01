@@ -4,6 +4,11 @@ export type JWTPayload = {
   userId: string;
 };
 
+export type TeamInviteJWTPayload = {
+  teamId: string;
+  expiryAt: number;
+};
+
 export type ImageKitIOExtensionStatus = "success" | "pending" | "failed";
 
 export type ImageKitIOResource = {

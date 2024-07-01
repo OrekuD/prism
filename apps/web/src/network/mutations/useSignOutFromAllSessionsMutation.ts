@@ -3,7 +3,7 @@ import { axiosInstance } from "@/utils/axiosInstance";
 import { toast } from "sonner";
 import { useUserStore } from "@/store/userStore";
 import { useAuthenticationStore } from "@/store/authenticationStore";
-import { LocalStorageKeys } from "@/constants/LocalStorageKeys";
+import { clearLocalStorage } from "@/utils/clearLocalStorage";
 
 async function signOutFromAllSessions() {
   const url = "/auth/sign-out-from-all-sessions";
@@ -22,7 +22,7 @@ export function useSignOutFromAllSessionsMutation() {
   return useMutation({
     mutationFn: signOutFromAllSessions,
     onSuccess: () => {
-      localStorage.removeItem(LocalStorageKeys.TOKEN);
+      clearLocalStorage();
       userStore.setUser(null);
       authenticationStore.setAuthentication(null);
     },

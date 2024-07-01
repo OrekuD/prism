@@ -156,7 +156,11 @@ export default class UserController {
 
     const body = await ctx.req.parseBody();
 
-    const file = body["file"] as File;
+    const file: File | undefined = body["file"] as File;
+
+    if (!file) {
+      return ctx.json(new ErrorResponse("file_not_found").toJSON(), 401);
+    }
 
     const uploadResult = await UploadController.uploadSingle(
       ctx,
@@ -172,17 +176,17 @@ export default class UserController {
     const db = DatabaseManager.getInstance(ctx);
 
     const profilePicture =
-      (await db`SELECT profile_picture_id FROM profile_pictures WHERE user_id = ${user.id}`) as Array<ProfilePicture>;
+      (await db`SELECT profile_picture_id, user_id FROM profile_pictures WHERE user_id = ${user.id}`) as Array<ProfilePicture>;
 
     if (profilePicture.length > 0) {
       await UploadController.deleteFile(
         ctx,
         profilePicture[0].profile_picture_id,
       );
-      db`DELETE FROM profile_pictures WHERE user_id = ${profilePicture[0].user_id}`;
+      await db`DELETE FROM profile_pictures WHERE user_id = ${profilePicture[0].user_id}`;
     }
 
-    db`INSERT INTO profile_pictures (user_id, profile_picture_url, profile_picture_id) VALUES (${user.id}, ${uploadResult.url}, ${uploadResult.fileId})`;
+    await db`INSERT INTO profile_pictures (user_id, profile_picture_url, profile_picture_id) VALUES (${user.id}, ${uploadResult.url}, ${uploadResult.fileId})`;
 
     return ctx.json(new ProfilePictureResponse(uploadResult.url).toJSON());
   }

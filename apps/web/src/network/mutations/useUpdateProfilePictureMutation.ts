@@ -32,7 +32,6 @@ export function useUpdateProfilePictureMutation() {
   return useMutation({
     mutationFn: updateProfile,
     onSuccess: (data: ProfilePictureResource) => {
-      console.log({ data });
       userStore.updateProfilePicture(data);
     },
     onError: (error: AxiosError<ErrorResource>) => {

@@ -7,10 +7,11 @@ import { KVNamespace } from "@cloudflare/workers-types/experimental";
 export type Bindings = {
   DATABASE_URL: string;
   JWT_SECRET_KEY: string;
-  BAZAAR_KV_STORE: KVNamespace;
+  Prism_KV_STORE: KVNamespace;
   CLIENT_URL: string;
   RESEND_API_KEY: string;
   IMAGE_KIT_API_KEY: string;
+  PROJECT_NAME: string;
 };
 
 export type HonoConfig = {
@@ -45,7 +46,8 @@ export class DatabaseTables {
   static PROFILE_PICTURES = "profile_pictures";
   static TEAMS = "teams";
   static TEAM_MEMBERS = "team_members";
-  static TEAM_IMAGE_ASSETS = "team_image_assets";
+  static TEAM_AVATARS = "team_avatars";
+  static TEAM_INVITES = "team_invites";
 }
 
 export type CorrectTimeStamps<T> = T & {
@@ -99,10 +101,19 @@ export type EmailChangedMail = {
   };
 };
 
+export type TeamInviteMail = {
+  name: "team-invite";
+  props: {
+    teamName: string;
+    teamInviteLink: string;
+  };
+};
+
 export type MailProps =
   | WelcomeMail
   | ResetPasswordMail
   | ConfirmEmailMail
   | MagicLinkMail
   | OTPSignInMail
-  | EmailChangedMail;
+  | EmailChangedMail
+  | TeamInviteMail;
