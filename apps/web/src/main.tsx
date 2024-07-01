@@ -11,6 +11,7 @@ import {
 import { ThemeProvider } from "./components/theme-provider";
 import { Toaster } from "./components/ui/sonner";
 import { toast } from "sonner";
+import { LocalStorageKeys } from "./constants/LocalStorageKeys";
 
 const client = new QueryClient({
   queryCache: new QueryCache({
@@ -26,7 +27,10 @@ if (el) {
   const root = createRoot(el);
   root.render(
     <React.StrictMode>
-      <ThemeProvider defaultTheme="light">
+      <ThemeProvider
+        defaultTheme="light"
+        storageKey={LocalStorageKeys.THEME_VALUE}
+      >
         <QueryClientProvider client={client}>
           <App />
           <Toaster />

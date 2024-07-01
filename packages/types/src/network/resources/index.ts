@@ -39,10 +39,9 @@ export type ProfileResource = {
 export type TeamResource = {
   id: string;
   name: string;
-  logo: string;
-  coverPhoto: string | null;
-  createdAt: string;
-  updatedAt: string;
+  avatarUrl: string;
+  ownerId: string;
+  isPersonal: boolean;
 };
 
 export type UserResource = {

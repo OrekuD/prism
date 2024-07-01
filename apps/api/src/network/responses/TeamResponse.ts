@@ -3,21 +3,18 @@ import Team from "../../models/Team";
 
 export default class TeamResponse {
   private team: Team;
-  private logo: string;
 
-  constructor(team: Team, logo?: string) {
+  constructor(team: Team) {
     this.team = team;
-    this.logo = logo || "";
   }
 
   toJSON(): TeamResource {
     return {
       id: this.team.id,
       name: this.team.name,
-      logo: this.logo,
-      coverPhoto: null,
-      createdAt: new Date(this.team.created_at).toISOString(),
-      updatedAt: new Date(this.team.updated_at).toISOString(),
+      isPersonal: this.team.is_personal,
+      avatarUrl: this.team.avatar_url,
+      ownerId: this.team.owner_id,
     };
   }
 }

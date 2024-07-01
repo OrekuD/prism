@@ -2,6 +2,7 @@ import React from "react";
 import { useCurrentUserQuery } from "@/network/queries/useCurrentUserQuery";
 import { useAuthenticationStore } from "@/store/authenticationStore";
 import { useUserStore } from "@/store/userStore";
+import { clearLocalStorage } from "@/utils/clearLocalStorage";
 
 export function useRefreshUser() {
   const { isError, data } = useCurrentUserQuery();
@@ -10,9 +11,10 @@ export function useRefreshUser() {
 
   React.useEffect(() => {
     if (!navigator.onLine) return;
-    // if (isError) {
-    //   authenticationStore.setAuthentication(null);
-    // }
+    if (isError) {
+      authenticationStore.setAuthentication(null);
+      clearLocalStorage();
+    }
   }, [isError, authenticationStore.setAuthentication]);
 
   React.useEffect(() => {

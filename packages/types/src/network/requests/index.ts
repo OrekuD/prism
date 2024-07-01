@@ -122,3 +122,18 @@ export const VerifyEmailRequestSchema = z.strictObject({
 });
 
 export type VerifyEmailRequest = z.infer<typeof VerifyEmailRequestSchema>;
+
+export const SendTeamInvitesRequestSchema = z.strictObject({
+  emails: z.array(z.string()),
+  teamId: z.string(),
+});
+
+export type SendTeamInvitesRequest = z.infer<
+  typeof SendTeamInvitesRequestSchema
+>;
+
+export const DeleteTeamRequestSchema = z.strictObject({
+  teamId: z.string(),
+});
+
+export type DeleteTeamRequest = z.infer<typeof DeleteTeamRequestSchema>;

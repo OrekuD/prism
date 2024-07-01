@@ -16,7 +16,7 @@ export default class MailManager {
   public static async dispatch(
     ctx: Context<HonoConfig>,
     mail: MailProps,
-    recipientEmail: string,
+    recipientEmail: string | Array<string>,
   ) {
     if (!this.resend) {
       this.resend = new Resend(ctx.env.RESEND_API_KEY);
@@ -58,7 +58,7 @@ export default class MailManager {
 
     const { error, data } = await this.resend.emails.send({
       from: "Prism <onboarding@resend.dev>",
-      to: [recipientEmail],
+      to: Array.isArray(recipientEmail) ? recipientEmail : [recipientEmail],
       subject,
       html,
     });

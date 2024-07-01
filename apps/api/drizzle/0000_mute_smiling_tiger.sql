@@ -48,11 +48,21 @@ CREATE TABLE IF NOT EXISTS "profiles" (
 	"updated_at" timestamp(6) with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "team_image_assets" (
+CREATE TABLE IF NOT EXISTS "team_avatars" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"team_id" uuid NOT NULL,
 	"image_asset_url" text NOT NULL,
 	"image_asset_id" text NOT NULL,
+	"created_at" timestamp(6) with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp(6) with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "team_invites" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"team_id" uuid NOT NULL,
+	"email" text NOT NULL,
+	"user_id" uuid,
+	"status" text NOT NULL,
 	"created_at" timestamp(6) with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp(6) with time zone DEFAULT now() NOT NULL
 );
@@ -70,6 +80,7 @@ CREATE TABLE IF NOT EXISTS "teams" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"owner_id" uuid NOT NULL,
 	"name" text NOT NULL,
+	"is_personal" boolean NOT NULL,
 	"logo_asset_id" text,
 	"created_at" timestamp(6) with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp(6) with time zone DEFAULT now() NOT NULL
@@ -116,7 +127,19 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "team_image_assets" ADD CONSTRAINT "team_image_assets_team_id_teams_id_fk" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE cascade ON UPDATE no action;
+ ALTER TABLE "team_avatars" ADD CONSTRAINT "team_avatars_team_id_teams_id_fk" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "team_invites" ADD CONSTRAINT "team_invites_team_id_teams_id_fk" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "team_invites" ADD CONSTRAINT "team_invites_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;

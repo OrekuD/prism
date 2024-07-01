@@ -132,21 +132,25 @@ export default class AuthController {
     }
 
     const user = (await DatabaseManager.getInstance(ctx)`
-		SELECT
-			users.id as id,
-			users.email as email,
-			users.user_name as user_name,
-			users.password as password,
-			json_build_object(
-				'first_name', profiles.first_name,
-				'last_name', profiles.last_name,
-				'gender', profiles.gender,
-				'email_verified_at', profiles.email_verified_at
-			) AS profile
-		FROM
-			users
-		JOIN
-			profiles ON users.id = profiles.user_id
+      SELECT
+			  users.id as id,
+				users.email as email,
+				users.user_name as user_name,
+				users.role as role,
+				users.password as password,
+				json_build_object(
+					'first_name', profiles.first_name,
+					'last_name', profiles.last_name,
+					'gender', profiles.gender,
+					'email_verified_at', profiles.email_verified_at,
+					'profile_picture_url', COALESCE(profile_pictures.profile_picture_url, '')
+				) AS profile
+			FROM
+				users
+			JOIN
+				profiles ON users.id = profiles.user_id
+			LEFT JOIN
+		    profile_pictures ON users.id = profile_pictures.user_id
 		WHERE id = ${decoded.payload.userId} AND users.role = ${Roles.USER};
 		`) as Array<User>;
 
@@ -211,21 +215,25 @@ export default class AuthController {
     }
 
     const user = (await db`
-		SELECT
-			users.id as id,
-			users.email as email,
-			users.user_name as user_name,
-			users.password as password,
-			json_build_object(
-				'first_name', profiles.first_name,
-				'last_name', profiles.last_name,
-				'gender', profiles.gender,
-				'email_verified_at', profiles.email_verified_at
-			) AS profile
-		FROM
-			users
-		JOIN
-			profiles ON users.id = profiles.user_id
+      SELECT
+			  users.id as id,
+				users.email as email,
+				users.user_name as user_name,
+				users.role as role,
+				users.password as password,
+				json_build_object(
+					'first_name', profiles.first_name,
+					'last_name', profiles.last_name,
+					'gender', profiles.gender,
+					'email_verified_at', profiles.email_verified_at,
+					'profile_picture_url', COALESCE(profile_pictures.profile_picture_url, '')
+				) AS profile
+			FROM
+				users
+			JOIN
+				profiles ON users.id = profiles.user_id
+			LEFT JOIN
+		    profile_pictures ON users.id = profile_pictures.user_id
 		WHERE id = ${otpSignIn[0].user_id} AND users.role = ${Roles.USER};
 		`) as Array<User>;
 
@@ -311,7 +319,16 @@ export default class AuthController {
     const userProfile =
       await db`INSERT INTO profiles (user_id, first_name, last_name) VALUES (${user?.[0]?.id}, ${data.firstname}, ${data.lastname}) RETURNING id`;
 
-    if (userProfile.length === 0 || user.length === 0) {
+    const teamname = `${data.firstname} ${data.lastname}'s team`;
+
+    const userTeam =
+      await db`INSERT INTO teams (owner_id, name, is_personal) VALUES (${user?.[0]?.id}, ${teamname}, TRUE) RETURNING id`;
+
+    if (
+      userProfile.length === 0 ||
+      user.length === 0 ||
+      userTeam.length === 0
+    ) {
       await db`ROLLBACK`;
 
       return ctx.json(new ErrorResponse("user_not_created").toJSON(), 400);
@@ -625,7 +642,7 @@ export default class AuthController {
       },
     );
 
-    return `${ctx.env.CLIENT_URL}/auth/login?token=${jwtToken}`;
+    return `${ctx.env.CLIENT_URL}/auth/magic-link?token=${jwtToken}`;
   }
 
   public static async _generateResetPasswordURL(

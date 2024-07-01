@@ -46,7 +46,8 @@ export class DatabaseTables {
   static PROFILE_PICTURES = "profile_pictures";
   static TEAMS = "teams";
   static TEAM_MEMBERS = "team_members";
-  static TEAM_IMAGE_ASSETS = "team_image_assets";
+  static TEAM_AVATARS = "team_avatars";
+  static TEAM_INVITES = "team_invites";
 }
 
 export type CorrectTimeStamps<T> = T & {
@@ -100,10 +101,19 @@ export type EmailChangedMail = {
   };
 };
 
+export type TeamInviteMail = {
+  name: "team-invite";
+  props: {
+    teamName: string;
+    teamInviteLink: string;
+  };
+};
+
 export type MailProps =
   | WelcomeMail
   | ResetPasswordMail
   | ConfirmEmailMail
   | MagicLinkMail
   | OTPSignInMail
-  | EmailChangedMail;
+  | EmailChangedMail
+  | TeamInviteMail;

@@ -7,7 +7,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { EllipsisVertical, Search } from "lucide-react";
+import { CircleX, EllipsisVertical, Plus, Search } from "lucide-react";
 import { useTeamsQuery } from "@/network/queries/useTeamsQuery";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { getInitials } from "@/utils/getInitials";
@@ -16,7 +16,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -24,24 +23,131 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useUserStore } from "@/store/userStore";
 import { useActiveTeamStore } from "@/store/activeTeamStore";
 import { Link } from "react-router-dom";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormMessage,
+} from "@/components/ui/form";
+import { z } from "zod";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { CreateTeam } from "@/components/ui/create-team";
+import { useDeleteTeamMutation } from "@/network/mutations/useDeleteTeamMutation";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { InviteUsers } from "@/components/ui/invite-users";
+import useSearch from "@/hooks/useSearch";
+import { TeamResource } from "@prism/types";
+import Fuse from "fuse.js";
+import { TeamCard } from "@/components/ui/team-card";
+
+// const searchTeamsFormSchema = z.object({
+//   query: z.string(),
+// });
 
 export function AccountTeams() {
   const { data, isLoading } = useTeamsQuery();
   const { user } = useUserStore();
   const activeTeamStore = useActiveTeamStore();
 
+  const [showInviteDialog, setShowInviteDialog] = React.useState(false);
+  const [showCreateTeamDialog, setShowCreateTeamDialog] = React.useState(false);
+
+  const [deleteTeamId, setDeleteTeamId] = React.useState("");
+  const deleteTeamMutation = useDeleteTeamMutation();
+
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [searchResponse, setSearchResponse] = React.useState<
+    Array<TeamResource>
+  >([]);
+
+  const fuse = new Fuse(data || [], {
+    keys: ["name"],
+  });
+
+  useSearch(
+    searchQuery,
+    () => {},
+    () => {
+      setSearchResponse(fuse.search(searchQuery).map(({ item }) => item));
+    },
+  );
+
+  // const searchTeamsForm = useForm({
+  //   resolver: zodResolver(searchTeamsFormSchema),
+  //   defaultValues: {
+  //     query: "",
+  //   },
+  // });
+
+  // function onSubmitSearchTeamsForm(
+  //   values: z.infer<typeof searchTeamsFormSchema>,
+  // ) {
+  //   console.log("values");
+  // }
+
   return (
     <div className="grid gap-6">
       <Card>
-        <CardHeader>
-          <CardTitle>Teams</CardTitle>
-          <CardDescription>Manage the teams you belong to.</CardDescription>
+        <CardHeader className="flex-row items-center justify-between">
+          <div>
+            <CardTitle>Teams</CardTitle>
+            <CardDescription>Manage the teams you belong to.</CardDescription>
+          </div>
+          <CreateTeam
+            open={showCreateTeamDialog}
+            setOpen={setShowCreateTeamDialog}
+          >
+            <Button>Create Team</Button>
+          </CreateTeam>
         </CardHeader>
         <CardContent>
           <div className="relative mb-4">
             <Search className="absolute left-2.5 top-3 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Search teams..." className="pl-8" />
+            <Input
+              placeholder="Search teams..."
+              className="pl-8"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
           </div>
+          {/* <Form {...searchTeamsForm}>
+            <form
+              onSubmit={searchTeamsForm.handleSubmit(onSubmitSearchTeamsForm)}
+              className="space-y-4"
+            >
+              <FormField
+                control={searchTeamsForm.control}
+                name="query"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <div className="relative mb-4">
+                        <Search className="absolute left-2.5 top-3 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Search teams..."
+                          className="pl-8"
+                          {...field}
+                        />
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </form>
+          </Form> */}
+
           {isLoading ? (
             <div className="rounded-md border flex items-center gap-3 px-2 h-16">
               <Skeleton className="ml-2 size-10 rounded-full" />
@@ -52,78 +158,91 @@ export function AccountTeams() {
             </div>
           ) : (
             <>
-              {data ? (
+              {searchQuery.trim().length > 1 ? (
                 <>
-                  {data.map((team) => {
-                    const isOwner = team.ownerId === user!.id;
-
-                    // console.log({ team });
-
-                    return (
-                      <div
-                        className="rounded-md border flex items-center gap-3 px-2 h-16"
-                        key={team.id}
-                      >
-                        <Avatar className="ml-2 size-10">
-                          <AvatarImage src={team.avatarUrl} alt={team.name} />
-                          <AvatarFallback>
-                            {getInitials(team.name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="text-sm font-semibold">{team.name}</p>
-                          <p className="text-sm">
-                            {team.isPersonal ? "Personal" : "Other"}
-                          </p>
-                        </div>
-                        <div className="ml-auto flex items-center">
-                          <div className="flex gap-3">
-                            <Link to={`/projects/${team.id}`}>
-                              <Button variant="outline">View</Button>
-                            </Link>
-                            {isOwner ? (
-                              <Button variant="outline">Settings</Button>
-                            ) : null}
-                          </div>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <button className="size-10 rounded-lg ml-1 grid place-items-center transition duration-200 hover:bg-border/60">
-                                <EllipsisVertical />
-                              </button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent>
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  activeTeamStore.setTeamId(team.id)
-                                }
-                              >
-                                Make Default
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              {team.isPersonal ? null : (
-                                <DropdownMenuItem className="text-destructive">
-                                  Leave Team
-                                </DropdownMenuItem>
-                              )}
-                              {isOwner ? (
-                                <DropdownMenuItem className="text-destructive">
-                                  Delete Team
-                                </DropdownMenuItem>
-                              ) : null}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {searchResponse.length > 0 ? (
+                    <div className="space-y-3">
+                      {searchResponse.map((team) => {
+                        return (
+                          <TeamCard
+                            team={team}
+                            setDeleteTeamId={setDeleteTeamId}
+                            setShowInviteDialog={setShowInviteDialog}
+                            key={team.id}
+                          />
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <>No teams found</>
+                  )}
                 </>
               ) : (
-                <>No teams found</>
+                <>
+                  {data ? (
+                    <div className="space-y-3">
+                      {data.map((team) => {
+                        return (
+                          <TeamCard
+                            team={team}
+                            setDeleteTeamId={setDeleteTeamId}
+                            setShowInviteDialog={setShowInviteDialog}
+                            key={team.id}
+                          />
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <>No teams found</>
+                  )}
+                </>
               )}
             </>
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={Boolean(deleteTeamId)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Team</DialogTitle>
+            <DialogDescription>
+              All apps associated with this team will also be deleted. This
+              action is irreversible.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteTeamId("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleteTeamMutation.isPending}
+              onClick={async () => {
+                const response = await deleteTeamMutation.mutateAsync({
+                  teamId: deleteTeamId,
+                });
+                if (response?.message) {
+                  setDeleteTeamId("");
+                }
+              }}
+            >
+              {deleteTeamMutation.isPending ? (
+                <LoadingSpinner />
+              ) : (
+                "Delete Team"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <InviteUsers open={showInviteDialog} setOpen={setShowInviteDialog} />
     </div>
   );
 }

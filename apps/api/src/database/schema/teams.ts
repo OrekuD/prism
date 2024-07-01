@@ -1,10 +1,4 @@
-import {
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, uuid, boolean } from "drizzle-orm/pg-core";
 import { DatabaseTables } from "../../types/types";
 import { users } from "./users";
 
@@ -16,6 +10,7 @@ export const teams = pgTable(DatabaseTables.TEAMS, {
     })
     .notNull(),
   name: text("name").notNull(),
+  is_personal: boolean("is_personal").notNull(),
   logo_asset_id: text("logo_asset_id"),
   created_at: timestamp("created_at", {
     withTimezone: true,
