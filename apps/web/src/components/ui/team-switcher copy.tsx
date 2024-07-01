@@ -26,14 +26,6 @@ import { Skeleton } from "./skeleton";
 import { useActiveTeamStore } from "@/store/activeTeamStore";
 import { getInitials } from "@/utils/getInitials";
 import { CreateTeam } from "./create-team";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "./dropdown-menu";
 
 type PopoverTriggerProps = React.ComponentPropsWithoutRef<
   typeof PopoverTrigger
@@ -92,8 +84,8 @@ export default function TeamSwitcher({ className }: TeamSwitcherProps) {
   }, [activeTeam, data]);
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
         <Button
           variant="outline"
           role="combobox"
@@ -129,62 +121,8 @@ export default function TeamSwitcher({ className }: TeamSwitcherProps) {
             </>
           )}
         </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-[230px]">
-        {groups.map(({ label, teams }) => {
-          return (
-            <React.Fragment key={label}>
-              <DropdownMenuLabel>{label}</DropdownMenuLabel>
-              {teams.map((team) => {
-                return (
-                  <DropdownMenuItem
-                    key={team.value}
-                    onSelect={() => {
-                      activeTeamStore.setTeamId(team.value);
-                      setOpen(false);
-                    }}
-                    className="text-sm"
-                  >
-                    <Avatar className="mr-2 size-5">
-                      <AvatarImage src={team.avatar} alt={team.label} />
-                      <AvatarFallback>{getInitials(team.label)}</AvatarFallback>
-                    </Avatar>
-                    {team.label}
-                    <CheckIcon
-                      className={cn(
-                        "ml-auto size-4",
-                        activeTeam?.id === team.value
-                          ? "opacity-100"
-                          : "opacity-0",
-                      )}
-                    />
-                  </DropdownMenuItem>
-                );
-              })}
-            </React.Fragment>
-          );
-        })}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onClick={() => {
-            setOpen(false);
-            setShowNewTeamDialog(true);
-          }}
-        >
-          <CreateTeam open={showNewTeamDialog} setOpen={setShowNewTeamDialog}>
-            <>
-              <PlusCircledIcon className="mr-2 size-5" />
-              Create Team
-            </>
-          </CreateTeam>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverContent>
+      </PopoverTrigger>
+      <PopoverContent className="w-[200px] p-0">
         <Command>
           <CommandList>
             <CommandInput placeholder="Search team..." />
@@ -220,7 +158,24 @@ export default function TeamSwitcher({ className }: TeamSwitcherProps) {
           </CommandList>
           <CommandSeparator />
           <CommandList>
-            <CommandGroup></CommandGroup>
+            <CommandGroup>
+              <CommandItem
+                onClick={() => {
+                  setOpen(false);
+                  setShowNewTeamDialog(true);
+                }}
+              >
+                <CreateTeam
+                  open={showNewTeamDialog}
+                  setOpen={setShowNewTeamDialog}
+                >
+                  <>
+                    <PlusCircledIcon className="mr-2 size-5" />
+                    Create Team
+                  </>
+                </CreateTeam>
+              </CommandItem>
+            </CommandGroup>
           </CommandList>
         </Command>
       </PopoverContent>

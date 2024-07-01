@@ -4,7 +4,13 @@ import type { TeamResource } from "@prism/types";
 import { useQuery } from "@tanstack/react-query";
 
 async function teams() {
-  const response = await axiosInstance.get("/teams");
+  const accessToken = localStorage.getItem(LocalStorageKeys.TOKEN);
+
+  const response = await axiosInstance.get("/teams", {
+    headers: {
+      Authorization: accessToken ? `Bearer ${accessToken}` : undefined,
+    },
+  });
 
   if (response.status === 200) {
     return response.data;
