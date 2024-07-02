@@ -7,20 +7,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandSeparator,
-} from "@/components/ui/command";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { PopoverTrigger } from "@/components/ui/popover";
 import { useTeamsQuery } from "@/network/queries/useTeamsQuery";
 import { Skeleton } from "./skeleton";
 import { useActiveTeamStore } from "@/store/activeTeamStore";
@@ -35,19 +22,11 @@ import {
   DropdownMenuTrigger,
 } from "./dropdown-menu";
 
-type PopoverTriggerProps = React.ComponentPropsWithoutRef<
-  typeof PopoverTrigger
->;
-
-interface TeamSwitcherProps extends PopoverTriggerProps {}
-
-export default function TeamSwitcher({ className }: TeamSwitcherProps) {
+export default function TeamSwitcher() {
   const [open, setOpen] = React.useState(false);
   const [showNewTeamDialog, setShowNewTeamDialog] = React.useState(false);
   const activeTeamStore = useActiveTeamStore();
   const { isLoading, data } = useTeamsQuery();
-
-  // console.log({ activeTeamStore, data });
 
   const activeTeam = React.useMemo(() => {
     if (!data) return null;
@@ -97,10 +76,9 @@ export default function TeamSwitcher({ className }: TeamSwitcherProps) {
         <DropdownMenuTrigger asChild>
           <Button
             variant="outline"
-            role="combobox"
             aria-expanded={open}
             aria-label="Select a team"
-            className={cn("w-[230px] justify-between", className)}
+            className="w-[210px] justify-between focus-visible:ring-0"
             disabled={!activeTeam}
           >
             {isLoading ? (
@@ -125,13 +103,13 @@ export default function TeamSwitcher({ className }: TeamSwitcherProps) {
                     <CaretSortIcon className="ml-auto h-4 w-4 shrink-0 opacity-50" />
                   </>
                 ) : (
-                  <>No team found</>
+                  <>No teams found</>
                 )}
               </>
             )}
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-[230px]">
+        <DropdownMenuContent className="w-[210px]">
           {groups.map(({ label, teams }) => {
             return (
               <React.Fragment key={label}>
