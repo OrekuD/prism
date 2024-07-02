@@ -25,11 +25,13 @@ import { ForgotPassword } from "./routes/auth/forgot-password";
 import { ResetPassword } from "./routes/auth/reset-password";
 import { useAuthenticationStore } from "./store/authenticationStore";
 import { useRefreshUser } from "./hooks/useRefreshUser";
+import { JoinTeam } from "./routes/teams/join-team";
 
 const defaultRouter = createBrowserRouter(
   createRoutesFromElements(
     <Route path="/" element={<RootLayout />}>
       <Route path="" element={<Index />} />
+      <Route path="join" element={<JoinTeam />} />
       <Route path="auth">
         <Route path="log-in" element={<LogIn />} />
         <Route path="create-account" element={<CreateAccount />} />
@@ -45,6 +47,7 @@ const authenticatedRouter = createBrowserRouter(
   createRoutesFromElements(
     <Route path="/" element={<RootLayout />}>
       <Route path="" element={<Index />} />
+      <Route path="join" element={<JoinTeam />} />
       <Route path="apps">
         <Route path="" element={<Apps />} />
         <Route path="new" element={<NewApp />} />

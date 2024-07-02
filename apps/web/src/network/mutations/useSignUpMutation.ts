@@ -29,6 +29,7 @@ export function useSignUpMutation() {
       userStore.setUser(user);
       authenticationStore.setAuthentication(data);
       queryClient.invalidateQueries({ queryKey: ["current-user"] });
+      window.location.reload();
     },
     onError: (error: AxiosError<ErrorResource>) => {
       if (

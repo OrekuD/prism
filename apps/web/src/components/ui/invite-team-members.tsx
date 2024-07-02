@@ -14,18 +14,24 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Input } from "./input";
 import { Button } from "./button";
+import { useInviteTeamMembersMutation } from "@/network/mutations/useInviteTeamMembersMutation";
+import { LoadingSpinner } from "./loading-spinner";
+import { useTeamsQuery } from "@/network/queries/useTeamsQuery";
+import { useUserStore } from "@/store/userStore";
 
 type Props = {
-  open: boolean;
-  setOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  teamId: string;
+  setTeamId: React.Dispatch<React.SetStateAction<string>>;
 };
 
 const inviteUserFormSchema = z.object({
   email: z.string().email(),
 });
 
-export function InviteUsers(props: Props) {
+export function InviteTeamMembers(props: Props) {
+  const inviteTeamMembersMutation = useInviteTeamMembersMutation();
   const [emails, setEmails] = React.useState<Array<string>>([]);
+  const { user } = useUserStore();
 
   const inviteUserForm = useForm({
     resolver: zodResolver(inviteUserFormSchema),
@@ -37,6 +43,13 @@ export function InviteUsers(props: Props) {
   function onSubmitInviteUsersForm(
     values: z.infer<typeof inviteUserFormSchema>,
   ) {
+    if (user?.email.toLowerCase() === values.email) {
+      inviteUserForm.setError("email", {
+        message: "You are already a member.",
+      });
+      return;
+    }
+
     const index = emails.findIndex((email) => values.email === email);
 
     if (index < 0) {
@@ -53,7 +66,10 @@ export function InviteUsers(props: Props) {
   }
 
   return (
-    <Dialog open={props.open} onOpenChange={props.setOpen}>
+    <Dialog
+      open={Boolean(props.teamId)}
+      onOpenChange={() => props.setTeamId("")}
+    >
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Invite Users</DialogTitle>
@@ -115,10 +131,40 @@ export function InviteUsers(props: Props) {
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => {}}>
+          <Button
+            variant="outline"
+            disabled={inviteTeamMembersMutation.isPending}
+            onClick={() => {
+              setEmails([]);
+              inviteUserForm.reset();
+              props.setTeamId("");
+            }}
+          >
             Cancel
           </Button>
-          <Button>Send Invites</Button>
+          <Button
+            disabled={
+              inviteTeamMembersMutation.isPending || emails.length === 0
+            }
+            onClick={async () => {
+              const { message } = await inviteTeamMembersMutation.mutateAsync({
+                emails,
+                teamId: props.teamId,
+              });
+
+              if (message) {
+                setEmails([]);
+                inviteUserForm.reset();
+                props.setTeamId("");
+              }
+            }}
+          >
+            {inviteTeamMembersMutation.isPending ? (
+              <LoadingSpinner />
+            ) : (
+              "Send Invites"
+            )}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

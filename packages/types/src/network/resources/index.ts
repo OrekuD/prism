@@ -44,6 +44,11 @@ export type TeamResource = {
   isPersonal: boolean;
 };
 
+export type TeamInviteResource = {
+  name: string;
+  avatarUrl: string;
+};
+
 export type UserResource = {
   id: string;
   email: string;

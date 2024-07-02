@@ -17,14 +17,14 @@ import { Avatar, AvatarFallback, AvatarImage } from "./avatar";
 
 type Props = {
   team: TeamResource;
-  setShowInviteDialog: React.Dispatch<React.SetStateAction<boolean>>;
+  setInviteTeamMembersId: React.Dispatch<React.SetStateAction<string>>;
   setDeleteTeamId: React.Dispatch<React.SetStateAction<string>>;
 };
 
 export function TeamCard({
   team,
   setDeleteTeamId,
-  setShowInviteDialog,
+  setInviteTeamMembersId,
 }: Props) {
   const { user } = useUserStore();
   const activeTeamStore = useActiveTeamStore();
@@ -65,7 +65,7 @@ export function TeamCard({
             {team.isPersonal ? null : (
               <DropdownMenuItem
                 onClick={() => {
-                  setShowInviteDialog(true);
+                  setInviteTeamMembersId(team.id);
                 }}
               >
                 Invite Users
