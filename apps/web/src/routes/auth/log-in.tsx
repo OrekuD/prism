@@ -63,7 +63,11 @@ export function LogIn() {
                     <FormItem>
                       <FormLabel>Email</FormLabel>
                       <FormControl>
-                        <Input placeholder="m@example.com" {...field} />
+                        <Input
+                          placeholder="m@example.com"
+                          type="email"
+                          {...field}
+                        />
                       </FormControl>
                       {/* <FormDescription /> */}
                       <FormMessage />

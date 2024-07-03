@@ -32,7 +32,6 @@ export function useJoinTeamMutation() {
       // queryClient.invalidateQueries({queryKey: ['']})
     },
     onError: (error: AxiosError<ErrorResource>) => {
-      // console.log({ error });
       if (
         !error.response?.data.errors ||
         error.response.data.errors.length === 0

@@ -30,7 +30,7 @@ export function useSignInMutation() {
       queryClient.invalidateQueries({ queryKey: ["current-user"] });
       window.location.reload();
     },
-    onError: () => {
+    onError: (error) => {
       toast("Invalid Credentials");
     },
   });

@@ -27,11 +27,9 @@ export function useInviteTeamMembersMutation() {
   return useMutation({
     mutationFn: inviteTeamMembers,
     onSuccess: (data: OkResource) => {
-      console.log({ __dd: data });
       toast("Invites sent");
     },
     onError: (error: AxiosError<ErrorResource>) => {
-      console.log({ error });
       if (
         !error.response?.data.errors ||
         error.response.data.errors.length === 0

@@ -124,7 +124,7 @@ export default function TeamSwitcher() {
                         activeTeamStore.setTeamId(team.value);
                         setOpen(false);
                       }}
-                      className="text-sm"
+                      className="text-sm truncate"
                     >
                       <Avatar className="mr-2 size-5">
                         <AvatarImage src={team.avatar} alt={team.label} />
