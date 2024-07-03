@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { axiosInstance } from "@/utils/axiosInstance";
 import { toast } from "sonner";
-import { DeleteTeamRequest, OkResource } from "@prism/types";
+import { DeleteTeamRequest, OkResource, TeamResource } from "@prism/types";
 import { AxiosResponse } from "axios";
 
 async function deleteTeam(payload: DeleteTeamRequest) {
@@ -20,9 +20,17 @@ export function useDeleteTeamMutation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: deleteTeam,
-    onSuccess: () => {
+    onSuccess: (_, { teamId }) => {
       toast("Team deleted successfully");
-      queryClient.invalidateQueries({ queryKey: ["teams"] });
+      const teams: Array<TeamResource> | undefined = queryClient.getQueryData([
+        "teams",
+      ]);
+      if (teams) {
+        queryClient.setQueryData(
+          ["teams"],
+          teams.filter(({ id }) => id !== teamId),
+        );
+      }
     },
     onError: (error) => {
       toast("Something went wrong");

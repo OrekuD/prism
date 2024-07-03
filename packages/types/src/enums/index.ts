@@ -8,6 +8,6 @@ export enum Roles {
 
 export enum TeamMemberPermissions {
   BASIC = 1,
-  ADMIN = 10,
+  ADMIN = 2,
   SUSPENDED = -1,
 }

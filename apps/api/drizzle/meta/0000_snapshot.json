@@ -1,5 +1,5 @@
 {
-  "id": "6c7c1df0-8fcc-4621-9be9-a1e486976dec",
+  "id": "dc9e8795-6390-464b-bcc3-a6b5a36c2648",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -606,38 +606,7 @@
           "default": "now()"
         }
       },
-      "indexes": {
-        "team_member_team_id_index": {
-          "name": "team_member_team_id_index",
-          "columns": [
-            {
-              "expression": "team_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "team_member_user_id_index": {
-          "name": "team_member_user_id_index",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
         "team_members_user_id_users_id_fk": {
           "name": "team_members_user_id_users_id_fk",

@@ -10,9 +10,12 @@ import {
   CreateTeamRequestSchema,
   DeleteTeamRequest,
   DeleteTeamRequestSchema,
+  JoinTeamRequest,
+  JoinTeamRequestSchema,
   SendTeamInvitesRequest,
   SendTeamInvitesRequestSchema,
   TeamInviteJWTPayload,
+  TeamMemberPermissions,
 } from "@prism/types";
 import OkResponse from "../network/responses/OkResponse";
 import crypto from "node:crypto";
@@ -20,6 +23,9 @@ import MailManager from "../managers/MailManager";
 import jwt from "@tsndr/cloudflare-worker-jwt";
 import TeamInvite from "../models/TeamInvite";
 import { addDays } from "date-fns/addDays";
+import TeamInviteResponse from "../network/responses/TeamInviteResponse";
+import TeamInviteLinkResponse from "../network/responses/TeamInviteLinkResponse";
+import TeamMember from "../models/TeamMember";
 
 export default class TeamsController {
   public static async teams(ctx: Context<HonoConfig>) {
@@ -39,21 +45,61 @@ export default class TeamsController {
         ORDER BY teams.created_at ASC
         `) as Array<Team>;
 
-    // console.log({ userCreatedTeams });
+    const userTeams = (await db`
+        SELECT
+          teams.id as id,
+          teams.owner_id as owner_id,
+          teams.is_personal as is_personal,
+          teams.name as name,
+          team_avatars.image_asset_url as avatar_url
+        FROM teams
+        RIGHT JOIN team_members
+        ON team_members.team_id = teams.id
+        LEFT JOIN team_avatars
+        ON teams.id = team_avatars.team_id
+        WHERE team_members.user_id = ${user.id}`) as Array<Team>;
 
-    const userTeams =
-      await db`SELECT * FROM team_members LEFT JOIN teams ON team_members.team_id = teams.id WHERE user_id = ${user.id}`;
-
-    // if (teamMember.length === 0) {
-    //   return ctx.json(null);
-    // }
-
-    // const teams =
-    //   (await db`SELECT * FROM teams LEFT JOIN team_avatars ON teams.id = team_avatars.team_id WHERE id = ${teamMember[0].team_id}`) as Array<Team>;
+    // console.log({ userTeams, userCreatedTeams });
 
     return ctx.json(
-      userCreatedTeams.map((team) => new TeamResponse(team).toJSON()),
+      [...userCreatedTeams, ...userTeams].map((team) =>
+        new TeamResponse(team).toJSON(),
+      ),
     );
+  }
+
+  public static async getTeamInvite(ctx: Context<HonoConfig>) {
+    const token = ctx.req.param("token");
+    const db = DatabaseManager.getInstance(ctx);
+
+    if (!token) {
+      return ctx.json(new ErrorResponse("token_not_found").toJSON(), 404);
+    }
+
+    const isValid = await jwt.verify(token, ctx.env.JWT_SECRET_KEY);
+
+    if (!isValid) {
+      return ctx.json(new ErrorResponse("token_invalid").toJSON(), 400);
+    }
+
+    const decodedToken = jwt.decode<TeamInviteJWTPayload>(token);
+
+    if (!decodedToken.payload?.teamId) {
+      return ctx.json(new ErrorResponse("token_invalid").toJSON(), 400);
+    }
+
+    const team = (await db`
+        SELECT teams.name as name, team_avatars.image_asset_url as avatar_url, teams.id as id
+        FROM teams
+        LEFT JOIN team_avatars
+        ON teams.id = team_avatars.team_id
+        WHERE teams.id = ${decodedToken.payload.teamId}`) as Array<Team>;
+
+    if (team.length === 0) {
+      return ctx.json(new ErrorResponse("token_not_found").toJSON(), 404);
+    }
+
+    return ctx.json(new TeamInviteResponse(team[0]).toJSON());
   }
 
   public static async createTeam(ctx: Context<HonoConfig>) {
@@ -92,9 +138,13 @@ export default class TeamsController {
 
   public static async sendInvites(ctx: Context<HonoConfig>) {
     const user = ctx.get("user")!;
+    const teamId = ctx.req.param("teamId");
     const body = await ctx.req.json<SendTeamInvitesRequest>();
 
-    const data = validateData(SendTeamInvitesRequestSchema, body);
+    const data = validateData(SendTeamInvitesRequestSchema, {
+      teamId,
+      emails: body.emails,
+    });
 
     if (Array.isArray(data)) {
       return ctx.json(new ErrorResponse(data).toJSON(), 400);
@@ -103,33 +153,27 @@ export default class TeamsController {
     const db = DatabaseManager.getInstance(ctx);
 
     const team =
-      (await db`SELECT id, is_personal, name FROM teams WHERE id = ${data.teamId}`) as Array<Team>;
+      (await db`SELECT id, is_personal, name FROM teams WHERE id = ${data.teamId} AND is_personal = FALSE AND owner_id = ${user.id}`) as Array<Team>;
 
     if (team.length === 0) {
       return ctx.json(new ErrorResponse("team_not_found").toJSON(), 401);
     }
 
-    if (team[0].is_personal) {
-      return ctx.json(new ErrorResponse("cannot_invite").toJSON(), 401);
-    }
-
     const teamMembers = (await db`
         SELECT
-          users.email as email,
+          users.email as email
         FROM team_members
         JOIN users
         ON team_members.user_id = users.id
-        WHERE team_id = ${data.teamId}
+        WHERE team_members.team_id = ${data.teamId}
         `) as Array<{ email: string }>;
 
     const pendingInvites =
-      (await db`SELECT email FROM team_invites WHERE team_id = ${data.teamId} AND status = 'pending'`) as Array<TeamInvite>;
+      await db`SELECT email FROM team_invites WHERE team_id = ${data.teamId} AND status = 'pending'`;
 
     const pendingInvitesEmails = pendingInvites.map(({ email }) => email);
     const teamMembersEmails = teamMembers.map(({ email }) => email);
 
-    // current          // new          // output
-    // ["1", "2", "3"], ["3", "4", "6"] => ["4", "6"]
     let newTeamMembers = data.emails.filter(
       (value) => !teamMembersEmails.includes(value),
     );
@@ -142,27 +186,98 @@ export default class TeamsController {
       return ctx.json(new OkResponse().toJSON());
     }
 
-    const values = newTeamMembers
-      .map((email) => `(${team[0].id}, ${email}, pending)`)
-      .join(",");
+    const values = newTeamMembers.map((email) => [
+      `${team[0].id}`,
+      `${email}`,
+      "pending",
+    ]);
 
-    await db`INSERT INTO team_invites (team_id, email, status) VALUES ${values} RETURNING email, id;`;
+    const placeholders = values
+      .map((_, i) => `($${i * 3 + 1}, $${i * 3 + 2}, $${i * 3 + 3})`)
+      .join(", ");
+
+    await db(
+      `INSERT INTO team_invites(team_id, email, status) VALUES ${placeholders} RETURNING id;`,
+      values.flat(),
+    );
 
     const inviteUrl = await TeamsController._generateInviteUrl(ctx, team[0].id);
 
-    console.log({ inviteUrl });
+    // await MailManager.dispatch(
+    //   ctx,
+    //   {
+    //     name: "team-invite",
+    //     props: {
+    //       teamName: team[0].name,
+    //       teamInviteLink: inviteUrl,
+    //     },
+    //   },
+    //   newTeamMembers,
+    // );
 
-    await MailManager.dispatch(
-      ctx,
-      {
-        name: "team-invite",
-        props: {
-          teamName: team[0].name,
-          teamInviteLink: inviteUrl,
-        },
-      },
-      newTeamMembers,
-    );
+    return ctx.json(new OkResponse(inviteUrl).toJSON());
+  }
+
+  public static async joinTeam(ctx: Context<HonoConfig>) {
+    const user = ctx.get("user")!;
+    const teamId = ctx.req.param("teamId");
+
+    if (!teamId) {
+      return ctx.json(new ErrorResponse("team_id_not_found").toJSON(), 404);
+    }
+
+    const db = DatabaseManager.getInstance(ctx);
+
+    const team =
+      (await db`SELECT id, owner_id FROM teams WHERE id = ${teamId}`) as Array<Team>;
+
+    if (team.length === 0) {
+      return ctx.json(new ErrorResponse("team_not_found").toJSON(), 404);
+    }
+
+    if (team[0].owner_id === user.id) {
+      return ctx.json(new ErrorResponse("team_owner").toJSON(), 400);
+    }
+
+    const teamMembers =
+      (await db`SELECT id FROM team_members WHERE user_id = ${user.id} AND team_id = ${teamId}`) as Array<TeamMember>;
+
+    if (teamMembers.length > 0) {
+      return ctx.json(new ErrorResponse("already_a_team_member").toJSON(), 400);
+    }
+
+    const newTeamMember =
+      await db`INSERT INTO team_members (user_id, team_id, permission_id) VALUES (${user.id}, ${teamId}, ${TeamMemberPermissions.BASIC}) RETURNING id`;
+
+    if (newTeamMember.length === 0) {
+      return ctx.json(new ErrorResponse("db_error").toJSON(), 500);
+    }
+
+    return ctx.json(new OkResponse().toJSON());
+  }
+
+  public static async leaveTeam(ctx: Context<HonoConfig>) {
+    const user = ctx.get("user")!;
+    const teamId = ctx.req.param("teamId");
+
+    if (!teamId) {
+      return ctx.json(new ErrorResponse("team_id_not_found").toJSON(), 404);
+    }
+
+    const db = DatabaseManager.getInstance(ctx);
+
+    const team =
+      (await db`SELECT id, owner_id FROM teams WHERE id = ${teamId}`) as Array<Team>;
+
+    if (team.length === 0) {
+      return ctx.json(new ErrorResponse("team_not_found").toJSON(), 404);
+    }
+
+    if (team[0].owner_id === user.id) {
+      return ctx.json(new ErrorResponse("team_owner").toJSON(), 400);
+    }
+
+    await db`DELETE FROM team_members WHERE user_id = ${user.id}`;
 
     return ctx.json(new OkResponse().toJSON());
   }
@@ -184,9 +299,31 @@ export default class TeamsController {
       return ctx.json(new ErrorResponse("team_not_found").toJSON(), 401);
     }
 
-    await db`DELETE FROM teams WHERE id = ${teamId}`;
+    await db`DELETE FROM teams WHERE id = ${teamId} `;
 
     return ctx.json(new OkResponse().toJSON());
+  }
+
+  public static async getTeamInviteLink(ctx: Context<HonoConfig>) {
+    const user = ctx.get("user")!;
+    const teamId = ctx.req.param("teamId");
+
+    if (!teamId) {
+      return ctx.json(new ErrorResponse("team_id_not_found").toJSON(), 401);
+    }
+
+    const db = DatabaseManager.getInstance(ctx);
+
+    const team =
+      await db`SELECT id FROM teams WHERE id = ${teamId} AND owner_id = ${user.id} AND is_personal = FALSE`;
+
+    if (team.length === 0) {
+      return ctx.json(new ErrorResponse("team_not_found").toJSON(), 401);
+    }
+
+    const inviteLink = await TeamsController._generateInviteUrl(ctx, teamId);
+
+    return ctx.json(new TeamInviteLinkResponse(inviteLink).toJSON());
   }
 
   private static async _generateInviteUrl(
@@ -205,6 +342,6 @@ export default class TeamsController {
       },
     );
 
-    return `${ctx.env.CLIENT_URL}/invites?token=${jwtToken}`;
+    return `${ctx.env.CLIENT_URL}/join?token=${jwtToken}`;
   }
 }

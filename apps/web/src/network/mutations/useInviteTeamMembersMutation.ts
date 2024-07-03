@@ -2,14 +2,17 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { axiosInstance } from "@/utils/axiosInstance";
 import { toast } from "sonner";
 import type {
-  CreateTeamRequest,
   ErrorResource,
-  TeamResource,
+  OkResource,
+  SendTeamInvitesRequest,
 } from "@prism/types";
 import { AxiosError } from "axios";
 
-async function createTeams(payload: CreateTeamRequest) {
-  const url = "/teams";
+async function inviteTeamMembers({
+  teamId,
+  ...payload
+}: SendTeamInvitesRequest) {
+  const url = `/teams/${teamId}/send-invites`;
 
   const response = await axiosInstance.post(url, payload);
 
@@ -18,21 +21,17 @@ async function createTeams(payload: CreateTeamRequest) {
   }
 }
 
-export function useCreateTeamMutation() {
+export function useInviteTeamMembersMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: createTeams,
-    onSuccess: (data: TeamResource) => {
-      toast("Team created succesfully");
-      const teams: Array<TeamResource> | undefined = queryClient.getQueryData([
-        "teams",
-      ]);
-      if (teams) {
-        queryClient.setQueryData(["teams"], [...teams, data]);
-      }
+    mutationFn: inviteTeamMembers,
+    onSuccess: (data: OkResource) => {
+      console.log({ __dd: data });
+      toast("Invites sent");
     },
     onError: (error: AxiosError<ErrorResource>) => {
+      console.log({ error });
       if (
         !error.response?.data.errors ||
         error.response.data.errors.length === 0

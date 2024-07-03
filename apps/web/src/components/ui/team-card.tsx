@@ -17,14 +17,16 @@ import { Avatar, AvatarFallback, AvatarImage } from "./avatar";
 
 type Props = {
   team: TeamResource;
-  setShowInviteDialog: React.Dispatch<React.SetStateAction<boolean>>;
+  setInviteTeamMembersId: React.Dispatch<React.SetStateAction<string>>;
   setDeleteTeamId: React.Dispatch<React.SetStateAction<string>>;
+  setLeaveTeamId: React.Dispatch<React.SetStateAction<string>>;
 };
 
 export function TeamCard({
   team,
   setDeleteTeamId,
-  setShowInviteDialog,
+  setLeaveTeamId,
+  setInviteTeamMembersId,
 }: Props) {
   const { user } = useUserStore();
   const activeTeamStore = useActiveTeamStore();
@@ -62,10 +64,10 @@ export function TeamCard({
             >
               Set Default
             </DropdownMenuItem>
-            {team.isPersonal ? null : (
+            {team.isPersonal || !isOwner ? null : (
               <DropdownMenuItem
                 onClick={() => {
-                  setShowInviteDialog(true);
+                  setInviteTeamMembersId(team.id);
                 }}
               >
                 Invite Users
@@ -74,7 +76,6 @@ export function TeamCard({
             {team.isPersonal ? null : (
               <>
                 <DropdownMenuSeparator />
-
                 {isOwner ? (
                   <DropdownMenuItem
                     className="text-destructive"
@@ -83,7 +84,10 @@ export function TeamCard({
                     Delete Team
                   </DropdownMenuItem>
                 ) : (
-                  <DropdownMenuItem className="text-destructive">
+                  <DropdownMenuItem
+                    className="text-destructive"
+                    onClick={() => setLeaveTeamId(team.id)}
+                  >
                     Leave Team
                   </DropdownMenuItem>
                 )}

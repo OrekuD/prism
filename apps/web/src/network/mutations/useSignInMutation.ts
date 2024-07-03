@@ -28,6 +28,7 @@ export function useSignInMutation() {
       userStore.setUser(user);
       authenticationStore.setAuthentication(data);
       queryClient.invalidateQueries({ queryKey: ["current-user"] });
+      window.location.reload();
     },
     onError: () => {
       toast("Invalid Credentials");

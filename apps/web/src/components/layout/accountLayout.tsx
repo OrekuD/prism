@@ -17,7 +17,7 @@ export function AccountLayout() {
   const path = pathname.slice(9) || "";
 
   return (
-    <div className="space-y-6 p-4 md:p-10 pb-16 md:block">
+    <div className="space-y-6 pt-8">
       <div className="space-y-0.5">
         <h2 className="text-3xl font-semibold tracking-tight">Settings</h2>
         <p className="text-muted-foreground">Manage your account settings.</p>

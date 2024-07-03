@@ -23,27 +23,24 @@ import {
 } from "@/components/ui/dialog";
 import { CreateTeam } from "@/components/ui/create-team";
 import { useDeleteTeamMutation } from "@/network/mutations/useDeleteTeamMutation";
-import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { InviteUsers } from "@/components/ui/invite-users";
+import { InviteTeamMembers } from "@/components/ui/invite-team-members";
 import useSearch from "@/hooks/useSearch";
 import { TeamResource } from "@prism/types";
 import Fuse from "fuse.js";
 import { TeamCard } from "@/components/ui/team-card";
-
-// const searchTeamsFormSchema = z.object({
-//   query: z.string(),
-// });
+import { DeleteTeam } from "@/components/ui/delete-team";
+import { LeaveTeam } from "@/components/ui/leave-team";
 
 export function AccountTeams() {
   const { data, isLoading } = useTeamsQuery();
   const { user } = useUserStore();
-  const activeTeamStore = useActiveTeamStore();
 
-  const [showInviteDialog, setShowInviteDialog] = React.useState(false);
   const [showCreateTeamDialog, setShowCreateTeamDialog] = React.useState(false);
 
   const [deleteTeamId, setDeleteTeamId] = React.useState("");
-  const deleteTeamMutation = useDeleteTeamMutation();
+  const [leaveTeamId, setLeaveTeamId] = React.useState("");
+
+  const [inviteTeamMembersId, setInviteTeamMembersId] = React.useState("");
 
   const [searchQuery, setSearchQuery] = React.useState("");
   const [searchResponse, setSearchResponse] = React.useState<
@@ -61,19 +58,6 @@ export function AccountTeams() {
       setSearchResponse(fuse.search(searchQuery).map(({ item }) => item));
     },
   );
-
-  // const searchTeamsForm = useForm({
-  //   resolver: zodResolver(searchTeamsFormSchema),
-  //   defaultValues: {
-  //     query: "",
-  //   },
-  // });
-
-  // function onSubmitSearchTeamsForm(
-  //   values: z.infer<typeof searchTeamsFormSchema>,
-  // ) {
-  //   console.log("values");
-  // }
 
   return (
     <div className="grid gap-6">
@@ -100,33 +84,6 @@ export function AccountTeams() {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          {/* <Form {...searchTeamsForm}>
-            <form
-              onSubmit={searchTeamsForm.handleSubmit(onSubmitSearchTeamsForm)}
-              className="space-y-4"
-            >
-              <FormField
-                control={searchTeamsForm.control}
-                name="query"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormControl>
-                      <div className="relative mb-4">
-                        <Search className="absolute left-2.5 top-3 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          placeholder="Search teams..."
-                          className="pl-8"
-                          {...field}
-                        />
-                      </div>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </form>
-          </Form> */}
-
           {isLoading ? (
             <div className="rounded-md border flex items-center gap-3 px-2 h-16">
               <Skeleton className="ml-2 size-10 rounded-full" />
@@ -146,7 +103,8 @@ export function AccountTeams() {
                           <TeamCard
                             team={team}
                             setDeleteTeamId={setDeleteTeamId}
-                            setShowInviteDialog={setShowInviteDialog}
+                            setLeaveTeamId={setLeaveTeamId}
+                            setInviteTeamMembersId={setInviteTeamMembersId}
                             key={team.id}
                           />
                         );
@@ -165,7 +123,8 @@ export function AccountTeams() {
                           <TeamCard
                             team={team}
                             setDeleteTeamId={setDeleteTeamId}
-                            setShowInviteDialog={setShowInviteDialog}
+                            setLeaveTeamId={setLeaveTeamId}
+                            setInviteTeamMembersId={setInviteTeamMembersId}
                             key={team.id}
                           />
                         );
@@ -181,47 +140,15 @@ export function AccountTeams() {
         </CardContent>
       </Card>
 
-      <Dialog open={Boolean(deleteTeamId)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Team</DialogTitle>
-            <DialogDescription>
-              All apps associated with this team will also be deleted. This
-              action is irreversible.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setDeleteTeamId("");
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={deleteTeamMutation.isPending}
-              onClick={async () => {
-                const response = await deleteTeamMutation.mutateAsync({
-                  teamId: deleteTeamId,
-                });
-                if (response?.message) {
-                  setDeleteTeamId("");
-                }
-              }}
-            >
-              {deleteTeamMutation.isPending ? (
-                <LoadingSpinner />
-              ) : (
-                "Delete Team"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <InviteUsers open={showInviteDialog} setOpen={setShowInviteDialog} />
+      <LeaveTeam leaveTeamId={leaveTeamId} setLeaveTeamId={setLeaveTeamId} />
+      <DeleteTeam
+        deleteTeamId={deleteTeamId}
+        setDeleteTeamId={setDeleteTeamId}
+      />
+      <InviteTeamMembers
+        teamId={inviteTeamMembersId}
+        setTeamId={setInviteTeamMembersId}
+      />
     </div>
   );
 }

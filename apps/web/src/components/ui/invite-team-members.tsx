@@ -7,25 +7,34 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./dialog";
-import { Plus, CircleX } from "lucide-react";
+import { Plus, CircleX, Link } from "lucide-react";
 import { FormField, FormItem, FormControl, FormMessage, Form } from "./form";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Input } from "./input";
 import { Button } from "./button";
+import { useInviteTeamMembersMutation } from "@/network/mutations/useInviteTeamMembersMutation";
+import { LoadingSpinner } from "./loading-spinner";
+import { useTeamsQuery } from "@/network/queries/useTeamsQuery";
+import { useUserStore } from "@/store/userStore";
+import { useTeamInviteLinkQuery } from "@/network/queries/useTeamInviteLinkQuery";
+import { toast } from "sonner";
 
 type Props = {
-  open: boolean;
-  setOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  teamId: string;
+  setTeamId: React.Dispatch<React.SetStateAction<string>>;
 };
 
 const inviteUserFormSchema = z.object({
   email: z.string().email(),
 });
 
-export function InviteUsers(props: Props) {
+export function InviteTeamMembers(props: Props) {
+  const inviteTeamMembersMutation = useInviteTeamMembersMutation();
   const [emails, setEmails] = React.useState<Array<string>>([]);
+  const { user } = useUserStore();
+  const teamInviteLinkQuery = useTeamInviteLinkQuery(props.teamId);
 
   const inviteUserForm = useForm({
     resolver: zodResolver(inviteUserFormSchema),
@@ -37,6 +46,13 @@ export function InviteUsers(props: Props) {
   function onSubmitInviteUsersForm(
     values: z.infer<typeof inviteUserFormSchema>,
   ) {
+    if (user?.email.toLowerCase() === values.email) {
+      inviteUserForm.setError("email", {
+        message: "You are already a member.",
+      });
+      return;
+    }
+
     const index = emails.findIndex((email) => values.email === email);
 
     if (index < 0) {
@@ -53,7 +69,10 @@ export function InviteUsers(props: Props) {
   }
 
   return (
-    <Dialog open={props.open} onOpenChange={props.setOpen}>
+    <Dialog
+      open={Boolean(props.teamId)}
+      onOpenChange={() => props.setTeamId("")}
+    >
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Invite Users</DialogTitle>
@@ -114,11 +133,57 @@ export function InviteUsers(props: Props) {
             </div>
           </div>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => {}}>
+        <DialogFooter className="items-center">
+          <button
+            className="text-xs font-medium border h-7 rounded-full flex items-center px-4 mr-auto gap-2 transition-opacity disabled:opacity-50"
+            disabled={teamInviteLinkQuery.isLoading}
+            onClick={async () => {
+              if (!teamInviteLinkQuery.data) return;
+
+              await navigator.clipboard.writeText(
+                teamInviteLinkQuery.data.teamInviteUrl,
+              );
+
+              toast("Invite link copied to clipboard");
+            }}
+          >
+            <Link className="size-3" />
+            Copy Invite Link
+          </button>
+          <Button
+            variant="outline"
+            disabled={inviteTeamMembersMutation.isPending}
+            onClick={() => {
+              setEmails([]);
+              inviteUserForm.reset();
+              props.setTeamId("");
+            }}
+          >
             Cancel
           </Button>
-          <Button>Send Invites</Button>
+          <Button
+            disabled={
+              inviteTeamMembersMutation.isPending || emails.length === 0
+            }
+            onClick={async () => {
+              const { message } = await inviteTeamMembersMutation.mutateAsync({
+                emails,
+                teamId: props.teamId,
+              });
+
+              if (message) {
+                setEmails([]);
+                inviteUserForm.reset();
+                props.setTeamId("");
+              }
+            }}
+          >
+            {inviteTeamMembersMutation.isPending ? (
+              <LoadingSpinner />
+            ) : (
+              "Send Invites"
+            )}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

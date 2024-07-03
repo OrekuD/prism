@@ -76,7 +76,7 @@ export function AccountGeneral() {
           <Form {...profileForm}>
             <form
               onSubmit={profileForm.handleSubmit((values) =>
-                updateUserInformationMutation.mutate(values),
+                updateUserInformationMutation.mutate(values)
               )}
               className="space-y-6"
             >
@@ -133,7 +133,7 @@ export function AccountGeneral() {
           <Form {...usernameForm}>
             <form
               onSubmit={usernameForm.handleSubmit((values) =>
-                updateUsernameMutation.mutate(values),
+                updateUsernameMutation.mutate(values)
               )}
               className="space-y-6"
             >
@@ -174,7 +174,7 @@ export function AccountGeneral() {
           <Form {...emailForm}>
             <form
               onSubmit={emailForm.handleSubmit((values) =>
-                changeEmailMutation.mutate(values),
+                changeEmailMutation.mutate(values)
               )}
               className="space-y-6"
             >

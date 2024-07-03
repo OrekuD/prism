@@ -22,7 +22,7 @@ const client = new QueryClient({
   }),
   defaultOptions: {
     queries: {
-      retry: import.meta.env.DEV ? 20 : 2,
+      retry: 2,
     },
   },
 });
