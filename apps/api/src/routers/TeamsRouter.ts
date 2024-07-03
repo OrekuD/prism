@@ -11,5 +11,6 @@ router.get("/", TeamsController.teams);
 router.post("/", TeamsController.createTeam);
 router.delete("/:teamId", TeamsController.deleteTeam);
 router.post("/:teamId/send-invites", TeamsController.sendInvites);
+router.get("/:teamId/invite-link", TeamsController.getTeamInviteLink);
 
 export default router;

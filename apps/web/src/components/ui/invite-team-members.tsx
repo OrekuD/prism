@@ -7,7 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./dialog";
-import { Plus, CircleX } from "lucide-react";
+import { Plus, CircleX, Link } from "lucide-react";
 import { FormField, FormItem, FormControl, FormMessage, Form } from "./form";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
@@ -18,6 +18,8 @@ import { useInviteTeamMembersMutation } from "@/network/mutations/useInviteTeamM
 import { LoadingSpinner } from "./loading-spinner";
 import { useTeamsQuery } from "@/network/queries/useTeamsQuery";
 import { useUserStore } from "@/store/userStore";
+import { useTeamInviteLinkQuery } from "@/network/queries/useTeamInviteLinkQuery";
+import { toast } from "sonner";
 
 type Props = {
   teamId: string;
@@ -32,6 +34,7 @@ export function InviteTeamMembers(props: Props) {
   const inviteTeamMembersMutation = useInviteTeamMembersMutation();
   const [emails, setEmails] = React.useState<Array<string>>([]);
   const { user } = useUserStore();
+  const teamInviteLinkQuery = useTeamInviteLinkQuery(props.teamId);
 
   const inviteUserForm = useForm({
     resolver: zodResolver(inviteUserFormSchema),
@@ -130,7 +133,23 @@ export function InviteTeamMembers(props: Props) {
             </div>
           </div>
         </div>
-        <DialogFooter>
+        <DialogFooter className="items-center">
+          <button
+            className="text-xs font-medium border h-7 rounded-full flex items-center px-4 mr-auto gap-2 transition-opacity disabled:opacity-50"
+            disabled={teamInviteLinkQuery.isLoading}
+            onClick={async () => {
+              if (!teamInviteLinkQuery.data) return;
+
+              await navigator.clipboard.writeText(
+                teamInviteLinkQuery.data.teamInviteUrl,
+              );
+
+              toast("Invite link copied to clipboard");
+            }}
+          >
+            <Link className="size-3" />
+            Copy Invite Link
+          </button>
           <Button
             variant="outline"
             disabled={inviteTeamMembersMutation.isPending}

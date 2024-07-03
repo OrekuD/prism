@@ -137,3 +137,9 @@ export const DeleteTeamRequestSchema = z.strictObject({
 });
 
 export type DeleteTeamRequest = z.infer<typeof DeleteTeamRequestSchema>;
+
+export const JoinTeamRequestSchema = z.strictObject({
+  teamId: z.string(),
+});
+
+export type JoinTeamRequest = z.infer<typeof JoinTeamRequestSchema>;

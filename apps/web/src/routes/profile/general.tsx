@@ -224,8 +224,8 @@ export function AccountGeneral() {
                   }
                   className="w-full h-full object-cover rounded-full selection:bg-transparent"
                 />
-                <div className="absolute bottom-0 right-0 size-6 bg-white rounded-full grid place-items-center">
-                  <Pencil className="size-3 text-background" />
+                <div className="absolute bottom-0 right-0 size-6 bg-background rounded-full grid place-items-center">
+                  <Pencil className="size-3 text-primary" />
                 </div>
               </div>
             </label>

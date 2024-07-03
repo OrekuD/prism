@@ -166,6 +166,4 @@ CREATE UNIQUE INDEX IF NOT EXISTS "access_token_index" ON "oauth_access_tokens" 
 CREATE UNIQUE INDEX IF NOT EXISTS "otp_index" ON "otp_sign_ins" USING btree ("otp");--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "profile_picture_user_id_index" ON "profile_pictures" USING btree ("user_id");--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "profile_user_id_index" ON "profiles" USING btree ("user_id");--> statement-breakpoint
-CREATE UNIQUE INDEX IF NOT EXISTS "team_member_team_id_index" ON "team_members" USING btree ("team_id");--> statement-breakpoint
-CREATE UNIQUE INDEX IF NOT EXISTS "team_member_user_id_index" ON "team_members" USING btree ("user_id");--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "email_index" ON "users" USING btree ("email");

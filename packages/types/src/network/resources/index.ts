@@ -28,6 +28,10 @@ export type ProfilePictureResource = {
   profilePictureUrl: string;
 };
 
+export type TeamInviteLinkResource = {
+  teamInviteUrl: string;
+};
+
 export type ProfileResource = {
   firstName: string;
   lastName: string;
@@ -45,6 +49,7 @@ export type TeamResource = {
 };
 
 export type TeamInviteResource = {
+  id: string;
   name: string;
   avatarUrl: string;
 };

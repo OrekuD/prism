@@ -10,6 +10,7 @@ export default class TeamInviteResponse {
 
   toJSON(): TeamInviteResource {
     return {
+      id: this.team.id,
       name: this.team.name,
       avatarUrl: this.team.avatar_url,
     };
