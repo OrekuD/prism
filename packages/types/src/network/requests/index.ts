@@ -143,3 +143,9 @@ export const JoinTeamRequestSchema = z.strictObject({
 });
 
 export type JoinTeamRequest = z.infer<typeof JoinTeamRequestSchema>;
+
+export const LeaveTeamRequestSchema = z.strictObject({
+  teamId: z.string(),
+});
+
+export type LeaveTeamRequest = z.infer<typeof LeaveTeamRequestSchema>;

@@ -24,9 +24,13 @@ export function useCreateTeamMutation() {
   return useMutation({
     mutationFn: createTeams,
     onSuccess: (data: TeamResource) => {
-      queryClient.invalidateQueries({ queryKey: ["teams"] });
-      // queryClient.setQueryData(["teams", ], data);
       toast("Team created succesfully");
+      const teams: Array<TeamResource> | undefined = queryClient.getQueryData([
+        "teams",
+      ]);
+      if (teams) {
+        queryClient.setQueryData(["teams"], [...teams, data]);
+      }
     },
     onError: (error: AxiosError<ErrorResource>) => {
       if (

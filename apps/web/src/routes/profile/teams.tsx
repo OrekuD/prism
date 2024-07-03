@@ -7,22 +7,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { CircleX, EllipsisVertical, Plus, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { useTeamsQuery } from "@/network/queries/useTeamsQuery";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { getInitials } from "@/utils/getInitials";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useUserStore } from "@/store/userStore";
 import { useActiveTeamStore } from "@/store/activeTeamStore";
-import { Link } from "react-router-dom";
 import {
   Dialog,
   DialogContent,
@@ -39,6 +29,7 @@ import { TeamResource } from "@prism/types";
 import Fuse from "fuse.js";
 import { TeamCard } from "@/components/ui/team-card";
 import { DeleteTeam } from "@/components/ui/delete-team";
+import { LeaveTeam } from "@/components/ui/leave-team";
 
 export function AccountTeams() {
   const { data, isLoading } = useTeamsQuery();
@@ -47,6 +38,8 @@ export function AccountTeams() {
   const [showCreateTeamDialog, setShowCreateTeamDialog] = React.useState(false);
 
   const [deleteTeamId, setDeleteTeamId] = React.useState("");
+  const [leaveTeamId, setLeaveTeamId] = React.useState("");
+
   const [inviteTeamMembersId, setInviteTeamMembersId] = React.useState("");
 
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -110,6 +103,7 @@ export function AccountTeams() {
                           <TeamCard
                             team={team}
                             setDeleteTeamId={setDeleteTeamId}
+                            setLeaveTeamId={setLeaveTeamId}
                             setInviteTeamMembersId={setInviteTeamMembersId}
                             key={team.id}
                           />
@@ -129,6 +123,7 @@ export function AccountTeams() {
                           <TeamCard
                             team={team}
                             setDeleteTeamId={setDeleteTeamId}
+                            setLeaveTeamId={setLeaveTeamId}
                             setInviteTeamMembersId={setInviteTeamMembersId}
                             key={team.id}
                           />
@@ -145,6 +140,7 @@ export function AccountTeams() {
         </CardContent>
       </Card>
 
+      <LeaveTeam leaveTeamId={leaveTeamId} setLeaveTeamId={setLeaveTeamId} />
       <DeleteTeam
         deleteTeamId={deleteTeamId}
         setDeleteTeamId={setDeleteTeamId}

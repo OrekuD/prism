@@ -19,11 +19,13 @@ type Props = {
   team: TeamResource;
   setInviteTeamMembersId: React.Dispatch<React.SetStateAction<string>>;
   setDeleteTeamId: React.Dispatch<React.SetStateAction<string>>;
+  setLeaveTeamId: React.Dispatch<React.SetStateAction<string>>;
 };
 
 export function TeamCard({
   team,
   setDeleteTeamId,
+  setLeaveTeamId,
   setInviteTeamMembersId,
 }: Props) {
   const { user } = useUserStore();
@@ -62,7 +64,7 @@ export function TeamCard({
             >
               Set Default
             </DropdownMenuItem>
-            {team.isPersonal ? null : (
+            {team.isPersonal || !isOwner ? null : (
               <DropdownMenuItem
                 onClick={() => {
                   setInviteTeamMembersId(team.id);
@@ -74,7 +76,6 @@ export function TeamCard({
             {team.isPersonal ? null : (
               <>
                 <DropdownMenuSeparator />
-
                 {isOwner ? (
                   <DropdownMenuItem
                     className="text-destructive"
@@ -83,7 +84,10 @@ export function TeamCard({
                     Delete Team
                   </DropdownMenuItem>
                 ) : (
-                  <DropdownMenuItem className="text-destructive">
+                  <DropdownMenuItem
+                    className="text-destructive"
+                    onClick={() => setLeaveTeamId(team.id)}
+                  >
                     Leave Team
                   </DropdownMenuItem>
                 )}

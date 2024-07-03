@@ -1,5 +1,8 @@
 import React from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
+import { Separator } from "../ui/separator";
+import { buttonVariants } from "../ui/button";
+import { cn } from "@/lib/utils";
 
 const links = [
   { label: "General", url: "" },
@@ -14,33 +17,38 @@ export function AccountLayout() {
   const path = pathname.slice(9) || "";
 
   return (
-    <div className="flex w-full flex-col">
-      <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-10">
-        {/* <div className="mx-auto grid w-full max-w-6xl gap-2">
-        </div> */}
-        <div className="mx-auto grid w-full max-w-6xl items-start gap-6 md:grid-cols-[180px_1fr] lg:grid-cols-[250px_1fr]">
-          <nav className="sticky top-28 grid gap-1 text-sm text-muted-foreground">
-            <h1 className="text-3xl text-foreground font-semibold mb-4">
-              Account Settings
-            </h1>
-            {links.map(({ label, url }) => {
-              const isActive = url === path;
+    <div className="space-y-6 pt-8">
+      <div className="space-y-0.5">
+        <h2 className="text-3xl font-semibold tracking-tight">Settings</h2>
+        <p className="text-muted-foreground">Manage your account settings.</p>
+      </div>
+      <Separator className="my-6" />
+      <div className="flex flex-col lg:flex-row lg:space-y-0 gap-8">
+        <aside className="lg:-ml-4 lg:w-1/5">
+          <nav className="flex space-x-2 md:sticky md:top-24 lg:flex-col lg:space-x-0 lg:space-y-1">
+            {links.map((item) => {
+              const isActive = item.url === path;
+
               return (
                 <Link
-                  to={url}
-                  key={url}
-                  className={`font-medium py-2 ${isActive ? "text-card-foreground" : "text-muted-foreground"}`}
+                  key={item.url}
+                  to={item.url}
+                  className={cn(
+                    buttonVariants({ variant: "ghost" }),
+                    isActive ? "bg-muted hover:bg-muted" : "hover:bg-muted",
+                    "justify-start transition-colors duration-200",
+                  )}
                 >
-                  {label}
+                  {item.label}
                 </Link>
               );
             })}
           </nav>
-          <div className="pt-20">
-            <Outlet />
-          </div>
+        </aside>
+        <div className="flex-1">
+          <Outlet />
         </div>
-      </main>
+      </div>
     </div>
   );
 }

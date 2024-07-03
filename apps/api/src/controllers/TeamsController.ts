@@ -45,20 +45,26 @@ export default class TeamsController {
         ORDER BY teams.created_at ASC
         `) as Array<Team>;
 
-    // console.log({ userCreatedTeams });
+    const userTeams = (await db`
+        SELECT
+          teams.id as id,
+          teams.owner_id as owner_id,
+          teams.is_personal as is_personal,
+          teams.name as name,
+          team_avatars.image_asset_url as avatar_url
+        FROM teams
+        RIGHT JOIN team_members
+        ON team_members.team_id = teams.id
+        LEFT JOIN team_avatars
+        ON teams.id = team_avatars.team_id
+        WHERE team_members.user_id = ${user.id}`) as Array<Team>;
 
-    const userTeams =
-      await db`SELECT * FROM team_members LEFT JOIN teams ON team_members.team_id = teams.id WHERE user_id = ${user.id}`;
-
-    // if (teamMember.length === 0) {
-    //   return ctx.json(null);
-    // }
-
-    // const teams =
-    //   (await db`SELECT * FROM teams LEFT JOIN team_avatars ON teams.id = team_avatars.team_id WHERE id = ${teamMember[0].team_id}`) as Array<Team>;
+    // console.log({ userTeams, userCreatedTeams });
 
     return ctx.json(
-      userCreatedTeams.map((team) => new TeamResponse(team).toJSON()),
+      [...userCreatedTeams, ...userTeams].map((team) =>
+        new TeamResponse(team).toJSON(),
+      ),
     );
   }
 
@@ -83,7 +89,7 @@ export default class TeamsController {
     }
 
     const team = (await db`
-        SELECT teams.name as name, team_avatars.image_asset_url as avatar_url
+        SELECT teams.name as name, team_avatars.image_asset_url as avatar_url, teams.id as id
         FROM teams
         LEFT JOIN team_avatars
         ON teams.id = team_avatars.team_id
@@ -214,18 +220,16 @@ export default class TeamsController {
 
   public static async joinTeam(ctx: Context<HonoConfig>) {
     const user = ctx.get("user")!;
-    const body = await ctx.req.json<JoinTeamRequest>();
+    const teamId = ctx.req.param("teamId");
 
-    const data = validateData(JoinTeamRequestSchema, body);
-
-    if (Array.isArray(data)) {
-      return ctx.json(new ErrorResponse(data).toJSON(), 400);
+    if (!teamId) {
+      return ctx.json(new ErrorResponse("team_id_not_found").toJSON(), 404);
     }
 
     const db = DatabaseManager.getInstance(ctx);
 
     const team =
-      (await db`SELECT id, owner_id FROM teams WHERE id = ${data.teamId}`) as Array<Team>;
+      (await db`SELECT id, owner_id FROM teams WHERE id = ${teamId}`) as Array<Team>;
 
     if (team.length === 0) {
       return ctx.json(new ErrorResponse("team_not_found").toJSON(), 404);
@@ -235,19 +239,45 @@ export default class TeamsController {
       return ctx.json(new ErrorResponse("team_owner").toJSON(), 400);
     }
 
-    const teamMember =
-      (await db`SELECT id FROM team_members WHERE user_id = ${user.id} AND team_id = ${data.teamId}`) as Array<TeamMember>;
+    const teamMembers =
+      (await db`SELECT id FROM team_members WHERE user_id = ${user.id} AND team_id = ${teamId}`) as Array<TeamMember>;
 
-    if (teamMember.length > 0) {
+    if (teamMembers.length > 0) {
       return ctx.json(new ErrorResponse("already_a_team_member").toJSON(), 400);
     }
 
     const newTeamMember =
-      await db`INSERT INTO team_members (user_id, team_id, permission_id) VALUES (${user.id}, ${data.teamId}, ${TeamMemberPermissions.BASIC}) RETURNING id`;
+      await db`INSERT INTO team_members (user_id, team_id, permission_id) VALUES (${user.id}, ${teamId}, ${TeamMemberPermissions.BASIC}) RETURNING id`;
 
     if (newTeamMember.length === 0) {
       return ctx.json(new ErrorResponse("db_error").toJSON(), 500);
     }
+
+    return ctx.json(new OkResponse().toJSON());
+  }
+
+  public static async leaveTeam(ctx: Context<HonoConfig>) {
+    const user = ctx.get("user")!;
+    const teamId = ctx.req.param("teamId");
+
+    if (!teamId) {
+      return ctx.json(new ErrorResponse("team_id_not_found").toJSON(), 404);
+    }
+
+    const db = DatabaseManager.getInstance(ctx);
+
+    const team =
+      (await db`SELECT id, owner_id FROM teams WHERE id = ${teamId}`) as Array<Team>;
+
+    if (team.length === 0) {
+      return ctx.json(new ErrorResponse("team_not_found").toJSON(), 404);
+    }
+
+    if (team[0].owner_id === user.id) {
+      return ctx.json(new ErrorResponse("team_owner").toJSON(), 400);
+    }
+
+    await db`DELETE FROM team_members WHERE user_id = ${user.id}`;
 
     return ctx.json(new OkResponse().toJSON());
   }

@@ -76,7 +76,7 @@ export function AccountGeneral() {
           <Form {...profileForm}>
             <form
               onSubmit={profileForm.handleSubmit((values) =>
-                updateUserInformationMutation.mutate(values),
+                updateUserInformationMutation.mutate(values)
               )}
               className="space-y-6"
             >
@@ -133,7 +133,7 @@ export function AccountGeneral() {
           <Form {...usernameForm}>
             <form
               onSubmit={usernameForm.handleSubmit((values) =>
-                updateUsernameMutation.mutate(values),
+                updateUsernameMutation.mutate(values)
               )}
               className="space-y-6"
             >
@@ -174,7 +174,7 @@ export function AccountGeneral() {
           <Form {...emailForm}>
             <form
               onSubmit={emailForm.handleSubmit((values) =>
-                changeEmailMutation.mutate(values),
+                changeEmailMutation.mutate(values)
               )}
               className="space-y-6"
             >
@@ -224,7 +224,7 @@ export function AccountGeneral() {
                   }
                   className="w-full h-full object-cover rounded-full selection:bg-transparent"
                 />
-                <div className="absolute bottom-0 right-0 size-6 bg-background rounded-full grid place-items-center">
+                <div className="absolute bottom-0 right-0 size-6 bg-background rounded-full grid place-items-center shadow-xl">
                   <Pencil className="size-3 text-primary" />
                 </div>
               </div>
