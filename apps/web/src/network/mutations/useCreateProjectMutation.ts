@@ -2,14 +2,16 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { axiosInstance } from "@/utils/axiosInstance";
 import { toast } from "sonner";
 import type {
+  CreateProjectRequest,
   CreateTeamRequest,
   ErrorResource,
+  OkResource,
   TeamResource,
 } from "@prism/types";
 import { AxiosError } from "axios";
 
-async function createTeam(payload: CreateTeamRequest) {
-  const url = "/teams";
+async function createProject(payload: CreateProjectRequest) {
+  const url = `/projects/${payload.teamId}`;
 
   const response = await axiosInstance.post(url, payload);
 
@@ -18,19 +20,13 @@ async function createTeam(payload: CreateTeamRequest) {
   }
 }
 
-export function useCreateTeamMutation() {
+export function useCreateProjectMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: createTeam,
-    onSuccess: (data: TeamResource) => {
-      toast("Team created succesfully");
-      const teams: Array<TeamResource> | undefined = queryClient.getQueryData([
-        "teams",
-      ]);
-      if (teams) {
-        queryClient.setQueryData(["teams"], [...teams, data]);
-      }
+    mutationFn: createProject,
+    onSuccess: (data: OkResource) => {
+      toast("Project created succesfully");
     },
     onError: (error: AxiosError<ErrorResource>) => {
       if (
@@ -40,7 +36,7 @@ export function useCreateTeamMutation() {
         toast("Something went wrong");
       } else {
         switch (error.response.data.errors[0]) {
-          case "max_number_teams_exceeded":
+          case "":
             toast("You need to upgrade to the Pro plan");
             break;
           default:

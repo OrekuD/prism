@@ -1,6 +1,6 @@
 import { ZodError } from "zod";
 
-export default function parseError(error: ZodError): Array<string> {
+export function parseError(error: ZodError): Array<string> {
   const list: Array<string> = [];
 
   try {

@@ -1,6 +1,4 @@
-import { InferSelectModel } from 'drizzle-orm';
-import { oAuthAccessTokens } from '../database/schema/oAuthAccessTokens';
+import { InferSelectModel } from "drizzle-orm";
+import { oAuthAccessTokens } from "../database/schema/oAuthAccessTokens";
 
-type OAuthAccessToken = InferSelectModel<typeof oAuthAccessTokens>;
-
-export default OAuthAccessToken;
+export type OAuthAccessToken = InferSelectModel<typeof oAuthAccessTokens>;

@@ -1,7 +1,7 @@
 import { ProfileResource } from "@prism/types";
-import Profile from "../../models/Profile";
+import { Profile } from "../../models/Profile";
 
-export default class ProfileResponse {
+export class ProfileResponse {
   private profile: Profile;
 
   constructor(profile: Profile) {

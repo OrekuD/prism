@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import TeamsController from "../controllers/TeamsController";
-import AuthenticationMiddleware from "../middlewares/AuthenticationMiddleware";
+import { TeamsController } from "../controllers/TeamsController";
+import { AuthenticationMiddleware } from "../middlewares/AuthenticationMiddleware";
 
 const router = new Hono();
 
@@ -15,4 +15,4 @@ router.post("/:teamId/send-invites", TeamsController.sendInvites);
 router.post("/:teamId/join", TeamsController.joinTeam);
 router.post("/:teamId/leave", TeamsController.leaveTeam);
 
-export default router;
+export { router };

@@ -1,6 +1,6 @@
 import { TeamInviteLinkResource } from "@prism/types";
 
-export default class TeamInviteLinkResponse {
+export class TeamInviteLinkResponse {
   private teamInviteUrl: string;
 
   constructor(teamInviteUrl: string) {

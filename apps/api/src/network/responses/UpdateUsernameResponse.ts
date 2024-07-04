@@ -1,6 +1,6 @@
 import { UpdateUsernameResource } from "@prism/types";
 
-export default class UpdateUsernameResponse {
+export class UpdateUsernameResponse {
   private username: string;
 
   constructor(username: string) {

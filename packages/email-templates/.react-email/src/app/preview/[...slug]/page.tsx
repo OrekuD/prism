@@ -75,6 +75,6 @@ export default Page;
 
 export function generateStaticParams() { 
   return Promise.resolve(
-    [{"slug":["changed-confirm-email"]},{"slug":["confirm-email"]},{"slug":["forgot-password"]},{"slug":["magic-link"]},{"slug":["otp-sign-in"]},{"slug":["team-invite"]},{"slug":["welcome"]}]
+    []
   );
 }

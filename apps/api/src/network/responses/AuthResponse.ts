@@ -1,8 +1,8 @@
-import User from "../../models/User";
-import UserResponse from "./UserResponse";
+import { User } from "../../models/User";
+import { UserResponse } from "./UserResponse";
 import { AuthResource } from "@prism/types";
 
-export default class AuthResponse {
+export class AuthResponse {
   private user: User;
   private accessToken: string;
   private refreshToken: string;

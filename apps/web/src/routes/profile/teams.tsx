@@ -24,7 +24,7 @@ import {
 import { CreateTeam } from "@/components/ui/create-team";
 import { useDeleteTeamMutation } from "@/network/mutations/useDeleteTeamMutation";
 import { InviteTeamMembers } from "@/components/ui/invite-team-members";
-import useSearch from "@/hooks/useSearch";
+import { useSearch } from "@/hooks/useSearch";
 import { TeamResource } from "@prism/types";
 import Fuse from "fuse.js";
 import { TeamCard } from "@/components/ui/team-card";

@@ -11,24 +11,24 @@ import {
   UpdateUsernameRequest,
   UpdateUsernameRequestSchema,
 } from "@prism/types";
-import validateData from "../utils/validateData";
-import DatabaseManager from "../managers/DatabaseManager";
-import User from "../models/User";
+import { validateData } from "../utils/validateData";
+import { DatabaseManager } from "../managers/DatabaseManager";
+import { User } from "../models/User";
 import bcrypt from "bcryptjs";
-import ErrorResponse from "../network/responses/ErrorResponse";
-import OkResponse from "../network/responses/OkResponse";
-import Profile from "../models/Profile";
-import UserResponse from "../network/responses/UserResponse";
-import AuthController from "./AuthController";
-import MailManager from "../managers/MailManager";
-import UploadController from "./UploadController";
-import ProfilePicture from "../models/ProfilePicture";
-import ProfilePictureResponse from "../network/responses/ProfilePictureResponse";
-import ProfileResponse from "../network/responses/ProfileResponse";
-import ChangeEmailResponse from "../network/responses/ChangeEmailResponse";
-import UpdateUsernameResponse from "../network/responses/UpdateUsernameResponse";
+import { ErrorResponse } from "../network/responses/ErrorResponse";
+import { OkResponse } from "../network/responses/OkResponse";
+import { Profile } from "../models/Profile";
+import { UserResponse } from "../network/responses/UserResponse";
+import { AuthController } from "./AuthController";
+import { MailManager } from "../managers/MailManager";
+import { UploadController } from "./UploadController";
+import { ProfilePicture } from "../models/ProfilePicture";
+import { ProfilePictureResponse } from "../network/responses/ProfilePictureResponse";
+import { ProfileResponse } from "../network/responses/ProfileResponse";
+import { ChangeEmailResponse } from "../network/responses/ChangeEmailResponse";
+import { UpdateUsernameResponse } from "../network/responses/UpdateUsernameResponse";
 
-export default class UserController {
+export class UserController {
   public static async currentUser(ctx: Context<HonoConfig>) {
     return ctx.json(new UserResponse(ctx.get("user")!).toJSON());
   }

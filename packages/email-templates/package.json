@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build": "email build",
-    "dev": "email dev",
+    "dev": "",
     "export": "email export --pretty false"
   },
   "dependencies": {

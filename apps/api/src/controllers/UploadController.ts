@@ -3,7 +3,7 @@ import { HonoConfig } from "../types/types";
 import crypto from "node:crypto";
 import { ImageKitIOResource } from "@prism/types";
 
-export default class UploadController {
+export class UploadController {
   public static async uploadSingle(
     ctx: Context<HonoConfig>,
     file: File,

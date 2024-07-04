@@ -1,10 +1,10 @@
 import { Context } from "hono";
 import { HonoConfig } from "../types/types";
-import validateData from "../utils/validateData";
-import DatabaseManager from "../managers/DatabaseManager";
-import ErrorResponse from "../network/responses/ErrorResponse";
-import TeamResponse from "../network/responses/TeamResponse";
-import Team from "../models/Team";
+import { validateData } from "../utils/validateData";
+import { DatabaseManager } from "../managers/DatabaseManager";
+import { ErrorResponse } from "../network/responses/ErrorResponse";
+import { TeamResponse } from "../network/responses/TeamResponse";
+import { Team } from "../models/Team";
 import {
   CreateTeamRequest,
   CreateTeamRequestSchema,
@@ -17,17 +17,17 @@ import {
   TeamInviteJWTPayload,
   TeamMemberPermissions,
 } from "@prism/types";
-import OkResponse from "../network/responses/OkResponse";
+import { OkResponse } from "../network/responses/OkResponse";
 import crypto from "node:crypto";
-import MailManager from "../managers/MailManager";
+import { MailManager } from "../managers/MailManager";
 import jwt from "@tsndr/cloudflare-worker-jwt";
-import TeamInvite from "../models/TeamInvite";
+import { TeamInvite } from "../models/TeamInvite";
 import { addDays } from "date-fns/addDays";
-import TeamInviteResponse from "../network/responses/TeamInviteResponse";
-import TeamInviteLinkResponse from "../network/responses/TeamInviteLinkResponse";
-import TeamMember from "../models/TeamMember";
+import { TeamInviteResponse } from "../network/responses/TeamInviteResponse";
+import { TeamInviteLinkResponse } from "../network/responses/TeamInviteLinkResponse";
+import { TeamMember } from "../models/TeamMember";
 
-export default class TeamsController {
+export class TeamsController {
   public static async teams(ctx: Context<HonoConfig>) {
     const user = ctx.get("user")!;
     const db = DatabaseManager.getInstance(ctx);
@@ -70,7 +70,6 @@ export default class TeamsController {
 
   public static async getTeamInvite(ctx: Context<HonoConfig>) {
     const token = ctx.req.param("token");
-    const db = DatabaseManager.getInstance(ctx);
 
     if (!token) {
       return ctx.json(new ErrorResponse("token_not_found").toJSON(), 404);
@@ -88,6 +87,8 @@ export default class TeamsController {
       return ctx.json(new ErrorResponse("token_invalid").toJSON(), 400);
     }
 
+    const db = DatabaseManager.getInstance(ctx);
+
     const team = (await db`
         SELECT teams.name as name, team_avatars.image_asset_url as avatar_url, teams.id as id
         FROM teams
@@ -103,7 +104,6 @@ export default class TeamsController {
   }
 
   public static async createTeam(ctx: Context<HonoConfig>) {
-    const user = ctx.get("user")!;
     const body = await ctx.req.json<CreateTeamRequest>();
 
     const data = validateData(CreateTeamRequestSchema, body);
@@ -111,6 +111,8 @@ export default class TeamsController {
     if (Array.isArray(data)) {
       return ctx.json(new ErrorResponse(data).toJSON(), 400);
     }
+
+    const user = ctx.get("user")!;
 
     const db = DatabaseManager.getInstance(ctx);
 
@@ -137,7 +139,6 @@ export default class TeamsController {
   }
 
   public static async sendInvites(ctx: Context<HonoConfig>) {
-    const user = ctx.get("user")!;
     const teamId = ctx.req.param("teamId");
     const body = await ctx.req.json<SendTeamInvitesRequest>();
 
@@ -149,6 +150,8 @@ export default class TeamsController {
     if (Array.isArray(data)) {
       return ctx.json(new ErrorResponse(data).toJSON(), 400);
     }
+
+    const user = ctx.get("user")!;
 
     const db = DatabaseManager.getInstance(ctx);
 
@@ -219,12 +222,13 @@ export default class TeamsController {
   }
 
   public static async joinTeam(ctx: Context<HonoConfig>) {
-    const user = ctx.get("user")!;
     const teamId = ctx.req.param("teamId");
 
     if (!teamId) {
       return ctx.json(new ErrorResponse("team_id_not_found").toJSON(), 404);
     }
+
+    const user = ctx.get("user")!;
 
     const db = DatabaseManager.getInstance(ctx);
 
@@ -257,13 +261,13 @@ export default class TeamsController {
   }
 
   public static async leaveTeam(ctx: Context<HonoConfig>) {
-    const user = ctx.get("user")!;
     const teamId = ctx.req.param("teamId");
 
     if (!teamId) {
       return ctx.json(new ErrorResponse("team_id_not_found").toJSON(), 404);
     }
 
+    const user = ctx.get("user")!;
     const db = DatabaseManager.getInstance(ctx);
 
     const team =
@@ -283,13 +287,13 @@ export default class TeamsController {
   }
 
   public static async deleteTeam(ctx: Context<HonoConfig>) {
-    const user = ctx.get("user")!;
     const teamId = ctx.req.param("teamId");
 
     if (!teamId) {
       return ctx.json(new ErrorResponse("team_id_not_found").toJSON(), 401);
     }
 
+    const user = ctx.get("user")!;
     const db = DatabaseManager.getInstance(ctx);
 
     const team =
@@ -305,13 +309,13 @@ export default class TeamsController {
   }
 
   public static async getTeamInviteLink(ctx: Context<HonoConfig>) {
-    const user = ctx.get("user")!;
     const teamId = ctx.req.param("teamId");
 
     if (!teamId) {
       return ctx.json(new ErrorResponse("team_id_not_found").toJSON(), 401);
     }
 
+    const user = ctx.get("user")!;
     const db = DatabaseManager.getInstance(ctx);
 
     const team =

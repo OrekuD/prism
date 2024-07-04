@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import AuthController from "../controllers/AuthController";
-import GuestMiddleware from "../middlewares/GuestMiddleware";
+import { AuthController } from "../controllers/AuthController";
+import { GuestMiddleware } from "../middlewares/GuestMiddleware";
 
 const router = new Hono();
 
@@ -16,4 +16,4 @@ router.post("/forgot-password", AuthController.forgotPassword);
 router.post("/reset-password", AuthController.resetPassword);
 router.post("/verify-email", AuthController.verifyEmail);
 
-export default router;
+export { router };

@@ -6,7 +6,7 @@ import React from "react";
  * @param minCharactersCallback What to do when query has less than 3 chars (eg. Disable loading indicators)
  * @param searchFunction Callback containing search logic
  */
-export default function useSearch(
+export function useSearch(
   query: string,
   minCharactersCallback: () => void,
   searchFunction: (...args: any[]) => void,

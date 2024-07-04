@@ -1,6 +1,6 @@
 import { ErrorResource } from "@prism/types";
 
-export default class ErrorResponse {
+export class ErrorResponse {
   private errors: Array<string>;
 
   constructor(errors: string | Array<string>) {

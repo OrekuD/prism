@@ -23,26 +23,26 @@ import {
   VerifyEmailRequestSchema,
   UserJWTPayload,
 } from "@prism/types";
-import validateData from "../utils/validateData";
-import DatabaseManager from "../managers/DatabaseManager";
-import User from "../models/User";
+import { validateData } from "../utils/validateData";
+import { DatabaseManager } from "../managers/DatabaseManager";
+import { User } from "../models/User";
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
-import OAuthAccessToken from "../models/OAuthAccessToken";
+import { OAuthAccessToken } from "../models/OAuthAccessToken";
 import jwt, { JwtPayload } from "@tsndr/cloudflare-worker-jwt";
-import AuthResponse from "../network/responses/AuthResponse";
-import ErrorResponse from "../network/responses/ErrorResponse";
-import OkResponse from "../network/responses/OkResponse";
-import LoginAttempt from "../models/LoginAttempt";
+import { AuthResponse } from "../network/responses/AuthResponse";
+import { ErrorResponse } from "../network/responses/ErrorResponse";
+import { OkResponse } from "../network/responses/OkResponse";
+import { LoginAttempt } from "../models/LoginAttempt";
 import { differenceInMinutes } from "date-fns/differenceInMinutes";
-import MailManager from "../managers/MailManager";
+import { MailManager } from "../managers/MailManager";
 import { isPast } from "date-fns/isPast";
 import { addMinutes } from "date-fns/addMinutes";
 import { addDays } from "date-fns/addDays";
 import { addHours } from "date-fns/addHours";
-import OTPSignIn from "../models/OTPSignIn";
+import { OTPSignIn } from "../models/OTPSignIn";
 
-export default class AuthController {
+export class AuthController {
   public static async signIn(ctx: Context<HonoConfig>) {
     const body = await ctx.req.json<SignInRequest>();
 

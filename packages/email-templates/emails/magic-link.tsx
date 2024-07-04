@@ -54,7 +54,7 @@ MagicLink.PreviewProps = {
   signInLink: "https://Prism.com",
 } as MagicLinkProps;
 
-export default MagicLink;
+export MagicLink;
 
 const main = {
   backgroundColor: "#f6f9fc",
