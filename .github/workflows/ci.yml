@@ -21,7 +21,7 @@ jobs:
         run: yarn turbo run build
 
       - name: Setup database
-        run: yarn db:prod-reinstall
+        run: yarn db:reinstall
         working-directory: ./apps/api
 
       - name: Deploy to Cloudflare Workers

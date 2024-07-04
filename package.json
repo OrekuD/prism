@@ -7,12 +7,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "lint": "turbo run lint",
     "test": "turbo run test",
-    "typecheck": "turbo run typecheck",
-    "db:migrate": "cd apps/api && tsx src/database/migrate.ts && cd ../..",
-    "db:drop-tables": "cd apps/api && tsx src/database/drop-tables.ts && cd ../..",
-    "db:generate": "cd apps/api && drizzle-kit generate && cd ../..",
-    "db:reinstall": "cd apps/api && rm -rf drizzle/* && tsx src/database/drop-tables.ts && drizzle-kit generate && tsx src/database/migrate.ts && cd ../..",
-    "db:prod-reinstall": "rm -rf drizzle/* && tsx src/database/drop-tables.ts && drizzle-kit generate && tsx src/database/migrate.ts"
+    "typecheck": "turbo run typecheck"
   },
   "devDependencies": {
     "prettier": "^3.2.5",

@@ -7,10 +7,10 @@
     "start": "wrangler dev",
     "test": "vitest",
     "cf-typegen": "wrangler types",
-    "migrate": "tsx src/database/migrate.ts",
-    "drop-tables": "tsx src/database/drop-tables.ts",
-    "generate": "drizzle-kit generate",
-    "reinstall": "rm -rf drizzle/* && yarn drop-tables && yarn generate && yarn migrate"
+    "db:migrate": "tsx src/database/migrate.ts",
+    "db:drop-tables": "tsx src/database/drop-tables.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:reinstall": "rm -rf drizzle/** && yarn db:drop-tables && yarn db:generate && yarn db:migrate"
   },
   "dependencies": {
     "@hono/node-server": "^1.11.4",
