@@ -10,7 +10,7 @@
     "migrate": "tsx src/database/migrate.ts",
     "drop-tables": "tsx src/database/drop-tables.ts",
     "generate": "drizzle-kit generate",
-    "reinstall": "rm -rf drizzle/* yarn drop-tables && yarn generate && yarn migrate"
+    "reinstall": "rm -rf drizzle/* && yarn drop-tables && yarn generate && yarn migrate"
   },
   "dependencies": {
     "@hono/node-server": "^1.11.4",
