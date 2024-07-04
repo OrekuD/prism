@@ -4,6 +4,10 @@ import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { sql } from "drizzle-orm";
 
+console.log({
+  e: process.env.DATABASE_URL,
+});
+
 config({ path: ".dev.vars" });
 
 const url = `${process.env.DATABASE_URL}?options=project%3D${process.env.PROJECT_NAME}`;

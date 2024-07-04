@@ -21,6 +21,9 @@ jobs:
         run: yarn turbo run build
 
       - name: Setup database
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PROJECT_NAME: ${{ secrets.PROJECT_NAME }}
         run: yarn db:reinstall
         working-directory: ./apps/api
 
