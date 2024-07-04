@@ -1,6 +1,6 @@
 import { OkResource } from "@prism/types";
 
-export default class OkResponse {
+export class OkResponse {
   private message: string;
 
   constructor(message?: string) {

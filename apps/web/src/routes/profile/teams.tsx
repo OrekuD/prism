@@ -7,7 +7,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Search } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { useTeamsQuery } from "@/network/queries/useTeamsQuery";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -24,12 +24,13 @@ import {
 import { CreateTeam } from "@/components/ui/create-team";
 import { useDeleteTeamMutation } from "@/network/mutations/useDeleteTeamMutation";
 import { InviteTeamMembers } from "@/components/ui/invite-team-members";
-import useSearch from "@/hooks/useSearch";
+import { useSearch } from "@/hooks/useSearch";
 import { TeamResource } from "@prism/types";
 import Fuse from "fuse.js";
 import { TeamCard } from "@/components/ui/team-card";
 import { DeleteTeam } from "@/components/ui/delete-team";
 import { LeaveTeam } from "@/components/ui/leave-team";
+import { ValueNoneIcon } from "@radix-ui/react-icons";
 
 export function AccountTeams() {
   const { data, isLoading } = useTeamsQuery();
@@ -65,7 +66,9 @@ export function AccountTeams() {
         <CardHeader className="flex-row items-center justify-between">
           <div>
             <CardTitle>Teams</CardTitle>
-            <CardDescription>Manage the teams you belong to.</CardDescription>
+            <CardDescription className="mt-2">
+              Manage the teams you belong to.
+            </CardDescription>
           </div>
           <CreateTeam
             open={showCreateTeamDialog}
@@ -76,13 +79,21 @@ export function AccountTeams() {
         </CardHeader>
         <CardContent>
           <div className="relative mb-4">
-            <Search className="absolute left-2.5 top-3 h-4 w-4 text-muted-foreground" />
+            <Search className="absolute left-2.5 top-3 size-4 text-muted-foreground" />
             <Input
               placeholder="Search teams..."
               className="pl-8"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
+            {Boolean(searchQuery.trim()) ? (
+              <button
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 size-6 grid place-items-center rounded-full bg-muted"
+                onClick={() => setSearchQuery("")}
+              >
+                <X className="size-4 text-primary" />
+              </button>
+            ) : null}
           </div>
           {isLoading ? (
             <div className="rounded-md border flex items-center gap-3 px-2 h-16">
@@ -111,7 +122,10 @@ export function AccountTeams() {
                       })}
                     </div>
                   ) : (
-                    <>No teams found</>
+                    <div className="grid place-items-center text-center py-8 gap-3 text-sm font-medium">
+                      <ValueNoneIcon className="size-10" />
+                      No teams found
+                    </div>
                   )}
                 </>
               ) : (
@@ -131,7 +145,10 @@ export function AccountTeams() {
                       })}
                     </div>
                   ) : (
-                    <>No teams found</>
+                    <div className="grid place-items-center text-center py-8 gap-3 text-sm font-medium">
+                      <ValueNoneIcon className="size-10" />
+                      No teams found
+                    </div>
                   )}
                 </>
               )}

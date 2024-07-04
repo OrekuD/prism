@@ -52,7 +52,7 @@ ConfirmEmail.PreviewProps = {
   confirmEmailLink: "https://Prism.com",
 } as ConfirmEmailProps;
 
-export default ConfirmEmail;
+export ConfirmEmail;
 
 const main = {
   backgroundColor: "#f6f9fc",

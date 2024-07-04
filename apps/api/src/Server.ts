@@ -1,8 +1,8 @@
 import { cors } from "hono/cors";
-import Router from "./routers/Router";
+import { router as Router } from "./routers/Router";
 import { HonoConfig } from "./types/types";
 import { upgradeWebSocket } from "hono/cloudflare-workers";
-import InjectDatabaseMiddleware from "./middlewares/InjectDatabaseMiddleware";
+import { InjectDatabaseMiddleware } from "./middlewares/InjectDatabaseMiddleware";
 import { swaggerUI } from "@hono/swagger-ui";
 import { OpenAPIHono } from "@hono/zod-openapi";
 

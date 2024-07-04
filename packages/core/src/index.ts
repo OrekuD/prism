@@ -1,3 +1,1 @@
-export function generateID() {
-  return "";
-}
+export * from "./prism-client";

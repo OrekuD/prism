@@ -61,3 +61,9 @@ export type UserResource = {
   role: Roles;
   profile: ProfileResource | null;
 };
+
+export type ProjectResource = {
+  id: string;
+  name: string;
+  slug: string;
+};

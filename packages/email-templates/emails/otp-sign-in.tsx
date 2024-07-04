@@ -46,7 +46,7 @@ OTPSignIn.PreviewProps = {
   signInLink: "https://Prism.com",
 } as OTPSignInProps;
 
-export default OTPSignIn;
+export OTPSignIn;
 
 const main = {
   backgroundColor: "#f6f9fc",

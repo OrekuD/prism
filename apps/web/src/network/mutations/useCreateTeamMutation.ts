@@ -8,7 +8,7 @@ import type {
 } from "@prism/types";
 import { AxiosError } from "axios";
 
-async function createTeams(payload: CreateTeamRequest) {
+async function createTeam(payload: CreateTeamRequest) {
   const url = "/teams";
 
   const response = await axiosInstance.post(url, payload);
@@ -22,7 +22,7 @@ export function useCreateTeamMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: createTeams,
+    mutationFn: createTeam,
     onSuccess: (data: TeamResource) => {
       toast("Team created succesfully");
       const teams: Array<TeamResource> | undefined = queryClient.getQueryData([

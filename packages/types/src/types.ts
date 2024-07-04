@@ -4,6 +4,11 @@ export type JWTPayload = {
   userId: string;
 };
 
+export type UserJWTPayload = {
+  expiryAt: number;
+  userId: string;
+};
+
 export type TeamInviteJWTPayload = {
   teamId: string;
   expiryAt: number;

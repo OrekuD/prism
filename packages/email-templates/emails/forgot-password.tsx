@@ -61,7 +61,7 @@ ForgotPassword.PreviewProps = {
   resetPasswordLink: "https://Prism.com",
 } as ForgotPasswordProps;
 
-export default ForgotPassword;
+export ForgotPassword;
 
 const main = {
   backgroundColor: "#f6f9fc",

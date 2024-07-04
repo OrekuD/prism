@@ -1,5 +1,5 @@
 import React from "react";
-import TeamSwitcher from "./team-switcher";
+import { TeamSwitcher } from "./team-switcher";
 import { UserNav } from "./user-nav";
 import { Link, useLocation } from "react-router-dom";
 import {

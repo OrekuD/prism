@@ -1,8 +1,8 @@
-import User from "../../models/User";
+import { User } from "../../models/User";
 import { UserResource } from "@prism/types";
-import ProfileResponse from "./ProfileResponse";
+import { ProfileResponse } from "./ProfileResponse";
 
-export default class UserResponse {
+export class UserResponse {
   private user: User;
 
   constructor(user: User) {

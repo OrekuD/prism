@@ -1,6 +1,4 @@
-import { InferSelectModel } from 'drizzle-orm';
-import { profilePictures } from '../database/schema/profilePictures';
+import { InferSelectModel } from "drizzle-orm";
+import { profilePictures } from "../database/schema/profilePictures";
 
-type ProfilePicture = InferSelectModel<typeof profilePictures>;
-
-export default ProfilePicture;
+export type ProfilePicture = InferSelectModel<typeof profilePictures>;

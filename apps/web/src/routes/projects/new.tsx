@@ -1,5 +1,5 @@
 import React from "react";
 
-export function NewApp() {
+export function NewProject() {
   return <div>new app</div>;
 }

@@ -149,3 +149,10 @@ export const LeaveTeamRequestSchema = z.strictObject({
 });
 
 export type LeaveTeamRequest = z.infer<typeof LeaveTeamRequestSchema>;
+
+export const CreateProjectRequestSchema = z.strictObject({
+  teamId: z.string(),
+  name: z.string(),
+});
+
+export type CreateProjectRequest = z.infer<typeof CreateProjectRequestSchema>;

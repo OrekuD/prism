@@ -27,7 +27,6 @@ export function useSignOutFromAllSessionsMutation() {
       authenticationStore.setAuthentication(null);
     },
     onError: (error) => {
-      console.log({ error });
       toast("Something went wrong");
     },
   });

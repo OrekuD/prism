@@ -22,11 +22,19 @@ import {
   DropdownMenuTrigger,
 } from "./dropdown-menu";
 
-export default function TeamSwitcher() {
+export function TeamSwitcher() {
   const [open, setOpen] = React.useState(false);
   const [showNewTeamDialog, setShowNewTeamDialog] = React.useState(false);
   const activeTeamStore = useActiveTeamStore();
   const { isLoading, data } = useTeamsQuery();
+
+  React.useEffect(() => {
+    if (!data) return;
+
+    if (activeTeamStore.teamId) return;
+
+    activeTeamStore.setTeamId(data[0].id);
+  }, [data, activeTeamStore?.teamId]);
 
   const activeTeam = React.useMemo(() => {
     if (!data) return null;
@@ -124,7 +132,7 @@ export default function TeamSwitcher() {
                         activeTeamStore.setTeamId(team.value);
                         setOpen(false);
                       }}
-                      className="text-sm"
+                      className="text-sm truncate"
                     >
                       <Avatar className="mr-2 size-5">
                         <AvatarImage src={team.avatar} alt={team.label} />

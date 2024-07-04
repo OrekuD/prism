@@ -1,6 +1,6 @@
 import { ChangeEmailResource } from "@prism/types";
 
-export default class ChangeEmailResponse {
+export class ChangeEmailResponse {
   private email: string;
 
   constructor(email: string) {

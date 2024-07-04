@@ -18,6 +18,6 @@ export function useTeamInviteQuery() {
   return useQuery<TeamInviteResource>({
     queryKey: ["team-invite"],
     queryFn: () => teamInvite(token!),
-    enabled: Boolean(token || ""),
+    enabled: Boolean(token),
   });
 }

@@ -7,13 +7,18 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { CreateNewProject } from "@/components/ui/create-new-project";
 import { Input } from "@/components/ui/input";
+import { useProjectsQuery } from "@/network/queries/useProjectsQuery";
+import { useTeamsQuery } from "@/network/queries/useTeamsQuery";
+import { useActiveTeamStore } from "@/store/activeTeamStore";
+import { useUserStore } from "@/store/userStore";
 import { Search } from "lucide-react";
 import React from "react";
 import { Link } from "react-router-dom";
 import { Line, LineChart, ResponsiveContainer, Tooltip } from "recharts";
 
-const data = [
+const chart = [
   {
     average: 400,
     today: 240,
@@ -44,13 +49,36 @@ const data = [
   },
 ];
 
-export function Apps() {
+export function Projects() {
+  const projectsQuery = useProjectsQuery();
+  const teamsQuery = useTeamsQuery();
+  const activeTeamStore = useActiveTeamStore();
+  const userStore = useUserStore();
+
+  const activeTeam = React.useMemo(() => {
+    if (!teamsQuery.data) return null;
+
+    if (!activeTeamStore.teamId)
+      return teamsQuery.data.filter(({ isPersonal }) => isPersonal)[0];
+
+    return teamsQuery.data.find(({ id }) => id === activeTeamStore.teamId);
+  }, [teamsQuery.data, activeTeamStore.teamId]);
+
+  const hasSettingsPermission = React.useMemo(
+    () => activeTeam?.ownerId === userStore.user?.id,
+    [activeTeam, userStore.user?.id],
+  );
+
+  // console.log({
+  //   data: projectsQuery.data,
+  // });
+
   return (
     <div className="py-4">
       <div className="flex items-center gap-3">
         <form className="flex-1">
           <div className="relative">
-            <Search className="absolute left-2.5 top-3 h-4 w-4 text-muted-foreground" />
+            <Search className="absolute left-2.5 top-3 size-4 text-muted-foreground" />
             <Input
               type="search"
               placeholder="Search apps..."
@@ -58,20 +86,22 @@ export function Apps() {
             />
           </div>
         </form>
-        <Button>New App</Button>
+        <CreateNewProject>
+          <Button>New App</Button>
+        </CreateNewProject>
+        {hasSettingsPermission ? <Button>Team Settings</Button> : null}
       </div>
       <div className="grid grid-cols-3 py-4">
-        <Link to="/apps/dd">
+        <Link to="/projects/dd">
           <Card className="">
             <CardHeader>
-              <CardTitle className="text-md">App Name</CardTitle>
-              <CardDescription>App description</CardDescription>
+              <CardTitle className="text-md">App</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="h-[200px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart
-                    data={data}
+                    data={chart}
                     margin={{
                       top: 5,
                       right: 10,

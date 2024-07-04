@@ -21,27 +21,28 @@ import {
   SignUpRequestSchema,
   VerifyEmailRequest,
   VerifyEmailRequestSchema,
+  UserJWTPayload,
 } from "@prism/types";
-import validateData from "../utils/validateData";
-import DatabaseManager from "../managers/DatabaseManager";
-import User from "../models/User";
+import { validateData } from "../utils/validateData";
+import { DatabaseManager } from "../managers/DatabaseManager";
+import { User } from "../models/User";
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
-import OAuthAccessToken from "../models/OAuthAccessToken";
+import { OAuthAccessToken } from "../models/OAuthAccessToken";
 import jwt, { JwtPayload } from "@tsndr/cloudflare-worker-jwt";
-import AuthResponse from "../network/responses/AuthResponse";
-import ErrorResponse from "../network/responses/ErrorResponse";
-import OkResponse from "../network/responses/OkResponse";
-import LoginAttempt from "../models/LoginAttempt";
+import { AuthResponse } from "../network/responses/AuthResponse";
+import { ErrorResponse } from "../network/responses/ErrorResponse";
+import { OkResponse } from "../network/responses/OkResponse";
+import { LoginAttempt } from "../models/LoginAttempt";
 import { differenceInMinutes } from "date-fns/differenceInMinutes";
-import MailManager from "../managers/MailManager";
+import { MailManager } from "../managers/MailManager";
 import { isPast } from "date-fns/isPast";
 import { addMinutes } from "date-fns/addMinutes";
 import { addDays } from "date-fns/addDays";
 import { addHours } from "date-fns/addHours";
-import OTPSignIn from "../models/OTPSignIn";
+import { OTPSignIn } from "../models/OTPSignIn";
 
-export default class AuthController {
+export class AuthController {
   public static async signIn(ctx: Context<HonoConfig>) {
     const body = await ctx.req.json<SignInRequest>();
 
@@ -88,6 +89,7 @@ export default class AuthController {
 
     if (
       loginAttempts.length > 0 &&
+      loginAttempts[0].number_of_attempts >= 10 &&
       Math.abs(
         differenceInMinutes(new Date(), new Date(loginAttempts[0].updated_at)),
       ) < 30
@@ -462,9 +464,9 @@ export default class AuthController {
       return ctx.json(new ErrorResponse("reset_token_invalid").toJSON(), 400);
     }
 
-    const decodedData = jwt.decode<JWTPayload>(data.resetPasswordToken);
+    const decodedData = jwt.decode<UserJWTPayload>(data.resetPasswordToken);
 
-    if (!decodedData.payload?.token) {
+    if (!decodedData.payload?.userId) {
       return ctx.json(new ErrorResponse("reset_token_invalid").toJSON(), 400);
     }
 
@@ -497,7 +499,7 @@ export default class AuthController {
 
     const user = (await DatabaseManager.getInstance(ctx)`
 			SELECT
-				users.id as id
+				users.id as id,
 				json_build_object(
 					'first_name', profiles.first_name
 				) AS profile
@@ -514,6 +516,7 @@ export default class AuthController {
       ctx,
       user[0].id,
     );
+
     await MailManager.dispatch(
       ctx,
       {
@@ -526,7 +529,7 @@ export default class AuthController {
       user[0].email,
     );
 
-    return ctx.json(new OkResponse().toJSON());
+    return ctx.json(new OkResponse(resetLink).toJSON());
   }
 
   public static async _authenticate(ctx: Context<HonoConfig>, user: User) {
@@ -630,11 +633,10 @@ export default class AuthController {
     const accessToken = crypto.randomBytes(128).toString("hex");
     const expiryAt = addMinutes(new Date(), 10);
 
-    const jwtToken = await jwt.sign<JWTPayload>(
+    const jwtToken = await jwt.sign<UserJWTPayload>(
       {
         expiryAt: expiryAt.getTime(),
         userId,
-        token: accessToken,
       },
       ctx.env.JWT_SECRET_KEY,
       {
@@ -649,14 +651,12 @@ export default class AuthController {
     ctx: Context<HonoConfig>,
     userId: string,
   ) {
-    const accessToken = crypto.randomBytes(128).toString("hex");
     const expiryAt = addHours(new Date(), 8);
 
-    const jwtToken = await jwt.sign<JWTPayload>(
+    const jwtToken = await jwt.sign<UserJWTPayload>(
       {
         expiryAt: expiryAt.getTime(),
         userId,
-        token: accessToken,
       },
       ctx.env.JWT_SECRET_KEY,
       {

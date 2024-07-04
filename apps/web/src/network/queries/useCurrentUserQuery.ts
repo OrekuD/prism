@@ -23,6 +23,6 @@ export function useCurrentUserQuery() {
     meta: {
       logOut: true,
     },
-    enabled: Boolean(localStorage.getItem(LocalStorageKeys.TOKEN) || ""),
+    enabled: Boolean(localStorage.getItem(LocalStorageKeys.TOKEN)),
   });
 }

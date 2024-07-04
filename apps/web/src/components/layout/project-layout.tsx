@@ -21,7 +21,7 @@ const tabs = [
 
 const projectId = "ddd";
 
-export function AppLayout() {
+export function ProjectLayout() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
 

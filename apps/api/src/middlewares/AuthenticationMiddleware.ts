@@ -3,11 +3,11 @@ import { createMiddleware } from "hono/factory";
 import { HonoConfig } from "../types/types";
 import { Context } from "hono";
 import jwt from "@tsndr/cloudflare-worker-jwt";
-import DatabaseManager from "../managers/DatabaseManager";
-import User from "../models/User";
-import ErrorResponse from "../network/responses/ErrorResponse";
+import { DatabaseManager } from "../managers/DatabaseManager";
+import { User } from "../models/User";
+import { ErrorResponse } from "../network/responses/ErrorResponse";
 
-const AuthenticationMiddleware = createMiddleware(
+export const AuthenticationMiddleware = createMiddleware(
   async (ctx: Context<HonoConfig>, next) => {
     try {
       const authHeaderValue = ctx.req.header("Authorization");
@@ -77,5 +77,3 @@ const AuthenticationMiddleware = createMiddleware(
     await next();
   },
 );
-
-export default AuthenticationMiddleware;

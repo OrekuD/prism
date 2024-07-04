@@ -10,7 +10,7 @@ import {
   generateWelcomeTemplate,
 } from "../utils/generateEmailTemplates";
 
-export default class MailManager {
+export class MailManager {
   private static resend: Resend;
 
   public static async dispatch(

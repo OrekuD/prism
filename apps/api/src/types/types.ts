@@ -1,7 +1,7 @@
 import { Client, NeonQueryFunction } from "@neondatabase/serverless";
 import { NeonDatabase } from "drizzle-orm/neon-serverless";
 import { HonoRequest } from "hono";
-import User from "../models/User";
+import { User } from "../models/User";
 import { KVNamespace } from "@cloudflare/workers-types/experimental";
 
 export type Bindings = {
@@ -48,6 +48,7 @@ export class DatabaseTables {
   static TEAM_MEMBERS = "team_members";
   static TEAM_AVATARS = "team_avatars";
   static TEAM_INVITES = "team_invites";
+  static PROJECTS = "projects";
 }
 
 export type CorrectTimeStamps<T> = T & {

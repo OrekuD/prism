@@ -1,6 +1,6 @@
 import { ProfilePictureResource } from "@prism/types";
 
-export default class ProfilePictureResponse {
+export class ProfilePictureResponse {
   private profilePicture: string;
 
   constructor(profilePicture: string) {

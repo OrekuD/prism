@@ -1,7 +1,7 @@
 import { TeamResource } from "@prism/types";
-import Team from "../../models/Team";
+import { Team } from "../../models/Team";
 
-export default class TeamResponse {
+export class TeamResponse {
   private team: Team;
 
   constructor(team: Team) {
