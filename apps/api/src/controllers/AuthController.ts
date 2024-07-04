@@ -89,6 +89,7 @@ export default class AuthController {
 
     if (
       loginAttempts.length > 0 &&
+      loginAttempts[0].number_of_attempts >= 10 &&
       Math.abs(
         differenceInMinutes(new Date(), new Date(loginAttempts[0].updated_at)),
       ) < 30

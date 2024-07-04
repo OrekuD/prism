@@ -26,6 +26,7 @@ import { ResetPassword } from "./routes/auth/reset-password";
 import { useAuthenticationStore } from "./store/authenticationStore";
 import { useRefreshUser } from "./hooks/useRefreshUser";
 import { JoinTeam } from "./routes/teams/join-team";
+import { usePrism } from "@prism/react";
 
 const defaultRouter = createBrowserRouter(
   createRoutesFromElements(
@@ -70,6 +71,7 @@ const authenticatedRouter = createBrowserRouter(
 
 export default function App() {
   const authenticationStore = useAuthenticationStore();
+  const { message } = usePrism();
 
   useRefreshUser();
 

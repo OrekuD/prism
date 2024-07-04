@@ -1,5 +1,5 @@
 {
-  "name": "@prism/web",
+  "name": "@prism/react",
   "version": "0.0.1",
   "license": "MIT",
   "scripts": {
@@ -10,7 +10,15 @@
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
+  "peerDependencies": {
+    "react": "^18.0.0"
+  },
   "devDependencies": {
+    "@prism/core": "*",
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
     "tsup": "^8.1.0",
     "typescript": "^5.5.2"
   }

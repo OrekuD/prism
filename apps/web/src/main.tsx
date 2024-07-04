@@ -12,6 +12,8 @@ import { ThemeProvider } from "./components/theme-provider";
 import { Toaster } from "./components/ui/sonner";
 import { toast } from "sonner";
 import { LocalStorageKeys } from "./constants/LocalStorageKeys";
+import { PrismProvider } from "@prism/react";
+import { PrismClient } from "@prism/core";
 
 const client = new QueryClient({
   queryCache: new QueryCache({
@@ -27,6 +29,8 @@ const client = new QueryClient({
   },
 });
 
+const prism = new PrismClient("");
+
 const el = document.getElementById("root");
 if (el) {
   const root = createRoot(el);
@@ -36,10 +40,12 @@ if (el) {
         defaultTheme="light"
         storageKey={LocalStorageKeys.THEME_VALUE}
       >
-        <QueryClientProvider client={client}>
-          <App />
-          <Toaster />
-        </QueryClientProvider>
+        <PrismProvider client={prism}>
+          <QueryClientProvider client={client}>
+            <App />
+            <Toaster />
+          </QueryClientProvider>
+        </PrismProvider>
       </ThemeProvider>
     </React.StrictMode>,
   );
