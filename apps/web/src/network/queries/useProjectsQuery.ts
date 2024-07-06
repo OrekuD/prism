@@ -5,7 +5,7 @@ import { ProjectResource } from "@prism/types";
 import { useQuery } from "@tanstack/react-query";
 
 async function projects(teamId: string) {
-  const response = await axiosInstance.get(`/projects/${teamId}`);
+  const response = await axiosInstance.get(`/teams/${teamId}/projects`);
 
   if (response.status === 200) {
     return response.data;
@@ -18,5 +18,6 @@ export function useProjectsQuery() {
     queryFn: () => projects(teamId!),
     enabled:
       Boolean(localStorage.getItem(LocalStorageKeys.TOKEN)) && Boolean(teamId),
+    refetchOnWindowFocus: false,
   });
 }

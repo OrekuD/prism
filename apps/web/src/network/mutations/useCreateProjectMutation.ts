@@ -25,8 +25,11 @@ export function useCreateProjectMutation() {
 
   return useMutation({
     mutationFn: createProject,
-    onSuccess: (data: OkResource) => {
+    onSuccess: (data: OkResource, variables) => {
       toast("Project created succesfully");
+      queryClient.invalidateQueries({
+        queryKey: ["projects", variables.teamId],
+      });
     },
     onError: (error: AxiosError<ErrorResource>) => {
       if (
@@ -36,8 +39,10 @@ export function useCreateProjectMutation() {
         toast("Something went wrong");
       } else {
         switch (error.response.data.errors[0]) {
-          case "":
-            toast("You need to upgrade to the Pro plan");
+          case "cannot_create_project":
+            toast(
+              "You do not have permission to create a project for this team.",
+            );
             break;
           default:
             toast("Something went wrong");

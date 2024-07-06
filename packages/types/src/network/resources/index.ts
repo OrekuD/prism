@@ -67,3 +67,11 @@ export type ProjectResource = {
   name: string;
   slug: string;
 };
+
+export type ProjectDetailedResource = {
+  id: string;
+  name: string;
+  slug: string;
+  apiKey: string | null;
+  teamId: string;
+};

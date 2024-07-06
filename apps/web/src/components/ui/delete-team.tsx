@@ -28,13 +28,14 @@ export function DeleteTeam({ deleteTeamId, setDeleteTeamId }: Props) {
         <DialogHeader>
           <DialogTitle>Delete Team</DialogTitle>
           <DialogDescription>
-            All apps associated with this team will also be deleted. This action
-            is irreversible.
+            All projects associated with this team will also be deleted. This
+            action is irreversible.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button
             variant="outline"
+            disabled={deleteTeamMutation.isPending}
             onClick={() => {
               setDeleteTeamId("");
             }}

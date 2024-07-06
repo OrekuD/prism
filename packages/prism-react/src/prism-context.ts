@@ -1,3 +1,9 @@
+import { PrismClient } from "@prism/core";
 import React from "react";
 
-export const PrismProviderContext = React.createContext<boolean | null>(null);
+type PrismProviderContextValue = {
+  client: PrismClient;
+};
+
+export const PrismProviderContext =
+  React.createContext<PrismProviderContextValue | null>(null);

@@ -32,8 +32,8 @@ export function LeaveTeam({
         <DialogHeader>
           <DialogTitle>Leave Team</DialogTitle>
           <DialogDescription>
-            You will lose access to this team and all apps associated to this
-            team.
+            You will lose access to this team and all projects associated to
+            this team.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

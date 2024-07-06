@@ -26,6 +26,7 @@ import { addDays } from "date-fns/addDays";
 import { TeamInviteResponse } from "../network/responses/TeamInviteResponse";
 import { TeamInviteLinkResponse } from "../network/responses/TeamInviteLinkResponse";
 import { TeamMember } from "../models/TeamMember";
+import { ProjectResponse } from "../network/responses/ProjectResponse";
 
 export class TeamsController {
   public static async teams(ctx: Context<HonoConfig>) {
@@ -306,6 +307,39 @@ export class TeamsController {
     await db`DELETE FROM teams WHERE id = ${teamId} `;
 
     return ctx.json(new OkResponse().toJSON());
+  }
+
+  public static async projects(ctx: Context<HonoConfig>) {
+    const teamId = ctx.req.param("teamId");
+
+    if (!teamId) {
+      return ctx.json(new ErrorResponse("team_id_not_found").toJSON(), 400);
+    }
+
+    const user = ctx.get("user")!;
+
+    const db = DatabaseManager.getInstance(ctx);
+
+    const team =
+      (await db`SELECT owner_id FROM teams WHERE id = ${teamId}`) as Array<Team>;
+
+    if (team.length === 0) {
+      return ctx.json(new ErrorResponse("team_not_found").toJSON(), 400);
+    }
+
+    const teamMembers =
+      await db`SELECT id FROM team_members WHERE team_id = ${teamId} AND user_id = ${user.id}`;
+
+    if (teamMembers.length === 0 && team[0].owner_id !== user.id) {
+      return ctx.json([]); // or return error instead?
+    }
+
+    const projects =
+      (await db`SELECT id, slug, name FROM projects WHERE team_id = ${teamId} ORDER BY created_at DESC `) as Array<Project>;
+
+    return ctx.json(
+      projects.map((project) => new ProjectResponse(project).toJSON()),
+    );
   }
 
   public static async getTeamInviteLink(ctx: Context<HonoConfig>) {

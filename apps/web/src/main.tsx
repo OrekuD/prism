@@ -29,7 +29,7 @@ const client = new QueryClient({
   },
 });
 
-const prism = new PrismClient("");
+const prism = new PrismClient("key");
 
 const el = document.getElementById("root");
 if (el) {

@@ -10,6 +10,7 @@ router.use(AuthenticationMiddleware);
 router.get("/", TeamsController.teams);
 router.post("/", TeamsController.createTeam);
 router.get("/:teamId/invite-link", TeamsController.getTeamInviteLink);
+router.get("/:teamId/projects", TeamsController.projects);
 router.delete("/:teamId", TeamsController.deleteTeam);
 router.post("/:teamId/send-invites", TeamsController.sendInvites);
 router.post("/:teamId/join", TeamsController.joinTeam);

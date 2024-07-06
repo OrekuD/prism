@@ -15,7 +15,6 @@ import { NewProject } from "./routes/projects/new";
 import { ProjectLayout } from "./components/layout/project-layout";
 import { ProjectSummary } from "./routes/projects/project/summary";
 import { ProjectEvents } from "./routes/projects/project/events";
-import { ProjectSettings } from "./routes/projects/project/settings";
 import { AccountGeneral } from "./routes/profile/general";
 import { AccountSecurity } from "./routes/profile/security";
 import { AccountAuthentication } from "./routes/profile/authentication";
@@ -27,6 +26,11 @@ import { useAuthenticationStore } from "./store/authenticationStore";
 import { useRefreshUser } from "./hooks/useRefreshUser";
 import { JoinTeam } from "./routes/teams/join-team";
 import { usePrism } from "@prism/react";
+import { ProjectSettingsLayout } from "./components/layout/project-settings-layout";
+import { ProjectSettingsApiKeys } from "./routes/projects/project/settings/api-keys";
+import { ProjectSettingsGeneral } from "./routes/projects/project/settings/general";
+
+// try sqlite in memory as redis-like db
 
 const defaultRouter = createBrowserRouter(
   createRoutesFromElements(
@@ -55,11 +59,16 @@ const authenticatedRouter = createBrowserRouter(
         <Route path=":slug" element={<ProjectLayout />}>
           <Route path="" element={<ProjectSummary />} />
           <Route path="events" element={<ProjectEvents />} />
-          <Route path="settings" element={<ProjectSettings />} />
+          <Route path="settings" element={<ProjectSettingsLayout />}>
+            <Route path="" element={<Navigate to="general" />} />
+            <Route path="general" element={<ProjectSettingsGeneral />} />
+            <Route path="api-keys" element={<ProjectSettingsApiKeys />} />
+          </Route>
         </Route>
       </Route>
       <Route path="account" element={<AccountLayout />}>
-        <Route path="" element={<AccountGeneral />} />
+        <Route path="" element={<Navigate to="general" />} />
+        <Route path="general" element={<AccountGeneral />} />
         <Route path="security" element={<AccountSecurity />} />
         <Route path="authentication" element={<AccountAuthentication />} />
         <Route path="teams" element={<AccountTeams />} />
@@ -71,9 +80,13 @@ const authenticatedRouter = createBrowserRouter(
 
 export function App() {
   const authenticationStore = useAuthenticationStore();
-  const { message } = usePrism();
+  const { logEvent, logCustomEvent } = usePrism();
 
   useRefreshUser();
+
+  React.useEffect(() => {
+    // logEvent()
+  }, []);
 
   return (
     <RouterProvider

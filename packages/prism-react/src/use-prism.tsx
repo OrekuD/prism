@@ -8,7 +8,10 @@ export function usePrism() {
     throw new Error(`"usePrism" must be used within a PrismProvider`);
   }
 
+  const { client } = context;
+
   return {
-    message: "ok",
+    logEvent: client.logEvent.bind(client),
+    logCustomEvent: client.logCustomEvent.bind(client),
   };
 }

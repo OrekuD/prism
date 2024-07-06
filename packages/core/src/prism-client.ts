@@ -1,3 +1,5 @@
+import { AppEvent } from "./types";
+
 export class PrismClient {
   private readonly apiKey: string;
 
@@ -5,18 +7,11 @@ export class PrismClient {
     this.apiKey = apiKey;
   }
 
-  // private test() {
-  //   function logPathname(): void {
-  //     console.log("Current pathname:", window.location.pathname);
-  //   }
+  public logEvent(event: AppEvent) {
+    console.log({ event, key: this.apiKey });
+  }
 
-  //   window.addEventListener("popstate", logPathname);
-
-  //   const observer = new MutationObserver(logPathname);
-
-  //   observer.observe(document.querySelector("body")!, {
-  //     childList: true,
-  //     subtree: true,
-  //   });
-  // }
+  public logCustomEvent(event: string) {
+    console.log({ event, key: this.apiKey });
+  }
 }
