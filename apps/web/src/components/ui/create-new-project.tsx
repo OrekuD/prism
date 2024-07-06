@@ -24,13 +24,16 @@ import { useTeamInviteLinkQuery } from "@/network/queries/useTeamInviteLinkQuery
 import { toast } from "sonner";
 import { useCreateProjectMutation } from "@/network/mutations/useCreateProjectMutation";
 import { Label } from "./label";
+import { useActiveTeamStore } from "@/store/activeTeamStore";
 
 const createProjectFormSchema = z.object({
   name: z.string(),
 });
 
 export function CreateNewProject(props: React.PropsWithChildren) {
+  const [open, setOpen] = React.useState(false);
   const createProjectMutation = useCreateProjectMutation();
+  const { teamId } = useActiveTeamStore();
 
   const createNewProjectForm = useForm({
     resolver: zodResolver(createProjectFormSchema),
@@ -39,10 +42,20 @@ export function CreateNewProject(props: React.PropsWithChildren) {
     },
   });
 
-  function onSubmit(values: z.infer<typeof createProjectFormSchema>) {}
+  async function onSubmit(values: z.infer<typeof createProjectFormSchema>) {
+    const { message } = await createProjectMutation.mutateAsync({
+      teamId: teamId!,
+      name: values.name,
+    });
+
+    if (message) {
+      setOpen(false);
+      createNewProjectForm.reset();
+    }
+  }
 
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{props.children}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
@@ -53,7 +66,7 @@ export function CreateNewProject(props: React.PropsWithChildren) {
           <div className="w-full space-y-4">
             <Form {...createNewProjectForm}>
               <form
-                className="w-full flex items-center gap-2"
+                className=""
                 onSubmit={createNewProjectForm.handleSubmit(onSubmit)}
               >
                 <FormField
@@ -75,39 +88,33 @@ export function CreateNewProject(props: React.PropsWithChildren) {
                     </FormItem>
                   )}
                 />
+                <div className="flex items-center justify-end mt-5 gap-3">
+                  <DialogClose asChild>
+                    <Button
+                      variant="outline"
+                      disabled={createProjectMutation.isPending}
+                      onClick={() => {
+                        createNewProjectForm.reset();
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </DialogClose>
+                  <Button
+                    disabled={createProjectMutation.isPending}
+                    type="submit"
+                  >
+                    {createProjectMutation.isPending ? (
+                      <LoadingSpinner />
+                    ) : (
+                      "Create"
+                    )}
+                  </Button>
+                </div>
               </form>
             </Form>
           </div>
         </div>
-        <DialogFooter className="items-center">
-          <DialogClose asChild>
-            <Button
-              variant="outline"
-              disabled={createProjectMutation.isPending}
-              onClick={() => {
-                createNewProjectForm.reset();
-              }}
-            >
-              Cancel
-            </Button>
-          </DialogClose>
-          <Button
-            disabled={createProjectMutation.isPending}
-            onClick={async () => {
-              // const { message } = await inviteTeamMembersMutation.mutateAsync({
-              //   emails,
-              //   teamId: props.teamId,
-              // });
-              // if (message) {
-              //   setEmails([]);
-              //   inviteUserForm.reset();
-              //   props.setTeamId("");
-              // }
-            }}
-          >
-            {createProjectMutation.isPending ? <LoadingSpinner /> : "Create"}
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

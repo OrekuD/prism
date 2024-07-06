@@ -32,7 +32,11 @@ export class PrismProvider extends React.Component<PrismProviderProps> {
 
   render() {
     return (
-      <PrismProviderContext.Provider value>
+      <PrismProviderContext.Provider
+        value={{
+          client: this.props.client,
+        }}
+      >
         {this.props.children}
       </PrismProviderContext.Provider>
     );

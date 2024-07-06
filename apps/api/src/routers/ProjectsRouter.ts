@@ -5,7 +5,7 @@ import { AuthenticationMiddleware } from "../middlewares/AuthenticationMiddlewar
 const router = new Hono();
 
 router.use(AuthenticationMiddleware);
-router.get("/:teamId", ProjectsController.projects);
+router.get("/:slug", ProjectsController.getProjectBySlug);
 router.post("/:teamId", ProjectsController.createProject);
 router.delete("/:projectId", ProjectsController.deleteProject);
 

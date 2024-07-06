@@ -49,6 +49,7 @@ export class DatabaseTables {
   static TEAM_AVATARS = "team_avatars";
   static TEAM_INVITES = "team_invites";
   static PROJECTS = "projects";
+  static PROJECT_API_KEYS = "project_api_keys";
 }
 
 export type CorrectTimeStamps<T> = T & {

@@ -1,5 +1,5 @@
 import { Context } from "hono";
-import { HonoConfig } from "../types/types";
+import { DatabaseTables, HonoConfig } from "../types/types";
 import { DatabaseManager } from "../managers/DatabaseManager";
 import { generateProjectSlug } from "../utils/generateProjectSlug";
 import {
@@ -14,40 +14,10 @@ import { TeamMember } from "../models/TeamMember";
 import { OkResponse } from "../network/responses/OkResponse";
 import { Project } from "../models/Project";
 import { ProjectResponse } from "../network/responses/ProjectResponse";
+import { ProjectDetailedResponse } from "../network/responses/ProjectDetailedResponse";
+import { generateApiKey } from "../utils/generateApiKey";
 
 export class ProjectsController {
-  public static async projects(ctx: Context<HonoConfig>) {
-    const teamId = ctx.req.param("teamId");
-
-    if (!teamId) {
-      return ctx.json(new ErrorResponse("team_id_not_found").toJSON(), 400);
-    }
-
-    const user = ctx.get("user")!;
-
-    const db = DatabaseManager.getInstance(ctx);
-
-    const team =
-      (await db`SELECT owner_id FROM teams WHERE id = ${teamId}`) as Array<Team>;
-
-    if (team.length === 0) {
-      return ctx.json(new ErrorResponse("team_not_found").toJSON(), 400);
-    }
-    const teamMembers =
-      await db`SELECT id FROM team_members WHERE team_id = ${teamId} AND user_id = ${user.id}`;
-
-    if (teamMembers.length === 0 && team[0].owner_id !== user.id) {
-      return ctx.json([]); // or return error instead?
-    }
-
-    const projects =
-      (await db`SELECT id, slug, name FROM projects WHERE team_id = ${teamId}`) as Array<Project>;
-
-    return ctx.json(
-      projects.map((project) => new ProjectResponse(project).toJSON()),
-    );
-  }
-
   public static async createProject(ctx: Context<HonoConfig>) {
     const body = await ctx.req.json<CreateProjectRequest>();
 
@@ -68,27 +38,132 @@ export class ProjectsController {
       return ctx.json(new ErrorResponse("team_not_found").toJSON(), 404);
     }
 
-    const hasPermission = await ProjectsController._hasPermission(ctx, team[0]);
+    const hasPermission = await ProjectsController._hasAdminPermission(
+      ctx,
+      team[0],
+    );
 
     if (!hasPermission) {
-      return ctx.json(new ErrorResponse("no_permission").toJSON(), 400);
+      return ctx.json(new ErrorResponse("cannot_create_project").toJSON(), 400);
     }
 
     const projectSlug = generateProjectSlug();
 
-    await db`INSERT INTO projects (name, team_id, creator_id, project_slug) VALUES (${data.name}, ${data.teamId}, ${user.id}, ${projectSlug})`;
+    const project =
+      (await db`INSERT INTO projects (name, team_id, creator_id, slug) VALUES (${data.name}, ${data.teamId}, ${user.id}, ${projectSlug}) RETURNING id`) as Array<Project>;
+
+    if (project.length === 0) {
+      return ctx.json(new ErrorResponse("db_error").toJSON(), 500);
+    }
+
+    await db`INSERT INTO project_api_keys (team_id, project_id, key) VALUES (${data.teamId}, ${project[0].id}, ${generateApiKey()})`;
 
     return ctx.json(new OkResponse().toJSON());
   }
 
   public static async deleteProject(ctx: Context<HonoConfig>) {
+    const projectId = ctx.req.param("projectId");
+
+    if (!projectId) {
+      return ctx.json(new ErrorResponse("project_id_not_found").toJSON(), 404);
+    }
+
     const user = ctx.get("user")!;
     const db = DatabaseManager.getInstance(ctx);
 
-    return ctx.json("");
+    const project =
+      (await db`SELECT id, team_id FROM projects WHERE id = ${projectId}`) as Array<Project>;
+
+    if (project.length === 0) {
+      return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
+    }
+
+    const team =
+      (await db`SELECT id, owner_id FROM teams WHERE id = ${project[0].team_id}`) as Array<Team>;
+
+    if (team.length === 0) {
+      return ctx.json(new ErrorResponse("team_not_found").toJSON(), 404);
+    }
+
+    const hasPermission = await ProjectsController._hasAdminPermission(
+      ctx,
+      team[0],
+    );
+
+    if (!hasPermission) {
+      return ctx.json(new ErrorResponse("cannot_delete_project").toJSON(), 404);
+    }
+
+    await db`DELETE FROM projects WHERE id = ${projectId}`;
+
+    return ctx.json(new OkResponse().toJSON());
+  }
+
+  public static async getProjectBySlug(ctx: Context<HonoConfig>) {
+    const slug = ctx.req.param("slug");
+
+    if (!slug) {
+      return ctx.json(new ErrorResponse("slug_not_found").toJSON(), 404);
+    }
+
+    const project = (await DatabaseManager.getInstance(ctx)`
+      SELECT
+        projects.id as id,
+        projects.name as name,
+        projects.team_id as team_id,
+        projects.slug as slug,
+        project_api_keys.key as api_key
+      FROM projects
+      LEFT JOIN project_api_keys
+      ON projects.id = project_api_keys.project_id
+      WHERE projects.slug = ${slug}`) as Array<Project>;
+
+    if (project.length === 0) {
+      return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
+    }
+
+    const hasPermission = await ProjectsController._hasPermission(
+      ctx,
+      project[0].team_id,
+    );
+
+    if (!hasPermission) {
+      return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
+    }
+
+    return ctx.json(new ProjectDetailedResponse(project[0]).toJSON());
   }
 
   private static async _hasPermission(
+    ctx: Context<HonoConfig>,
+    teamId: string,
+  ): Promise<boolean> {
+    const user = ctx.get("user")!;
+
+    const team = (await DatabaseManager.getInstance(
+      ctx,
+    )`SELECT owner_id, id FROM teams WHERE id = ${teamId}`) as Array<Team>;
+
+    if (team.length === 0) {
+      return false;
+    }
+
+    if (user.id === team[0].owner_id) {
+      return true;
+    }
+
+    const teamMember = (await DatabaseManager.getInstance(
+      ctx,
+    )`SELECT id FROM team_members WHERE user_id = ${user.id} AND team_id = ${team[0].id}`) as Array<TeamMember>;
+
+    if (teamMember.length === 0) {
+      return false;
+    }
+
+    return true;
+  }
+
+  private static async _hasAdminPermission(
     ctx: Context<HonoConfig>,
     team: Team,
   ): Promise<boolean> {
