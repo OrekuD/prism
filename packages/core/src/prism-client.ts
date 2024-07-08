@@ -55,7 +55,7 @@ export class PrismClient {
 
   private async getLocation() {
     try {
-      const response = await (await fetch("http://ip-api.com/json")).json();
+      const response = await (await fetch("https://ip-api.com/json")).json();
 
       return response.countryCode as string;
     } catch (error) {}
