@@ -21,6 +21,7 @@ jobs:
         run: yarn turbo run build
 
       - name: Setup database
+        if: false
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           PROJECT_NAME: ${{ secrets.PROJECT_NAME }}

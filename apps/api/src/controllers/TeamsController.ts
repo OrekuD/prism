@@ -60,8 +60,6 @@ export class TeamsController {
         ON teams.id = team_avatars.team_id
         WHERE team_members.user_id = ${user.id}`) as Array<Team>;
 
-    // console.log({ userTeams, userCreatedTeams });
-
     return ctx.json(
       [...userCreatedTeams, ...userTeams].map((team) =>
         new TeamResponse(team).toJSON(),

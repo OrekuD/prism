@@ -8,6 +8,8 @@
     "test": "vitest",
     "cf-typegen": "wrangler types",
     "db:migrate": "tsx src/database/migrate.ts",
+    "db:migrate-analytics": "npx wrangler d1 execute prism-analytics --local --file=./d1/schema.sql",
+    "db:migrate-analytics:prod": "npx wrangler d1 execute prism-analytics --remote --file=./d1/schema.sql",
     "db:drop-tables": "tsx src/database/drop-tables.ts",
     "db:generate": "drizzle-kit generate",
     "db:reinstall": "rm -rf drizzle/** && yarn db:drop-tables && yarn db:generate && yarn db:migrate"

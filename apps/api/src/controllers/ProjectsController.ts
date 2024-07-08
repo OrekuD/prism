@@ -5,6 +5,7 @@ import { generateProjectSlug } from "../utils/generateProjectSlug";
 import {
   CreateProjectRequest,
   CreateProjectRequestSchema,
+  ProjectDetailedRequest,
   TeamMemberPermissions,
 } from "@prism/types";
 import { validateData } from "../utils/validateData";
@@ -16,6 +17,11 @@ import { Project } from "../models/Project";
 import { ProjectResponse } from "../network/responses/ProjectResponse";
 import { ProjectDetailedResponse } from "../network/responses/ProjectDetailedResponse";
 import { generateApiKey } from "../utils/generateApiKey";
+import { Session } from "../models/Session";
+import { groupSessionsByDateAndPlatform } from "../utils/groupSessionsByDateAndPlatform";
+import { groupByBrowsers } from "../utils/groupByBrowsers";
+import { groupByOs } from "../utils/groupByOs";
+import { groupByCountry } from "../utils/groupByCountry";
 
 export class ProjectsController {
   public static async createProject(ctx: Context<HonoConfig>) {
@@ -101,6 +107,7 @@ export class ProjectsController {
 
   public static async getProjectBySlug(ctx: Context<HonoConfig>) {
     const slug = ctx.req.param("slug");
+    const query: ProjectDetailedRequest["duration"] = ctx.req.query("duration");
 
     if (!slug) {
       return ctx.json(new ErrorResponse("slug_not_found").toJSON(), 404);
@@ -131,7 +138,55 @@ export class ProjectsController {
       return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
     }
 
-    return ctx.json(new ProjectDetailedResponse(project[0]).toJSON());
+    let preparedStatement =
+      "SELECT * FROM sessions WHERE created_at BETWEEN datetime('now', '-3 months') AND datetime('now') AND project_id = ?";
+
+    if (query) {
+      switch (query) {
+        case "seven-days":
+          preparedStatement =
+            "SELECT * FROM sessions WHERE created_at BETWEEN datetime('now', '-7 days') AND datetime('now') AND project_id = ?";
+          break;
+        case "two-weeks":
+          preparedStatement =
+            "SELECT * FROM sessions WHERE created_at BETWEEN datetime('now', '-14 days') AND datetime('now') AND project_id = ?";
+          break;
+        case "one-month":
+          preparedStatement =
+            "SELECT * FROM sessions WHERE created_at BETWEEN datetime('now', '-1 month') AND datetime('now') AND project_id = ?";
+          break;
+        case "one-year":
+          preparedStatement =
+            "SELECT * FROM sessions WHERE created_at BETWEEN datetime('now', '-12 months') AND datetime('now') AND project_id = ?";
+          break;
+      }
+    }
+
+    const { results: sessionResults } = await ctx.env.DB.prepare(
+      preparedStatement,
+    )
+      .bind(project[0].id)
+      .all<Session>();
+
+    const desktop = sessionResults.filter(
+      ({ is_mobile }) => is_mobile === 1,
+    ).length;
+    const mobile = sessionResults.filter(
+      ({ is_mobile }) => is_mobile === 0,
+    ).length;
+
+    return ctx.json(
+      new ProjectDetailedResponse(project[0], {
+        summary: groupSessionsByDateAndPlatform(sessionResults, query),
+        device: {
+          desktop,
+          mobile,
+        },
+        browserStats: Object.fromEntries(groupByBrowsers(sessionResults)),
+        osStats: Object.fromEntries(groupByOs(sessionResults)),
+        countryStats: Object.fromEntries(groupByCountry(sessionResults)),
+      }).toJSON(),
+    );
   }
 
   private static async _hasPermission(

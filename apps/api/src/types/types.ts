@@ -12,6 +12,7 @@ export type Bindings = {
   RESEND_API_KEY: string;
   IMAGE_KIT_API_KEY: string;
   PROJECT_NAME: string;
+  DB: D1Database;
 };
 
 export type HonoConfig = {
@@ -34,6 +35,7 @@ declare module "hono" {
     client: Client;
     user: User | null | undefined;
     oauthAccessTokenId: string | undefined;
+    projectId: string | undefined | null;
   }
 }
 
