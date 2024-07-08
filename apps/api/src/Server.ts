@@ -20,6 +20,12 @@ class Server {
       return ctx.text("Waguan");
     });
     this.instance.post("/test", async (ctx) => {
+      const { results } = await ctx.env.DB.prepare(
+        "SELECT * FROM sessions",
+      ).all();
+
+      console.log({ results });
+
       let postsDocs: any = [];
       // await ctx.get('db').insert(posts).values({ text: 'example 2' }).returning().execute();
 
@@ -31,16 +37,16 @@ class Server {
       // // postsDocs = await ctx.get('sql')('SELECT * FROM posts WHERE text = $1', ['example']); // second fastest on average
       // // postsDocs = await ctx.get('db').select().from(posts).where(eq(posts.text, 'example')); // slowest on average -> get client and connect before using this
 
-      console.log({ posts: postsDocs });
-      return ctx.json({ key: "worked", posts: postsDocs });
+      console.log({ posts: results });
+      return ctx.json({ key: "worked", posts: results });
     });
 
-    this.instance.use("/api/v1", InjectDatabaseMiddleware);
+    // this.instance.use("/api/v1", InjectDatabaseMiddleware);
     this.instance.route("/api/v1", Router);
     this.instance.get("/api/v1/docs", swaggerUI({ url: "/doc" }));
     this.instance.doc("/doc", {
       info: {
-        title: "An API",
+        title: "Prism API",
         version: "v1",
       },
       openapi: "3.1.0",

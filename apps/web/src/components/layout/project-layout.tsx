@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CalendarDateRangePicker } from "@/components/ui/date-range-picker";
 import {
+  Link,
   Outlet,
   useLocation,
   useNavigate,
@@ -12,6 +13,13 @@ import {
 import { useProjectQuery } from "@/network/queries/useProjectQuery";
 import { ValueNoneIcon } from "@radix-ui/react-icons";
 import { Skeleton } from "../ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 
 const tabs = [
   {
@@ -30,9 +38,12 @@ const tabs = [
 
 export function ProjectLayout() {
   const { pathname } = useLocation();
-  const params = useParams<{ slug: string }>();
+  const { slug } = useParams<{ slug: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const projectQuery = useProjectQuery(params.slug);
+  const duration: any = searchParams.get("duration");
+
+  const projectQuery = useProjectQuery({ slug, duration });
 
   const navigate = useNavigate();
   const path = pathname.split("/")?.[3] || "";
@@ -58,11 +69,25 @@ export function ProjectLayout() {
                 {projectQuery.data?.name}
               </h2>
             )}
-
-            <div className="flex items-center space-x-2">
-              <CalendarDateRangePicker />
-              <Button>Download</Button>
-            </div>
+            <Select
+              onValueChange={(e) => {
+                setSearchParams({
+                  duration: e,
+                });
+              }}
+              defaultValue={duration || undefined}
+            >
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Duration" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="seven-days">7 days</SelectItem>
+                <SelectItem value="two-weeks">2 weeks</SelectItem>
+                <SelectItem value="one-month">1 month</SelectItem>
+                <SelectItem value="three-months">3 months</SelectItem>
+                <SelectItem value="one-year">1 year</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <Tabs defaultValue="summary" value={path} className="space-y-4">
             <TabsList>
@@ -73,9 +98,9 @@ export function ProjectLayout() {
                   disabled={!projectQuery.data}
                   onClick={() => {
                     if (!url) {
-                      navigate(`/projects/${params.slug!}`);
+                      navigate(`/projects/${slug!}`);
                     } else {
-                      navigate(`/projects/${params.slug!}/${url}`);
+                      navigate(`/projects/${slug!}/${url}`);
                     }
                   }}
                 >

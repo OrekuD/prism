@@ -14,10 +14,10 @@ compatibility_flags = ["nodejs_compat"]
 # binding = "MY_BUCKET"
 # bucket_name = "my-bucket"
 
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "my-database"
-# database_id = ""
+[[d1_databases]]
+binding = "DB"
+database_name = "prism-analytics"
+database_id = "643716da-c4b8-4f15-b46b-46b1994dd968"
 
 # [ai]
 # binding = "AI"

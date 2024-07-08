@@ -1,23 +1,30 @@
 import { LocalStorageKeys } from "@/constants/LocalStorageKeys";
 import { useActiveTeamStore } from "@/store/activeTeamStore";
 import { axiosInstance } from "@/utils/axiosInstance";
-import { ProjectDetailedResource, ProjectResource } from "@prism/types";
+import {
+  ProjectDetailedRequest,
+  ProjectDetailedResource,
+  ProjectResource,
+} from "@prism/types";
 import { useQuery } from "@tanstack/react-query";
 
-async function project(projectSlug: string) {
-  const response = await axiosInstance.get(`/projects/${projectSlug}`);
+async function project(payload: ProjectDetailedRequest) {
+  const params = payload.duration ? `?duration=${payload.duration}` : "";
+  const response = await axiosInstance.get(
+    `/projects/${payload.slug}${params}`,
+  );
 
   if (response.status === 200) {
     return response.data;
   }
 }
-export function useProjectQuery(projectSlug?: string) {
+export function useProjectQuery(payload: ProjectDetailedRequest) {
   return useQuery<ProjectDetailedResource>({
-    queryKey: ["project", projectSlug],
-    queryFn: () => project(projectSlug!),
+    queryKey: ["project", payload.slug, payload.duration],
+    queryFn: () => project(payload),
     enabled:
       Boolean(localStorage.getItem(LocalStorageKeys.TOKEN)) &&
-      Boolean(projectSlug),
+      Boolean(payload.slug),
     refetchOnWindowFocus: false,
   });
 }

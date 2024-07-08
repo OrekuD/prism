@@ -84,10 +84,6 @@ export function App() {
 
   useRefreshUser();
 
-  React.useEffect(() => {
-    // logEvent()
-  }, []);
-
   return (
     <RouterProvider
       router={

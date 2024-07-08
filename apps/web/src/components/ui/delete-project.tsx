@@ -13,13 +13,16 @@ import { LoadingSpinner } from "./loading-spinner";
 import { useDeleteTeamMutation } from "@/network/mutations/useDeleteTeamMutation";
 import { useDeleteProjectMutation } from "@/network/mutations/useDeleteProjectMutation";
 import { useProjectQuery } from "@/network/queries/useProjectQuery";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 export function DeleteProject(props: React.PropsWithChildren) {
   const navigate = useNavigate();
   const [open, setOpen] = React.useState(false);
   const { slug } = useParams<{ slug: string }>();
-  const projectQuery = useProjectQuery(slug);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const duration: any = searchParams.get("duration");
+  const projectQuery = useProjectQuery({ slug, duration });
   const deleteProjectMutation = useDeleteProjectMutation();
 
   return (

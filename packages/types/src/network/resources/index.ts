@@ -74,4 +74,20 @@ export type ProjectDetailedResource = {
   slug: string;
   apiKey: string | null;
   teamId: string;
+  analytics: {
+    summary: Array<{ date: string; desktop: number; mobile: number }>;
+    device: {
+      desktop: number;
+      mobile: number;
+    };
+    browserStats: {
+      [key: string]: number;
+    };
+    osStats: {
+      [key: string]: number;
+    };
+    countryStats: {
+      [key: string]: number;
+    };
+  };
 };

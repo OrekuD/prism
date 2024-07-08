@@ -1,5 +1,5 @@
 {
-  "id": "0b1e3863-11c0-465e-8977-5339adf70a19",
+  "id": "60612f50-4820-4984-b1ba-c453a0f812dc",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -461,7 +461,23 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "key_index": {
+          "name": "key_index",
+          "columns": [
+            {
+              "expression": "key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "project_api_keys_team_id_teams_id_fk": {
           "name": "project_api_keys_team_id_teams_id_fk",

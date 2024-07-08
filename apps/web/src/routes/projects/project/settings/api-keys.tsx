@@ -10,12 +10,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useProjectQuery } from "@/network/queries/useProjectQuery";
 import { CopyIcon } from "@radix-ui/react-icons";
 import React from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 
 export function ProjectSettingsApiKeys() {
   const { slug } = useParams<{ slug: string }>();
-  const { data, isLoading } = useProjectQuery(slug);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const duration: any = searchParams.get("duration");
+  const { data, isLoading } = useProjectQuery({ slug, duration });
 
   return (
     <div className="grid gap-6">

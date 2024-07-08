@@ -164,3 +164,31 @@ export const CreateProjectRequestSchema = z.strictObject({
 });
 
 export type CreateProjectRequest = z.infer<typeof CreateProjectRequestSchema>;
+
+export const AddNewSessionDataRequestSchema = z.strictObject({
+  referrer: z.string(),
+  userAgent: z.string(),
+  countryCode: z.string(),
+  location: z.string(),
+});
+
+export type AddNewSessionDataRequest = z.infer<
+  typeof AddNewSessionDataRequestSchema
+>;
+
+export const ProjectDetailedRequestSchema = z.strictObject({
+  slug: z.string().optional(),
+  duration: z
+    .union([
+      z.literal("seven-days"),
+      z.literal("two-weeks"),
+      z.literal("one-month"),
+      z.literal("three-months"),
+      z.literal("one-year"),
+    ])
+    .nullable(),
+});
+
+export type ProjectDetailedRequest = z.infer<
+  typeof ProjectDetailedRequestSchema
+>;

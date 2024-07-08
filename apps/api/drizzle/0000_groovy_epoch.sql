@@ -209,5 +209,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS "access_token_index" ON "oauth_access_tokens" 
 CREATE UNIQUE INDEX IF NOT EXISTS "otp_index" ON "otp_sign_ins" USING btree ("otp");--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "profile_picture_user_id_index" ON "profile_pictures" USING btree ("user_id");--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "profile_user_id_index" ON "profiles" USING btree ("user_id");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "key_index" ON "project_api_keys" USING btree ("key");--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "project_slug_index" ON "projects" USING btree ("slug");--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "email_index" ON "users" USING btree ("email");
