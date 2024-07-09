@@ -3,16 +3,16 @@
   "version": "0.0.1",
   "license": "MIT",
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts",
-    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "build": "API_URL=http://localhost:8787 tsup src/index.ts --format cjs,esm --dts",
+    "dev": "API_URL=https://prism-api.orekud.workers.dev tsup src/index.ts --format cjs,esm --dts --watch",
     "lint": "tsc"
   },
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
   "devDependencies": {
+    "@prism/types": "*",
     "tsup": "^8.1.0",
-    "typescript": "^5.5.2",
-    "@prism/types": "*"
+    "typescript": "^5.5.2"
   }
 }
