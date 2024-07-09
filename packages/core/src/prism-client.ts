@@ -3,12 +3,13 @@ import { AddNewSessionDataRequest } from "@prism/types";
 
 export class PrismClient {
   private readonly apiKey: string;
-  private apiUrl: string = "http://localhost:8787/api/v1/analytics";
+  private apiUrl: string = process.env.API_URL + "/api/v1/analytics";
 
   constructor(apiKey: string) {
     if (!apiKey) {
       throw new Error("Prism Api key not provided");
     }
+    console.log("---", process.env.API_URL);
     this.apiKey = apiKey;
     this.logSession();
   }
