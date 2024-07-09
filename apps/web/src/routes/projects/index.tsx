@@ -1,12 +1,14 @@
 import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  ChartConfig,
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
 import { CreateNewProject } from "@/components/ui/create-new-project";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,40 +20,29 @@ import { ValueNoneIcon } from "@radix-ui/react-icons";
 import { Search } from "lucide-react";
 import React from "react";
 import { Link } from "react-router-dom";
-import { Line, LineChart, ResponsiveContainer, Tooltip } from "recharts";
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  XAxis,
+} from "recharts";
 
 const placeholders = Array(3).fill(null);
 
-// const chart = [
-//   {
-//     average: 400,
-//     today: 240,
-//   },
-//   {
-//     average: 300,
-//     today: 139,
-//   },
-//   {
-//     average: 200,
-//     today: 980,
-//   },
-//   {
-//     average: 278,
-//     today: 390,
-//   },
-//   {
-//     average: 189,
-//     today: 480,
-//   },
-//   {
-//     average: 239,
-//     today: 380,
-//   },
-//   {
-//     average: 349,
-//     today: 430,
-//   },
-// ];
+const chartConfig = {
+  views: {
+    label: "Page Views",
+  },
+  desktop: {
+    label: "Desktop",
+    color: "hsl(var(--primary))",
+  },
+  mobile: {
+    label: "Mobile",
+    color: "hsl(var(--chart-2))",
+  },
+} satisfies ChartConfig;
 
 export function Projects() {
   const projectsQuery = useProjectsQuery();
@@ -72,6 +63,8 @@ export function Projects() {
     () => activeTeam?.ownerId === userStore.user?.id,
     [activeTeam, userStore.user?.id],
   );
+
+  // throw new Error("S");
 
   return (
     <div className="py-4">
@@ -125,80 +118,99 @@ export function Projects() {
                               height="100%"
                               className="pb-2"
                             >
-                              <LineChart
-                                data={summary}
-                                margin={{
-                                  top: 5,
-                                  right: 10,
-                                  left: 10,
-                                  bottom: 0,
-                                }}
+                              <ChartContainer
+                                config={chartConfig}
+                                className="aspect-auto h-[250px] w-full"
                               >
-                                <Tooltip
-                                  content={({ active, payload }) => {
-                                    if (active && payload && payload.length) {
-                                      return (
-                                        <div className="rounded-lg border bg-background p-2 shadow-sm">
-                                          <div className="grid grid-cols-2 gap-2">
-                                            <div className="flex flex-col">
-                                              <span className="text-[0.70rem] uppercase text-muted-foreground">
-                                                Average
-                                              </span>
-                                              <span className="font-bold text-muted-foreground">
-                                                {payload[0].value}
-                                              </span>
-                                            </div>
-                                            <div className="flex flex-col">
-                                              <span className="text-[0.70rem] uppercase text-muted-foreground">
-                                                Today
-                                              </span>
-                                              <span className="font-bold">
-                                                {payload[1].value}
-                                              </span>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      );
+                                <AreaChart data={summary}>
+                                  <defs>
+                                    <linearGradient
+                                      id="fillDesktop"
+                                      x1="0"
+                                      y1="0"
+                                      x2="0"
+                                      y2="1"
+                                    >
+                                      <stop
+                                        offset="5%"
+                                        stopColor="var(--color-desktop)"
+                                        stopOpacity={0.8}
+                                      />
+                                      <stop
+                                        offset="95%"
+                                        stopColor="var(--color-desktop)"
+                                        stopOpacity={0.1}
+                                      />
+                                    </linearGradient>
+                                    <linearGradient
+                                      id="fillMobile"
+                                      x1="0"
+                                      y1="0"
+                                      x2="0"
+                                      y2="1"
+                                    >
+                                      <stop
+                                        offset="5%"
+                                        stopColor="var(--color-mobile)"
+                                        stopOpacity={0.8}
+                                      />
+                                      <stop
+                                        offset="95%"
+                                        stopColor="var(--color-mobile)"
+                                        stopOpacity={0.1}
+                                      />
+                                    </linearGradient>
+                                  </defs>
+                                  <CartesianGrid vertical={false} />
+                                  <XAxis
+                                    dataKey="date"
+                                    tickLine={false}
+                                    axisLine={false}
+                                    tickMargin={8}
+                                    minTickGap={32}
+                                    tickFormatter={(value) => {
+                                      const date = new Date(value);
+                                      return date.toLocaleDateString("en-US", {
+                                        month: "short",
+                                        day: "numeric",
+                                      });
+                                    }}
+                                  />
+                                  <ChartTooltip
+                                    cursor={false}
+                                    content={
+                                      <ChartTooltipContent
+                                        labelFormatter={(value) => {
+                                          return new Date(
+                                            value,
+                                          ).toLocaleDateString("en-US", {
+                                            month: "short",
+                                            day: "numeric",
+                                          });
+                                        }}
+                                        indicator="dot"
+                                      />
                                     }
-
-                                    return null;
-                                  }}
-                                />
-                                <Line
-                                  type="monotone"
-                                  strokeWidth={2}
-                                  dataKey="mobile"
-                                  activeDot={{
-                                    r: 6,
-                                    style: {
-                                      fill: "var(--theme-primary)",
-                                      opacity: 0.25,
-                                    },
-                                  }}
-                                  style={
-                                    {
-                                      stroke: "var(--theme-primary)",
-                                      opacity: 0.25,
-                                      "--theme-primary": `hsl(var(--primary))`,
-                                    } as React.CSSProperties
-                                  }
-                                />
-                                <Line
-                                  type="monotone"
-                                  dataKey="desktop"
-                                  strokeWidth={2}
-                                  activeDot={{
-                                    r: 8,
-                                    style: { fill: "var(--theme-primary)" },
-                                  }}
-                                  style={
-                                    {
-                                      stroke: "var(--theme-primary)",
-                                      "--theme-primary": `hsl(var(--primary))`,
-                                    } as React.CSSProperties
-                                  }
-                                />
-                              </LineChart>
+                                  />
+                                  <Area
+                                    dataKey="mobile"
+                                    type="natural"
+                                    fill="url(#fillMobile)"
+                                    stroke="var(--color-mobile)"
+                                    stackId="a"
+                                  />
+                                  <Area
+                                    dataKey="desktop"
+                                    type="natural"
+                                    fill="url(#fillDesktop)"
+                                    stroke="var(--color-desktop)"
+                                    stackId="a"
+                                  />
+                                  <ChartLegend
+                                    content={<ChartLegendContent />}
+                                  />
+                                </AreaChart>
+                              </ChartContainer>
                             </ResponsiveContainer>
                           </div>
                         </CardContent>

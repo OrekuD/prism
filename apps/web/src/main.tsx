@@ -35,19 +35,17 @@ const el = document.getElementById("root");
 if (el) {
   const root = createRoot(el);
   root.render(
-    <React.StrictMode>
-      <ThemeProvider
-        defaultTheme="light"
-        storageKey={LocalStorageKeys.THEME_VALUE}
-      >
-        <PrismProvider client={prism}>
-          <QueryClientProvider client={client}>
-            <App />
-            <Toaster />
-          </QueryClientProvider>
-        </PrismProvider>
-      </ThemeProvider>
-    </React.StrictMode>,
+    <ThemeProvider
+      defaultTheme="light"
+      storageKey={LocalStorageKeys.THEME_VALUE}
+    >
+      <PrismProvider client={prism}>
+        <QueryClientProvider client={client}>
+          <App />
+          <Toaster />
+        </QueryClientProvider>
+      </PrismProvider>
+    </ThemeProvider>,
   );
 } else {
   throw new Error("Could not find root element");

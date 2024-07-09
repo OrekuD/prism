@@ -57,7 +57,7 @@ export function CreateNewProject(props: React.PropsWithChildren) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{props.children}</DialogTrigger>
-      <DialogContent>
+      <DialogContent className="w-[90vw] md:w-full rounded-lg">
         <DialogHeader>
           <DialogTitle>Create Project</DialogTitle>
           <DialogDescription></DialogDescription>

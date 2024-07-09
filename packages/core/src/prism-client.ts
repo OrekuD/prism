@@ -11,6 +11,7 @@ export class PrismClient {
     }
     this.apiKey = apiKey;
     this.logSession();
+    this.trackError();
   }
 
   public logEvent(event: AppEvent) {
@@ -59,5 +60,16 @@ export class PrismClient {
 
       return response.countryCode as string;
     } catch (error) {}
+  }
+
+  private trackError() {
+    window.addEventListener("error", (event) => {
+      // console.log("____Global error:", typeof event.error);
+      // console.log(event.error.stack);
+    });
+
+    window.addEventListener("unhandledrejection", (event) => {
+      console.log("_____Unhandled promise rejection:", event.reason);
+    });
   }
 }

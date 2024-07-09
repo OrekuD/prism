@@ -1,14 +1,5 @@
 import * as React from "react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  XAxis,
-  Line,
-  LineChart,
-  AreaChart,
-  Area,
-} from "recharts";
+import { CartesianGrid, XAxis, AreaChart, Area } from "recharts";
 
 import {
   Card,
@@ -25,7 +16,6 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
-import { ProjectDetailedResource } from "@prism/types";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useProjectQuery } from "@/network/queries/useProjectQuery";
 import { Skeleton } from "./skeleton";
@@ -101,53 +91,6 @@ export function ActivitySummary() {
             config={chartConfig}
             className="aspect-auto h-[250px] w-full"
           >
-            {/* <LineChart
-              accessibilityLayer
-              data={data?.analytics.summary || []}
-              margin={{
-                left: 12,
-                right: 12,
-              }}
-            >
-              <CartesianGrid vertical={false} />
-              <XAxis
-                dataKey="date"
-                tickLine={false}
-                axisLine={false}
-                tickMargin={8}
-                minTickGap={32}
-                tickFormatter={(value) => {
-                  const date = new Date(value);
-                  return date.toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                  });
-                }}
-              />
-              <ChartTooltip
-                content={
-                  <ChartTooltipContent
-                    className="w-[150px]"
-                    nameKey="views"
-                    labelFormatter={(value) => {
-                      return new Date(value).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      });
-                    }}
-                  />
-                }
-              />
-              <Line
-                dataKey={activeChart}
-                type="monotone"
-                stroke={`var(--color-${activeChart})`}
-                strokeWidth={2}
-                dot={false}
-              />
-            </LineChart> */}
-
             <AreaChart data={data?.analytics.summary || []}>
               <defs>
                 <linearGradient id="fillDesktop" x1="0" y1="0" x2="0" y2="1">
