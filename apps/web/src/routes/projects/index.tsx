@@ -22,36 +22,36 @@ import { Line, LineChart, ResponsiveContainer, Tooltip } from "recharts";
 
 const placeholders = Array(3).fill(null);
 
-const chart = [
-  {
-    average: 400,
-    today: 240,
-  },
-  {
-    average: 300,
-    today: 139,
-  },
-  {
-    average: 200,
-    today: 980,
-  },
-  {
-    average: 278,
-    today: 390,
-  },
-  {
-    average: 189,
-    today: 480,
-  },
-  {
-    average: 239,
-    today: 380,
-  },
-  {
-    average: 349,
-    today: 430,
-  },
-];
+// const chart = [
+//   {
+//     average: 400,
+//     today: 240,
+//   },
+//   {
+//     average: 300,
+//     today: 139,
+//   },
+//   {
+//     average: 200,
+//     today: 980,
+//   },
+//   {
+//     average: 278,
+//     today: 390,
+//   },
+//   {
+//     average: 189,
+//     today: 480,
+//   },
+//   {
+//     average: 239,
+//     today: 380,
+//   },
+//   {
+//     average: 349,
+//     today: 430,
+//   },
+// ];
 
 export function Projects() {
   const projectsQuery = useProjectsQuery();
@@ -75,7 +75,7 @@ export function Projects() {
 
   return (
     <div className="py-4">
-      <div className="flex items-center gap-3">
+      <div className="flex flex-col md:flex-row md:items-center gap-3">
         <form className="flex-1">
           <div className="relative">
             <Search className="absolute left-2.5 top-3 size-4 text-muted-foreground" />
@@ -86,21 +86,23 @@ export function Projects() {
             />
           </div>
         </form>
-        <CreateNewProject>
-          <Button>New App</Button>
-        </CreateNewProject>
-        {hasSettingsPermission ? <Button>Team Settings</Button> : null}
+        <div className="flex gap-3">
+          <CreateNewProject>
+            <Button>New App</Button>
+          </CreateNewProject>
+          {hasSettingsPermission ? <Button>Team Settings</Button> : null}
+        </div>
       </div>
       <div className="py-4">
         {projectsQuery.isLoading || projectsQuery.isRefetching ? (
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {placeholders.map((_, index) => (
               <Card key={index}>
                 <CardHeader>
                   <Skeleton className="h-[20px]" />
                 </CardHeader>
                 <CardContent>
-                  <Skeleton className="h-[200px]" />
+                  <Skeleton className="h-[150px]" />
                 </CardContent>
               </Card>
             ))}
@@ -108,8 +110,8 @@ export function Projects() {
         ) : (
           <>
             {projectsQuery.data && projectsQuery.data.length > 0 ? (
-              <div className="grid grid-cols-3 gap-3">
-                {projectsQuery.data.map(({ id, name, slug }) => {
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {projectsQuery.data.map(({ id, name, slug, summary }) => {
                   return (
                     <Link to={`/projects/${slug}`} key={id}>
                       <Card className="">
@@ -117,10 +119,14 @@ export function Projects() {
                           <CardTitle className="text-md">{name}</CardTitle>
                         </CardHeader>
                         <CardContent>
-                          <div className="h-[200px]">
-                            <ResponsiveContainer width="100%" height="100%">
+                          <div className="h-[150px]">
+                            <ResponsiveContainer
+                              width="100%"
+                              height="100%"
+                              className="pb-2"
+                            >
                               <LineChart
-                                data={chart}
+                                data={summary}
                                 margin={{
                                   top: 5,
                                   right: 10,
@@ -161,7 +167,7 @@ export function Projects() {
                                 <Line
                                   type="monotone"
                                   strokeWidth={2}
-                                  dataKey="average"
+                                  dataKey="mobile"
                                   activeDot={{
                                     r: 6,
                                     style: {
@@ -179,7 +185,7 @@ export function Projects() {
                                 />
                                 <Line
                                   type="monotone"
-                                  dataKey="today"
+                                  dataKey="desktop"
                                   strokeWidth={2}
                                   activeDot={{
                                     r: 8,

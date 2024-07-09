@@ -143,6 +143,10 @@ export class ProjectsController {
 
     if (query) {
       switch (query) {
+        case "24-hours":
+          preparedStatement =
+            "SELECT * FROM sessions WHERE created_at BETWEEN datetime('now', '-24 hours') AND datetime('now') AND project_id = ?";
+          break;
         case "seven-days":
           preparedStatement =
             "SELECT * FROM sessions WHERE created_at BETWEEN datetime('now', '-7 days') AND datetime('now') AND project_id = ?";

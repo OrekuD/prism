@@ -14,7 +14,7 @@ export function RootLayout() {
       <>
         {excludedPaths.includes(pathname) ? null : <Nav />}
         <div
-          className={`max-w-[1400px] mx-auto px-4 md:px-10 ${excludedPaths.includes(pathname) ? "" : "pt-16"}`}
+          className={`max-w-[1400px] mx-auto px-4 md:px-10 ${excludedPaths.includes(pathname) ? "" : "pt-32 md:pt-16"}`}
         >
           <Outlet />
         </div>

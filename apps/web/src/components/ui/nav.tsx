@@ -29,67 +29,64 @@ export function Nav() {
   const { pathname } = useLocation();
 
   return (
-    <div className="fixed top-0 z-50 border-b bg-background w-full">
-      <div className="flex h-16 items-center px-8 gap-6">
+    <div className="fixed top-0 z-50 border-b bg-background w-full flex flex-col h-32 px-4 gap-4 pt-3 md:gap-6 md:pt-0 md:h-16 md:px-8 md:flex-row md:items-center md:justify-between">
+      <div className="flex items-center gap-4 lg:gap-6">
         {pathname === "/" ? null : (
           <Link to="/">
             <div className="size-7 rounded-full bg-yellow-600" />
           </Link>
         )}
         <TeamSwitcher />
-        <nav className={"flex items-center space-x-4 lg:space-x-6 ml-auto"}>
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button variant="outline">Feedback</Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Submit Feedback</DialogTitle>
-                <DialogDescription>
-                  Submit a feedback on any issues, bugs, feautures or
-                  improvement
-                </DialogDescription>
-              </DialogHeader>
-              <div>
-                <div className="space-y-4 py-2 pb-4">
-                  <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Feedback Type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {feedbackTypes.map((feedbackType) => (
-                        <SelectItem value={feedbackType} key={feedbackType}>
-                          {feedbackType}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <div className="space-y-2">
-                    <Label htmlFor="description">Description</Label>
-                    <Textarea
-                      id="description"
-                      placeholder="Description"
-                      className="max-h-32"
-                    />
-                  </div>
+      </div>
+      <div className={"flex items-center gap-4 lg:gap-6"}>
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button variant="outline">Feedback</Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Submit Feedback</DialogTitle>
+              <DialogDescription>
+                Submit a feedback on any issues, bugs, feautures or improvement
+              </DialogDescription>
+            </DialogHeader>
+            <div>
+              <div className="space-y-4 py-2 pb-4">
+                <Select>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Feedback Type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {feedbackTypes.map((feedbackType) => (
+                      <SelectItem value={feedbackType} key={feedbackType}>
+                        {feedbackType}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="space-y-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    placeholder="Description"
+                    className="max-h-32"
+                  />
                 </div>
               </div>
-              <DialogFooter>
-                <DialogClose>
-                  <Button variant="outline">Cancel</Button>
-                </DialogClose>
-                <Button type="submit">Submit</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+            </div>
+            <DialogFooter>
+              <DialogClose>
+                <Button variant="outline">Cancel</Button>
+              </DialogClose>
+              <Button type="submit">Submit</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-          <Link to="#" className="text-sm font-medium">
-            Docs
-          </Link>
-        </nav>
-        <div className="flex items-center space-x-4">
-          <UserNav />
-        </div>
+        <Link to="#" className="text-sm font-medium">
+          Docs
+        </Link>
+        <UserNav />
       </div>
     </div>
   );

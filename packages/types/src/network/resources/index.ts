@@ -66,6 +66,7 @@ export type ProjectResource = {
   id: string;
   name: string;
   slug: string;
+  summary: Array<{ date: string; desktop: number; mobile: number }>;
 };
 
 export type ProjectDetailedResource = {
