@@ -180,6 +180,7 @@ export const ProjectDetailedRequestSchema = z.strictObject({
   slug: z.string().optional(),
   duration: z
     .union([
+      z.literal("24-hours"),
       z.literal("seven-days"),
       z.literal("two-weeks"),
       z.literal("one-month"),

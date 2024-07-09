@@ -9,7 +9,6 @@ export class PrismClient {
     if (!apiKey) {
       throw new Error("Prism Api key not provided");
     }
-    console.log("---", process.env.API_URL);
     this.apiKey = apiKey;
     this.logSession();
   }

@@ -8,25 +8,20 @@ import { Team } from "../models/Team";
 import {
   CreateTeamRequest,
   CreateTeamRequestSchema,
-  DeleteTeamRequest,
-  DeleteTeamRequestSchema,
-  JoinTeamRequest,
-  JoinTeamRequestSchema,
   SendTeamInvitesRequest,
   SendTeamInvitesRequestSchema,
   TeamInviteJWTPayload,
   TeamMemberPermissions,
 } from "@prism/types";
 import { OkResponse } from "../network/responses/OkResponse";
-import crypto from "node:crypto";
-import { MailManager } from "../managers/MailManager";
 import jwt from "@tsndr/cloudflare-worker-jwt";
-import { TeamInvite } from "../models/TeamInvite";
 import { addDays } from "date-fns/addDays";
 import { TeamInviteResponse } from "../network/responses/TeamInviteResponse";
 import { TeamInviteLinkResponse } from "../network/responses/TeamInviteLinkResponse";
 import { TeamMember } from "../models/TeamMember";
 import { ProjectResponse } from "../network/responses/ProjectResponse";
+import { Session } from "../models/Session";
+import { Project } from "../models/Project";
 
 export class TeamsController {
   public static async teams(ctx: Context<HonoConfig>) {
@@ -335,8 +330,24 @@ export class TeamsController {
     const projects =
       (await db`SELECT id, slug, name FROM projects WHERE team_id = ${teamId} ORDER BY created_at DESC `) as Array<Project>;
 
+    // const sessions
+
+    const placeholders = projects.map((_) => "?").join(",");
+    const ids = projects.map(({ id }) => id);
+
+    const { results: sessionResults } = await ctx.env.DB.prepare(
+      `SELECT * FROM sessions WHERE created_at BETWEEN datetime('now', '-7 days') AND datetime('now') AND project_id IN (${placeholders})`,
+    )
+      .bind(...ids)
+      .all<Session>();
+
     return ctx.json(
-      projects.map((project) => new ProjectResponse(project).toJSON()),
+      projects.map((project) => {
+        const sessionData = sessionResults.filter(
+          ({ project_id }) => project_id === project.id,
+        );
+        return new ProjectResponse(project, sessionData).toJSON();
+      }),
     );
   }
 

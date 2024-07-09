@@ -15,6 +15,9 @@ export function groupSessionsByDateAndPlatform(
   const startDate = new Date(endDate);
 
   switch (duration) {
+    case "24-hours":
+      startDate.setHours(startDate.getHours() - 24);
+      break;
     case "seven-days":
       startDate.setDate(startDate.getDate() - 7);
       break;
