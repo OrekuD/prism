@@ -15,6 +15,7 @@ async function project(payload: ProjectDetailedRequest) {
   );
 
   if (response.status === 200) {
+    console.log({ ___d: response.data });
     return response.data;
   }
 }
