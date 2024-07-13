@@ -9,7 +9,7 @@
     "jsx": "react-jsx",
     "jsxImportSource": "hono/jsx",
     "noEmit": true,
-    "outDir": "./dist"
+    "outDir": "./dist/src"
   },
   "include": ["./src/**/*.ts"]
 }

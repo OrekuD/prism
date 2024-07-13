@@ -32,6 +32,10 @@ export type TeamInviteLinkResource = {
   teamInviteUrl: string;
 };
 
+export type CreateNewSessionResource = {
+  sessionId: string;
+};
+
 export type ProfileResource = {
   firstName: string;
   lastName: string;
@@ -67,6 +71,23 @@ export type ProjectResource = {
   name: string;
   slug: string;
   summary: Array<{ date: string; desktop: number; mobile: number }>;
+};
+
+export type SessionResource = {
+  id: number;
+  session_id: string;
+  project_id: string;
+  referrer: string;
+  country_code: string;
+  os: string;
+  browser: string;
+  location: string;
+  is_mobile: 0 | 1;
+  ip: string;
+  long: string;
+  lat: string;
+  is_online: 0 | 1;
+  created_at: string;
 };
 
 export type ProjectDetailedResource = {

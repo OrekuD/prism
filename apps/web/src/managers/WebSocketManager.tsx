@@ -1,4 +1,5 @@
 import { LocalStorageKeys } from "@/constants/LocalStorageKeys";
+import { useActiveSessionsStore } from "@/store/activeSessionsStore";
 import { SocketConnectProject, SocketMessageTypes } from "@prism/types";
 import React from "react";
 
@@ -8,6 +9,7 @@ type Props = {
 
 export function WebSocketManager(props: React.PropsWithChildren<Props>) {
   const [socket, setSocket] = React.useState<WebSocket | null>(null);
+  const activeSessionsStore = useActiveSessionsStore();
 
   React.useEffect(() => {
     if (!props.projectId) return;
@@ -41,9 +43,17 @@ export function WebSocketManager(props: React.PropsWithChildren<Props>) {
 
     ws.onmessage = (event) => {
       console.log("message");
+
       const message: SocketMessageTypes = JSON.parse(event.data);
 
-      console.log({ message });
+      switch (message.type) {
+        case "user-connected":
+          // console.log({ message });
+          activeSessionsStore.addSession(message.data.session);
+          break;
+      }
+
+      console.log("message");
     };
 
     ws.onclose = () => {

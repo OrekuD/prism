@@ -22,6 +22,7 @@ import { groupSessionsByDateAndPlatform } from "../utils/groupSessionsByDateAndP
 import { groupByBrowsers } from "../utils/groupByBrowsers";
 import { groupByOs } from "../utils/groupByOs";
 import { groupByCountry } from "../utils/groupByCountry";
+import { TursoDatabaseManager } from "../managers/TursoDatabaseManager";
 
 export class ProjectsController {
   public static async createProject(ctx: Context<HonoConfig>) {
@@ -168,17 +169,25 @@ export class ProjectsController {
       }
     }
 
-    const { results: sessionResults } = await ctx.env.DB.prepare(
-      preparedStatement,
-    )
-      .bind(project[0].id)
-      .all<Session>();
+    // const { results: sessionResults } = await ctx.env.DB.prepare(
+    //   preparedStatement,
+    // )
+    //   .bind(project[0].id)
+    //   .all<Session>();
+
+    const { rows } = await TursoDatabaseManager.getInstance(ctx).execute({
+      sql: preparedStatement,
+      args: [project[0].id],
+    });
+
+    const sessionResults: Array<Session> = rows as any;
 
     const desktop = sessionResults.filter(
-      ({ is_mobile }) => is_mobile === 1,
-    ).length;
-    const mobile = sessionResults.filter(
       ({ is_mobile }) => is_mobile === 0,
+    ).length;
+
+    const mobile = sessionResults.filter(
+      ({ is_mobile }) => is_mobile === 1,
     ).length;
 
     return ctx.json(

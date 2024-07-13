@@ -165,15 +165,19 @@ export const CreateProjectRequestSchema = z.strictObject({
 
 export type CreateProjectRequest = z.infer<typeof CreateProjectRequestSchema>;
 
-export const AddNewSessionDataRequestSchema = z.strictObject({
+export const StartSessionRequestSchema = z.strictObject({
   referrer: z.string(),
   userAgent: z.string(),
   location: z.string(),
 });
 
-export type AddNewSessionDataRequest = z.infer<
-  typeof AddNewSessionDataRequestSchema
->;
+export type StartSessionRequest = z.infer<typeof StartSessionRequestSchema>;
+
+export const EndSessionRequestSchema = z.strictObject({
+  sessionId: z.string(),
+});
+
+export type EndSessionRequest = z.infer<typeof EndSessionRequestSchema>;
 
 export const ProjectDetailedRequestSchema = z.strictObject({
   slug: z.string().optional(),

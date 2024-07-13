@@ -7,17 +7,23 @@ class DatabaseManager {
   public instance: postgres.Sql<{}>;
 
   constructor() {
-    let { PGHOST, PGDATABASE, PGUSER, PGPASSWORD, ENDPOINT_ID } = process.env;
+    let {
+      NEONDB_PGHOST,
+      NEONDB_PGDATABASE,
+      NEONDB_PGUSER,
+      NEONDB_PGPASSWORD,
+      NEONDB_ENDPOINT_ID,
+    } = process.env;
 
     this.instance = postgres({
-      host: PGHOST,
-      database: PGDATABASE,
-      username: PGUSER,
-      password: PGPASSWORD,
+      host: NEONDB_PGHOST,
+      database: NEONDB_PGDATABASE,
+      username: NEONDB_PGUSER,
+      password: NEONDB_PGPASSWORD,
       port: 5432,
       ssl: "require",
       connection: {
-        options: `project=${ENDPOINT_ID}`,
+        options: `project=${NEONDB_ENDPOINT_ID}`,
       },
     });
   }

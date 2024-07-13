@@ -2,6 +2,7 @@
   "name": "prism-analytics-api",
   "version": "0.0.1",
   "scripts": {
+    "start": "node dist/src/index.js",
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json"
   },
@@ -12,7 +13,8 @@
     "dotenv": "^16.4.5",
     "hono": "4.4.8",
     "jsonwebtoken": "^9.0.2",
-    "postgres": "^3.4.4"
+    "postgres": "^3.4.4",
+    "uuid": "^10.0.0"
   },
   "devDependencies": {
     "@prism/types": "*",

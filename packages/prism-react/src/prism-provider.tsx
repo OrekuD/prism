@@ -45,6 +45,10 @@ export class PrismProvider extends React.Component<PrismProviderProps> {
     });
   }
 
+  componentWillUnmount(): void {
+    // this.props.client.endSession();
+  }
+
   render() {
     return (
       <PrismProviderContext.Provider

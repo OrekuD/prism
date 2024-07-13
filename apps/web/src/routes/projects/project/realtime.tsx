@@ -28,6 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { WebSocketManager } from "@/managers/WebSocketManager";
 import { useProjectQuery } from "@/network/queries/useProjectQuery";
+import { useActiveSessionsStore } from "@/store/activeSessionsStore";
 
 export function ProjectRealtime() {
   const isDarkTheme = useIsDarkTheme();
@@ -38,6 +39,7 @@ export function ProjectRealtime() {
     slug,
     duration: null,
   });
+  const { sessions } = useActiveSessionsStore();
 
   // React.useEffect(() => {
   //   if (!ref.current) return;
@@ -79,49 +81,38 @@ export function ProjectRealtime() {
           }
           attributionControl={false}
         >
-          <Marker longitude={-1.023194} latitude={7.946527} anchor="bottom">
-            <Sheet>
-              <SheetTrigger asChild>
-                <button className="size-5 bg-blue-600 rounded-full animate-scale-pulse" />
-              </SheetTrigger>
-              <SheetContent>
-                <SheetHeader>
-                  <SheetTitle>Edit profile</SheetTitle>
-                  <SheetDescription>
-                    Make changes to your profile here. Click save when you're
-                    done.
-                  </SheetDescription>
-                </SheetHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="name" className="text-right">
-                      Name
-                    </Label>
-                    <Input
-                      id="name"
-                      value="Pedro Duarte"
-                      className="col-span-3"
-                    />
-                  </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="username" className="text-right">
-                      Username
-                    </Label>
-                    <Input
-                      id="username"
-                      value="@peduarte"
-                      className="col-span-3"
-                    />
-                  </div>
-                </div>
-                <SheetFooter>
-                  <SheetClose asChild>
-                    <Button type="submit">Save changes</Button>
-                  </SheetClose>
-                </SheetFooter>
-              </SheetContent>
-            </Sheet>
-          </Marker>
+          {sessions.map((session) => {
+            return (
+              <Marker
+                // longitude={-0.2012}
+                // latitude={5.5486}
+                longitude={parseFloat(session.long)}
+                latitude={parseFloat(session.lat)}
+                anchor="bottom"
+                key={session.id}
+              >
+                <Sheet>
+                  <SheetTrigger asChild>
+                    <button className="size-5 bg-blue-600 rounded-full animate-scale-pulse" />
+                  </SheetTrigger>
+                  <SheetContent>
+                    <SheetHeader>
+                      <SheetTitle>Edit profile</SheetTitle>
+                      <SheetDescription>
+                        Make changes to your profile here. Click save when
+                        you're done.
+                      </SheetDescription>
+                    </SheetHeader>
+                    <SheetFooter>
+                      <SheetClose asChild>
+                        <Button type="submit">Save changes</Button>
+                      </SheetClose>
+                    </SheetFooter>
+                  </SheetContent>
+                </Sheet>
+              </Marker>
+            );
+          })}
         </Map>
       </div>
     </WebSocketManager>

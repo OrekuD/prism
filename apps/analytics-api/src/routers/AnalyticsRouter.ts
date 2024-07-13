@@ -5,6 +5,7 @@ import { AnalyticsMiddleware } from "../middlewares/AnalyticsMiddleware";
 const router = new Hono();
 
 router.use(AnalyticsMiddleware);
-router.post("/sessions", AnalyticsController.createNewSession);
+router.post("/sessions", AnalyticsController.startSession);
+router.post("/sessions/end", AnalyticsController.endSession);
 
 export { router };

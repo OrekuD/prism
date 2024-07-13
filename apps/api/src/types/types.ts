@@ -13,6 +13,8 @@ export type Bindings = {
   IMAGE_KIT_API_KEY: string;
   PROJECT_NAME: string;
   IP_INFO_API_TOKEN: string;
+  TURSO_DATABASE_URL: string;
+  TURSO_AUTH_TOKEN: string;
   DB: D1Database;
 };
 

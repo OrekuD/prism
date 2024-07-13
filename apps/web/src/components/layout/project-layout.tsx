@@ -49,8 +49,6 @@ export function ProjectLayout() {
 
   const isRealtime = pathname.includes("realtime");
 
-  console.log({ isRealtime });
-
   const projectQuery = useProjectQuery({ slug, duration });
 
   const navigate = useNavigate();
