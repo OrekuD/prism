@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { router as AnalyticsRouter } from "./AnalyticsRouter";
+import AnalyticsRouter from "./AnalyticsRouter";
 
 const router = new Hono();
 

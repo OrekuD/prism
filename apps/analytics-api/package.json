@@ -1,10 +1,11 @@
 {
   "name": "prism-analytics-api",
   "version": "0.0.1",
+  "type": "module",
   "scripts": {
     "start": "node dist/src/index.js",
     "dev": "tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.json"
+    "build": "rm -rf ./dist && tsc -p tsconfig.json"
   },
   "dependencies": {
     "@hono/node-server": "^1.12.0",

@@ -5,7 +5,6 @@ import {
   EndSessionRequestSchema,
   IpInfoResponse,
   SocketUserConnected,
-  IpAPIResponse,
 } from "@prism/types";
 import { Context } from "hono";
 import { OkResponse } from "../network/responses/OkResponse";

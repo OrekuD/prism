@@ -8,4 +8,4 @@ router.use(AnalyticsMiddleware);
 router.post("/sessions", AnalyticsController.startSession);
 router.post("/sessions/end", AnalyticsController.endSession);
 
-export { router };
+export default router;
