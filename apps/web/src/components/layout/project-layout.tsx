@@ -27,6 +27,10 @@ const tabs = [
     url: "",
   },
   {
+    label: "Realtime",
+    url: "realtime",
+  },
+  {
     label: "Events",
     url: "events",
   },
@@ -43,6 +47,10 @@ export function ProjectLayout() {
 
   const duration: any = searchParams.get("duration");
 
+  const isRealtime = pathname.includes("realtime");
+
+  console.log({ isRealtime });
+
   const projectQuery = useProjectQuery({ slug, duration });
 
   const navigate = useNavigate();
@@ -54,6 +62,14 @@ export function ProjectLayout() {
         <ValueNoneIcon className="size-16" />
         <p>Project not found.</p>
       </div>
+    );
+  }
+
+  if (isRealtime) {
+    return (
+      <>
+        <Outlet />
+      </>
     );
   }
 

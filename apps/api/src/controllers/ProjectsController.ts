@@ -107,7 +107,9 @@ export class ProjectsController {
 
   public static async getProjectBySlug(ctx: Context<HonoConfig>) {
     const slug = ctx.req.param("slug");
-    const query: ProjectDetailedRequest["duration"] = ctx.req.query("duration");
+    const query = ctx.req.query(
+      "duration",
+    ) as ProjectDetailedRequest["duration"];
 
     if (!slug) {
       return ctx.json(new ErrorResponse("slug_not_found").toJSON(), 404);

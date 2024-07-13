@@ -36,7 +36,7 @@ export const AuthenticationMiddleware = createMiddleware(
 
       const oauthAccessToken = await DatabaseManager.getInstance(
         ctx,
-      )`SELECT * FROM oauth_access_tokens WHERE access_token = ${accessToken.payload.token} AND is_revoked = false AND expiry_at > NOW()`;
+      )`SELECT id, user_id FROM oauth_access_tokens WHERE access_token = ${accessToken.payload.token} AND is_revoked = false AND expiry_at > NOW()`;
 
       if (oauthAccessToken.length === 0) {
         return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);

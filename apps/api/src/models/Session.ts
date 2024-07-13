@@ -4,8 +4,11 @@ export type Session = {
   referrer: string;
   country_code: string;
   os: string;
-  is_mobile: 0 | 1;
   browser: string;
   location: string;
+  is_mobile: 0 | 1;
+  ip: string;
+  long: string;
+  lat: string;
   created_at: string;
 };

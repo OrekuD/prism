@@ -168,7 +168,6 @@ export type CreateProjectRequest = z.infer<typeof CreateProjectRequestSchema>;
 export const AddNewSessionDataRequestSchema = z.strictObject({
   referrer: z.string(),
   userAgent: z.string(),
-  countryCode: z.string(),
   location: z.string(),
 });
 

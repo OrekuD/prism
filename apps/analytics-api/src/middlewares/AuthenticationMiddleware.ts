@@ -1,0 +1,54 @@
+import { JWTPayload, Roles } from "@prism/types";
+import { createMiddleware } from "hono/factory";
+import { Context } from "hono";
+import jwt from "jsonwebtoken";
+import { ErrorResponse } from "../network/responses/ErrorResponse";
+import NeonDatabaseManager from "../managers/NeonDatabaseManager";
+
+export const AuthenticationMiddleware = createMiddleware(
+  async (ctx: Context, next) => {
+    try {
+      const authHeaderValue = ctx.req.header("Authorization");
+
+      if (!authHeaderValue) {
+        return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+      }
+
+      const split = authHeaderValue.split("Bearer ");
+
+      if (split.length !== 2) {
+        return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+      }
+
+      const isValid = jwt.verify(split[1], ctx.env.JWT_SECRET_KEY);
+
+      if (!isValid) {
+        return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+      }
+
+      const accessToken = jwt.decode(split[1]) as { payload: JWTPayload };
+
+      if (!accessToken.payload.token) {
+        return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+      }
+
+      const oauthAccessToken =
+        await NeonDatabaseManager.instance`SELECT id, user_id FROM oauth_access_tokens WHERE access_token = ${accessToken.payload.token} AND is_revoked = false AND expiry_at > NOW()`;
+
+      if (oauthAccessToken.length === 0) {
+        return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+      }
+
+      const user =
+        await NeonDatabaseManager.instance`SELECT id FROM users WHERE users.id = ${oauthAccessToken[0].user_id} AND users.role = ${Roles.USER};`;
+
+      if (user.length === 0) {
+        return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+      }
+    } catch (error) {
+      console.log({ error });
+      return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+    }
+    await next();
+  },
+);

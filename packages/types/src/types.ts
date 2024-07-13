@@ -41,3 +41,31 @@ export type ImageKitIOResource = {
   fileType: string;
   AITags: Array<{ name: string; confidence: number; source: string }>;
 };
+
+export type SocketConnectProject = {
+  type: "connect-project";
+  data: {
+    projectId: string;
+    accessToken: string;
+  };
+};
+
+export type SocketResetProject = {
+  type: "reset-project";
+  data: {
+    // projectId: string;
+  };
+};
+
+export type SocketMessageTypes = SocketConnectProject | SocketResetProject;
+
+export type IpInfoResponse = {
+  ip: string;
+  city: string;
+  region: string;
+  country: string;
+  loc: string;
+  org: string;
+  timezone: string;
+  readme: string;
+};

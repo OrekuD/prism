@@ -3,7 +3,8 @@ import { AddNewSessionDataRequest } from "@prism/types";
 
 export class PrismClient {
   private readonly apiKey: string;
-  private apiUrl: string = process.env.API_URL + "/api/v1/analytics";
+  // private apiUrl: string = process.env.API_URL + "/api/v1/analytics";
+  private apiUrl: string = "http://localhost:8080/api/v1/analytics";
 
   constructor(apiKey: string) {
     if (!apiKey) {
@@ -22,10 +23,8 @@ export class PrismClient {
     console.log({ event, key: this.apiKey });
   }
   private async logSession() {
-    const countryCode = (await this.getLocation()) || "";
     const body: AddNewSessionDataRequest = {
       userAgent: navigator.userAgent,
-      countryCode,
       referrer: document.referrer,
       location: window.location.pathname,
     };

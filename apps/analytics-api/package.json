@@ -1,0 +1,23 @@
+{
+  "name": "prism-analytics-api",
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.12.0",
+    "@hono/node-ws": "^1.0.2",
+    "@libsql/client": "^0.7.0",
+    "dotenv": "^16.4.5",
+    "hono": "4.4.8",
+    "jsonwebtoken": "^9.0.2",
+    "postgres": "^3.4.4"
+  },
+  "devDependencies": {
+    "@prism/types": "*",
+    "@types/jsonwebtoken": "^9.0.6",
+    "@types/node": "^20.11.17",
+    "tsx": "^4.7.1"
+  }
+}
