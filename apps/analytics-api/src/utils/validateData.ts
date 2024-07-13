@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { parseError } from "./parseError";
+import { parseError } from "./parseError.js";
 
 /**
  * @returns T | Array<string> -> Array of error strings

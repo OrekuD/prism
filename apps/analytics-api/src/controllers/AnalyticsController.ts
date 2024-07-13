@@ -7,15 +7,15 @@ import {
   SocketUserConnected,
 } from "@prism/types";
 import { Context } from "hono";
-import { OkResponse } from "../network/responses/OkResponse";
-import { ErrorResponse } from "../network/responses/ErrorResponse";
-import { validateData } from "../utils/validateData";
-import { getBrowser } from "../utils/getBrowser";
-import { isMobile } from "../utils/isMobile";
-import { getOS } from "../utils/getOS";
-import TursoDatabaseManager from "../managers/TursoDatabaseManager";
-import WebSocketManager from "../managers/WebSocketManager";
-import { CreateNewSessionResponse } from "../network/responses/CreateNewSessionResponse";
+import { OkResponse } from "../network/responses/OkResponse.js";
+import { ErrorResponse } from "../network/responses/ErrorResponse.js";
+import { validateData } from "../utils/validateData.js";
+import { getBrowser } from "../utils/getBrowser.js";
+import { isMobile } from "../utils/isMobile.js";
+import { getOS } from "../utils/getOS.js";
+import TursoDatabaseManager from "../managers/TursoDatabaseManager.js";
+import WebSocketManager from "../managers/WebSocketManager.js";
+import { CreateNewSessionResponse } from "../network/responses/CreateNewSessionResponse.js";
 import { v4 } from "uuid";
 
 export class AnalyticsController {

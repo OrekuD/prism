@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import { AnalyticsController } from "../controllers/AnalyticsController";
-import { AnalyticsMiddleware } from "../middlewares/AnalyticsMiddleware";
+import { AnalyticsController } from "../controllers/AnalyticsController.js";
+import { AnalyticsMiddleware } from "../middlewares/AnalyticsMiddleware.js";
 
 const router = new Hono();
 

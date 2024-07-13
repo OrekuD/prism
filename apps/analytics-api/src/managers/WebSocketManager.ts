@@ -6,7 +6,7 @@ import {
   SocketMessageTypes,
 } from "@prism/types";
 import jwt from "jsonwebtoken";
-import NeonDatabaseManager from "./NeonDatabaseManager";
+import NeonDatabaseManager from "./NeonDatabaseManager.js";
 
 class WebSocketManager {
   private clients: Map<string, Array<WSContext>>;

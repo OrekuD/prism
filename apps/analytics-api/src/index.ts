@@ -3,8 +3,8 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import dotenv from "dotenv";
 import { cors } from "hono/cors";
-import WebSocketManager from "./managers/WebSocketManager";
-import Router from "./routers/Router";
+import WebSocketManager from "./managers/WebSocketManager.js";
+import Router from "./routers/Router.js";
 
 dotenv.config();
 

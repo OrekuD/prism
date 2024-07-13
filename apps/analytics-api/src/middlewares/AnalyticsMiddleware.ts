@@ -1,7 +1,7 @@
 import { createMiddleware } from "hono/factory";
 import { Context } from "hono";
-import { ErrorResponse } from "../network/responses/ErrorResponse";
-import NeonDatabaseManager from "../managers/NeonDatabaseManager";
+import { ErrorResponse } from "../network/responses/ErrorResponse.js";
+import NeonDatabaseManager from "../managers/NeonDatabaseManager.js";
 
 export const AnalyticsMiddleware = createMiddleware(
   async (ctx: Context, next) => {

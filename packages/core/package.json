@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "license": "MIT",
   "scripts": {
-    "build": "API_URL=https://prism-api.orekud.workers.dev tsup src/index.ts --format cjs,esm --dts",
+    "build": "API_URL=https://prism-analytics-server.onrender.com tsup src/index.ts --format cjs,esm --dts",
     "dev": "API_URL=http://localhost:8080 tsup src/index.ts --format cjs,esm --dts --watch",
     "lint": "tsc"
   },
