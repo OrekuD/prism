@@ -51,7 +51,7 @@ export function CreateTeam(props: React.PropsWithChildren<CreateTeamProps>) {
   return (
     <Dialog open={props.open} onOpenChange={props.setOpen}>
       <DialogTrigger asChild>{props.children}</DialogTrigger>
-      <DialogContent>
+      <DialogContent className="w-[90vw] md:w-full rounded-lg">
         <DialogHeader>
           <DialogTitle>Create team</DialogTitle>
           <DialogDescription>Add a new team</DialogDescription>

@@ -43,7 +43,7 @@ export function Nav() {
           <DialogTrigger asChild>
             <Button variant="outline">Feedback</Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="w-[90vw] md:w-full rounded-lg">
             <DialogHeader>
               <DialogTitle>Submit Feedback</DialogTitle>
               <DialogDescription>

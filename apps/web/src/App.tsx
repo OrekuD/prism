@@ -29,6 +29,7 @@ import { usePrism } from "@prism/react";
 import { ProjectSettingsLayout } from "./components/layout/project-settings-layout";
 import { ProjectSettingsApiKeys } from "./routes/projects/project/settings/api-keys";
 import { ProjectSettingsGeneral } from "./routes/projects/project/settings/general";
+import { ProjectRealtime } from "./routes/projects/project/realtime";
 
 // try sqlite in memory as redis-like db
 
@@ -59,6 +60,7 @@ const authenticatedRouter = createBrowserRouter(
         <Route path=":slug" element={<ProjectLayout />}>
           <Route path="" element={<ProjectSummary />} />
           <Route path="events" element={<ProjectEvents />} />
+          <Route path="realtime" element={<ProjectRealtime />} />
           <Route path="settings" element={<ProjectSettingsLayout />}>
             <Route path="" element={<Navigate to="general" />} />
             <Route path="general" element={<ProjectSettingsGeneral />} />

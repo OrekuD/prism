@@ -28,7 +28,7 @@ export function DeleteProject(props: React.PropsWithChildren) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{props.children}</DialogTrigger>
-      <DialogContent>
+      <DialogContent className="w-[90vw] md:w-full rounded-lg">
         <DialogHeader>
           <DialogTitle>Delete Project</DialogTitle>
           <DialogDescription>

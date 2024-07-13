@@ -73,7 +73,7 @@ export function InviteTeamMembers(props: Props) {
       open={Boolean(props.teamId)}
       onOpenChange={() => props.setTeamId("")}
     >
-      <DialogContent>
+      <DialogContent className="w-[90vw] md:w-full rounded-lg">
         <DialogHeader>
           <DialogTitle>Invite Users</DialogTitle>
           <DialogDescription>Send invites to join your team.</DialogDescription>

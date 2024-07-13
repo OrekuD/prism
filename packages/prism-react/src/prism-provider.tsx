@@ -8,6 +8,12 @@ type PrismProviderProps = {
 };
 
 export class PrismProvider extends React.Component<PrismProviderProps> {
+  constructor(props: PrismProviderProps) {
+    super(props);
+
+    this.state = { hasError: false };
+  }
+
   componentDidMount(): void {
     function logPathname(): void {
       console.log("Current pathname:", window.location.pathname);
@@ -23,11 +29,24 @@ export class PrismProvider extends React.Component<PrismProviderProps> {
     });
   }
 
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true };
+  }
+
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
+    // this.setState({
+    //   hasError: true,
+    //   error,
+    //   errorInfo,
+    // });
     console.log({
-      error,
-      errorInfo,
+      ___error: error,
+      ___errorInfo: errorInfo,
     });
+  }
+
+  componentWillUnmount(): void {
+    // this.props.client.endSession();
   }
 
   render() {

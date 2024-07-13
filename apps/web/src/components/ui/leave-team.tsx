@@ -28,7 +28,7 @@ export function LeaveTeam({
       open={Boolean(deleteTeamId)}
       onOpenChange={() => setDeleteTeamId("")}
     >
-      <DialogContent>
+      <DialogContent className="w-[90vw] md:w-full rounded-lg">
         <DialogHeader>
           <DialogTitle>Leave Team</DialogTitle>
           <DialogDescription>

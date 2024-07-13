@@ -24,7 +24,7 @@ export function DeleteTeam({ deleteTeamId, setDeleteTeamId }: Props) {
       open={Boolean(deleteTeamId)}
       onOpenChange={() => setDeleteTeamId("")}
     >
-      <DialogContent>
+      <DialogContent className="w-[90vw] md:w-full rounded-lg">
         <DialogHeader>
           <DialogTitle>Delete Team</DialogTitle>
           <DialogDescription>

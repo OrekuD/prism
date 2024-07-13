@@ -47,7 +47,7 @@ export function groupSessionsByDateAndPlatform(
     const date = session.created_at.split(" ")[0]; // This extracts YYYY-MM-DD
     if (new Date(date) >= startDate && new Date(date) <= endDate) {
       const counts = countMap.get(date) || { mobileCount: 0, desktopCount: 0 };
-      if (session.is_mobile === 0) {
+      if (session.is_mobile === 1) {
         counts.mobileCount++;
       } else {
         counts.desktopCount++;

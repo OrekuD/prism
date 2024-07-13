@@ -79,7 +79,7 @@ export function UserNav() {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <Link to="/account">
+        <Link to="/account/general">
           <DropdownMenuItem className="justify-between">
             Account
             <Settings className="size-4" />

@@ -27,6 +27,10 @@ const tabs = [
     url: "",
   },
   {
+    label: "Realtime",
+    url: "realtime",
+  },
+  {
     label: "Events",
     url: "events",
   },
@@ -43,6 +47,8 @@ export function ProjectLayout() {
 
   const duration: any = searchParams.get("duration");
 
+  const isRealtime = pathname.includes("realtime");
+
   const projectQuery = useProjectQuery({ slug, duration });
 
   const navigate = useNavigate();
@@ -54,6 +60,14 @@ export function ProjectLayout() {
         <ValueNoneIcon className="size-16" />
         <p>Project not found.</p>
       </div>
+    );
+  }
+
+  if (isRealtime) {
+    return (
+      <>
+        <Outlet />
+      </>
     );
   }
 
@@ -75,18 +89,18 @@ export function ProjectLayout() {
                   duration: e,
                 });
               }}
-              defaultValue={duration || undefined}
+              defaultValue={duration || "three-months"}
             >
               <SelectTrigger className="w-[140px] md:w-[180px]">
                 <SelectValue placeholder="Duration" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="24-hours">24 hours</SelectItem>
-                <SelectItem value="seven-days">7 days</SelectItem>
-                <SelectItem value="two-weeks">2 weeks</SelectItem>
-                <SelectItem value="one-month">1 month</SelectItem>
-                <SelectItem value="three-months">3 months</SelectItem>
-                <SelectItem value="one-year">1 year</SelectItem>
+                <SelectItem value="24-hours">Last 24 hours</SelectItem>
+                <SelectItem value="seven-days">Last 7 days</SelectItem>
+                <SelectItem value="two-weeks">Last 2 weeks</SelectItem>
+                <SelectItem value="one-month">Last 1 month</SelectItem>
+                <SelectItem value="three-months">Last 3 months</SelectItem>
+                <SelectItem value="one-year">Last 1 year</SelectItem>
               </SelectContent>
             </Select>
           </div>
