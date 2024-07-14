@@ -1,11 +1,8 @@
 import { cors } from "hono/cors";
 import { router as Router } from "./routers/Router";
 import { HonoConfig } from "./types/types";
-import { upgradeWebSocket } from "hono/cloudflare-workers";
-import { InjectDatabaseMiddleware } from "./middlewares/InjectDatabaseMiddleware";
 import { swaggerUI } from "@hono/swagger-ui";
 import { OpenAPIHono } from "@hono/zod-openapi";
-import WebSocketManager from "./managers/WebSocketManager";
 
 class Server {
   private instance: OpenAPIHono<HonoConfig>;
@@ -44,9 +41,6 @@ class Server {
     this.instance.use("/api/v1/*", cors());
     // this.instance.use("/api/v1", InjectDatabaseMiddleware);
     this.instance.route("/api/v1", Router);
-    this.instance.get("/api/v1/ws", (ctx) => {
-      return WebSocketManager.onConnect(ctx);
-    });
 
     this.instance.get("/api/v1/docs", swaggerUI({ url: "/doc" }));
     this.instance.doc("/doc", {
@@ -56,25 +50,6 @@ class Server {
       },
       openapi: "3.1.0",
     });
-
-    // this.instance.get(
-    //   "/ws",
-    //   upgradeWebSocket((c) => {
-    //     console.log("received");
-    //     return {
-    //       onOpen() {
-    //         console.log("connection opened");
-    //       },
-    //       onMessage(event, ws) {
-    //         console.log(`Message from client: ${event.data}`);
-    //         ws.send("Hello from server!");
-    //       },
-    //       onClose: () => {
-    //         console.log("Connection closed");
-    //       },
-    //     };
-    //   }),
-    // );
   }
 
   public getInstance() {

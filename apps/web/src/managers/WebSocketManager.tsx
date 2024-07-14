@@ -8,17 +8,14 @@ type Props = {
 };
 
 export function WebSocketManager(props: React.PropsWithChildren<Props>) {
-  const [socket, setSocket] = React.useState<WebSocket | null>(null);
   const activeSessionsStore = useActiveSessionsStore();
 
   React.useEffect(() => {
     if (!props.projectId) return;
 
-    // const url = import.meta.env.DEV
-    //   ? import.meta.env.VITE_API_URL.slice(7)
-    //   : import.meta.env.VITE_API_URL.slice(8);
-
-    const url = `localhost:8080`;
+    const url = import.meta.env.DEV
+      ? import.meta.env.VITE_WS_API_URL.slice(7)
+      : import.meta.env.VITE_WS_API_URL.slice(8);
 
     const protocol = import.meta.env.DEV ? "ws" : "wss";
 
@@ -34,7 +31,6 @@ export function WebSocketManager(props: React.PropsWithChildren<Props>) {
         },
       };
       ws.send(JSON.stringify(message));
-      setSocket(ws);
     };
 
     ws.onerror = () => {
