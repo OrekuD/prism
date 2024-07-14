@@ -2,6 +2,7 @@
   "private": true,
   "scripts": {
     "build": "turbo run build",
+    "build:analytics-api": "turbo run build --filter=@prism/types --filter=prism-analytics-api",
     "clean": "turbo run clean",
     "dev": "turbo run dev",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
@@ -18,5 +19,8 @@
   },
   "name": "prism",
   "packageManager": "yarn@1.22.19",
-  "workspaces": ["apps/*", "packages/*"]
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
 }

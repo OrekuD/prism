@@ -12,10 +12,10 @@ const app = new Hono();
 
 const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 
-app.use("*", cors());
+app.use("/*", cors());
 
 app.get("/", (ctx) => {
-  return ctx.text("Hello Hono!");
+  return ctx.text("Waguan!");
 });
 
 app.get(
