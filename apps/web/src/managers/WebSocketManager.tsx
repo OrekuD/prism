@@ -1,5 +1,6 @@
 import { LocalStorageKeys } from "@/constants/LocalStorageKeys";
 import { useActiveSessionsStore } from "@/store/activeSessionsStore";
+import { useUserStore } from "@/store/userStore";
 import { SocketConnectProject, SocketMessageTypes } from "@prism/types";
 import React from "react";
 
@@ -9,9 +10,10 @@ type Props = {
 
 export function WebSocketManager(props: React.PropsWithChildren<Props>) {
   const activeSessionsStore = useActiveSessionsStore();
+  const userStore = useUserStore();
 
   React.useEffect(() => {
-    if (!props.projectId) return;
+    if (!props.projectId || !userStore.user) return;
 
     const url = import.meta.env.DEV
       ? import.meta.env.VITE_WS_API_URL.slice(7)
@@ -27,7 +29,7 @@ export function WebSocketManager(props: React.PropsWithChildren<Props>) {
         type: "connect-project",
         data: {
           projectId: props.projectId!,
-          accessToken: localStorage.getItem(LocalStorageKeys.TOKEN) || "",
+          userId: userStore.user!.id,
         },
       };
       ws.send(JSON.stringify(message));

@@ -60,26 +60,8 @@ class WebSocketManager {
   }
 
   async verifyUser(payload: SocketConnectProject["data"]) {
-    console.log({
-      key: process.env.JWT_SECRET_KEY!,
-      token: payload.accessToken,
-    });
-    const decoded = jwt.verify(
-      payload.accessToken,
-      process.env.JWT_SECRET_KEY!,
-    ) as JWTPayload;
-
-    console.log({ decoded });
-
-    const oauthAccessToken =
-      await NeonDatabaseManager.instance`SELECT id, user_id FROM oauth_access_tokens WHERE access_token = ${decoded.token} AND is_revoked = false AND expiry_at > NOW()`;
-
-    if (oauthAccessToken.length === 0) {
-      return false;
-    }
-
     const user =
-      await NeonDatabaseManager.instance`SELECT id FROM users WHERE users.id = ${oauthAccessToken[0].user_id} AND users.role = ${Roles.USER};`;
+      await NeonDatabaseManager.instance`SELECT id FROM users WHERE users.id = ${payload.userId} AND users.role = ${Roles.USER};`;
 
     if (user.length === 0) {
       return false;

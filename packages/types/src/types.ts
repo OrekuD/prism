@@ -48,7 +48,7 @@ export type SocketConnectProject = {
   type: "connect-project";
   data: {
     projectId: string;
-    accessToken: string;
+    userId: string;
   };
 };
 
