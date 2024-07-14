@@ -8,8 +8,7 @@ import {
 export class PrismClient {
   private readonly apiKey: string;
   private sessionId: string = "";
-  // private apiUrl: string = process.env.API_URL + "/api/v1/analytics";
-  private apiUrl: string = "http://localhost:8080/api/v1/analytics";
+  private apiUrl: string = process.env.API_URL + "/api/v1/analytics";
 
   constructor(apiKey: string) {
     if (!apiKey) {
