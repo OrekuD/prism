@@ -4,9 +4,9 @@ import { Context } from "hono";
 import jwt from "jsonwebtoken";
 import { ErrorResponse } from "../network/responses/ErrorResponse.js";
 import NeonDatabaseManager from "../managers/NeonDatabaseManager.js";
-import { config } from "dotenv";}
+import { config } from "dotenv";
 
-config()
+config();
 
 export const AuthenticationMiddleware = createMiddleware(
   async (ctx: Context, next) => {
