@@ -60,10 +60,16 @@ class WebSocketManager {
   }
 
   async verifyUser(payload: SocketConnectProject["data"]) {
+    console.log({
+      key: process.env.JWT_SECRET_KEY!,
+      token: payload.accessToken,
+    });
     const decoded = jwt.verify(
       payload.accessToken,
       process.env.JWT_SECRET_KEY!,
     ) as JWTPayload;
+
+    console.log({ decoded });
 
     const oauthAccessToken =
       await NeonDatabaseManager.instance`SELECT id, user_id FROM oauth_access_tokens WHERE access_token = ${decoded.token} AND is_revoked = false AND expiry_at > NOW()`;
