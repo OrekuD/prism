@@ -1,7 +1,6 @@
 import { Context } from "hono";
 import { HonoConfig } from "../types/types";
 import {
-  Roles,
   ChangeEmailRequest,
   ChangeEmailRequestSchema,
   ChangePasswordRequest,
