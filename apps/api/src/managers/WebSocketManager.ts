@@ -22,7 +22,6 @@ class WebSocketManager {
     server.addEventListener("message", async (event) => {
       if (!event.data || typeof event.data !== "string") return;
 
-      console.log(event.data);
       this.clients.set(event.data, server);
       server.send("Your project is connected");
     });
@@ -45,7 +44,6 @@ class WebSocketManager {
 
   emitToClient(clientId: string, message: string) {
     const client = this.clients.get(clientId);
-    console.log({ client });
     if (!client) return false;
     client.send(message);
     return true;

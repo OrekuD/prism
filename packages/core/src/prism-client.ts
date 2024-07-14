@@ -20,11 +20,11 @@ export class PrismClient {
   }
 
   public logEvent(event: AppEvent) {
-    console.log({ event, key: this.apiKey });
+    // console.log({ event, key: this.apiKey });
   }
 
   public logCustomEvent(event: string) {
-    console.log({ event, key: this.apiKey });
+    // console.log({ event, key: this.apiKey });
   }
 
   public async startSession() {

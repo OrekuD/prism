@@ -71,7 +71,6 @@ export const AuthenticationMiddleware = createMiddleware(
       ctx.set("user", user[0]);
       ctx.set("oauthAccessTokenId", oauthAccessToken[0].id);
     } catch (error) {
-      console.log({ error });
       return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
     }
     await next();

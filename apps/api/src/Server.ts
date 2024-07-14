@@ -21,8 +21,6 @@ class Server {
         "SELECT * FROM sessions",
       ).all();
 
-      console.log({ results });
-
       let postsDocs: any = [];
       // await ctx.get('db').insert(posts).values({ text: 'example 2' }).returning().execute();
 

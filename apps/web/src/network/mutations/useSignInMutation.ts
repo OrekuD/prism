@@ -31,7 +31,6 @@ export function useSignInMutation() {
       window.location.reload();
     },
     onError: (error) => {
-      console.log({ error });
       toast("Invalid Credentials");
     },
   });

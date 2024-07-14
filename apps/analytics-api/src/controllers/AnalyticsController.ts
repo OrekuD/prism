@@ -17,6 +17,9 @@ import TursoDatabaseManager from "../managers/TursoDatabaseManager.js";
 import WebSocketManager from "../managers/WebSocketManager.js";
 import { CreateNewSessionResponse } from "../network/responses/CreateNewSessionResponse.js";
 import { v4 } from "uuid";
+import { config } from "dotenv";
+
+config();
 
 export class AnalyticsController {
   public static async startSession(ctx: Context) {
@@ -41,8 +44,6 @@ export class AnalyticsController {
 
     const ipDetailsData = (await ipDetailsResponse.json()) as IpInfoResponse;
     // const ipDetailsData = (await ipDetailsResponse.json()) as IpAPIResponse;
-
-    console.log({ ipDetailsData });
 
     const coords = ipDetailsData.loc.split(",");
     // const coords = [ipDetailsData.latitude, ipDetailsData.longitude];
@@ -99,8 +100,6 @@ export class AnalyticsController {
       sql: "UPDATE sessions SET is_online = 0 WHERE session_id = ?",
       args: [data.sessionId],
     });
-
-    console.log("done");
 
     return ctx.json(new OkResponse().toJSON());
   }

@@ -33,7 +33,6 @@ app.get(
 app.route("api/v1", Router);
 
 app.get("/test", async (ctx) => {
-  console.log({ e: ctx.env });
   const test = { message: "ok" };
   return ctx.text("Hello Test!");
 });

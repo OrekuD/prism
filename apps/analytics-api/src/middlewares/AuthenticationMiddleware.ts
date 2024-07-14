@@ -4,6 +4,9 @@ import { Context } from "hono";
 import jwt from "jsonwebtoken";
 import { ErrorResponse } from "../network/responses/ErrorResponse.js";
 import NeonDatabaseManager from "../managers/NeonDatabaseManager.js";
+import { config } from "dotenv";}
+
+config()
 
 export const AuthenticationMiddleware = createMiddleware(
   async (ctx: Context, next) => {
@@ -20,7 +23,7 @@ export const AuthenticationMiddleware = createMiddleware(
         return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
       }
 
-      const isValid = jwt.verify(split[1], ctx.env.JWT_SECRET_KEY);
+      const isValid = jwt.verify(split[1], process.env.JWT_SECRET_KEY!);
 
       if (!isValid) {
         return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
@@ -46,7 +49,6 @@ export const AuthenticationMiddleware = createMiddleware(
         return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
       }
     } catch (error) {
-      console.log({ error });
       return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
     }
     await next();
