@@ -2,18 +2,9 @@ import { Loader2 } from "lucide-react";
 import React from "react";
 import { Link } from "react-router-dom";
 import { authClient } from "@/lib/authClient";
-import { Button } from "@/components/ui/button";
+import { AuthHeading, AuthShell } from "@/components/auth/auth-shell";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-
 
 export function ForgotPassword() {
   const [email, setEmail] = React.useState("");
@@ -27,9 +18,9 @@ export function ForgotPassword() {
     setIsPending(true);
     try {
       await authClient.requestPasswordReset({ email });
-      // Same response for known and unknown accounts: no user enumeration.
+      // Identical response for known and unknown accounts: no enumeration.
       setSubmitted(true);
-    } catch (err) {
+    } catch {
       setError("Something went wrong. Please try again.");
     } finally {
       setIsPending(false);
@@ -37,50 +28,68 @@ export function ForgotPassword() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle>Reset your password</CardTitle>
-          <CardDescription>
-            We'll email you a link to set a new password.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {submitted ? (
-            <p className="text-sm text-muted-foreground">
-              If an account exists for that email, a reset link is on its way.
-              Check your inbox (and the server console in local development).
-            </p>
-          ) : (
-            <form onSubmit={onSubmit} className="grid gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                />
-              </div>
-              {error ? (
-                <p className="text-sm text-destructive">{error}</p>
-              ) : null}
-              <Button type="submit" disabled={isPending}>
-                {isPending ? <Loader2 className="size-4 animate-spin" /> : "Send reset link"}
-              </Button>
-            </form>
-          )}
-        </CardContent>
-        <CardFooter>
+    <AuthShell>
+      {submitted ? (
+        <div className="grid gap-6">
+          <AuthHeading
+            title="Check your email."
+            description="We sent you a link to set a new password."
+          />
+          <p className="text-[14px] leading-relaxed text-text-muted">
+            If an account exists for that address, the reset link is on its
+            way. It expires after a short window.
+          </p>
           <Link
             to="/auth/log-in"
-            className="text-sm text-muted-foreground hover:underline"
+            className="w-fit text-[13px] text-text-muted transition-colors duration-150 hover:text-text hover:underline"
           >
             Back to sign in
           </Link>
-        </CardFooter>
-      </Card>
-    </div>
+        </div>
+      ) : (
+        <div className="grid gap-6">
+          <AuthHeading
+            title="Reset your password."
+            description="We'll email you a link to set a new password."
+          />
+          <form onSubmit={onSubmit} className="grid gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                className="h-10"
+              />
+            </div>
+            {error ? (
+              <p className="text-[13px] text-danger" role="alert">
+                {error}
+              </p>
+            ) : null}
+            <button
+              type="submit"
+              aria-busy={isPending}
+              disabled={isPending}
+              className="flex h-10 items-center justify-center gap-2 rounded-[2px] bg-accent text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-45"
+            >
+              {isPending ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              ) : null}
+              Send reset link
+            </button>
+          </form>
+          <Link
+            to="/auth/log-in"
+            className="w-fit text-[13px] text-text-muted transition-colors duration-150 hover:text-text hover:underline"
+          >
+            Back to sign in
+          </Link>
+        </div>
+      )}
+    </AuthShell>
   );
 }
