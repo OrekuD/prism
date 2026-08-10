@@ -60,7 +60,7 @@ export function RankingsChart(props: Props) {
       </CardHeader>
       <CardContent>
         {props.isLoading ? (
-          <div className="h-[250px] w-full animate-pulse rounded-md bg-muted" />
+          <div className="h-[250px] w-full animate-pulse rounded-md bg-surface-hover" />
         ) : (
           <Chart
             definition={definition}
