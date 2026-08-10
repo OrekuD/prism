@@ -13,7 +13,6 @@ export type Bindings = {
   IP_INFO_API_TOKEN: string;
   TURSO_DATABASE_URL: string;
   TURSO_AUTH_TOKEN: string;
-  DB: D1Database;
 };
 
 export type HonoConfig = {

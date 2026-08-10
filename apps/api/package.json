@@ -11,11 +11,10 @@
     "lint": "biome lint ./src",
     "cf-typegen": "wrangler types",
     "db:migrate": "tsx src/database/migrate.ts",
+    "db:inspect": "tsx src/database/inspect.ts",
     "db:generate": "drizzle-kit generate",
     "db:drop-tables": "tsx src/database/drop-tables.ts",
-    "db:reinstall": "rm -rf drizzle/** && yarn db:drop-tables && yarn db:generate && yarn db:migrate",
-    "db:d1-init": "npx wrangler d1 execute prism-analytics --local --file=./d1/schema.sql",
-    "db:d1-init:prod": "npx wrangler d1 execute prism-analytics --remote --file=./d1/schema.sql"
+    "db:reinstall": "rm -rf drizzle/** && yarn db:drop-tables && yarn db:generate && yarn db:migrate"
   },
   "dependencies": {
     "@hono/swagger-ui": "^0.6.1",

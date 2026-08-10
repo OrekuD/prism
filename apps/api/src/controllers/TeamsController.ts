@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import type { HonoConfig } from "../types/types";
 import { validateData } from "../utils/validateData";
 import { DatabaseManager } from "../managers/DatabaseManager";
+import { TursoDatabaseManager } from "../managers/TursoDatabaseManager";
 import { ErrorResponse } from "../network/responses/ErrorResponse";
 import { TeamResponse } from "../network/responses/TeamResponse";
 import type { Team } from "../models/Team";
@@ -290,7 +291,15 @@ export class TeamsController {
       return ctx.json(new ErrorResponse("team_owner").toJSON(), 400);
     }
 
-    await db`DELETE FROM team_members WHERE user_id = ${user.id}`;
+    const deleted =
+      (await db`DELETE FROM team_members WHERE user_id = ${user.id} AND team_id = ${teamId} RETURNING id`) as Array<TeamMember>;
+
+    if (deleted.length === 0) {
+      return ctx.json(
+        new ErrorResponse("team_membership_not_found").toJSON(),
+        404,
+      );
+    }
 
     return ctx.json(new OkResponse().toJSON());
   }
@@ -351,20 +360,25 @@ export class TeamsController {
     const projects =
       (await db`SELECT id, slug, name FROM projects WHERE team_id = ${teamId} ORDER BY created_at DESC `) as Array<Project>;
 
-    // const sessions
+    // Analytics sessions come from Turso — the canonical analytics store.
+    // (The legacy D1 binding was removed; see db reconciliation notes.)
+    if (projects.length === 0) {
+      return ctx.json([]);
+    }
 
     const placeholders = projects.map((_) => "?").join(",");
     const ids = projects.map(({ id }) => id);
 
-    const { results: sessionResults } = await ctx.env.DB.prepare(
-      `SELECT * FROM sessions WHERE created_at BETWEEN datetime('now', '-7 days') AND datetime('now') AND project_id IN (${placeholders})`,
-    )
-      .bind(...ids)
-      .all<Session>();
+    const { rows: sessionResults } = await TursoDatabaseManager.getInstance(
+      ctx,
+    ).execute({
+      sql: `SELECT * FROM sessions WHERE created_at BETWEEN datetime('now', '-7 days') AND datetime('now') AND project_id IN (${placeholders})`,
+      args: ids,
+    });
 
     return ctx.json(
       projects.map((project) => {
-        const sessionData = sessionResults.filter(
+        const sessionData = (sessionResults as unknown as Array<Session>).filter(
           ({ project_id }) => project_id === project.id,
         );
         return new ProjectResponse(project, sessionData).toJSON();

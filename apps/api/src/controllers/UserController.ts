@@ -253,14 +253,14 @@ export class UserController {
     const db = DatabaseManager.getInstance(ctx);
 
     const usernameTaken =
-      await db`SELECT id FROM users WHERE user_name = ${data.userName} AND NOT id = ${user.id}`;
+      await db`SELECT id FROM users WHERE LOWER(user_name) = LOWER(${data.userName}) AND NOT id = ${user.id}`;
 
     if (usernameTaken.length > 0) {
       return ctx.json(new ErrorResponse("username_taken").toJSON(), 400);
     }
 
     const updatedUser =
-      (await db`UPDATE users SET user_name = ${data.userName} RETURNING *`) as Array<User>;
+      (await db`UPDATE users SET user_name = ${data.userName} WHERE id = ${user.id} RETURNING *`) as Array<User>;
 
     if (updatedUser.length === 0) {
       return ctx.json(new ErrorResponse("profile_not_updated").toJSON(), 400);
