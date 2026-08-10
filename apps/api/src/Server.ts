@@ -5,6 +5,7 @@ import type { Bindings, HonoConfig } from "./types/types";
 import { swaggerUI } from "@hono/swagger-ui";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { getAuth } from "./auth/auth";
+import { isOriginAllowed } from "./utils/cors";
 import { setEmailExecutor } from "./auth/mail";
 import { ErrorResponse } from "./network/responses/ErrorResponse";
 import { RateLimiter, clientIpFrom } from "./utils/RateLimiter";
@@ -51,19 +52,10 @@ class Server {
       "/api/auth/*",
       cors({
         origin: (origin, c) => {
-          const env = c.env as Bindings;
-          const allowed = [
-            env.CLIENT_URL,
-            ...(env.CORS_ALLOWED_ORIGINS ?? "")
-              .split(",")
-              .map((entry) => entry.trim())
-              .filter(Boolean),
-          ].filter(Boolean);
-
           if (!origin) {
             return "*";
           }
-          if (allowed.includes(origin)) {
+          if (isOriginAllowed(origin, c.env as Bindings)) {
             return origin;
           }
           return null;
@@ -74,20 +66,23 @@ class Server {
       }),
     );
     this.instance.use("/api/auth/*", authRateLimit);
-    this.instance.all("/api/auth/*", (ctx) => {
-      // Keep scheduled emails (verification/reset) alive beyond the response.
-      setEmailExecutor((promise) => ctx.executionCtx.waitUntil(promise));
-      const auth = getAuth(ctx.env);
-      return auth.handler(ctx.req.raw);
-    });
 
     // Public provider inventory so the UI can hide unavailable buttons.
+    // MUST be registered before the catch-all below: Hono matches in
+    // registration order, and better-auth would otherwise 404 it.
     this.instance.get("/api/auth/providers", (ctx) => {
       const env = ctx.env as Bindings;
       return ctx.json({
         github: Boolean(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET),
         google: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
       });
+    });
+
+    this.instance.all("/api/auth/*", (ctx) => {
+      // Keep scheduled emails (verification/reset) alive beyond the response.
+      setEmailExecutor((promise) => ctx.executionCtx.waitUntil(promise));
+      const auth = getAuth(ctx.env);
+      return auth.handler(ctx.req.raw);
     });
 
     /**
@@ -118,6 +113,7 @@ class Server {
         },
         allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         maxAge: 86400,
+        credentials: true,
       }),
     );
     this.instance.route("/api/v1", Router);

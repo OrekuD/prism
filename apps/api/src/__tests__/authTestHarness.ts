@@ -36,8 +36,9 @@ export function createTestAuth(
     ...options,
     emailAndPassword: {
       ...base.emailAndPassword,
-      sendResetPassword: async () => undefined,
       ...options.emailAndPassword,
+      enabled: true,
+      sendResetPassword: async () => undefined,
     },
     emailVerification: {
       ...base.emailVerification,

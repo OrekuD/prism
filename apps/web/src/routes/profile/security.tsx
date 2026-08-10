@@ -1,3 +1,4 @@
+import { Loader2 } from "lucide-react";
 import React from "react";
 import {
   Card,
@@ -10,7 +11,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { LoadingSpinner } from "@/components/ui/loading-spinner";
+
 import { authClient } from "@/lib/authClient";
 
 export function AccountSecurity() {
@@ -97,7 +98,7 @@ export function AccountSecurity() {
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
             <div className="flex gap-2">
               <Button type="submit" disabled={isPending}>
-                {isPending ? <LoadingSpinner /> : "Update password"}
+                {isPending ? <Loader2 className="size-4 animate-spin" /> : "Update password"}
               </Button>
             </div>
           </form>

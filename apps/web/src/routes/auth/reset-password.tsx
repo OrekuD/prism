@@ -1,3 +1,4 @@
+import { Loader2 } from "lucide-react";
 import React from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { authClient } from "@/lib/authClient";
@@ -12,7 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { LoadingSpinner } from "@/components/ui/loading-spinner";
+
 
 export function ResetPassword() {
   const navigate = useNavigate();
@@ -62,7 +63,7 @@ export function ResetPassword() {
               <p className="text-sm text-destructive">{error}</p>
             ) : null}
             <Button type="submit" disabled={isPending || !token}>
-              {isPending ? <LoadingSpinner /> : "Reset password"}
+              {isPending ? <Loader2 className="size-4 animate-spin" /> : "Reset password"}
             </Button>
           </form>
         </CardContent>

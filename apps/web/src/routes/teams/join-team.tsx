@@ -1,3 +1,4 @@
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -6,7 +7,7 @@ import {
   CardDescription,
   CardContent,
 } from "@/components/ui/card";
-import { LoadingSpinner } from "@/components/ui/loading-spinner";
+
 import { Skeleton } from "@/components/ui/skeleton";
 import { useJoinTeamMutation } from "@/network/mutations/useJoinTeamMutation";
 import { useTeamInviteQuery } from "@/network/queries/useTeamInviteQuery";
@@ -26,7 +27,7 @@ export function JoinTeam() {
   const navigate = useNavigate();
 
   return (
-    <div className="h-[100dvh] w-full grid place-content-center px-4 text-center">
+    <div className="h-dvh w-full grid place-content-center px-4 text-center">
       <Card className="mx-auto w-full md:w-96">
         {!isLoading && !data ? (
           <CardContent className="space-y-4 py-4">
@@ -58,7 +59,7 @@ export function JoinTeam() {
                   }
                 }}
               >
-                {joinTeamMutation.isPending ? <LoadingSpinner /> : "Join"}
+                {joinTeamMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : "Join"}
               </Button>
             </div>
             {isAuthenticated ? (

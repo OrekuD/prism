@@ -1,15 +1,8 @@
 import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  type ChartConfig,
-  ChartContainer,
-  ChartLegend,
-  ChartLegendContent,
-  ChartTooltip,
-  ChartTooltipContent,
-} from "@/components/ui/chart";
-import { CreateNewProject } from "@/components/ui/create-new-project";
+import { ProjectSparkline } from "@/components/charts/project-sparkline";
+import { CreateNewProject } from "@/components/projects/create-new-project";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProjectsQuery } from "@/network/queries/useProjectsQuery";
@@ -20,29 +13,8 @@ import { ValueNoneIcon } from "@radix-ui/react-icons";
 import { Search } from "lucide-react";
 import React from "react";
 import { Link } from "react-router-dom";
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  XAxis,
-} from "recharts";
 
 const placeholders = Array(3).fill(null);
-
-const chartConfig = {
-  views: {
-    label: "Page Views",
-  },
-  desktop: {
-    label: "Desktop",
-    color: "hsl(var(--primary))",
-  },
-  mobile: {
-    label: "Mobile",
-    color: "hsl(var(--chart-2))",
-  },
-} satisfies ChartConfig;
 
 export function Projects() {
   const projectsQuery = useProjectsQuery();
@@ -114,105 +86,7 @@ export function Projects() {
                         </CardHeader>
                         <CardContent>
                           <div className="h-[150px]">
-                            <ResponsiveContainer
-                              width="100%"
-                              height="100%"
-                              className="pb-2"
-                            >
-                              <ChartContainer
-                                config={chartConfig}
-                                className="aspect-auto h-[250px] w-full"
-                              >
-                                <AreaChart data={summary}>
-                                  <defs>
-                                    <linearGradient
-                                      id="fillDesktop"
-                                      x1="0"
-                                      y1="0"
-                                      x2="0"
-                                      y2="1"
-                                    >
-                                      <stop
-                                        offset="5%"
-                                        stopColor="var(--color-desktop)"
-                                        stopOpacity={0.8}
-                                      />
-                                      <stop
-                                        offset="95%"
-                                        stopColor="var(--color-desktop)"
-                                        stopOpacity={0.1}
-                                      />
-                                    </linearGradient>
-                                    <linearGradient
-                                      id="fillMobile"
-                                      x1="0"
-                                      y1="0"
-                                      x2="0"
-                                      y2="1"
-                                    >
-                                      <stop
-                                        offset="5%"
-                                        stopColor="var(--color-mobile)"
-                                        stopOpacity={0.8}
-                                      />
-                                      <stop
-                                        offset="95%"
-                                        stopColor="var(--color-mobile)"
-                                        stopOpacity={0.1}
-                                      />
-                                    </linearGradient>
-                                  </defs>
-                                  <CartesianGrid vertical={false} />
-                                  <XAxis
-                                    dataKey="date"
-                                    tickLine={false}
-                                    axisLine={false}
-                                    tickMargin={8}
-                                    minTickGap={32}
-                                    tickFormatter={(value) => {
-                                      const date = new Date(value);
-                                      return date.toLocaleDateString("en-US", {
-                                        month: "short",
-                                        day: "numeric",
-                                      });
-                                    }}
-                                  />
-                                  <ChartTooltip
-                                    cursor={false}
-                                    content={
-                                      <ChartTooltipContent
-                                        labelFormatter={(value) => {
-                                          return new Date(
-                                            value,
-                                          ).toLocaleDateString("en-US", {
-                                            month: "short",
-                                            day: "numeric",
-                                          });
-                                        }}
-                                        indicator="dot"
-                                      />
-                                    }
-                                  />
-                                  <Area
-                                    dataKey="mobile"
-                                    type="natural"
-                                    fill="url(#fillMobile)"
-                                    stroke="var(--color-mobile)"
-                                    stackId="a"
-                                  />
-                                  <Area
-                                    dataKey="desktop"
-                                    type="natural"
-                                    fill="url(#fillDesktop)"
-                                    stroke="var(--color-desktop)"
-                                    stackId="a"
-                                  />
-                                  <ChartLegend
-                                    content={<ChartLegendContent />}
-                                  />
-                                </AreaChart>
-                              </ChartContainer>
-                            </ResponsiveContainer>
+                            <ProjectSparkline summary={summary} />
                           </div>
                         </CardContent>
                       </Card>

@@ -21,15 +21,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { CreateTeam } from "@/components/ui/create-team";
+import { CreateTeam } from "@/components/teams/create-team";
 import { useDeleteTeamMutation } from "@/network/mutations/useDeleteTeamMutation";
-import { InviteTeamMembers } from "@/components/ui/invite-team-members";
+import { InviteTeamMembers } from "@/components/teams/invite-team-members";
 import { useSearch } from "@/hooks/useSearch";
 import type { TeamResource } from "@prism/types";
 import Fuse from "fuse.js";
-import { TeamCard } from "@/components/ui/team-card";
-import { DeleteTeam } from "@/components/ui/delete-team";
-import { LeaveTeam } from "@/components/ui/leave-team";
+import { TeamCard } from "@/components/teams/team-card";
+import { DeleteTeam } from "@/components/teams/delete-team";
+import { LeaveTeam } from "@/components/teams/leave-team";
 import { ValueNoneIcon } from "@radix-ui/react-icons";
 
 export function AccountTeams() {

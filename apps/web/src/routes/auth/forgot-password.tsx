@@ -1,3 +1,4 @@
+import { Loader2 } from "lucide-react";
 import React from "react";
 import { Link } from "react-router-dom";
 import { authClient } from "@/lib/authClient";
@@ -12,7 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { LoadingSpinner } from "@/components/ui/loading-spinner";
+
 
 export function ForgotPassword() {
   const [email, setEmail] = React.useState("");
@@ -66,7 +67,7 @@ export function ForgotPassword() {
                 <p className="text-sm text-destructive">{error}</p>
               ) : null}
               <Button type="submit" disabled={isPending}>
-                {isPending ? <LoadingSpinner /> : "Send reset link"}
+                {isPending ? <Loader2 className="size-4 animate-spin" /> : "Send reset link"}
               </Button>
             </form>
           )}

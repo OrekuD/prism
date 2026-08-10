@@ -16,7 +16,9 @@ BASE_URL=http://localhost:8787
 # development | production (secure cookies only in production)
 ENVIRONMENT=development
 
-# Web dashboard origin, used for links in emails and CORS
+# Web dashboard origin, used for links in emails and CORS.
+# NOTE: wrangler does NOT hot-reload .dev.vars — restart the API
+# (yarn workspace prism-api dev) after changing this file.
 CLIENT_URL=http://localhost:3001
 
 # Optional: extra comma-separated dashboard origins allowed by CORS

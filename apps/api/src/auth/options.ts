@@ -12,6 +12,7 @@
 import type { BetterAuthOptions } from "better-auth";
 import { jwt } from "better-auth/plugins";
 import { github, google } from "better-auth/social-providers";
+import { sql } from "drizzle-orm";
 import { provisionUserResources } from "./provision.js";
 import { scheduleEmail } from "./mail.js";
 
@@ -36,6 +37,12 @@ export function buildAuthOptions(
       .split(",")
       .map((origin) => origin.trim())
       .filter(Boolean),
+    // Development: trust any localhost/127.0.0.1 port so dev servers on
+    // any port work; production stays locked to the explicit allowlist.
+    // better-auth's matchesOriginPattern treats "*" as a wildcard.
+    ...(env.ENVIRONMENT === "development"
+      ? ["http://localhost:*", "http://127.0.0.1:*"]
+      : []),
   ].filter(Boolean);
 
   const githubEnabled = Boolean(
@@ -135,6 +142,26 @@ export function buildAuthOptions(
       user: {
         create: {
           after: async (user) => {
+            // Local development: auto-verify so the verified-email guard
+            // (createTeam/createProject/sendInvites) never blocks the dev
+            // loop, with or without a mail provider configured. Production
+            // still requires a real verification click.
+            if (env.ENVIRONMENT === "development") {
+              try {
+                // Memory adapters (tests) have no execute(); skip silently.
+                const execDb = db as unknown as
+                  | { execute(query: unknown): Promise<unknown> }
+                  | undefined;
+                await execDb?.execute(
+                  sql`UPDATE "user" SET email_verified = true WHERE id = ${user.id}`,
+                );
+              } catch (error) {
+                console.warn(
+                  "[prism-auth] dev auto-verify failed:",
+                  error instanceof Error ? error.message : error,
+                );
+              }
+            }
             // Idempotent: retries cannot create duplicate profiles/teams.
             // Provisioning failure must not break signup; it is retried on
             // the next login via the idempotent check.
