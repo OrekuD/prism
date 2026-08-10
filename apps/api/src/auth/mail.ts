@@ -28,6 +28,39 @@ type MailMessage =
       props: { name: string; resetLink: string };
     };
 
+type EmailExecutor = (promise: Promise<unknown>) => void;
+
+let executor: EmailExecutor | null = null;
+
+/**
+ * Registers the runtime's background-task primitive (Worker: ctx.waitUntil).
+ * Without it (Node tests, self-hosted), delivery still runs, just awaited by
+ * the caller of scheduleEmail when provided.
+ */
+export function setEmailExecutor(fn: EmailExecutor | null) {
+  executor = fn;
+}
+
+/**
+ * Schedules email delivery without blocking the response path. On the
+ * Worker the promise is kept alive via ctx.waitUntil; elsewhere it runs
+ * fire-and-forget with error containment.
+ */
+export function scheduleEmail(
+  env: Record<string, string | undefined>,
+  message: MailMessage,
+) {
+  const promise = dispatchEmail(env, message).catch((error) => {
+    console.warn(
+      "[prism-auth][mail] delivery failed:",
+      error instanceof Error ? error.message : error,
+    );
+  });
+  if (executor) {
+    executor(promise);
+  }
+}
+
 export async function dispatchEmail(
   env: Record<string, string | undefined>,
   message: MailMessage,

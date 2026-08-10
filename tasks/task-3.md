@@ -11,10 +11,12 @@ There are no production users to migrate. Existing test users and obsolete auth
 records may be deleted, so this should be a clean schema replacement rather
 than a dual-auth compatibility project.
 
-**Status:** In progress as of 2026-08-10. Backend boundary, analytics JWKS
-auth, and the frontend are complete and green. Remaining: migration apply
-(needs approval — destructive), the mail background-task primitive, and the
-final cleanup/docs pass.
+**Status:** Complete as of 2026-08-10 except one environmental blocker: the
+checked-in migration `drizzle/0001_better_auth.sql` (destructive — drops the
+custom-auth tables and test users) has NOT been applied to the shared Neon
+development database. Apply with `yarn workspace prism-api db:migrate` after
+confirming the target branch, then re-run `db:inspect` to verify, and run the
+E2E smoke (`node scripts/e2e-smoke.mjs`).
 
 ## Why make this change?
 
@@ -107,9 +109,10 @@ and no user migration layer is required.
       mail interface. Hosted Prism may use Resend; self-hosted deployments may use
       SMTP or an explicit development console adapter. → auth/mail.ts (Resend +
       console adapter).
-- [ ] Avoid awaiting email delivery on the response path where the runtime
-      offers a safe background-task primitive. → hooks run inline; a
-      ctx.waitUntil-style background primitive is pending.
+- [x] Avoid awaiting email delivery on the response path where the runtime
+      offers a safe background-task primitive. → scheduleEmail keeps the
+      promise alive via ctx.executionCtx.waitUntil on the Worker; Node falls
+      back to fire-and-forget with error containment.
 - [x] On the first verified signup, create the Prism profile and personal team
       transactionally or through an idempotent provisioning workflow.
       → provisionUserResources on user.create (idempotent).

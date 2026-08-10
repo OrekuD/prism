@@ -13,7 +13,7 @@ import type { BetterAuthOptions } from "better-auth";
 import { jwt } from "better-auth/plugins";
 import { github, google } from "better-auth/social-providers";
 import { provisionUserResources } from "./provision.js";
-import { dispatchEmail } from "./mail.js";
+import { scheduleEmail } from "./mail.js";
 
 export type AuthEnv = Record<string, string | undefined>;
 
@@ -87,7 +87,7 @@ export function buildAuthOptions(
       disableSignUp: env.ALLOW_PUBLIC_SIGNUP === "false",
       minPasswordLength: 8,
       sendResetPassword: async ({ user, url }) => {
-        await dispatchEmail(env, {
+        scheduleEmail(env, {
           to: user.email,
           subject: "Password Reset Request for Your Prism Account",
           template: "reset-password",
@@ -97,7 +97,7 @@ export function buildAuthOptions(
     },
     emailVerification: {
       sendVerificationEmail: async ({ user, url }) => {
-        await dispatchEmail(env, {
+        scheduleEmail(env, {
           to: user.email,
           subject: "Confirm Email for your Prism Account",
           template: "confirm-email",

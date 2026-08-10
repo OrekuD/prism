@@ -5,6 +5,7 @@ import type { Bindings, HonoConfig } from "./types/types";
 import { swaggerUI } from "@hono/swagger-ui";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { getAuth } from "./auth/auth";
+import { setEmailExecutor } from "./auth/mail";
 import { ErrorResponse } from "./network/responses/ErrorResponse";
 import { RateLimiter, clientIpFrom } from "./utils/RateLimiter";
 
@@ -74,6 +75,8 @@ class Server {
     );
     this.instance.use("/api/auth/*", authRateLimit);
     this.instance.all("/api/auth/*", (ctx) => {
+      // Keep scheduled emails (verification/reset) alive beyond the response.
+      setEmailExecutor((promise) => ctx.executionCtx.waitUntil(promise));
       const auth = getAuth(ctx.env);
       return auth.handler(ctx.req.raw);
     });
