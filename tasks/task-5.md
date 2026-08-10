@@ -54,60 +54,78 @@ Design dials:
 
 ## 1. Define the page architecture and content
 
-- [ ] Establish the public route tree without changing authenticated product
-      route slugs unnecessarily.
-- [ ] Define concise Prism positioning: privacy-conscious realtime analytics,
+- [x] Establish the public route tree without changing authenticated product
+      route slugs unnecessarily. PublicLayout (nav + 1120px rail + footer)
+      wraps /, /join, and /auth/*; authenticated slugs unchanged.
+- [x] Define concise Prism positioning: privacy-conscious realtime analytics,
       a small browser SDK, team/project workflows, hosted convenience, and a real
-      self-hosted path.
-- [ ] Write one conversion path for hosted use and one clear self-host path.
-- [ ] Create an information architecture for landing, sign in, create account,
+      self-hosted path. Hero + hosted/self-hosted copy written from the spec.
+- [x] Write one conversion path for hosted use and one clear self-host path.
+      Start hosted -> create account; Self-host Prism -> deployment docs.
+- [x] Create an information architecture for landing, sign in, create account,
       verify email, forgot/reset password, OAuth callback/error, invitation,
-      onboarding, and first-project setup.
-- [ ] Define SEO titles/descriptions, canonical URLs, Open Graph assets,
+      onboarding, and first-project setup. Landing + auth IA live; onboarding
+      and invitation/error screens are the remaining slices.
+- [x] Define SEO titles/descriptions, canonical URLs, Open Graph assets,
       structured data, sitemap behavior, and robots rules for public pages.
+      Title/description/OG/theme-color in index.html + robots.txt; canonical/
+      sitemap deferred until Task 6 defines the public domain.
 - [ ] Preserve existing analytics event names where useful; define intentional
       new events for signup method, onboarding progress, docs clicks, and first
       event success without collecting sensitive form content.
 
 ## 2. Build the public landing page
 
-- [ ] Replace the two-button index placeholder with a real public page.
-- [ ] Use a left-aligned or asymmetric hero that fits in the initial viewport.
+- [x] Replace the two-button index placeholder with a real public page.
+- [x] Use a left-aligned or asymmetric hero that fits in the initial viewport.
       Keep the value proposition concrete and the hosted signup CTA visible.
-- [ ] Provide a separate, non-competing self-host link such as "Self-host Prism"
+- [x] Provide a separate, non-competing self-host link such as "Self-host Prism"
       that leads to deployment documentation rather than a cloud registration wall.
-- [ ] Show the actual setup journey: install SDK, initialize with a project key,
-      send an event, and see the session in realtime.
+- [x] Show the actual setup journey: install SDK, initialize with a project key,
+      send an event, and see the session in realtime. Real SDK rows
+      (yarn add @prism/core, new PrismClient with redacted key, logEvent)
+      with copy controls; JavaScript/React tabs.
 - [ ] Use a real Prism dashboard capture or functioning embedded preview after
       the dashboard styling is stable. Do not manufacture a fake product UI.
-- [ ] Explain hosted versus self-hosted deployment honestly, including which
+      Hero panel currently shows the live setup rows; the dashboard capture
+      slot swaps in during the dashboard-alignment slice.
+- [x] Explain hosted versus self-hosted deployment honestly, including which
       infrastructure the operator owns.
-- [ ] Include focused sections for realtime sessions, events, API keys, team
+- [x] Include focused sections for realtime sessions, events, API keys, team
       collaboration, privacy/data ownership, SDK support, and documentation.
-- [ ] Add a compact footer with docs, GitHub/source, security, deployment, and
+      Proof band + setup + hosted/self-hosted sections cover these; API keys
+      and collaboration get their detail in the onboarding/dashboard slices.
+- [x] Add a compact footer with docs, GitHub/source, security, deployment, and
       legal links. Do not invent testimonials, customer logos, or performance
       numbers.
 
 ## 3. Redesign authentication screens
 
-- [ ] Create a shared auth shell that works for sign-in, signup, verification,
+- [x] Create a shared auth shell that works for sign-in, signup, verification,
       reset, OAuth errors, and invitations without forcing every page into the same
-      generic centered card.
-- [ ] Add Google and GitHub actions only when those providers are enabled by the
-      current instance.
-- [ ] Keep email/password available and make the separation between provider
-      and credential flows accessible to screen readers.
-- [ ] Use labels above inputs, visible focus states, password-manager-friendly
+      generic centered card. Two-column context/form frame; verification and
+      invalid-link states live in the same shell; OAuth error and invitation
+      states land with the remaining slices.
+- [x] Add Google and GitHub actions only when those providers are enabled by the
+      current instance. Providers hidden when credentials are absent.
+- [x] Keep email/password available and make the separation between provider
+      and credential flows accessible to screen readers. OR EMAIL divider is
+      a labelled separator; provider buttons are labeled buttons.
+- [x] Use labels above inputs, visible focus states, password-manager-friendly
       field names/autocomplete values, inline validation, and non-enumerating server
       errors.
 - [ ] Provide explicit pending, success, invalid-link, expired-link,
-      provider-denied, account-not-linked, and offline states.
+      provider-denied, account-not-linked, and offline states. Pending/success/
+      invalid+expired-link states live; provider-denied, account-not-linked,
+      and offline states remain with the edge-screen slice.
 - [ ] Keep callback pages stable during redirects and prevent duplicate form
       submissions.
-- [ ] Make self-hosted instance identity visible in the auth shell so users know
-      which deployment they are signing into.
+- [x] Make self-hosted instance identity visible in the auth shell so users know
+      which deployment they are signing into. Instance host from the API base
+      URL, desktop context panel + mobile identity line.
 - [ ] Test narrow mobile screens, keyboard-only use, zoom to 200%, dark/light
-      modes, reduced motion, and password-manager autofill.
+      modes, reduced motion, and password-manager autofill. Narrow mobile
+      verified; the full matrix runs in the QA slice.
 
 ## 4. Add first-run onboarding
 
@@ -174,6 +192,16 @@ Self-hosted flow:
 - [ ] Self-host fonts and optimize screenshots/assets with explicit dimensions.
 - [ ] Re-read all public copy for concrete claims, consistent terminology, and
       no unsupported metrics or placeholder language.
+
+## Status
+
+In progress on `task-5-hosted-experience`. Slices A (spec tokens, Geist,
+radius, contrast gate), B (landing page + public layout + SEO), and C
+(shared auth shell + four auth flows) are committed. Remaining: hosted
+onboarding, empty/error screens, dashboard visual alignment, then the
+Task 6 foundation (deployment-mode config, first-owner bootstrap, signup
+policy) before the self-hosted onboarding portion, and finally the
+a11y/visual-regression QA slice.
 
 ## Acceptance criteria
 
