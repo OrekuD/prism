@@ -10,9 +10,11 @@ export function PublicLayout() {
   return (
     <div className="flex min-h-dvh flex-col bg-canvas text-text">
       <PublicNav />
-      <main className="flex-1">
-        <div className="mx-auto w-full max-w-[1120px] border-x border-border">
-          <Outlet />
+      <main className="flex flex-1 flex-col">
+        <div className="mx-auto flex w-full max-w-[1120px] flex-1 flex-col border-x border-border">
+          <div className="flex flex-1 flex-col">
+            <Outlet />
+          </div>
           <PublicFooter />
         </div>
       </main>

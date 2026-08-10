@@ -10,7 +10,7 @@ export function NotFound() {
   const isAuthenticated = Boolean(sessionData?.session);
 
   return (
-    <div className="mx-auto grid w-full max-w-[1120px] place-items-center px-6 py-24">
+    <div className="flex w-full flex-1 items-center justify-center px-6 py-16">
       <div className="grid place-items-center gap-4 text-center">
         <p className="font-mono text-[64px] font-semibold leading-none tracking-[-0.04em] text-text">
           404
