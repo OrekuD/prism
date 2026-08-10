@@ -53,8 +53,12 @@ export function buildAuthOptions(
     advanced: {
       // UUID-compatible ids keep Better Auth users valid FK targets for the
       // existing product tables (profiles, teams, memberships, projects).
+      // Use an application-side generator because Better Auth treats
+      // PostgreSQL as natively UUID-capable when this is the string "uuid"
+      // and then inserts DEFAULT. Prism intentionally stores Better Auth IDs
+      // in text columns, which have no database UUID default.
       database: {
-        generateId: "uuid",
+        generateId: () => crypto.randomUUID(),
       },
       useSecureCookies: production,
       defaultCookieAttributes: {
@@ -96,6 +100,9 @@ export function buildAuthOptions(
       },
     },
     emailVerification: {
+      // Product creation is guarded by email verification, so password
+      // signups must receive the verification link immediately.
+      sendOnSignUp: true,
       sendVerificationEmail: async ({ user, url }) => {
         scheduleEmail(env, {
           to: user.email,
@@ -108,10 +115,20 @@ export function buildAuthOptions(
     },
     socialProviders: {
       ...(githubEnabled
-        ? { github: github({ clientId: env.GITHUB_CLIENT_ID ?? "", clientSecret: env.GITHUB_CLIENT_SECRET ?? "" }) }
+        ? {
+            github: github({
+              clientId: env.GITHUB_CLIENT_ID ?? "",
+              clientSecret: env.GITHUB_CLIENT_SECRET ?? "",
+            }),
+          }
         : {}),
       ...(googleEnabled
-        ? { google: google({ clientId: env.GOOGLE_CLIENT_ID ?? "", clientSecret: env.GOOGLE_CLIENT_SECRET ?? "" }) }
+        ? {
+            google: google({
+              clientId: env.GOOGLE_CLIENT_ID ?? "",
+              clientSecret: env.GOOGLE_CLIENT_SECRET ?? "",
+            }),
+          }
         : {}),
     } as BetterAuthOptions["socialProviders"],
     databaseHooks: {

@@ -2,8 +2,9 @@
  * Provider-neutral mail interface for the auth module.
  *
  * - Hosted/local with RESEND_API_KEY set: delivers via Resend.
- * - Self-hosted without Resend: logs the email to the server console
- *   (development console adapter) — no external dependency required.
+ * - Development without Resend: logs the email to the server console.
+ * - Production without Resend: reports missing mail configuration without
+ *   printing the recipient or the actionable verification/reset link.
  *
  * Email delivery is never awaited on the response path by Better Auth
  * callbacks; the Worker runtime schedules these as background tasks.
@@ -78,6 +79,13 @@ export async function dispatchEmail(
   const apiKey = env.RESEND_API_KEY;
 
   if (!apiKey) {
+    if (env.ENVIRONMENT !== "development") {
+      console.warn(
+        "[prism-auth][mail] delivery skipped: no production mail provider is configured",
+      );
+      return;
+    }
+
     // Development console adapter: print the actionable link only.
     const link =
       message.template === "confirm-email"

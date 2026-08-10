@@ -59,10 +59,7 @@ async function main() {
   }
 
   const auth = betterAuth({
-    ...buildAuthOptions(
-      process.env as Record<string, string>,
-      db as never,
-    ),
+    ...buildAuthOptions(process.env as Record<string, string>, db as never),
     database: drizzleAdapter(db, { provider: "pg", schema: authSchema }),
   });
 
@@ -76,7 +73,10 @@ async function main() {
 
   await db
     .update(userTable)
-    .set({ role: Roles.ADMIN })
+    // Running the local bootstrap command with instance/database access is the
+    // ownership proof. Without this, the verified-email product guards would
+    // prevent the first self-hosted administrator from creating a project.
+    .set({ role: Roles.ADMIN, emailVerified: true })
     .where(eq(userTable.id, response.user.id));
 
   await provisionUserResources(db, {

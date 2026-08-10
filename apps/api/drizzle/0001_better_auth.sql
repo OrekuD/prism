@@ -4,12 +4,15 @@
 --
 -- Forward-only and reviewed. Steps:
 --   1. Create the Better Auth tables (user/session/account/verification/jwks).
---   2. Drop the old FKs that reference users(id).
---   3. Retype product FK columns uuid -> text to match user(id) (text).
---   4. Drop the obsolete custom-auth tables (users last).
---   5. Recreate product FKs against user(id) with the original semantics.
+--   2. Clear disposable product fixtures owned by the old test users.
+--   3. Drop the old FKs that reference users(id).
+--   4. Retype product FK columns uuid -> text to match user(id) (text).
+--   5. Drop the obsolete custom-auth tables (users last).
+--   6. Recreate product FKs against user(id) with the original semantics.
 --
--- Test data only: no production users existed when this was authored.
+-- Test data only: no production users existed when this was authored. Product
+-- fixtures must be cleared with the old users because Better Auth provisions
+-- fresh profiles, teams, projects, and API keys for new accounts.
 -- ============================================================================
 
 --> statement-breakpoint
@@ -82,7 +85,24 @@ ALTER TABLE "account" ADD CONSTRAINT "account_user_id_user_id_fk" FOREIGN KEY ("
 --> statement-breakpoint
 
 -- ---------------------------------------------------------------------------
--- 2. Drop old FKs referencing users(id)
+-- 2. Clear disposable fixtures owned by the old test users
+--
+-- All related tables are listed in one TRUNCATE statement so PostgreSQL can
+-- validate the existing inter-table foreign keys without using CASCADE.
+-- ---------------------------------------------------------------------------
+TRUNCATE TABLE
+	"project_api_keys",
+	"team_avatars",
+	"team_invites",
+	"team_members",
+	"projects",
+	"profile_pictures",
+	"profiles",
+	"teams";
+--> statement-breakpoint
+
+-- ---------------------------------------------------------------------------
+-- 3. Drop old FKs referencing users(id)
 -- ---------------------------------------------------------------------------
 ALTER TABLE "profiles" DROP CONSTRAINT IF EXISTS "profiles_user_id_users_id_fk";
 --> statement-breakpoint
@@ -104,7 +124,7 @@ ALTER TABLE "otp_sign_ins" DROP CONSTRAINT IF EXISTS "otp_sign_ins_user_id_users
 --> statement-breakpoint
 
 -- ---------------------------------------------------------------------------
--- 3. Retype product FK columns uuid -> text (values are uuid strings)
+-- 4. Retype product FK columns uuid -> text
 -- ---------------------------------------------------------------------------
 ALTER TABLE "profiles" ALTER COLUMN "user_id" TYPE text USING "user_id"::text;
 --> statement-breakpoint
@@ -120,7 +140,7 @@ ALTER TABLE "projects" ALTER COLUMN "creator_id" TYPE text USING "creator_id"::t
 --> statement-breakpoint
 
 -- ---------------------------------------------------------------------------
--- 4. Drop obsolete custom-auth tables (users last; FKs already removed)
+-- 5. Drop obsolete custom-auth tables (users last; FKs already removed)
 -- ---------------------------------------------------------------------------
 DROP TABLE IF EXISTS "oauth_access_tokens";
 --> statement-breakpoint
@@ -132,7 +152,7 @@ DROP TABLE IF EXISTS "users";
 --> statement-breakpoint
 
 -- ---------------------------------------------------------------------------
--- 5. Recreate product FKs against user(id), preserving original semantics
+-- 6. Recreate product FKs against user(id), preserving original semantics
 -- ---------------------------------------------------------------------------
 ALTER TABLE "profiles" ADD CONSTRAINT "profiles_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint

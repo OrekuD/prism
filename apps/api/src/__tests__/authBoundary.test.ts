@@ -4,6 +4,7 @@ import {
   signUpAndGetCookies,
   TEST_PASSWORD,
 } from "./authTestHarness";
+import { buildAuthOptions } from "../auth/options";
 
 describe("Better Auth boundary (email/password + sessions)", () => {
   afterEach(() => {
@@ -22,6 +23,43 @@ describe("Better Auth boundary (email/password + sessions)", () => {
 
     expect(response.token).toBeTruthy();
     expect(response.user.email).toBe("signup@example.com");
+  });
+
+  it("generates UUID-compatible IDs in the application for text ID columns", () => {
+    const options = buildAuthOptions(
+      {
+        JWT_SECRET_KEY: "test-secret-key-that-is-long-enough-for-hs256",
+        CLIENT_URL: "http://localhost:3001",
+        ENVIRONMENT: "development",
+      },
+      {} as never,
+    );
+    const generateId = options.advanced?.database?.generateId;
+
+    expect(typeof generateId).toBe("function");
+    if (typeof generateId !== "function") {
+      throw new Error("Better Auth must generate IDs before inserting rows");
+    }
+
+    expect(generateId({ model: "user" })).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+  });
+
+  it("sends a verification email after password signup", () => {
+    const options = buildAuthOptions(
+      {
+        JWT_SECRET_KEY: "test-secret-key-that-is-long-enough-for-hs256",
+        CLIENT_URL: "http://localhost:3001",
+        ENVIRONMENT: "development",
+      },
+      {} as never,
+    );
+
+    expect(options.emailVerification?.sendOnSignUp).toBe(true);
+    expect(options.emailVerification?.sendVerificationEmail).toBeTypeOf(
+      "function",
+    );
   });
 
   it("rejects a weak password", async () => {
@@ -138,14 +176,22 @@ describe("Better Auth boundary (email/password + sessions)", () => {
     const auth = createTestAuth();
     const cookies = await signUpAndGetCookies(auth, "jwt@example.com");
 
-    const tokenResult = (await (auth.api as unknown as {
-      getToken: (opts: { headers: Headers }) => Promise<{ token?: string } | undefined>;
-    }).getToken({ headers: cookies }));
+    const tokenResult = await (
+      auth.api as unknown as {
+        getToken: (opts: {
+          headers: Headers;
+        }) => Promise<{ token?: string } | undefined>;
+      }
+    ).getToken({ headers: cookies });
     expect(tokenResult?.token).toBeTruthy();
 
-    const jwks = (await (auth.api as unknown as {
-      getJwks: () => Promise<{ keys?: Array<{ alg?: string; kid?: string }> } | undefined>;
-    }).getJwks());
+    const jwks = await (
+      auth.api as unknown as {
+        getJwks: () => Promise<
+          { keys?: Array<{ alg?: string; kid?: string }> } | undefined
+        >;
+      }
+    ).getJwks();
     expect(jwks?.keys?.length ?? 0).toBeGreaterThan(0);
     expect(jwks?.keys?.[0]?.alg).toBe("RS256");
     expect(jwks?.keys?.[0]?.kid).toBeTruthy();

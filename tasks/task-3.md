@@ -11,12 +11,12 @@ There are no production users to migrate. Existing test users and obsolete auth
 records may be deleted, so this should be a clean schema replacement rather
 than a dual-auth compatibility project.
 
-**Status:** Complete as of 2026-08-10 except one environmental blocker: the
-checked-in migration `drizzle/0001_better_auth.sql` (destructive — drops the
-custom-auth tables and test users) has NOT been applied to the shared Neon
-development database. Apply with `yarn workspace prism-api db:migrate` after
-confirming the target branch, then re-run `db:inspect` to verify, and run the
-E2E smoke (`node scripts/e2e-smoke.mjs`).
+**Status:** Complete as of 2026-08-10. The destructive Better Auth migration
+was applied to the shared Neon development database after confirming that it
+contained test data only. Post-migration inspection confirmed the Better Auth
+tables, text user-reference columns, removal of the custom-auth tables, and six
+applied Drizzle journal entries. The live E2E flow passes 18/18 checks with its
+guarded development email-verification fixture enabled.
 
 ## Why make this change?
 
@@ -86,11 +86,12 @@ and no user migration layer is required.
 - [x] Generate the Better Auth Drizzle schema, review it, then create a normal
       checked-in Drizzle migration. Do not run runtime schema mutation in deployed
       request handlers. → drizzle/0001_better_auth.sql (reviewed, forward-only) +
-      journal entry. NOT YET APPLIED — needs approval (destructive).
+      journal entry. Applied to the shared Neon development database after the
+      disposable dependent product fixtures were cleared explicitly.
 - [x] Replace the old password field and auth tables. Remove
       `oauth_access_tokens`, OTP/reset tables, and login-attempt data only after the
       new schema and tests are ready. → schema/model files removed; DB drop is
-      part of 0001 (pending apply).
+      part of 0001 and has been applied.
 - [x] Reset test data and rebuild foreign keys against the Better Auth user ID.
       → FK columns retyped uuid→text; FKs rebuilt against user(id) in 0001.
 - [x] Keep profile and product fields outside the auth schema unless Better
@@ -127,7 +128,7 @@ and no user migration layer is required.
 
 - [x] Add sanitized environment variables for provider client IDs and secrets,
       plus explicit local and production callback URL documentation.
-      → GITHUB_*/GOOGLE_* bindings; .dev.vars.example + README docs pending.
+      → GITHUB__/GOOGLE__ bindings; .dev.vars.example + README docs pending.
 - [x] Configure both providers only when both credentials for that provider are
       present; hide unavailable provider buttons in the UI.
       → providers conditional in options.ts; UI hiding is part of the frontend.

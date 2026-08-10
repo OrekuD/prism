@@ -46,11 +46,14 @@ function main() {
     .executeMultiple(schema)
     .then(() => {
       console.log(
-        "[prism-analytics-api] Analytics schema is up to date (sessions table + indexes).",
+        "[prism-analytics-api] Analytics schema is up to date (sessions/events tables + indexes).",
       );
     })
     .catch((error) => {
-      console.error("[prism-analytics-api] Analytics schema setup failed:", error);
+      console.error(
+        "[prism-analytics-api] Analytics schema setup failed:",
+        error,
+      );
       process.exit(1);
     })
     .finally(() => {

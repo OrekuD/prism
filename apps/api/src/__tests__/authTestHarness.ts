@@ -34,6 +34,18 @@ export function createTestAuth(
   return betterAuth({
     ...base,
     ...options,
+    emailAndPassword: {
+      ...base.emailAndPassword,
+      sendResetPassword: async () => undefined,
+      ...options.emailAndPassword,
+    },
+    emailVerification: {
+      ...base.emailVerification,
+      // Boundary tests exercise auth behavior without emitting signed links to
+      // stdout or contacting an external provider.
+      sendVerificationEmail: async () => undefined,
+      ...options.emailVerification,
+    },
     database: memoryAdapter(memoryDb),
   });
 }

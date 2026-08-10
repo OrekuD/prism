@@ -8,7 +8,7 @@
  *   yarn workspace prism-api dev            # http://localhost:8787
  *   yarn workspace prism-analytics-api dev  # http://localhost:8080
  *
- *   node scripts/e2e-smoke.mjs
+ *   E2E_AUTO_VERIFY_EMAIL=1 node scripts/e2e-smoke.mjs
  *
  * Flow: sign up (Better Auth) -> sign in (cookie session) -> service JWT ->
  * create team -> create project -> start a session via the analytics
@@ -16,9 +16,12 @@
  * end the session. Exits non-zero with a report on any failure.
  */
 import { randomUUID } from "node:crypto";
+import { config } from "dotenv";
+import postgres from "postgres";
 
 const API = process.env.E2E_API_URL ?? "http://localhost:8787";
 const AUTH = process.env.E2E_AUTH_URL ?? API;
+const ORIGIN = process.env.E2E_ORIGIN ?? "http://localhost:3001";
 const ANALYTICS =
   process.env.E2E_ANALYTICS_URL ?? "http://localhost:8080/api/v1/analytics";
 
@@ -40,7 +43,12 @@ const jar = { cookie: "" };
 
 async function request(url, { method = "GET", token, body, json = true } = {}) {
   const headers = {
-    ...(json ? { "content-type": "application/json" } : {}),
+    ...(json && body !== undefined
+      ? { "content-type": "application/json" }
+      : {}),
+    // Better Auth validates the browser origin on state-changing requests.
+    // Mirror the configured dashboard client instead of bypassing that check.
+    origin: ORIGIN,
     ...(jar.cookie ? { cookie: jar.cookie } : {}),
     ...(token ? { authorization: `Bearer ${token}` } : {}),
   };
@@ -72,6 +80,45 @@ const email = `e2e-${suffix}@example.com`;
 const password = ["E2E", "password", suffix].join("-");
 const name = `E2E Smoke ${suffix}`;
 
+async function verifyGeneratedE2EUser() {
+  if (process.env.E2E_AUTO_VERIFY_EMAIL !== "1") {
+    console.error(
+      "Set E2E_AUTO_VERIFY_EMAIL=1 to verify the generated development fixture before protected product actions.",
+    );
+    return false;
+  }
+  if (!/^e2e-[a-z0-9-]+@example\.com$/i.test(email)) {
+    throw new Error("Refusing to verify a non-E2E email address");
+  }
+
+  config({ path: "apps/api/.dev.vars" });
+  if (process.env.ENVIRONMENT !== "development") {
+    throw new Error(
+      "E2E email seeding is restricted to ENVIRONMENT=development",
+    );
+  }
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    throw new Error("DATABASE_URL is required for E2E email seeding");
+  }
+
+  const projectName = process.env.PROJECT_NAME ?? "prism";
+  const sql = postgres(
+    `${databaseUrl}?options=project%3D${encodeURIComponent(projectName)}`,
+    { ssl: "require", max: 1 },
+  );
+  try {
+    const updated = await sql`
+      UPDATE "user"
+      SET email_verified = true, updated_at = now()
+      WHERE email = ${email} AND email_verified = false
+      RETURNING id`;
+    return updated.length === 1;
+  } finally {
+    await sql.end();
+  }
+}
+
 let teamId = null;
 let projectId = null;
 let sessionId = null;
@@ -89,6 +136,9 @@ check(
   signUp.status === 200 && !!signUp.data?.token,
   `got ${signUp.status}`,
 );
+
+const verified = signUp.status === 200 && (await verifyGeneratedE2EUser());
+check("generated development account is email-verified", verified);
 
 // 2. Sign in and capture the session cookie
 const signIn = await request(`${AUTH}/api/auth/sign-in/email`, {
@@ -114,6 +164,13 @@ const token = await request(`${AUTH}/api/auth/token`);
 check("service JWT issued", token.status === 200 && !!token.data?.token);
 const serviceToken = token.data?.token;
 
+if (failed > 0) {
+  console.error(
+    `\nAuthentication preflight failed: ${passed} passed, ${failed} failed`,
+  );
+  process.exit(1);
+}
+
 // 5. The analytics API accepts the service JWT on the WebSocket contract
 //    (verified indirectly: ingestion uses the project key below; the JWKS
 //    contract is covered by unit tests).
@@ -123,21 +180,33 @@ const createTeam = await request(`${API}/api/v1/teams`, {
   method: "POST",
   body: { name: `E2E Team ${suffix}` },
 });
-check("create-team succeeds", createTeam.status === 200, `got ${createTeam.status}`);
+check(
+  "create-team succeeds",
+  createTeam.status === 200,
+  `got ${createTeam.status}`,
+);
 const teams = await request(`${API}/api/v1/teams`);
-teamId = teams.data?.find((team) => team.name.includes(suffix))?.id;
+teamId = Array.isArray(teams.data)
+  ? teams.data.find((team) => team.name.includes(suffix))?.id
+  : null;
 check("team appears in the teams list", !!teamId);
 
 // 7. Create a project
-const createProject = await request(`${API}/api/v1/teams/${teamId}/projects`, {
+const createProject = await request(`${API}/api/v1/projects/${teamId}`, {
   method: "POST",
   body: { teamId, name: `E2E Project ${suffix}` },
 });
-check("create-project succeeds", createProject.status === 200, `got ${createProject.status}`);
+check(
+  "create-project succeeds",
+  createProject.status === 200,
+  `got ${createProject.status}`,
+);
 
 // 8. Read the project + its analytics key
 const projects = await request(`${API}/api/v1/teams/${teamId}/projects`);
-const project = projects.data?.find((p) => p.name.includes(suffix));
+const project = Array.isArray(projects.data)
+  ? projects.data.find((p) => p.name.includes(suffix))
+  : null;
 projectId = project?.id;
 check("project appears in the team listing", !!projectId);
 
@@ -157,16 +226,26 @@ const start = await request(`${ANALYTICS}/sessions`, {
   },
 });
 sessionId = start.data?.sessionId;
-check("ingestion starts a session", start.status === 200 && !!sessionId, `got ${start.status}`);
+check(
+  "ingestion starts a session",
+  start.status === 200 && !!sessionId,
+  `got ${start.status}`,
+);
 
 // 10. The team-project endpoint summary reflects the session (Turso store)
 const afterStart = await request(`${API}/api/v1/teams/${teamId}/projects`);
-const updated = afterStart.data?.find((p) => p.id === projectId);
+const updated = Array.isArray(afterStart.data)
+  ? afterStart.data.find((p) => p.id === projectId)
+  : null;
 const sessionCount = (updated?.summary ?? []).reduce(
   (sum, entry) => sum + entry.desktop + entry.mobile,
   0,
 );
-check("session appears in the project summary", sessionCount >= 1, `summary ${JSON.stringify(updated?.summary)}`);
+check(
+  "session appears in the project summary",
+  sessionCount >= 1,
+  `summary ${JSON.stringify(updated?.summary)}`,
+);
 
 // 11. Log an event and read it back
 const event = await request(`${ANALYTICS}/events`, {
@@ -196,10 +275,17 @@ const bogusEnd = await request(`${ANALYTICS}/sessions/end`, {
   token: "bogus-key",
   body: { sessionId },
 });
-check("a bogus key cannot end sessions", bogusEnd.status === 401, `got ${bogusEnd.status}`);
+check(
+  "a bogus key cannot end sessions",
+  bogusEnd.status === 401,
+  `got ${bogusEnd.status}`,
+);
 
 // 14. Sign out revokes the session
-const signOut = await request(`${AUTH}/api/auth/sign-out`, { method: "POST" });
+const signOut = await request(`${AUTH}/api/auth/sign-out`, {
+  method: "POST",
+  body: {},
+});
 check("sign-out succeeds", signOut.status === 200, `got ${signOut.status}`);
 const afterSignOut = await request(`${AUTH}/api/auth/get-session`);
 check("session is revoked after sign-out", afterSignOut.data?.session == null);
