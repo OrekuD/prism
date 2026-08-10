@@ -1,3 +1,4 @@
+import { Loader2 } from "lucide-react";
 import React from "react";
 import { authClient } from "@/lib/authClient";
 import {
@@ -29,7 +30,7 @@ import { ProjectSettingsLayout } from "./components/layout/project-settings-layo
 import { ProjectSettingsApiKeys } from "./routes/projects/project/settings/api-keys";
 import { ProjectSettingsGeneral } from "./routes/projects/project/settings/general";
 import { ProjectRealtime } from "./routes/projects/project/realtime";
-import { LoadingSpinner } from "./components/ui/loading-spinner";
+import { Skeleton } from "./components/ui/skeleton";
 import { Gallery } from "./routes/gallery";
 
 const defaultRouter = createBrowserRouter(
@@ -95,7 +96,7 @@ export function App() {
   if (isPending) {
     return (
       <div className="grid h-screen w-full place-items-center">
-        <LoadingSpinner />
+        <Loader2 className="size-4 animate-spin" />
       </div>
     );
   }

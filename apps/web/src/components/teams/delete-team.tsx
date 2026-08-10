@@ -1,5 +1,6 @@
+import { Loader2 } from "lucide-react";
 import type React from "react";
-import { Button } from "./button";
+import { Button } from "../ui/button";
 import {
 	Dialog,
 	DialogContent,
@@ -7,21 +8,17 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "./dialog";
-import { LoadingSpinner } from "./loading-spinner";
+} from "../ui/dialog";
+
 import { useDeleteTeamMutation } from "@/network/mutations/useDeleteTeamMutation";
-import { useLeaveTeamMutation } from "@/network/mutations/useLeaveTeamMutation";
 
 type Props = {
-	leaveTeamId: string;
-	setLeaveTeamId: React.Dispatch<React.SetStateAction<string>>;
+	deleteTeamId: string;
+	setDeleteTeamId: React.Dispatch<React.SetStateAction<string>>;
 };
 
-export function LeaveTeam({
-	leaveTeamId: deleteTeamId,
-	setLeaveTeamId: setDeleteTeamId,
-}: Props) {
-	const leaveTeamMutation = useLeaveTeamMutation();
+export function DeleteTeam({ deleteTeamId, setDeleteTeamId }: Props) {
+	const deleteTeamMutation = useDeleteTeamMutation();
 
 	return (
 		<Dialog
@@ -30,15 +27,16 @@ export function LeaveTeam({
 		>
 			<DialogContent className="w-[90vw] md:w-full rounded-lg">
 				<DialogHeader>
-					<DialogTitle>Leave Team</DialogTitle>
+					<DialogTitle>Delete Team</DialogTitle>
 					<DialogDescription>
-						You will lose access to this team and all projects associated to
-						this team.
+						All projects associated with this team will also be deleted. This
+						action is irreversible.
 					</DialogDescription>
 				</DialogHeader>
 				<DialogFooter>
 					<Button
 						variant="outline"
+						disabled={deleteTeamMutation.isPending}
 						onClick={() => {
 							setDeleteTeamId("");
 						}}
@@ -47,9 +45,9 @@ export function LeaveTeam({
 					</Button>
 					<Button
 						variant="destructive"
-						disabled={leaveTeamMutation.isPending}
+						disabled={deleteTeamMutation.isPending}
 						onClick={async () => {
-							const response = await leaveTeamMutation.mutateAsync({
+							const response = await deleteTeamMutation.mutateAsync({
 								teamId: deleteTeamId,
 							});
 							if (response?.message) {
@@ -57,7 +55,7 @@ export function LeaveTeam({
 							}
 						}}
 					>
-						{leaveTeamMutation.isPending ? <LoadingSpinner /> : "Leave Team"}
+						{deleteTeamMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : "Delete Team"}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

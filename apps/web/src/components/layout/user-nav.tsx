@@ -1,5 +1,5 @@
 import React from "react";
-import { Avatar, AvatarFallback, AvatarImage } from "./avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -8,15 +8,15 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 	DropdownMenuGroup,
-} from "./dropdown-menu";
-import { Button } from "./button";
+} from "../ui/dropdown-menu";
+import { Button } from "../ui/button";
 import { Link } from "react-router-dom";
 import { Laptop, LogOut, Moon, Settings, Sun } from "lucide-react";
 import { useTheme } from "../theme-provider";
 import { useUserStore } from "@/store/userStore";
 import { getInitials } from "@/utils/getInitials";
 import { authClient } from "@/lib/authClient";
-import { LoadingSpinner } from "./loading-spinner";
+
 
 const themes = [
 	{

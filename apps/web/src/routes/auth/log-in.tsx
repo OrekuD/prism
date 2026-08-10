@@ -1,3 +1,4 @@
+import { Loader2 } from "lucide-react";
 import React from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { authClient, fetchEnabledProviders } from "@/lib/authClient";
@@ -12,7 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { LoadingSpinner } from "@/components/ui/loading-spinner";
+
 
 export function LogIn() {
   const navigate = useNavigate();
@@ -80,7 +81,7 @@ export function LogIn() {
               <p className="text-sm text-destructive">{error}</p>
             ) : null}
             <Button type="submit" disabled={isPending}>
-              {isPending ? <LoadingSpinner /> : "Sign in"}
+              {isPending ? <Loader2 className="size-4 animate-spin" /> : "Sign in"}
             </Button>
           </form>
           {(providers.github || providers.google) ? (

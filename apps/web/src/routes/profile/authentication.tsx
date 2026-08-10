@@ -1,3 +1,4 @@
+import { Loader2 } from "lucide-react";
 import React from "react";
 import {
   Card,
@@ -10,7 +11,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { LoadingSpinner } from "@/components/ui/loading-spinner";
+
 import { authClient, authBaseUrl, fetchEnabledProviders } from "@/lib/authClient";
 
 type LinkedAccount = { provider: string; accountId: string };
@@ -120,7 +121,7 @@ export function AccountAuthentication() {
             ) : null}
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
             <Button type="submit" disabled={isPending} className="w-fit">
-              {isPending ? <LoadingSpinner /> : "Save"}
+              {isPending ? <Loader2 className="size-4 animate-spin" /> : "Save"}
             </Button>
           </form>
         </CardContent>
@@ -146,7 +147,7 @@ export function AccountAuthentication() {
               />
             </div>
             <Button type="submit" disabled={isPending} className="w-fit">
-              {isPending ? <LoadingSpinner /> : "Update email"}
+              {isPending ? <Loader2 className="size-4 animate-spin" /> : "Update email"}
             </Button>
           </form>
         </CardContent>

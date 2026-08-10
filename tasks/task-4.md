@@ -50,9 +50,13 @@ Avoid mixing visual redesign bugs with upgrade regressions.
       activity-summary/rankings-chart/rankings-summary/create-new-project/
       create-team/delete-project/delete-team/invite-team-members/leave-team/
       loading-spinner/nav/team-card/team-switcher/user-nav/date-range-picker.
-- [ ] Move product-specific components such as team/project dialogs, summary
+- [x] Move product-specific components such as team/project dialogs, summary
       panels, charts, navigation, and user menus into feature/layout directories.
-- [ ] Record component usage with `rg` before deleting or replacing anything.
+      → components/ui now holds only primitives (22 files); composites moved:
+      layout/ (nav, team-switcher, user-nav, date-range-picker), projects/
+      (create-new-project, delete-project), teams/ (create-team, delete-team,
+      invite-team-members, leave-team, team-card), charts/ (rankings-summary).
+- [x] Record component usage with `rg` before deleting or replacing anything.
 - [x] Identify third-party packages with React 19 peer constraints, especially
       React Hook Form, Radix, charts, maps, date pickers, command menus, OTP, query,
       router, and testing tools.
@@ -151,17 +155,22 @@ Avoid mixing visual redesign bugs with upgrade regressions.
       dropdown-menu render their data-slot elements (9/10 slots).
 - [ ] Standardize disabled, busy, destructive, validation, empty, and focus
       states across primitives.
-- [ ] Remove the generic spinner where a layout-matched skeleton or button busy
-      state communicates progress more clearly.
+- [x] Remove the generic spinner where a layout-matched skeleton or button busy
+      state communicates progress more clearly. App.tsx session gate now uses a
+      full-page skeleton; button/pending states use lucide Loader2
+      animate-spin; loading-spinner.tsx deleted.
 
 ## 6. Rebuild Prism composites on the upgraded primitives
 
-- [ ] Update navigation, team switcher, user menu, date-range picker, activity
-      summaries, rankings, dialogs, and all form compositions.
+- [x] Update navigation, team switcher, user menu, date-range picker, activity
+      summaries, rankings, dialogs, and all form compositions. Rebuilt on the
+      v4 primitives; verified in the browser (nav cluster, dialogs, dropdowns,
+      4 summary charts, project sparklines).
 - [ ] Preserve destructive-action confirmations and keyboard focus restoration.
 - [ ] Make every multi-column product layout collapse explicitly below 768px.
-- [ ] Remove duplicated one-off class combinations by introducing small,
+- [x] Remove duplicated one-off class combinations by introducing small,
       focused variants or feature components, not a new abstraction layer.
+      Inline Loader2 pending states replaced the spinner component.
 - [ ] Verify charts and maps read semantic tokens and resize without layout
       shifts.
 - [ ] Keep public/auth components separate from dense dashboard components even

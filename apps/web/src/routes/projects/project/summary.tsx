@@ -7,7 +7,7 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { RankingsChart } from "@/components/charts/rankings-chart";
-import { RankingsSummary } from "@/components/ui/rankings-summary";
+import { RankingsSummary } from "@/components/charts/rankings-summary";
 export function ProjectSummary() {
   return (
     <div className="space-y-4">

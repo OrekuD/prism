@@ -10,7 +10,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useUserStore } from "@/store/userStore";
-import { LoadingSpinner } from "@/components/ui/loading-spinner";
+
 import {
   Form,
   FormControl,
@@ -23,7 +23,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useUpdateUserInformationMutation } from "@/network/mutations/useUpdateUserInformationMutation";
 import { UpdateUserInformationRequestSchema } from "@prism/types";
-import { Pencil } from "lucide-react";
+import { Pencil , Loader2 } from "lucide-react";
 import defaultAvatar from "@/assets/images/default_profile.png";
 import { useUpdateProfilePictureMutation } from "@/network/mutations/useUpdateProfilePictureMutation";
 
@@ -90,7 +90,7 @@ export function AccountGeneral() {
                   disabled={updateUserInformationMutation.isPending}
                 >
                   {updateUserInformationMutation.isPending ? (
-                    <LoadingSpinner />
+                    <Loader2 className="size-4 animate-spin" />
                   ) : (
                     "Update"
                   )}
@@ -158,7 +158,7 @@ export function AccountGeneral() {
               }}
             >
               {updateProfilePictureMutation.isPending ? (
-                <LoadingSpinner />
+                <Loader2 className="size-4 animate-spin" />
               ) : (
                 "Upload avatar"
               )}

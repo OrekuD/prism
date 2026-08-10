@@ -9,10 +9,10 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { PopoverTrigger } from "@/components/ui/popover";
 import { useTeamsQuery } from "@/network/queries/useTeamsQuery";
-import { Skeleton } from "./skeleton";
+import { Skeleton } from "../ui/skeleton";
 import { useActiveTeamStore } from "@/store/activeTeamStore";
 import { getInitials } from "@/utils/getInitials";
-import { CreateTeam } from "./create-team";
+import { CreateTeam } from "../teams/create-team";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -20,7 +20,7 @@ import {
 	DropdownMenuLabel,
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
-} from "./dropdown-menu";
+} from "../ui/dropdown-menu";
 
 export function TeamSwitcher() {
 	const [open, setOpen] = React.useState(false);

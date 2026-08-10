@@ -1,0 +1,66 @@
+- generic:
+  - generic:
+    - generic:
+      - generic:
+        - link:
+          - /url: /
+        - button:
+          - generic: BT
+          - paragraph: Baseline User's team
+      - generic:
+        - button: Feedback
+        - link:
+          - /url: /projects
+          - text: Docs
+        - button [expanded]:
+          - generic: BU
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - searchbox
+          - generic:
+            - button: New App
+            - button: Team Settings
+        - generic:
+          - generic:
+            - link:
+              - /url: /projects/mustard-sausage-953455533
+              - generic:
+                - generic: Baseline App
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - img:
+                          - generic:
+                            - generic: Aug 3
+                            - generic: Aug 4
+                            - generic: Aug 5
+                            - generic: Aug 6
+                            - generic: Aug 7
+                            - generic: Aug 8
+                            - generic: Aug 9
+                            - generic: Aug 10
+                            - generic: "0.0"
+                            - generic: "0.5"
+                            - generic: "1.0"
+    - region "Notifications alt+T"
+  - menu "BU" [active] [ref=f34e71]:
+    - generic [ref=f34e73]:
+      - paragraph [ref=f34e74]: Baseline User
+      - paragraph [ref=f34e75]: baseline-1786335580@example.com
+    - separator [ref=f34e76]
+    - link [ref=f34e77] [cursor=pointer]:
+      - /url: /account/general
+      - menuitem "Account" [ref=f34e78]
+    - group [ref=f34e79]:
+      - generic [ref=f34e80]:
+        - menuitem "Theme" [ref=f34e81]
+        - generic [ref=f34e82]:
+          - button [ref=f34e83]
+          - button [ref=f34e86]
+          - button [ref=f34e93]
+    - separator [ref=f34e96]
+    - menuitem "Log out" [ref=f34e97]

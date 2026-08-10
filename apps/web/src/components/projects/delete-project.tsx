@@ -1,5 +1,6 @@
+import { Loader2 } from "lucide-react";
 import React from "react";
-import { Button } from "./button";
+import { Button } from "../ui/button";
 import {
 	Dialog,
 	DialogContent,
@@ -8,8 +9,8 @@ import {
 	DialogHeader,
 	DialogTitle,
 	DialogTrigger,
-} from "./dialog";
-import { LoadingSpinner } from "./loading-spinner";
+} from "../ui/dialog";
+
 import { useDeleteTeamMutation } from "@/network/mutations/useDeleteTeamMutation";
 import { useDeleteProjectMutation } from "@/network/mutations/useDeleteProjectMutation";
 import { useProjectQuery } from "@/network/queries/useProjectQuery";
@@ -70,7 +71,7 @@ export function DeleteProject(props: React.PropsWithChildren) {
 						}}
 					>
 						{deleteProjectMutation.isPending ? (
-							<LoadingSpinner />
+							<Loader2 className="size-4 animate-spin" />
 						) : (
 							"Delete Project"
 						)}

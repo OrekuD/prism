@@ -1,7 +1,7 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CalendarDateRangePicker } from "@/components/ui/date-range-picker";
+import { CalendarDateRangePicker } from "./date-range-picker";
 import {
   Link,
   Outlet,

@@ -6,16 +6,16 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "./dialog";
-import { Plus, CircleX, Link } from "lucide-react";
-import { FormField, FormItem, FormControl, FormMessage, Form } from "./form";
+} from "../ui/dialog";
+import { Plus, CircleX, Link , Loader2 } from "lucide-react";
+import { FormField, FormItem, FormControl, FormMessage, Form } from "../ui/form";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Input } from "./input";
-import { Button } from "./button";
+import { Input } from "../ui/input";
+import { Button } from "../ui/button";
 import { useInviteTeamMembersMutation } from "@/network/mutations/useInviteTeamMembersMutation";
-import { LoadingSpinner } from "./loading-spinner";
+
 import { useTeamsQuery } from "@/network/queries/useTeamsQuery";
 import { useUserStore } from "@/store/userStore";
 import { useTeamInviteLinkQuery } from "@/network/queries/useTeamInviteLinkQuery";
@@ -181,7 +181,7 @@ export function InviteTeamMembers(props: Props) {
 						}}
 					>
 						{inviteTeamMembersMutation.isPending ? (
-							<LoadingSpinner />
+							<Loader2 className="size-4 animate-spin" />
 						) : (
 							"Send Invites"
 						)}

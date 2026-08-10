@@ -2,7 +2,7 @@ import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProjectSparkline } from "@/components/charts/project-sparkline";
-import { CreateNewProject } from "@/components/ui/create-new-project";
+import { CreateNewProject } from "@/components/projects/create-new-project";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProjectsQuery } from "@/network/queries/useProjectsQuery";

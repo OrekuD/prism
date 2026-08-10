@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -7,7 +8,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { DeleteProject } from "@/components/ui/delete-project";
+import { DeleteProject } from "@/components/projects/delete-project";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -20,7 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LoadingSpinner } from "@/components/ui/loading-spinner";
+
 import { useProjectQuery } from "@/network/queries/useProjectQuery";
 import { useRenameProjectMutation } from "@/network/mutations/useRenameProjectMutation";
 import type { ProjectDetailedRequest } from "@prism/types";
@@ -106,7 +107,7 @@ export function ProjectSettingsGeneral() {
                   }
                 >
                   {renameProjectMutation.isPending ? (
-                    <LoadingSpinner className="size-4" />
+                    <Loader2 className="size-4 animate-spin" />
                   ) : (
                     "Save"
                   )}

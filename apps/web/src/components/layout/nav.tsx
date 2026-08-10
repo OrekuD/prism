@@ -11,17 +11,17 @@ import {
 	DialogHeader,
 	DialogTitle,
 	DialogTrigger,
-} from "./dialog";
-import { Label } from "./label";
-import { Button } from "./button";
-import { Textarea } from "./textarea";
+} from "../ui/dialog";
+import { Label } from "../ui/label";
+import { Button } from "../ui/button";
+import { Textarea } from "../ui/textarea";
 import {
 	Select,
 	SelectContent,
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
-} from "./select";
+} from "../ui/select";
 
 const feedbackTypes = ["Bug", "Issue", "Improvement", "Feature"];
 

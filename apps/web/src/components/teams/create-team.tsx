@@ -1,3 +1,4 @@
+import { Loader2 } from "lucide-react";
 import type React from "react";
 import {
 	Dialog,
@@ -7,9 +8,9 @@ import {
 	DialogHeader,
 	DialogTitle,
 	DialogTrigger,
-} from "./dialog";
-import { Input } from "./input";
-import { Button } from "./button";
+} from "../ui/dialog";
+import { Input } from "../ui/input";
+import { Button } from "../ui/button";
 import { useForm } from "react-hook-form";
 import { CreateTeamRequestSchema } from "@prism/types";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -20,10 +21,10 @@ import {
 	FormItem,
 	FormLabel,
 	FormMessage,
-} from "./form";
+} from "../ui/form";
 import type { z } from "zod";
 import { useCreateTeamMutation } from "@/network/mutations/useCreateTeamMutation";
-import { LoadingSpinner } from "./loading-spinner";
+
 
 type CreateTeamProps = {
 	open: boolean;
@@ -83,7 +84,7 @@ export function CreateTeam(props: React.PropsWithChildren<CreateTeamProps>) {
 								Cancel
 							</Button>
 							<Button type="submit" disabled={createTeamMutation.isPending}>
-								{createTeamMutation.isPending ? <LoadingSpinner /> : "Create"}
+								{createTeamMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : "Create"}
 							</Button>
 						</DialogFooter>
 					</form>

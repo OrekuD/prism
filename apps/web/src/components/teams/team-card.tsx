@@ -8,12 +8,12 @@ import {
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuSeparator,
-} from "./dropdown-menu";
+} from "../ui/dropdown-menu";
 import { EllipsisVertical } from "lucide-react";
 import { Link } from "react-router-dom";
-import { Button } from "./button";
+import { Button } from "../ui/button";
 import { useActiveTeamStore } from "@/store/activeTeamStore";
-import { Avatar, AvatarFallback, AvatarImage } from "./avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 
 type Props = {
 	team: TeamResource;

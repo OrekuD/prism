@@ -1,7 +1,7 @@
 import React from "react";
 import { authClient } from "@/lib/authClient";
 import { Outlet, useLocation } from "react-router-dom";
-import { Nav } from "../ui/nav";
+import { Nav } from "./nav";
 
 const excludedPaths = ["/join"];
 
