@@ -188,9 +188,11 @@ Security regression tests live in:
     exists.
   - Sensitive actions (create team/project, send invites) require a verified
     email.
-  - Self-hosted instances can close public signup
-    (`ALLOW_PUBLIC_SIGNUP=false`) after creating the first admin with
-    `yarn workspace prism-api db:bootstrap-admin`.
+  - Registration policy is explicit: `SIGNUP_POLICY=open|invite-only|disabled`
+    (hosted defaults to open; self-hosted defaults to disabled until the
+    operator opens it). Self-hosted instances create the first owner with
+    `yarn workspace prism-api db:bootstrap-admin` (empty-database-only
+    unless `BOOTSTRAP_FORCE=1`).
 - **Service authentication (analytics API + WebSocket)** uses the Better Auth
   JWT plugin: the dashboard requests a short-lived token (issuer `prism`,
   audience `prism-analytics`, RS256, ~15m expiry) from `/api/auth/token` and

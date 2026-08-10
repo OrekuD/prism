@@ -24,9 +24,17 @@ CLIENT_URL=http://localhost:3001
 # Optional: extra comma-separated dashboard origins allowed by CORS
 # CORS_ALLOWED_ORIGINS=https://app.prism.example.com
 
-# Self-hosted instances: set to false to close public signup after creating
-# the first admin (yarn workspace prism-api db:bootstrap-admin)
-ALLOW_PUBLIC_SIGNUP=true
+# Deployment mode: hosted (default) or self-hosted. Self-hosted mode has no
+# Prism cloud control-plane dependency and defaults to closed registration.
+PRISM_DEPLOYMENT_MODE=hosted
+
+# Instance name shown in the auth shell and config endpoint
+INSTANCE_NAME=Prism
+
+# Registration policy: open | invite-only | disabled
+# (legacy ALLOW_PUBLIC_SIGNUP=false still maps to disabled)
+# Self-hosted instances: close registration after the first owner exists:
+# SIGNUP_POLICY=disabled
 
 # Optional social providers (enabled only when BOTH id and secret are set).
 # Callback URLs (configure these in the provider dashboards):

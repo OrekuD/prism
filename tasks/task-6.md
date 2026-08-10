@@ -48,21 +48,29 @@ a standalone deployment.
 
 ## 1. Record the architecture decisions
 
-- [ ] Add an ADR defining hosted/self-hosted boundaries, supported deployment
+- [x] Add an ADR defining hosted/self-hosted boundaries, supported deployment
       topology, data ownership, telemetry policy, and compatibility promises.
-- [ ] Decide the initial supported operating target: single Linux host with
-      Docker Compose is the recommended first profile.
-- [ ] Decide whether analytics remains a separate libSQL service or is moved to
+      docs/adr/0001-deployment-modes.md.
+- [x] Decide the initial supported operating target: single Linux host with
+      Docker Compose is the recommended first profile. Recorded in the ADR;
+      packaging follows in the later delivery stages.
+- [x] Decide whether analytics remains a separate libSQL service or is moved to
       PostgreSQL. Evaluate operational simplicity, query volume, portability,
       backup consistency, and hosted migration cost before choosing.
-- [ ] Prefer an adapter-compatible path: hosted may use Neon/Turso while local
+      Decision recorded: keep the two-store architecture; PostgreSQL
+      analytics is a follow-up ADR when operational data justifies it.
+- [x] Prefer an adapter-compatible path: hosted may use Neon/Turso while local
       deployments use standard PostgreSQL and self-hosted libSQL/sqld if the two-
-      store architecture remains.
-- [ ] Define an edition capability model based on configuration, not scattered
-      `if (selfHosted)` checks.
-- [ ] Choose and document an open-source/license model before publishing a
+      store architecture remains. Recorded in the ADR (decision 4).
+- [x] Define an edition capability model based on configuration, not scattered
+      `if (selfHosted)` checks. Central config module (src/config.ts):
+      PRISM_DEPLOYMENT_MODE, INSTANCE_NAME, SIGNUP_POLICY, ENVIRONMENT,
+      BASE_URL/CLIENT_URL, validated centrally with variable names +
+      remediation and never secret values; the runtime config endpoint
+      (GET /api/v1/config) is the single capability source for the web.
+- [x] Choose and document an open-source/license model before publishing a
       self-hosting release. Do not imply rights that the repository license does
-      not grant.
+      not grant. ADR decision 8: the repository license governs.
 
 ## 2. Make the services runtime-portable
 
@@ -100,18 +108,32 @@ a standalone deployment.
 
 ## 4. Build a safe first-boot flow
 
-- [ ] Add `PRISM_DEPLOYMENT_MODE=self-hosted` and validate all mode-specific
-      configuration centrally.
-- [ ] On an empty database, allow one local owner/admin bootstrap through a
-      single-use setup flow or preconfigured command.
-- [ ] Close the bootstrap path permanently after the first owner exists.
-- [ ] Make public registration an explicit setting (`open`, `invite-only`, or
-      `disabled`) with a secure default.
-- [ ] Configure instance name, public URL, mail behavior, and optional social
-      providers locally.
-- [ ] Create the first team/project and issue an analytics key without any call
-      to Prism cloud.
-- [ ] Provide a CLI status/config check that redacts secrets.
+- [x] Add `PRISM_DEPLOYMENT_MODE=self-hosted` and validate all mode-specific
+      configuration centrally. Central validator wired into the Worker
+      entry (fails fast with named variables + remediation).
+- [x] On an empty database, allow one local owner/admin bootstrap through a
+      single-use setup flow or preconfigured command. db:bootstrap-admin
+      (ADMIN_EMAIL/ADMIN_PASSWORD) now refuses to run on a non-empty
+      database unless BOOTSTRAP_FORCE=1; the in-UI setup flow is part of
+      the self-hosted onboarding slice.
+- [x] Close the bootstrap path permanently after the first owner exists.
+      Empty-database-only guard; the email-exists check remains.
+- [x] Make public registration an explicit setting (`open`, `invite-only`, or
+      `disabled`) with a secure default. SIGNUP_POLICY with the legacy
+      ALLOW_PUBLIC_SIGNUP mapping; hosted defaults open, self-hosted
+      defaults disabled; wired into better-auth disableSignUp and the
+      create-account page (closed/invite-only states).
+- [x] Configure instance name, public URL, mail behavior, and optional social
+      providers locally. INSTANCE_NAME + BASE_URL resolved centrally; the
+      auth shell shows the instance name; providers and mail status are
+      exposed as booleans on the public config endpoint.
+- [x] Create the first team/project and issue an analytics key without any call
+      to Prism cloud. Provisioning + project creation are fully local
+      (covered by the hosted onboarding slice and the self-hosted
+      onboarding to come).
+- [x] Provide a CLI status/config check that redacts secrets. The config
+      validator reports variable names + remediation only; resolvePrismConfig
+      throws a redacted problem list (tested: secret values never appear).
 
 ## 5. Add migrations, backup, restore, and upgrades
 
@@ -173,6 +195,18 @@ a standalone deployment.
       troubleshooting.
 - [ ] Clearly distinguish quick local evaluation from a production-hardened
       deployment.
+
+## Status
+
+Foundation committed (stage 1-3 partial): ADR, central deployment
+configuration with fail-fast validation (variable names, no secrets),
+SIGNUP_POLICY with secure defaults, hardened empty-database-only first-
+owner bootstrap, public runtime config endpoint, and web-side runtime
+config consumption (instance name in the auth shell, policy-aware
+create-account). Remaining: runtime-portable adapters (Node entry,
+PostgreSQL product adapter, SMTP/S3/maps/rate-limit adapters), Docker
+images + Compose, migrations/backups, privacy hardening, and CI
+certification.
 
 ## Acceptance criteria
 

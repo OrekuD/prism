@@ -11,6 +11,7 @@ import {
   SocialAuthButtons,
 } from "@/components/auth/social-auth-buttons";
 import { useResendVerificationEmail } from "@/hooks/useResendVerificationEmail";
+import { loadRuntimeConfig, type RuntimeConfig } from "@/lib/runtimeConfig";
 import { TELEMETRY_EVENTS, trackTelemetry } from "@/lib/telemetry";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,11 +42,13 @@ export function CreateAccount() {
     github: false,
     google: false,
   });
+  const [config, setConfig] = React.useState<RuntimeConfig | null>(null);
   const { resend, isPending: isResendPending } = useResendVerificationEmail();
   const [cooldown, setCooldown] = React.useState(0);
 
   React.useEffect(() => {
     fetchEnabledProviders().then(setProviders);
+    loadRuntimeConfig().then(setConfig);
   }, []);
 
   React.useEffect(() => {
@@ -129,6 +132,11 @@ export function CreateAccount() {
     setCooldown(RESEND_COOLDOWN_SECONDS);
   };
 
+  const registrationClosed =
+    config?.signupPolicy === "disabled" || config?.signupPolicy === "invite-only";
+
+  const selfHosted = config?.deploymentMode === "self-hosted";
+
   return (
     <AuthShell>
       {sentTo ? (
@@ -173,10 +181,32 @@ export function CreateAccount() {
             </Link>
           </div>
         </div>
+      ) : registrationClosed && config ? (
+        <div className="grid gap-6">
+          <AuthHeading
+            title="Registration is closed."
+            description={
+              config.signupPolicy === "invite-only"
+                ? `Accounts on ${config.instanceName} are created by invitation only.`
+                : `New accounts on ${config.instanceName} are not being accepted right now.`
+            }
+          />
+          <p className="text-[14px] leading-relaxed text-text-muted">
+            {config.signupPolicy === "invite-only"
+              ? "Use the invite link you received, or sign in if you already have an account."
+              : "Sign in if you already have an account, or contact the instance operator."}
+          </p>
+          <Link
+            to="/auth/log-in"
+            className="inline-flex h-10 w-fit items-center rounded-[2px] bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
+          >
+            Sign in
+          </Link>
+        </div>
       ) : (
         <div className="grid gap-6">
           <AuthHeading
-            title="Create your account."
+            title={selfHosted ? `Create an account on ${config?.instanceName ?? "this instance"}.` : "Create your account."}
             description="A personal team and workspace are created for you automatically."
           />
           <div className="grid gap-4">

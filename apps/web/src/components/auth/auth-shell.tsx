@@ -1,5 +1,6 @@
-import type React from "react";
+import React from "react";
 import { authBaseUrl } from "@/lib/authClient";
+import { loadRuntimeConfig } from "@/lib/runtimeConfig";
 import { Frame, SectionLabel } from "@/components/public/frame";
 
 /**
@@ -10,13 +11,21 @@ import { Frame, SectionLabel } from "@/components/public/frame";
  */
 export function AuthShell({ children }: { children: React.ReactNode }) {
   const instanceHost = new URL(authBaseUrl).host;
+  const [instanceName, setInstanceName] = React.useState<string>("Prism");
+
+  React.useEffect(() => {
+    loadRuntimeConfig().then((config) => {
+      setInstanceName(config.instanceName);
+      document.title = `${config.instanceName} - sign in`;
+    });
+  }, []);
 
   return (
     <div className="mx-auto w-full max-w-[1040px] px-4 py-14 md:px-6 md:py-16">
       <Frame className="min-h-[600px]">
         <div className="grid md:grid-cols-[42fr_58fr]">
           <aside className="hidden flex-col border-r border-border bg-canvas-subtle p-10 md:flex">
-            <SectionLabel>Prism</SectionLabel>
+            <SectionLabel>{instanceName}</SectionLabel>
             <p className="mt-8 max-w-[24ch] text-[22px] font-semibold leading-snug tracking-[-0.015em] text-text">
               Realtime product analytics you can run yourself.
             </p>
@@ -37,7 +46,7 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
           {/* Mobile: instance identity + one sentence only. */}
           <div className="border-b border-border bg-canvas-subtle px-5 py-3 md:hidden">
             <p className="font-mono text-[11px] uppercase tracking-[0.09em] text-text-subtle">
-              Prism · {instanceHost}
+              {instanceName} · {instanceHost}
             </p>
             <p className="mt-1 text-[13px] text-text-muted">
               Realtime product analytics you can run yourself.

@@ -15,6 +15,7 @@ import { github, google } from "better-auth/social-providers";
 import { sql } from "drizzle-orm";
 import { provisionUserResources } from "./provision.js";
 import { scheduleEmail } from "./mail.js";
+import { resolveSignupPolicy } from "../config";
 
 export type AuthEnv = Record<string, string | undefined>;
 
@@ -93,9 +94,10 @@ export function buildAuthOptions(
     },
     emailAndPassword: {
       enabled: true,
-      // Self-hosted instances can close public signup after the owner is
-      // created (see src/database/bootstrap-admin.ts).
-      disableSignUp: env.ALLOW_PUBLIC_SIGNUP === "false",
+      // Registration policy: open | invite-only | disabled (SIGNUP_POLICY,
+      // with legacy ALLOW_PUBLIC_SIGNUP mapping). invite-only and disabled
+      // close public signup; invites and the first-owner bootstrap remain.
+      disableSignUp: resolveSignupPolicy(env) !== "open",
       minPasswordLength: 8,
       sendResetPassword: async ({ user, url }) => {
         scheduleEmail(env, {

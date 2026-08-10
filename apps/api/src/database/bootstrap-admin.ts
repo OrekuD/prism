@@ -1,16 +1,17 @@
 /**
- * First-admin bootstrap for a self-hosted instance.
+ * First-owner bootstrap for a self-hosted instance (task-6 section 4).
  *
- * Creates the initial account (email/password), promotes it to ADMIN, and
- * provisions the profile + personal team. Idempotent: exits cleanly when the
- * email already exists.
+ * Creates the initial owner account (email/password), promotes it to ADMIN,
+ * and provisions the profile + personal team. The bootstrap path is
+ * permanently closed once ANY user exists: on a non-empty database the
+ * script refuses to run unless BOOTSTRAP_FORCE=1 is set explicitly.
  *
- * Usage (from apps/api):
+ * Usage (from apps/api, on an EMPTY database):
  *   ADMIN_EMAIL=owner@example.com ADMIN_PASSWORD='<long-random-password>' \
  *     yarn tsx src/database/bootstrap-admin.ts
  *
- * For a closed self-hosted instance, set ALLOW_PUBLIC_SIGNUP=false in the
- * environment after the owner is created.
+ * After the owner exists, close registration with SIGNUP_POLICY=disabled
+ * (or the legacy ALLOW_PUBLIC_SIGNUP=false).
  */
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
@@ -47,6 +48,20 @@ const db = drizzle(sql);
 
 async function main() {
   const adminEmail = (email ?? "").toLowerCase().trim();
+  const userCount = await db
+    .select({ id: userTable.id })
+    .from(userTable)
+    .limit(1);
+
+  if (userCount.length > 0 && process.env.BOOTSTRAP_FORCE !== "1") {
+    console.error(
+      "[bootstrap-admin] Refusing to bootstrap: the database already has users. " +
+        "The first-owner bootstrap is only allowed on an empty database. " +
+        "Set BOOTSTRAP_FORCE=1 only if you know what you are doing.",
+    );
+    process.exit(1);
+  }
+
   const existing = await db
     .select({ id: userTable.id })
     .from(userTable)

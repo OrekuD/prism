@@ -2,6 +2,7 @@ import Server from "./Server";
 import type { Bindings } from "hono/types";
 import type { Event } from "@cloudflare/workers-types";
 import { Resend } from "resend";
+import { validatePrismConfig } from "./config";
 
 async function main() {
   Server.startServer();
@@ -10,24 +11,19 @@ async function main() {
 main();
 
 /**
- * Fail fast with a useful message when required bindings are missing.
- * Optional secrets (RESEND_API_KEY, IMAGE_KIT_API_KEY, IP_INFO_API_TOKEN) are
- * only required by the flows that use them and are therefore not checked.
+ * Fail fast with the central deployment validator. Messages name the
+ * offending variables and remediation steps, never secret values.
  */
 function validateEnvironment(env: Record<string, unknown>) {
-  const missing = ["DATABASE_URL", "JWT_SECRET_KEY", "CLIENT_URL"].filter(
-    (key) => !env[key],
-  );
-
-  if (missing.length === 0) {
+  const problems = validatePrismConfig(env as Record<string, string | undefined>);
+  if (problems.length === 0) {
     return null;
   }
 
   return new Response(
     JSON.stringify({
-      error: "missing_environment",
-      missing,
-      hint: "Copy apps/api/.dev.vars.example to apps/api/.dev.vars and fill in the values.",
+      error: "invalid_configuration",
+      problems,
     }),
     { status: 500, headers: { "content-type": "application/json" } },
   );
