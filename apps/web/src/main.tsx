@@ -1,5 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
+import "@fontsource-variable/inter";
+import "@fontsource-variable/jetbrains-mono";
 import "./index.css";
 import { App } from "./App";
 import {
@@ -36,7 +38,7 @@ if (el) {
   const root = createRoot(el);
   root.render(
     <ThemeProvider
-      defaultTheme="light"
+      defaultTheme="dark"
       storageKey={LocalStorageKeys.THEME_VALUE}
     >
       <PrismProvider client={prism}>

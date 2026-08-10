@@ -45,7 +45,7 @@ export function ProjectSparkline({ summary }: { summary?: ProjectSummaryRow[] })
       },
       color: {
         domain: ["desktop", "mobile"],
-        range: ["hsl(var(--chart-1))", "hsl(var(--chart-2))"],
+        range: ["var(--chart-1)", "var(--chart-2)"],
       },
       tooltip,
     });

@@ -1,0 +1,158 @@
+- generic:
+  - generic:
+    - generic:
+      - generic:
+        - link:
+          - /url: /
+        - button:
+          - generic: BT
+          - paragraph: Baseline User's team
+      - generic:
+        - button: Feedback
+        - link:
+          - /url: /projects/mustard-sausage-953455533
+          - text: Docs
+        - button [expanded]:
+          - generic: BU
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - heading [level=2]: Baseline App
+            - combobox:
+              - generic: Last 3 months
+          - generic:
+            - tablist:
+              - tab [selected]: Overview
+              - tab: Realtime
+              - tab: Events
+              - tab: Settings
+            - tabpanel:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic: User Activity
+                    - generic:
+                      - button:
+                        - generic: Desktop
+                        - generic: "0"
+                      - button:
+                        - generic: Mobile
+                        - generic: "0"
+                  - generic:
+                    - generic:
+                      - generic:
+                        - img:
+                          - generic:
+                            - generic: May 10
+                            - generic: May 13
+                            - generic: May 16
+                            - generic: May 19
+                            - generic: May 22
+                            - generic: May 25
+                            - generic: May 28
+                            - generic: Jun 2
+                            - generic: Jun 5
+                            - generic: Jun 8
+                            - generic: Jun 11
+                            - generic: Jun 14
+                            - generic: Jun 17
+                            - generic: Jun 20
+                            - generic: Jun 25
+                            - generic: Jun 28
+                            - generic: Jul 1
+                            - generic: Jul 4
+                            - generic: Jul 7
+                            - generic: Jul 10
+                            - generic: Jul 13
+                            - generic: Jul 16
+                            - generic: Jul 18
+                            - generic: Jul 21
+                            - generic: Jul 24
+                            - generic: Jul 27
+                            - generic: Jul 30
+                            - generic: Aug 2
+                            - generic: Aug 5
+                            - generic: Aug 7
+                            - generic: Aug 10
+                            - generic: "0.0"
+                            - generic: "0.2"
+                            - generic: "0.4"
+                            - generic: "0.6"
+                            - generic: "0.8"
+                            - generic: "1.0"
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: Top Browser
+                      - generic: January - June 2026
+                    - generic:
+                      - generic:
+                        - generic:
+                          - img:
+                            - generic:
+                              - generic: Firefox
+                              - generic: Chrome
+                              - generic: Safari
+                              - generic: Opera
+                              - generic: Edge
+                              - generic: Internet Explorer
+                              - generic: "0.0"
+                              - generic: "0.2"
+                              - generic: "0.4"
+                              - generic: "0.6"
+                              - generic: "0.8"
+                              - generic: "1.0"
+                  - generic:
+                    - generic:
+                      - generic: Top OS
+                      - generic: January - June 2026
+                    - generic:
+                      - generic:
+                        - generic:
+                          - img:
+                            - generic:
+                              - generic: Windows
+                              - generic: macOS
+                              - generic: Linux
+                              - generic: Android
+                              - generic: iOS
+                              - generic: "0.0"
+                              - generic: "0.2"
+                              - generic: "0.4"
+                              - generic: "0.6"
+                              - generic: "0.8"
+                              - generic: "1.0"
+                  - generic:
+                    - generic:
+                      - generic: Top Country
+                      - generic: January - June 2026
+                    - generic:
+                      - generic:
+                        - generic:
+                          - img:
+                            - generic:
+                              - generic: "0.0"
+                              - generic: "0.2"
+                              - generic: "0.4"
+                              - generic: "0.6"
+                              - generic: "0.8"
+                              - generic: "1.0"
+    - region "Notifications alt+T"
+  - menu "BU" [active] [ref=f43e6]:
+    - generic [ref=f43e8]:
+      - paragraph [ref=f43e9]: Baseline User
+      - paragraph [ref=f43e10]: baseline-1786335580@example.com
+    - separator [ref=f43e11]
+    - link [ref=f43e12] [cursor=pointer]:
+      - /url: /account/general
+      - menuitem "Account" [ref=f43e13]
+    - group [ref=f43e14]:
+      - generic [ref=f43e15]:
+        - menuitem "Theme" [ref=f43e16]
+        - generic [ref=f43e17]:
+          - button [ref=f43e18]
+          - button [ref=f43e21]
+          - button [ref=f43e28]
+    - separator [ref=f43e31]
+    - menuitem "Log out" [ref=f43e32]

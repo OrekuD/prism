@@ -114,21 +114,37 @@ Avoid mixing visual redesign bugs with upgrade regressions.
 
 ## 4. Establish the Prism token system
 
-- [ ] Replace the current HSL theme with named OKLCH semantic tokens for canvas,
+- [x] Replace the current HSL theme with named OKLCH semantic tokens for canvas,
       surface, raised surface, text, muted text, border, input, focus, primary,
       destructive, warning, success, charts, and code surfaces.
-- [ ] Keep a near-black/off-white system rather than pure black/white.
-- [ ] Use one primary Prism accent. Reserve secondary colors for real semantic
-      data states, not decoration.
-- [ ] Adopt a consistent sharp radius system suitable for a technical product,
+      → Canonical tokens (--canvas/--surface/--raised/--text/--text-muted/
+      --border/--input/--focus/--primary/--destructive/--warning/--success/
+      --chart-1..5/--code) with legacy shadcn aliases mapped to the same
+      values. All chart color strings switched to var(--chart-*).
+- [x] Keep a near-black/off-white system rather than pure black/white.
+- [x] Use one primary Prism accent. Reserve secondary colors for real semantic
+      data states, not decoration. Single violet accent (refraction-inspired);
+      warning/success/destructive are the only other hues.
+- [x] Adopt a consistent sharp radius system suitable for a technical product,
       with documented exceptions only for controls that require pill geometry.
-- [ ] Define typography tokens for UI sans, mono labels, tabular numeric data,
+      --radius 0.375rem base; pill geometry (rounded-full) kept only for the
+      theme switcher and avatar.
+- [x] Define typography tokens for UI sans, mono labels, tabular numeric data,
       display sizes, and readable body copy. Self-host the selected font files.
-- [ ] Define spacing, container widths, focus treatments, and z-index layers.
-- [ ] Support light and dark themes from the same semantic tokens, while making
-      dark the brand-forward presentation.
-- [ ] Test WCAG AA contrast for text, controls, errors, placeholders, charts,
-      and focus indicators in both modes.
+      → Inter Variable (UI sans) + JetBrains Mono Variable (labels/code) via
+      @fontsource-variable, imported in main.tsx (no CDN); --font-sans/
+      --font-mono theme tokens; .tabular-nums utility for data readouts.
+- [x] Define spacing, container widths, focus treatments, and z-index layers.
+      Tailwind v4 defaults; focus ring = --focus token (6.9:1 light / 7.5:1
+      dark vs canvas).
+- [x] Support light and dark themes from the same semantic tokens, while making
+      dark the brand-forward presentation. ThemeProvider default is now dark.
+- [x] Test WCAG AA contrast for text, controls, errors, placeholders, charts,
+      and focus indicators in both modes. scripts/token-contrast.mjs verifies
+      15 pairs x 2 modes from the actual CSS values: all pass (text/muted/
+      primary/destructive pairs ≥4.5:1, warning/success/focus ≥3:1). Borders
+      are documented as decorative dividers (focus ring is the 1.4.11
+      indicator).
 
 ## 5. Update shadcn configuration and primitives
 

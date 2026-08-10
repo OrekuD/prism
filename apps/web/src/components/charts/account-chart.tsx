@@ -22,10 +22,10 @@ const seatsRadiusScale = scaleSqrt().range([3, 22]);
 
 /** Segment → semantic chart color (theme-aware via CSS variables). */
 const segmentColor = scaleOrdinal<string, string>(ACCOUNT_SEGMENTS, [
-  "hsl(var(--chart-1))",
-  "hsl(var(--chart-2))",
-  "hsl(var(--chart-3))",
-  "hsl(var(--chart-4))",
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
 ]);
 
 const usd = new Intl.NumberFormat("en-US", {
