@@ -5,22 +5,29 @@
   "scripts": {
     "start": "node dist/src/index.js",
     "dev": "tsx watch src/index.ts",
-    "build": "rm -rf ./dist && tsc -p tsconfig.json"
+    "build": "rm -rf ./dist && tsc -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome lint ./src",
+    "db:setup": "tsx src/database/setup.ts"
   },
   "dependencies": {
-    "@hono/node-server": "^1.12.0",
-    "@hono/node-ws": "^1.0.2",
-    "@libsql/client": "^0.7.0",
-    "dotenv": "^16.4.5",
-    "hono": "4.4.8",
-    "jsonwebtoken": "^9.0.2",
-    "postgres": "^3.4.4",
-    "uuid": "^10.0.0"
+    "@hono/node-server": "^1.19.11",
+    "@hono/node-ws": "^1.3.1",
+    "@libsql/client": "^0.17.4",
+    "dotenv": "^16.6.1",
+    "hono": "^4.13.1",
+    "jsonwebtoken": "^9.0.3",
+    "postgres": "^3.4.9",
+    "uuid": "^12.0.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
     "@prism/types": "*",
-    "@types/jsonwebtoken": "^9.0.6",
-    "@types/node": "^20.11.17",
-    "tsx": "^4.7.1"
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^20.19.43",
+    "tsx": "^4.23.11",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
   }
 }

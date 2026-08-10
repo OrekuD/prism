@@ -48,7 +48,8 @@ export type SocketConnectProject = {
   type: "connect-project";
   data: {
     projectId: string;
-    userId: string;
+    /** Signed access-token JWT issued by the main API. Identity is derived from this token, never from client-supplied fields. */
+    token: string;
   };
 };
 

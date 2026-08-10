@@ -12,7 +12,7 @@
   "types": "./dist/index.d.ts",
   "devDependencies": {
     "@prism/types": "*",
-    "tsup": "^8.1.0",
-    "typescript": "^5.5.2"
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3"
   }
 }

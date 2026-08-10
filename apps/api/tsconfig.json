@@ -100,10 +100,7 @@
 
     /* Completeness */
     // "skipDefaultLibCheck": true,                      /* Skip type checking .d.ts files that are included with TypeScript. */
-    "skipLibCheck": true /* Skip type checking all .d.ts files. */,
-    "paths": {
-      "@prism/types": ["../../packages/@prism/types"]
-    }
+    "skipLibCheck": true /* Skip type checking all .d.ts files. */
   },
   "exclude": ["test"]
 }

@@ -11,14 +11,18 @@
     "typecheck": "turbo run typecheck"
   },
   "devDependencies": {
-    "prettier": "^3.2.5",
-    "turbo": "^2.0.5"
+    "prettier": "^3.9.6",
+    "turbo": "^2.10.9"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "name": "prism",
   "packageManager": "yarn@1.22.19",
+  "resolutions": {
+    "lodash": "4.18.1",
+    "zod": "3.25.76"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"
