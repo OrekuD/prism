@@ -1,0 +1,35 @@
+name: Dependency audit
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # weekly, Monday 06:00 UTC
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [package.json, yarn.lock]
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+
+      - name: Enable Yarn Classic (pinned version)
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.19 --activate
+
+      - name: Install from lockfile
+        run: yarn install --frozen-lockfile
+
+      # Fails only when a high/critical advisory is reachable from a
+      # production workspace and is not documented/allowlisted. See
+      # scripts/audit-check.mjs and docs/dependency-security.md.
+      - name: Audit production dependencies
+        run: |
+          yarn audit --groups dependencies --json | node scripts/audit-check.mjs
