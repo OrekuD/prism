@@ -85,3 +85,41 @@ describe("AuthenticationMiddleware (Better Auth session adapter)", () => {
     expect(next).not.toHaveBeenCalled();
   });
 });
+
+describe("RequireVerifiedEmailMiddleware", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("blocks unverified users from sensitive actions", async () => {
+    const { RequireVerifiedEmailMiddleware } = await import(
+      "../middlewares/AuthenticationMiddleware"
+    );
+    const vars: Record<string, unknown> = { user: { id: "u1", emailVerified: false } };
+    const ctx = {
+      get: (key: string) => vars[key],
+      json: vi.fn(() => ({ __json: true })),
+    } as unknown as Context;
+    const next = vi.fn();
+
+    await RequireVerifiedEmailMiddleware(ctx, next);
+
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("allows verified users through", async () => {
+    const { RequireVerifiedEmailMiddleware } = await import(
+      "../middlewares/AuthenticationMiddleware"
+    );
+    const vars: Record<string, unknown> = { user: { id: "u1", emailVerified: true } };
+    const ctx = {
+      get: (key: string) => vars[key],
+      json: vi.fn(() => ({ __json: true })),
+    } as unknown as Context;
+    const next = vi.fn();
+
+    await RequireVerifiedEmailMiddleware(ctx, next);
+
+    expect(next).toHaveBeenCalled();
+  });
+});

@@ -7,7 +7,7 @@ dotenv.config();
 const port = process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 8080;
 
 const REQUIRED_ENV_VARS = [
-  "JWT_SECRET_KEY",
+  "AUTH_BASE_URL",
   "TURSO_DATABASE_URL",
   "TURSO_AUTH_TOKEN",
   "NEONDB_PGHOST",

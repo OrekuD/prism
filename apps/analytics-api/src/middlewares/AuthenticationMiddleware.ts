@@ -1,13 +1,18 @@
-import { type JWTPayload, Roles } from "@prism/types";
 import { createMiddleware } from "hono/factory";
 import type { Context } from "hono";
-import jwt from "jsonwebtoken";
 import { ErrorResponse } from "../network/responses/ErrorResponse.js";
 import NeonDatabaseManager from "../managers/NeonDatabaseManager.js";
+import { JwtVerifier } from "../services/JwtVerifier.js";
 import { config } from "dotenv";
 
 config();
 
+/**
+ * Service-JWT authentication for the analytics API.
+ *
+ * Verifies a short-lived JWT issued by the main API's Better Auth JWT plugin
+ * against its JWKS, then confirms the subject is an active user.
+ */
 export const AuthenticationMiddleware = createMiddleware(
   async (ctx: Context, next) => {
     try {
@@ -23,31 +28,28 @@ export const AuthenticationMiddleware = createMiddleware(
         return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
       }
 
-      const isValid = jwt.verify(split[1], process.env.JWT_SECRET_KEY ?? "");
-
-      if (!isValid) {
+      const authBaseUrl = process.env.AUTH_BASE_URL;
+      if (!authBaseUrl) {
         return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
       }
 
-      const accessToken = jwt.decode(split[1]) as JWTPayload | null;
+      const verified = await JwtVerifier.verify(
+        split[1],
+        `${authBaseUrl.replace(/\/$/, "")}/api/auth/jwks`,
+      );
 
-      if (!accessToken?.token) {
-        return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
-      }
-
-      const oauthAccessToken =
-        await NeonDatabaseManager.instance`SELECT id, user_id FROM oauth_access_tokens WHERE access_token = ${accessToken.token} AND is_revoked = false AND expiry_at > NOW()`;
-
-      if (oauthAccessToken.length === 0) {
+      if (!verified?.sub) {
         return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
       }
 
       const user =
-        await NeonDatabaseManager.instance`SELECT id FROM users WHERE users.id = ${oauthAccessToken[0].user_id} AND users.role = ${Roles.USER};`;
+        await NeonDatabaseManager.instance`SELECT id FROM "user" WHERE id = ${verified.sub}`;
 
       if (user.length === 0) {
         return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
       }
+
+      ctx.set("userId", user[0].id);
     } catch (error) {
       return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
     }

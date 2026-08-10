@@ -19,14 +19,12 @@
     "dotenv": "^16.6.1",
     "hono": "^4.13.1",
     "jose": "^6",
-    "jsonwebtoken": "^9.0.3",
     "postgres": "^3.4.9",
     "uuid": "^12.0.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "@prism/types": "*",
-    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20.19.43",
     "@vitest/coverage-v8": "^3.2.7",
     "tsx": "^4.23.11",

@@ -1,12 +1,11 @@
 import type { WSContext } from "hono/ws";
 import {
-  type JWTPayload,
   Roles,
   type SocketConnectProject,
   type SocketMessageTypes,
 } from "@prism/types";
-import jwt from "jsonwebtoken";
 import NeonDatabaseManager from "./NeonDatabaseManager.js";
+import { JwtVerifier } from "../services/JwtVerifier.js";
 import { config } from "dotenv";
 
 config();
@@ -132,11 +131,11 @@ class WebSocketManager {
   /**
    * Authenticates a `connect-project` request.
    *
-   * Identity is derived exclusively from the signed access-token JWT: the
-   * JWT must verify against the shared secret, its opaque token must have a
-   * live, non-revoked row in `oauth_access_tokens`, the owning user must be
-   * an active USER, and that user must own or belong to the team that owns
-   * the requested project. Client-supplied user IDs are never trusted.
+   * Identity comes from the short-lived service JWT issued by the main API's
+   * Better Auth JWT plugin: the JWT is verified against the published JWKS
+   * (issuer + audience + signature + expiry), the subject must be an active
+   * Prism user, and that user must own or belong to the team that owns the
+   * requested project. Client-supplied user IDs are never trusted.
    *
    * @returns the authenticated userId, or null when the request is invalid.
    */
@@ -152,32 +151,26 @@ class WebSocketManager {
       return null;
     }
 
-    let decoded: JWTPayload | null = null;
-    try {
-      const isValid = jwt.verify(payload.token, process.env.JWT_SECRET_KEY ?? "");
-      if (!isValid) return null;
-      // jsonwebtoken.decode returns the payload object directly.
-      const parsed = jwt.decode(payload.token) as JWTPayload | null;
-      decoded = parsed;
-    } catch {
+    const authBaseUrl = process.env.AUTH_BASE_URL;
+    if (!authBaseUrl) {
+      console.warn(
+        "[analytics] AUTH_BASE_URL is not configured; WebSocket authentication disabled.",
+      );
       return null;
     }
 
-    if (!decoded?.token || !decoded?.userId) {
+    const verified = await JwtVerifier.verify(
+      payload.token,
+      `${authBaseUrl.replace(/\/$/, "")}/api/auth/jwks`,
+    );
+
+    if (!verified?.sub) {
       return null;
     }
 
-    // The backing OAuth access-token record must exist, not be revoked, and
-    // not be expired.
-    const oauthAccessToken =
-      await NeonDatabaseManager.instance`SELECT user_id FROM oauth_access_tokens WHERE access_token = ${decoded.token} AND is_revoked = false AND expiry_at > NOW()`;
-
-    if (oauthAccessToken.length === 0) {
-      return null;
-    }
-
+    // The subject must be an active USER in the product database.
     const user =
-      await NeonDatabaseManager.instance`SELECT id FROM users WHERE users.id = ${oauthAccessToken[0].user_id} AND users.role = ${Roles.USER};`;
+      await NeonDatabaseManager.instance`SELECT id FROM "user" WHERE id = ${verified.sub} AND role = ${Roles.USER};`;
 
     if (user.length === 0) {
       return null;

@@ -1,10 +1,8 @@
 import "./testEnv.js";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import jwt from "jsonwebtoken";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { Roles } from "@prism/types";
 import WebSocketManager from "../managers/WebSocketManager.js";
-
-const SECRET = process.env.JWT_SECRET_KEY ?? "";
 
 /**
  * Mock the Neon (Postgres) database manager.
@@ -17,11 +15,38 @@ vi.mock("../managers/NeonDatabaseManager.js", () => ({
 }));
 
 import NeonDatabaseManager from "../managers/NeonDatabaseManager.js";
+import { JwtVerifier } from "../services/JwtVerifier.js";
 
 type Row = Record<string, unknown>;
 const instance = NeonDatabaseManager.instance as unknown as ReturnType<
   typeof vi.fn
 >;
+
+// The service JWT is issued by the main API's Better Auth JWT plugin (RS256)
+// and verified against its JWKS. Tests generate their own key pair and serve
+// the JWKS through a mocked fetch.
+let TEST_KEY_PAIR: { publicKey: CryptoKey; privateKey: CryptoKey };
+let TEST_JWKS: Record<string, unknown>;
+let SIGNED_OWNER_TOKEN = "";
+
+async function initKeyPair() {
+  TEST_KEY_PAIR = await generateKeyPair("RS256");
+  const jwk = await exportJWK(TEST_KEY_PAIR.publicKey);
+  TEST_JWKS = {
+    keys: [{ ...jwk, alg: "RS256", use: "sig", kid: "test-key-1" }],
+  };
+}
+
+function mockJwksFetch() {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => TEST_JWKS,
+    })),
+  );
+}
 
 function mockDb(handler: (sql: string) => Promise<Row[]>) {
   instance.mockImplementation(
@@ -32,8 +57,15 @@ function mockDb(handler: (sql: string) => Promise<Row[]>) {
   );
 }
 
-function signAccessToken(payload: { token: string; userId: string }) {
-  return jwt.sign(payload, SECRET, { algorithm: "HS256" });
+async function signAccessToken(payload: { userId: string }) {
+  return new SignJWT({})
+    .setProtectedHeader({ alg: "RS256", kid: "test-key-1" })
+    .setIssuer("prism")
+    .setAudience("prism-analytics")
+    .setSubject(payload.userId)
+    .setIssuedAt()
+    .setExpirationTime("5m")
+    .sign(TEST_KEY_PAIR.privateKey);
 }
 
 function makeSocket() {
@@ -49,22 +81,14 @@ const MEMBER_ID = "22222222-2222-2222-2222-222222222222";
 const STRANGER_ID = "33333333-3333-3333-3333-333333333333";
 const PROJECT_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const TEAM_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
-const OPAQUE_TOKEN = "c".repeat(64);
-
 function defaultDb(rows: {
-  oauth?: Row[];
   users?: Row[];
   projects?: Row[];
   teams?: Row[];
   teamMembers?: Row[];
 }) {
   mockDb((sql) => {
-    if (sql.includes("oauth_access_tokens")) {
-      return Promise.resolve(
-        rows.oauth ?? [{ user_id: OWNER_ID }],
-      );
-    }
-    if (sql.includes("FROM users")) {
+    if (sql.includes('FROM "user"') || sql.includes("FROM user")) {
       return Promise.resolve(rows.users ?? [{ id: OWNER_ID, role: Roles.USER }]);
     }
     if (sql.includes("FROM projects")) {
@@ -85,7 +109,7 @@ function connectMessage(overrides: Partial<{ projectId: string; token: string; u
     type: "connect-project",
     data: {
       projectId: PROJECT_ID,
-      token: signAccessToken({ token: OPAQUE_TOKEN, userId: OWNER_ID }),
+      token: SIGNED_OWNER_TOKEN,
       // A malicious client may try to send extra identity fields. The server
       // must ignore anything except the signed token.
       ...overrides,
@@ -94,9 +118,18 @@ function connectMessage(overrides: Partial<{ projectId: string; token: string; u
 }
 
 describe("WebSocketManager.connect-project", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     WebSocketManager.resetForTests();
+    JwtVerifier.resetForTests();
+    await initKeyPair();
+    mockJwksFetch();
+    process.env.AUTH_BASE_URL = "http://localhost:8787";
+    SIGNED_OWNER_TOKEN = await signAccessToken({ userId: OWNER_ID });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("rejects a connection message without a token (unauthenticated)", async () => {
@@ -118,14 +151,18 @@ describe("WebSocketManager.connect-project", () => {
     expect(WebSocketManager.getConnectedClientIds()).toHaveLength(0);
   });
 
-  it("rejects a token that does not verify (wrong secret / tampered)", async () => {
+  it("rejects a token signed by an unknown key (tampered / forged)", async () => {
     defaultDb({});
     const ws = makeSocket();
-    const forged = jwt.sign(
-      { token: OPAQUE_TOKEN, userId: OWNER_ID },
-      "wrong-secret",
-      { algorithm: "HS256" },
-    );
+    const { privateKey: forgedKey } = await generateKeyPair("RS256");
+    const forged = await new SignJWT({})
+      .setProtectedHeader({ alg: "RS256", kid: "test-key-1" })
+      .setIssuer("prism")
+      .setAudience("prism-analytics")
+      .setSubject(OWNER_ID)
+      .setIssuedAt()
+      .setExpirationTime("5m")
+      .sign(forgedKey);
 
     await WebSocketManager.onMessage(
       { data: JSON.stringify(connectMessage({ token: forged })) } as unknown as Event,
@@ -139,7 +176,6 @@ describe("WebSocketManager.connect-project", () => {
     // The signed token belongs to a stranger. The database (authoritative
     // source) confirms the stranger is not a member of the project's team.
     defaultDb({
-      oauth: [{ user_id: STRANGER_ID }],
       users: [{ id: STRANGER_ID, role: Roles.USER }],
       teamMembers: [],
     });
@@ -151,7 +187,7 @@ describe("WebSocketManager.connect-project", () => {
       {
         data: JSON.stringify(
           connectMessage({
-            token: signAccessToken({ token: OPAQUE_TOKEN, userId: STRANGER_ID }),
+            token: await signAccessToken({ userId: STRANGER_ID }),
             userId: OWNER_ID,
           }),
         ),
@@ -162,24 +198,21 @@ describe("WebSocketManager.connect-project", () => {
     expect(WebSocketManager.getConnectedClientIds()).not.toContain(PROJECT_ID);
   });
 
-  it("rejects a revoked OAuth access token", async () => {
-    defaultDb({ oauth: [] });
+  it("rejects an expired service JWT", async () => {
+    defaultDb({});
     const ws = makeSocket();
 
-    await WebSocketManager.onMessage(
-      { data: JSON.stringify(connectMessage()) } as unknown as Event,
-      ws,
-    );
-
-    expect(WebSocketManager.getConnectedClientIds()).not.toContain(PROJECT_ID);
-  });
-
-  it("rejects an expired OAuth access token (expiry_at <= NOW returns no row)", async () => {
-    defaultDb({ oauth: [] });
-    const ws = makeSocket();
+    const expired = await new SignJWT({})
+      .setProtectedHeader({ alg: "RS256", kid: "test-key-1" })
+      .setIssuer("prism")
+      .setAudience("prism-analytics")
+      .setSubject(OWNER_ID)
+      .setIssuedAt()
+      .setExpirationTime("-1m")
+      .sign(TEST_KEY_PAIR.privateKey);
 
     await WebSocketManager.onMessage(
-      { data: JSON.stringify(connectMessage()) } as unknown as Event,
+      { data: JSON.stringify(connectMessage({ token: expired })) } as unknown as Event,
       ws,
     );
 
@@ -212,7 +245,6 @@ describe("WebSocketManager.connect-project", () => {
 
   it("rejects a valid user who does not belong to the project's team", async () => {
     defaultDb({
-      oauth: [{ user_id: STRANGER_ID }],
       users: [{ id: STRANGER_ID, role: Roles.USER }],
       teamMembers: [],
     });
@@ -222,7 +254,7 @@ describe("WebSocketManager.connect-project", () => {
       {
         data: JSON.stringify(
           connectMessage({
-            token: signAccessToken({ token: OPAQUE_TOKEN, userId: STRANGER_ID }),
+            token: await signAccessToken({ userId: STRANGER_ID }),
           }),
         ),
       } as unknown as Event,
@@ -246,7 +278,6 @@ describe("WebSocketManager.connect-project", () => {
 
   it("accepts a regular team member", async () => {
     defaultDb({
-      oauth: [{ user_id: MEMBER_ID }],
       users: [{ id: MEMBER_ID, role: Roles.USER }],
       teamMembers: [{ id: "m1" }],
     });
@@ -256,7 +287,7 @@ describe("WebSocketManager.connect-project", () => {
       {
         data: JSON.stringify(
           connectMessage({
-            token: signAccessToken({ token: OPAQUE_TOKEN, userId: MEMBER_ID }),
+            token: await signAccessToken({ userId: MEMBER_ID }),
           }),
         ),
       } as unknown as Event,
@@ -280,19 +311,34 @@ describe("WebSocketManager.connect-project", () => {
     expect(WebSocketManager.getConnectedClientIds()).not.toContain(PROJECT_ID);
   });
 
-  it("rejects an access token whose JWT payload has no backing opaque token", async () => {
+  it("rejects a token for a user that does not exist in the product database", async () => {
+    defaultDb({ users: [] });
+    const ws = makeSocket();
+
+    await WebSocketManager.onMessage(
+      { data: JSON.stringify(connectMessage()) } as unknown as Event,
+      ws,
+    );
+
+    expect(WebSocketManager.getConnectedClientIds()).not.toContain(PROJECT_ID);
+  });
+
+  it("rejects a token signed with the wrong issuer", async () => {
     defaultDb({});
     const ws = makeSocket();
 
-    const missingOpaque = jwt.sign(
-      { userId: OWNER_ID },
-      SECRET,
-      { algorithm: "HS256" },
-    );
+    const wrongIssuer = await new SignJWT({})
+      .setProtectedHeader({ alg: "RS256", kid: "test-key-1" })
+      .setIssuer("evil")
+      .setAudience("prism-analytics")
+      .setSubject(OWNER_ID)
+      .setIssuedAt()
+      .setExpirationTime("5m")
+      .sign(TEST_KEY_PAIR.privateKey);
 
     await WebSocketManager.onMessage(
       {
-        data: JSON.stringify(connectMessage({ token: missingOpaque })),
+        data: JSON.stringify(connectMessage({ token: wrongIssuer })),
       } as unknown as Event,
       ws,
     );
@@ -302,9 +348,18 @@ describe("WebSocketManager.connect-project", () => {
 });
 
 describe("WebSocketManager subscription lifecycle", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     WebSocketManager.resetForTests();
+    JwtVerifier.resetForTests();
+    await initKeyPair();
+    mockJwksFetch();
+    process.env.AUTH_BASE_URL = "http://localhost:8787";
+    SIGNED_OWNER_TOKEN = await signAccessToken({ userId: OWNER_ID });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   async function subscribe(ws: ReturnType<typeof makeSocket>, projectId: string) {
@@ -313,7 +368,7 @@ describe("WebSocketManager subscription lifecycle", () => {
         data: JSON.stringify(
           connectMessage({
             projectId,
-            token: signAccessToken({ token: OPAQUE_TOKEN, userId: OWNER_ID }),
+            token: await signAccessToken({ userId: OWNER_ID }),
           }),
         ),
       } as unknown as Event,
