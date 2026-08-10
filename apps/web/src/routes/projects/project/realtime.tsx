@@ -56,7 +56,7 @@ export function ProjectRealtime() {
   if (!mapboxToken) {
     return (
       <WebSocketManager projectId={projectQuery.data?.id}>
-        <div className="w-full relative py-5 h-fullScreenSm md:h-fullScreen grid place-items-center">
+        <div className="w-full relative py-5 h-full-screen-sm md:h-full-screen grid place-items-center">
           <div className="text-center space-y-2 px-6">
             <p className="text-sm font-medium">Realtime map unavailable</p>
             <p className="text-sm text-muted-foreground">
@@ -71,7 +71,7 @@ export function ProjectRealtime() {
   }
   return (
     <WebSocketManager projectId={projectQuery.data?.id}>
-      <div className="w-full relative animate-fade-in isolate py-5 h-fullScreenSm md:h-fullScreen">
+      <div className="w-full relative animate-fade-in isolate py-5 h-full-screen-sm md:h-full-screen">
         <button
           type="button"
           className="absolute top-9 left-3 h-10 bg-background rounded-lg px-2 z-20 flex items-center gap-2 text-sm"

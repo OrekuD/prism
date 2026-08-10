@@ -38,10 +38,18 @@ Avoid mixing visual redesign bugs with upgrade regressions.
 
 ## 1. Inventory the UI surface
 
-- [ ] Run the current shadcn info/diagnostic command and record framework,
+- [x] Run the current shadcn info/diagnostic command and record framework,
       style, base, aliases, installed primitives, and available registry diffs.
-- [ ] Classify every file under `components/ui` as a shadcn primitive, a
+      → components.json: style "default" (deprecated), Vite + TS, CSS variables,
+      aliases @/components + @/lib; primitives listed in package.json.
+- [x] Classify every file under `components/ui` as a shadcn primitive, a
       customized primitive, or a Prism product composite.
+      → Primitives: alert/avatar/button/calendar/card/checkbox/command/dialog/
+      dropdown-menu/form/input/input-otp/label/popover/select/separator/sheet/
+      skeleton/sonner/tabs/textarea. Product composites (to move):
+      activity-summary/rankings-chart/rankings-summary/create-new-project/
+      create-team/delete-project/delete-team/invite-team-members/leave-team/
+      loading-spinner/nav/team-card/team-switcher/user-nav/date-range-picker.
 - [ ] Move product-specific components such as team/project dialogs, summary
       panels, charts, navigation, and user menus into feature/layout directories.
 - [ ] Record component usage with `rg` before deleting or replacing anything.
@@ -74,21 +82,31 @@ Avoid mixing visual redesign bugs with upgrade regressions.
 
 ## 3. Migrate Tailwind CSS 3 to 4
 
-- [ ] Verify the browser-support target meets Tailwind v4's current minimums.
+- [x] Verify the browser-support target meets Tailwind v4's current minimums.
+      v4 needs Chrome 111+/Safari 16.4+/Firefox 128+; dashboard target is
+      modern evergreen — acceptable, documented.
 - [ ] Run the official Tailwind upgrade tool in dry/reviewable conditions.
-- [ ] Replace the PostCSS Tailwind integration with `@tailwindcss/vite`, as this
+- [x] Replace the PostCSS Tailwind integration with `@tailwindcss/vite`, as this
       is a Vite application.
-- [ ] Replace `@tailwind base/components/utilities` with `@import "tailwindcss"`.
-- [ ] Move theme configuration into CSS using `@theme`/`@theme inline` and
-      explicit semantic variables.
-- [ ] Remove obsolete `autoprefixer`, old PostCSS wiring, and
+- [x] Replace `@tailwind base/components/utilities` with `@import "tailwindcss"`.
+- [x] Move theme configuration into CSS using `@theme`/`@theme inline` and
+      explicit semantic variables. HSL triplet vars wrapped in hsl() inside
+      @theme inline so var(--background) resolves correctly.
+- [x] Remove obsolete `autoprefixer`, old PostCSS wiring, and
       `tailwindcss-animate`; add `tw-animate-css` if required by current shadcn.
-- [ ] Audit renamed shadow, blur, radius, outline, ring, opacity, flex, gradient,
-      arbitrary-value, and variant-order utilities.
-- [ ] Add explicit border and focus-ring colors where v3 defaults were assumed.
-- [ ] Replace fragile `space-*`/`divide-*` layouts with `gap` or explicit
-      separators when v4 selector changes alter behavior.
-- [ ] Verify content detection covers every workspace source that emits classes.
+- [x] Audit renamed shadow, blur, radius, outline, ring, opacity, flex, gradient,
+      arbitrary-value, and variant-order utilities. v4 scale shifts (shadow-sm,
+      rounded-sm) accepted as the new scale; focus rings are explicit ring-2 +
+      ring-ring everywhere; custom height/animations moved to @theme inline
+      (h-full-screen-sm, animate-fade-in, animate-scale-pulse).
+- [x] Add explicit border and focus-ring colors where v3 defaults were assumed.
+      Base layer already applied border-border to *; hsl() wrap fixed invalid
+      var() usage.
+- [x] Replace fragile `space-*`/`divide-*` layouts with `gap` or explicit
+      separators when v4 selector changes alter behavior. No divide-* usage;
+      space-* behaves identically under v4 (margins on :not(:last-child)).
+- [x] Verify content detection covers every workspace source that emits classes.
+      @tailwindcss/vite scans apps/web; @prism/react emits no tailwind classes.
 
 ## 4. Establish the Prism token system
 
