@@ -4,6 +4,8 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import { Frame, SectionLabel } from "@/components/public/frame";
 import { CodeCopyRow } from "@/components/public/code-copy-row";
 import { authClient } from "@/lib/authClient";
+import { loadRuntimeConfig, type RuntimeConfig } from "@/lib/runtimeConfig";
+import { OwnerSetup } from "@/components/onboarding/owner-setup";
 import {
   completeOnboarding,
   createFirstProject,
@@ -18,7 +20,7 @@ import { TELEMETRY_EVENTS, trackTelemetry } from "@/lib/telemetry";
 import { useTeamsQuery } from "@/network/queries/useTeamsQuery";
 import { cn } from "@/lib/utils";
 
-const STEPS = [
+const BASE_STEPS = [
   "Profile",
   "Workspace",
   "Project",
@@ -26,6 +28,8 @@ const STEPS = [
   "Verify first event",
   "Done",
 ] as const;
+
+const INSTANCE_STEP = "Instance configuration" as const;
 
 /** Redacted display form of a project key. */
 function maskKey(key: string): string {
@@ -35,8 +39,8 @@ function maskKey(key: string): string {
 
 type StepState = "done" | "current" | "waiting";
 
-function Checklist({ current }: { current: number }) {
-  const states: Array<StepState> = STEPS.map((_, index) =>
+function Checklist({ current, steps }: { current: number; steps: readonly string[] }) {
+  const states: Array<StepState> = steps.map((_, index) =>
     index + 1 < current ? "done" : index + 1 === current ? "current" : "waiting",
   );
   return (
@@ -45,7 +49,7 @@ function Checklist({ current }: { current: number }) {
         Progress <span className="text-text-subtle">{Math.min(current, 6)} of 6</span>
       </SectionLabel>
       <ol className="grid gap-1.5">
-        {STEPS.map((label, index) => {
+        {steps.map((label, index) => {
           const state = states[index];
           return (
             <li
@@ -88,9 +92,23 @@ export function Onboarding() {
   const { data: sessionData } = authClient.useSession();
   const teamsQuery = useTeamsQuery();
   const projectsQuery = useProjectsQuery();
+  const [config, setConfig] = React.useState<RuntimeConfig | null>(null);
+
+  React.useEffect(() => {
+    loadRuntimeConfig().then(setConfig);
+  }, []);
+
+  // Self-hosted instances prepend an instance-configuration step.
+  const selfHosted = config?.deploymentMode === "self-hosted";
+  const steps = React.useMemo(
+    () => (selfHosted ? [INSTANCE_STEP, ...BASE_STEPS] : BASE_STEPS),
+    [selfHosted],
+  );
+  // 1-based offset: self-hosted flows start at the instance step.
+  const offset = selfHosted ? 1 : 0;
 
   const [progress, setProgress] = React.useState(() => loadProgress());
-  const step = progress?.step ?? 1;
+  const step = progress?.step ?? (selfHosted ? 1 : 1);
 
   const [projectName, setProjectName] = React.useState("");
   const [createError, setCreateError] = React.useState<string | null>(null);
@@ -120,7 +138,7 @@ export function Onboarding() {
       const project = await createFirstProject(team.id, projectName.trim());
       const detail = await fetchProjectForOnboarding(project.slug);
       const updated = {
-        step: 4,
+        step: 4 + offset,
         projectId: project.id,
         projectSlug: project.slug,
         apiKey: detail.apiKey ?? undefined,
@@ -155,7 +173,7 @@ export function Onboarding() {
       if (events.length > 0) {
         setFirstEvent(true);
         trackTelemetry(TELEMETRY_EVENTS.firstEventSuccess, {});
-        const updated = { ...(progress ?? {}), step: 6 };
+        const updated = { ...(progress ?? {}), step: 6 + offset };
         setProgress(updated);
         saveProgress(updated);
       }
@@ -164,18 +182,44 @@ export function Onboarding() {
     } finally {
       setVerifying(false);
     }
-  }, [verifying, projectSlug, progress]);
+  }, [verifying, projectSlug, progress, offset]);
 
   React.useEffect(() => {
-    if (step !== 5 || firstEvent || !projectSlug) return;
+    if (step !== 5 + offset || firstEvent || !projectSlug) return;
     const timer = window.setInterval(onVerify, 4000);
     return () => window.clearInterval(timer);
-  }, [step, firstEvent, projectSlug, onVerify]);
+  }, [step, firstEvent, projectSlug, onVerify, offset]);
+
+  if (selfHosted && config?.setupRequired && !sessionData?.session) {
+    return (
+      <div className="mx-auto max-w-[1120px] px-4 py-10 md:px-6 md:py-12">
+        <SectionLabel>First boot</SectionLabel>
+        <h1 className="mt-3 font-mono text-[26px] font-semibold tracking-[-0.025em] text-text">
+          Set up {config.instanceName}
+        </h1>
+        <p className="mt-2 max-w-[60ch] text-[14px] text-text-muted">
+          Create the first local owner account, then connect your first
+          project. Everything runs on this instance.
+        </p>
+        <div className="mt-8">
+          <OwnerSetup
+            onComplete={() => {
+              // The owner is signed in; proceed into the normal flow.
+              window.location.reload();
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
 
   if (!sessionData?.session) {
     return <Navigate to="/auth/log-in" />;
   }
-  if (isOnboardingComplete() || (projectsQuery.data && projectsQuery.data.length > 0)) {
+  if (
+    isOnboardingComplete(6 + offset) ||
+    (projectsQuery.data && projectsQuery.data.length > 0)
+  ) {
     return <Navigate to="/projects" />;
   }
 
@@ -197,8 +241,82 @@ export function Onboarding() {
       <Frame className="mt-8 min-h-[520px]">
         <div className="grid md:grid-cols-[58fr_42fr]">
           <div className="border-b border-border p-6 sm:p-8 md:border-b-0 md:border-r">
-            {/* Step 1: profile */}
-            {step === 1 ? (
+            {/* Self-hosted step 1: instance configuration confirmation */}
+            {selfHosted && step === 1 && config ? (
+              <div className="grid gap-6">
+                <div>
+                  <h2 className="text-[18px] font-semibold tracking-[-0.015em] text-text">
+                    Instance configuration
+                  </h2>
+                  <p className="mt-1.5 max-w-[52ch] text-[13px] leading-relaxed text-text-muted">
+                    Confirm how this instance is set up. Settings live in the
+                    deployment environment; changing them requires an operator
+                    update and restart.
+                  </p>
+                </div>
+                <dl className="grid gap-4 text-[14px]">
+                  <div className="grid gap-1">
+                    <dt className="font-mono text-[11px] uppercase tracking-[0.09em] text-text-subtle">
+                      Instance name
+                    </dt>
+                    <dd className="text-text">{config.instanceName}</dd>
+                  </div>
+                  <div className="grid gap-1">
+                    <dt className="font-mono text-[11px] uppercase tracking-[0.09em] text-text-subtle">
+                      Public URL
+                    </dt>
+                    <dd className="font-mono text-[13px] text-text">
+                      {config.baseUrl}
+                    </dd>
+                  </div>
+                  <div className="grid gap-1">
+                    <dt className="font-mono text-[11px] uppercase tracking-[0.09em] text-text-subtle">
+                      Registration policy
+                    </dt>
+                    <dd className="text-text">
+                      {config.signupPolicy === "open"
+                        ? "Open"
+                        : config.signupPolicy === "invite-only"
+                          ? "Invite only"
+                          : "Disabled"}
+                    </dd>
+                  </div>
+                  <div className="grid gap-1">
+                    <dt className="font-mono text-[11px] uppercase tracking-[0.09em] text-text-subtle">
+                      Email provider
+                    </dt>
+                    <dd className="text-text">
+                      {config.mailConfigured ? "Configured" : "Not configured"}
+                    </dd>
+                  </div>
+                  <div className="grid gap-1">
+                    <dt className="font-mono text-[11px] uppercase tracking-[0.09em] text-text-subtle">
+                      Social providers
+                    </dt>
+                    <dd className="text-text">
+                      {config.providers.github || config.providers.google
+                        ? ["github", "google"]
+                            .filter((name) =>
+                              config.providers[name as "github" | "google"],
+                            )
+                            .map((name) => name[0].toUpperCase() + name.slice(1))
+                            .join(", ")
+                        : "None"}
+                    </dd>
+                  </div>
+                </dl>
+                <button
+                  type="button"
+                  onClick={() => advance(2)}
+                  className="inline-flex h-10 w-fit items-center rounded-[2px] bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
+                >
+                  Looks right, continue
+                </button>
+              </div>
+            ) : null}
+
+            {/* Step 1 (hosted) / 2 (self-hosted): profile */}
+            {step === 1 + offset ? (
               <div className="grid gap-6">
                 <div>
                   <h2 className="text-[18px] font-semibold tracking-[-0.015em] text-text">
@@ -224,7 +342,7 @@ export function Onboarding() {
                 </dl>
                 <button
                   type="button"
-                  onClick={() => advance(2)}
+                  onClick={() => advance(2 + offset)}
                   className="inline-flex h-10 w-fit items-center rounded-[2px] bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
                 >
                   Looks good, continue
@@ -232,8 +350,8 @@ export function Onboarding() {
               </div>
             ) : null}
 
-            {/* Step 2: workspace */}
-            {step === 2 ? (
+            {/* Step 2 (hosted) / 3 (self-hosted): workspace */}
+            {step === 2 + offset ? (
               <div className="grid gap-6">
                 <div>
                   <h2 className="text-[18px] font-semibold tracking-[-0.015em] text-text">
@@ -255,7 +373,7 @@ export function Onboarding() {
                 </dl>
                 <button
                   type="button"
-                  onClick={() => advance(3)}
+                  onClick={() => advance(3 + offset)}
                   className="inline-flex h-10 w-fit items-center rounded-[2px] bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
                 >
                   Continue
@@ -263,8 +381,8 @@ export function Onboarding() {
               </div>
             ) : null}
 
-            {/* Step 3: create project + key */}
-            {step === 3 ? (
+            {/* Step 3 (hosted) / 4 (self-hosted): create project + key */}
+            {step === 3 + offset ? (
               <div className="grid gap-6">
                 <div>
                   <h2 className="text-[18px] font-semibold tracking-[-0.015em] text-text">
@@ -310,8 +428,8 @@ export function Onboarding() {
               </div>
             ) : null}
 
-            {/* Step 4: key + install */}
-            {step === 4 && progress?.apiKey ? (
+            {/* Step 4 (hosted) / 5 (self-hosted): key + install */}
+            {step === 4 + offset && progress?.apiKey ? (
               <div className="grid gap-6">
                 <div>
                   <h2 className="text-[18px] font-semibold tracking-[-0.015em] text-text">
@@ -352,7 +470,7 @@ export function Onboarding() {
                   type="button"
                   onClick={() => {
                     // Step 5; the key is no longer shown in full after this.
-                    const updated = { ...progress, step: 5, apiKey: undefined };
+                    const updated = { ...progress, step: 5 + offset, apiKey: undefined };
                     setProgress(updated);
                     saveProgress(updated);
                   }}
@@ -364,8 +482,8 @@ export function Onboarding() {
               </div>
             ) : null}
 
-            {/* Step 5: verify first event */}
-            {step === 5 && projectSlug ? (
+            {/* Step 5 (hosted) / 6 (self-hosted): verify first event */}
+            {step === 5 + offset && projectSlug ? (
               <div className="grid gap-6">
                 <div>
                   <h2 className="text-[18px] font-semibold tracking-[-0.015em] text-text">
@@ -414,8 +532,8 @@ export function Onboarding() {
               </div>
             ) : null}
 
-            {/* Step 6: done */}
-            {step === 6 && projectSlug ? (
+            {/* Step 6 (hosted) / 7 (self-hosted): done */}
+            {step === 6 + offset && projectSlug ? (
               <div className="grid gap-6">
                 <div className="flex items-center gap-3">
                   <PartyPopper className="size-5 text-success" aria-hidden="true" />
@@ -451,8 +569,8 @@ export function Onboarding() {
 
           {/* Right status column */}
           <aside className="bg-canvas-subtle p-6 sm:p-8">
-            <Checklist current={step} />
-            {step < 6 ? (
+            <Checklist current={step} steps={steps} />
+            {step < 6 + offset ? (
               <button
                 type="button"
                 onClick={() => {

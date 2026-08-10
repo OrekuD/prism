@@ -168,15 +168,29 @@ Hosted flow:
 
 Self-hosted flow:
 
-- [ ] On first boot, guide the operator through local owner creation rather
-      than Prism cloud signup.
-- [ ] Confirm instance name, public URL, signup policy, optional email provider,
-      and optional GitHub/Google credentials.
-- [ ] Create the first local project/key and run the same SDK verification flow.
-- [ ] Show deployment health and missing optional integrations without blocking
-      basic local analytics.
-- [ ] Ensure no onboarding action contacts Prism cloud unless the operator has
-      explicitly enabled a future opt-in integration.
+- [x] On first boot, guide the operator through local owner creation rather
+      than Prism cloud signup. /onboarding renders the OwnerSetup form when
+      the runtime config reports setupRequired (self-hosted + empty DB);
+      POST /api/v1/setup/owner creates the ADMIN owner locally, then signs
+      in. The endpoint is hidden (404) outside self-hosted mode and closes
+      permanently once any user exists.
+- [x] Confirm instance name, public URL, signup policy, optional email provider,
+      and optional GitHub/Google credentials. Self-hosted onboarding prepends
+      an Instance configuration step (name, public URL, policy, mail,
+      providers from /api/v1/config) with env-change guidance; the OwnerSetup
+      side panel shows the same facts.
+- [x] Create the first local project/key and run the same SDK verification flow.
+      Shared with the hosted steps (project + key, install, real first-event
+      verification); step numbers offset for the extra instance step.
+- [x] Show deployment health and missing optional integrations without blocking
+      basic local analytics. Instance step reports mail/providers as
+      configured-or-not without blocking; no Prism cloud contact at any
+      point (telemetry is opt-in via VITE_TELEMETRY_KEY).
+- [x] Ensure no onboarding action contacts Prism cloud unless the operator has
+      explicitly enabled a future opt-in integration. Verified by design:
+      setup, provisioning, project creation, ingestion, and verification
+      are all local; the only outbound paths are operator-configured
+      integrations.
 
 ## 5. Refresh temporary and edge screens
 
@@ -246,14 +260,14 @@ Self-hosted flow:
 
 ## Status
 
-In progress on `task-5-hosted-experience`. Slices A-C (tokens/fonts,
-landing, auth shell), the auth edge cases, hosted onboarding, edge
-screens, dashboard alignment (nav, metrics frame, events table, API
-keys), the workspace overview page, the real dashboard capture in the
-landing hero, and the telemetry event catalog are committed. Next: the
-Task 6 foundation (deployment-mode config, first-owner bootstrap,
-signup policy) before the self-hosted onboarding portion, then the
-self-hosted flow, and finally the a11y/visual-regression QA slice.
+In progress on `task-5-hosted-experience`. The hosted public experience
+(slices A-C, auth edge cases, hosted onboarding, edge screens, dashboard
+alignment, overview + capture + telemetry) and the self-hosted onboarding
+(owner setup flow + instance configuration step on the Task 6
+foundation) are committed. Remaining: the a11y/visual-regression QA
+slice (visual regression at 3 widths, keyboard/screen-reader checks,
+contrast, performance budget, fresh hero capture) and then the rest of
+Task 6's delivery stages (adapters, images, Compose, backups, CI).
 
 ## Acceptance criteria
 

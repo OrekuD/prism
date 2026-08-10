@@ -42,9 +42,9 @@ export function completeOnboarding(): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ step: 7 }));
 }
 
-export function isOnboardingComplete(): boolean {
-  // Step 6 ("Your project is live") is the terminal screen.
-  return (loadProgress()?.step ?? 0) >= 6;
+export function isOnboardingComplete(totalSteps = 6): boolean {
+  // The terminal screen is the last step (6 hosted, 7 self-hosted).
+  return (loadProgress()?.step ?? 0) >= totalSteps;
 }
 
 /** POST /api/v1/projects/:teamId — create the first project. */

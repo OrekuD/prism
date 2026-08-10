@@ -10,6 +10,8 @@ export type RuntimeConfig = {
   instanceName: string;
   signupPolicy: "open" | "invite-only" | "disabled";
   baseUrl: string;
+  /** Self-hosted instance with no users yet: the first-owner setup is open. */
+  setupRequired: boolean;
   providers: { github: boolean; google: boolean };
   mailConfigured: boolean;
 };
@@ -19,6 +21,7 @@ const FALLBACK: RuntimeConfig = {
   instanceName: "Prism",
   signupPolicy: "open",
   baseUrl: import.meta.env.VITE_API_URL ?? "http://localhost:8787",
+  setupRequired: false,
   providers: { github: false, google: false },
   mailConfigured: false,
 };
