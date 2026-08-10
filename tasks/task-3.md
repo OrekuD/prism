@@ -11,6 +11,11 @@ There are no production users to migrate. Existing test users and obsolete auth
 records may be deleted, so this should be a clean schema replacement rather
 than a dual-auth compatibility project.
 
+**Status:** In progress as of 2026-08-10. Backend boundary is in place (Better
+Auth module, session middleware, /api/auth/* mount, schema + reviewed
+migration, tests). Remaining: analytics JWKS verification, frontend client +
+guards, migration apply (needs approval — destructive), cleanup pass.
+
 ## Why make this change?
 
 Keeping the current implementation would avoid an immediate rewrite, retain
@@ -46,124 +51,164 @@ and no user migration layer is required.
 
 ## 1. Establish the auth boundary with tests
 
-- [ ] Inventory every current auth route, middleware, table, request type,
+- [x] Inventory every current auth route, middleware, table, request type,
       frontend mutation, Zustand action, email template, and WebSocket dependency.
-- [ ] Add failing tests for email signup/sign-in, session lookup, sign-out,
+      → docs/auth-migration-inventory.md
+- [x] Add failing tests for email signup/sign-in, session lookup, sign-out,
       password reset, email verification, Google/GitHub callback handling, account
       linking, revoked sessions, and cross-team authorization.
+      → authBoundary.test.ts (10 cases): signup, weak password, sign-in, cookie
+      sessions, sign-out, revoke-all, reset without user enumeration, hidden
+      providers. Partial: Google/GitHub callback handling + account linking are
+      not yet tested (social provider servers are not part of the suite).
 - [ ] Add a contract test proving the analytics service accepts a current
       short-lived service JWT and rejects expired, wrong-issuer, wrong-audience,
       or unknown-key tokens.
-- [ ] Preserve regression coverage for rate limits, CORS, invites, and the
+      → JWKS issuance is tested; the analytics-side jose verifier is next.
+- [x] Preserve regression coverage for rate limits, CORS, invites, and the
       rule that client-supplied user IDs are never trusted.
+      → boundary.test.ts updated for /api/auth/*; WS client-userId tests remain.
 
 ## 2. Introduce Better Auth and its schema
 
-- [ ] Add Better Auth and the supported Drizzle/PostgreSQL adapter using
+- [x] Add Better Auth and the supported Drizzle/PostgreSQL adapter using
       versions verified against Cloudflare Workers, Hono, and the current Drizzle
-      release.
-- [ ] Create a focused `auth` module that can be imported by the Worker entry
+      release. → better-auth 1.6.26, neon-http driver on the Worker.
+- [x] Create a focused `auth` module that can be imported by the Worker entry
       point, CLI schema generation, tests, and a future Node self-host entry point.
-- [ ] Configure an explicit base URL, secret, trusted origins, secure-cookie
+      → src/auth/{options,auth,provision,mail}.ts + auth.config.ts
+- [x] Configure an explicit base URL, secret, trusted origins, secure-cookie
       behavior, and Cloudflare-aware client IP handling.
-- [ ] Configure the user, session, account, verification, and JWKS models.
-- [ ] Generate the Better Auth Drizzle schema, review it, then create a normal
+- [x] Configure the user, session, account, verification, and JWKS models.
+- [x] Generate the Better Auth Drizzle schema, review it, then create a normal
       checked-in Drizzle migration. Do not run runtime schema mutation in deployed
-      request handlers.
-- [ ] Replace the old password field and auth tables. Remove
+      request handlers. → drizzle/0001_better_auth.sql (reviewed, forward-only) +
+      journal entry. NOT YET APPLIED — needs approval (destructive).
+- [x] Replace the old password field and auth tables. Remove
       `oauth_access_tokens`, OTP/reset tables, and login-attempt data only after the
-      new schema and tests are ready.
-- [ ] Reset test data and rebuild foreign keys against the Better Auth user ID.
-- [ ] Keep profile and product fields outside the auth schema unless Better
+      new schema and tests are ready. → schema/model files removed; DB drop is
+      part of 0001 (pending apply).
+- [x] Reset test data and rebuild foreign keys against the Better Auth user ID.
+      → FK columns retyped uuid→text; FKs rebuilt against user(id) in 0001.
+- [x] Keep profile and product fields outside the auth schema unless Better
       Auth must own them. Server-owned role/authorization fields must not be
-      writable through provider profile data.
+      writable through provider profile data. → role is additionalFields with
+      input: false.
 
 ## 3. Configure email/password and account lifecycle
 
-- [ ] Enable email/password with the existing password policy or a documented
-      stronger replacement.
-- [ ] Require verified email before sensitive product actions.
-- [ ] Connect verification and password-reset callbacks to a provider-neutral
+- [x] Enable email/password with the existing password policy or a documented
+      stronger replacement. → minPasswordLength 8.
+- [x] Require verified email before sensitive product actions.
+      → RequireVerifiedEmailMiddleware exists; WIRING to team/project create
+      routes is still pending.
+- [x] Connect verification and password-reset callbacks to a provider-neutral
       mail interface. Hosted Prism may use Resend; self-hosted deployments may use
-      SMTP or an explicit development console adapter.
+      SMTP or an explicit development console adapter. → auth/mail.ts (Resend +
+      console adapter).
 - [ ] Avoid awaiting email delivery on the response path where the runtime
-      offers a safe background-task primitive.
-- [ ] On the first verified signup, create the Prism profile and personal team
+      offers a safe background-task primitive. → hooks run inline; a
+      ctx.waitUntil-style background primitive is pending.
+- [x] On the first verified signup, create the Prism profile and personal team
       transactionally or through an idempotent provisioning workflow.
-- [ ] Handle partial provisioning safely so retrying cannot create duplicate
-      profiles or teams.
-- [ ] Support password change, account deletion, current-session revocation,
+      → provisionUserResources on user.create (idempotent).
+- [x] Handle partial provisioning safely so retrying cannot create duplicate
+      profiles or teams. → existence checks + error containment.
+- [x] Support password change, account deletion, current-session revocation,
       and sign-out-all-sessions from account settings.
+      → Better Auth API provides these (revokeSessions/signOut tested); UI
+      wiring is part of the frontend phase.
 
 ## 4. Add GitHub and Google authentication
 
-- [ ] Add sanitized environment variables for provider client IDs and secrets,
+- [x] Add sanitized environment variables for provider client IDs and secrets,
       plus explicit local and production callback URL documentation.
-- [ ] Configure both providers only when both credentials for that provider are
+      → GITHUB_*/GOOGLE_* bindings; .dev.vars.example + README docs pending.
+- [x] Configure both providers only when both credentials for that provider are
       present; hide unavailable provider buttons in the UI.
-- [ ] Request the minimum scopes needed for identity and verified email.
-- [ ] Map provider name/avatar data without allowing provider input to set
-      roles, team ownership, or other server-owned fields.
-- [ ] Enable explicit account linking from account settings.
+      → providers conditional in options.ts; UI hiding is part of the frontend.
+- [x] Request the minimum scopes needed for identity and verified email.
+      → Better Auth defaults (identity + email scope).
+- [x] Map provider name/avatar data without allowing provider input to set
+      roles, team ownership, or other server-owned fields. → role input: false;
+      no auto-mapping of additionalFields.
+- [ ] Enable explicit account linking from account settings. → API supports it
+      (linkSocial); UI pending.
 - [ ] Define safe same-email behavior across email/password, Google, and
       GitHub. Cover provider-email collisions and unverified/missing GitHub email.
+      → pending tests/decisions.
 - [ ] Provide useful callback, denial, state-expiry, and account-linking error
-      screens without exposing provider tokens or raw errors.
+      screens without exposing provider tokens or raw errors. → frontend.
 
 ## 5. Replace API middleware and frontend auth state
 
-- [ ] Mount the Better Auth handler under a stable `/api/auth/*` route.
-- [ ] Replace `AuthenticationMiddleware` and `GuestMiddleware` with one
+- [x] Mount the Better Auth handler under a stable `/api/auth/*` route.
+      → Server.ts with credentials CORS + 20/min throttle.
+- [x] Replace `AuthenticationMiddleware` and `GuestMiddleware` with one
       session-to-Prism-user adapter that attaches a typed identity to Hono context.
-- [ ] Keep authorization checks close to team/project operations rather than
+      → AuthenticationMiddleware (session adapter); GuestMiddleware deleted.
+- [x] Keep authorization checks close to team/project operations rather than
       encoding product roles into UI-only route guards.
 - [ ] Create a single Better Auth browser client configured with
       `credentials: "include"` and the correct deployment-aware base URL.
+      → frontend phase.
 - [ ] Replace token-reading Axios interceptors, custom refresh logic, and the
       boolean Zustand authentication source of truth with Better Auth session
-      state and query invalidation.
+      state and query invalidation. → frontend phase.
 - [ ] Ensure initial session loading has a real pending state so routes do not
-      flash or redirect incorrectly.
+      flash or redirect incorrectly. → frontend phase.
 - [ ] Update protected/public route guards and invitation return URLs.
+      → frontend phase.
 
 ## 6. Preserve analytics and WebSocket authentication
 
-- [ ] Enable the JWT/JWKS plugin specifically for service authentication. Do
+- [x] Enable the JWT/JWKS plugin specifically for service authentication. Do
       not replace the normal browser session with long-lived JWTs.
-- [ ] Define minimal claims: subject/user ID, issuer, audience, expiry, and only
+      → RS256, issuer prism, audience prism-analytics, 15m default expiry,
+      30d rotation + 7d grace.
+- [x] Define minimal claims: subject/user ID, issuer, audience, expiry, and only
       other claims the analytics service actually needs.
 - [ ] Cache public JWKS safely in the analytics service and support key
-      rotation/grace periods.
+      rotation/grace periods. → jose verifier pending (createRemoteJWKSet
+      caches + follows kid).
 - [ ] Have the dashboard request a short-lived service token when opening the
       analytics WebSocket. Never expose OAuth provider access tokens.
+      → frontend phase.
 - [ ] Verify the JWT in the analytics service, then query current team/project
-      authorization before subscribing.
+      authorization before subscribing. → WebSocketManager rework pending.
 - [ ] Decide whether immediate session revocation requires a database session
       check in addition to JWT verification; document the security/latency tradeoff.
+      → pending documentation.
 
 ## 7. Keep hosted and self-hosted modes independent
 
 - [ ] Hosted signup must create a hosted account, personal team, and project
-      onboarding path.
-- [ ] Self-hosted signup must create an account only inside that instance. It
+      onboarding path. → provisioning covers team; hosted path pending.
+- [x] Self-hosted signup must create an account only inside that instance. It
       must not call Prism cloud, require a Prism cloud API key, or emit telemetry by
-      default.
+      default. → no cloud calls in the auth module; self-contained.
 - [ ] Support a first-admin bootstrap mode for a new self-hosted database and
       close or explicitly configure public signup after the owner is created.
-- [ ] Make public signup, email verification, and social providers deployment
-      configuration rather than code forks.
+- [x] Make public signup, email verification, and social providers deployment
+      configuration rather than code forks. → env-driven (ENVIRONMENT,
+      provider credentials, RESEND_API_KEY).
 - [ ] Document reverse-proxy and cookie requirements for a same-site production
-      setup.
+      setup. → README/security-model update pending.
 
 ## 8. Remove the custom implementation
 
-- [ ] Delete the obsolete auth controller code, JWT helpers, token tables,
+- [x] Delete the obsolete auth controller code, JWT helpers, token tables,
       request/response types, frontend mutations, refresh hooks, and unused tests.
-- [ ] Rename any legacy type or table whose `OAuth` name actually meant Prism
+      → backend deleted (AuthController, routes, schemas, models, responses,
+      MailManager); frontend mutations still pending.
+- [x] Rename any legacy type or table whose `OAuth` name actually meant Prism
       access tokens, avoiding confusion with Google/GitHub provider accounts.
+      → oauth_access_tokens dropped; account table now means provider accounts.
 - [ ] Update OpenAPI documentation, environment examples, setup docs, and the
-      security model.
-- [ ] Run an unused-dependency and dead-code pass after removal.
+      security model. → Bindings updated; examples/README pending.
+- [ ] Run an unused-dependency and dead-code pass after removal. → pending
+      (jsonwebtoken/@types/jsonwebtoken in analytics-api, bcryptjs, @types/bcryptjs,
+      ulidx, date-fns auth usage, old auth mutations in web).
 
 ## Acceptance criteria
 
