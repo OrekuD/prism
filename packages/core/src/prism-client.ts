@@ -1,7 +1,7 @@
-import { AppEvent } from "./types";
 import {
   StartSessionRequest,
   EndSessionRequest,
+  LogEventRequest,
   CreateNewSessionResource,
 } from "@prism/types";
 
@@ -19,12 +19,30 @@ export class PrismClient {
     this.trackError();
   }
 
-  public logEvent(event: AppEvent) {
-    // console.log({ event, key: this.apiKey });
+  /**
+   * Logs a named event with optional structured data for the current
+   * session. Events are stored server-side and shown on the project's
+   * Events dashboard.
+   */
+  public async logEvent(
+    event: string,
+    data?: Record<string, unknown>,
+  ): Promise<void> {
+    if (!this.sessionId) return;
+    const body: LogEventRequest = {
+      sessionId: this.sessionId,
+      name: event,
+      ...(data === undefined ? {} : { data }),
+    };
+    await this.sendPostRequest("/events", body);
   }
 
-  public logCustomEvent(event: string) {
-    // console.log({ event, key: this.apiKey });
+  /** Alias of logEvent with a distinct name for custom product events. */
+  public async logCustomEvent(
+    name: string,
+    data?: Record<string, unknown>,
+  ): Promise<void> {
+    await this.logEvent(name, data);
   }
 
   public async startSession() {
@@ -34,7 +52,7 @@ export class PrismClient {
       location: window.location.pathname,
     };
 
-    const response: CreateNewSessionResource = await this.sendPostRequest(
+    const response = await this.sendPostRequest<CreateNewSessionResource>(
       "/sessions",
       body,
     );
@@ -43,22 +61,50 @@ export class PrismClient {
     }
   }
 
-  public async endSession() {
-    const body: EndSessionRequest = {
-      sessionId: this.sessionId,
-    };
+  /**
+   * Ends the current session using a browser-safe delivery mechanism that
+   * survives page close/navigation: fetch with `keepalive` when available
+   * (it preserves the Authorization header), falling back to sendBeacon.
+   */
+  public endSession() {
+    if (!this.sessionId) return;
 
-    await this.sendPostRequest("/sessions/end", body);
+    const body: EndSessionRequest = { sessionId: this.sessionId };
+    const url = this.apiUrl + "/sessions/end";
+
+    try {
+      fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(body),
+        keepalive: true,
+      }).catch(() => {
+        // Best-effort: the session is also marked stale server-side.
+      });
+    } catch {
+      if (typeof navigator !== "undefined" && navigator.sendBeacon) {
+        navigator.sendBeacon(
+          url,
+          new Blob([JSON.stringify(body)], { type: "application/json" }),
+        );
+      }
+    }
+
+    this.sessionId = "";
   }
 
-  private sendPostRequest(url: string, data: any) {
-    if (!url) return;
+  private sendPostRequest<T>(url: string, data: unknown): Promise<T> {
+    if (!url) return Promise.resolve(undefined as T);
     const apiUrl = this.apiUrl + url;
 
     return fetch(apiUrl, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
+        "content-type": "application/json",
       },
       body: JSON.stringify(data),
     })
@@ -70,16 +116,7 @@ export class PrismClient {
         }
         return res.json();
       })
-      .then((data) => data)
       .catch((error) => console.log({ error }));
-  }
-
-  private async getLocation() {
-    try {
-      const response = await (await fetch("http://ip-api.com/json")).json();
-
-      return response.countryCode as string;
-    } catch (error) {}
   }
 
   private trackError() {

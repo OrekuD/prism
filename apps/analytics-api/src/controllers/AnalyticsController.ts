@@ -3,6 +3,8 @@ import {
   type StartSessionRequest,
   type EndSessionRequest,
   EndSessionRequestSchema,
+  type LogEventRequest,
+  LogEventRequestSchema,
   type SessionResource,
   type SocketUserConnected,
 } from "@prism/types";
@@ -103,6 +105,34 @@ export class AnalyticsController {
     await TursoDatabaseManager.instance.execute({
       sql: "UPDATE sessions SET is_online = 0 WHERE session_id = ? AND project_id = ?",
       args: [data.sessionId, projectId],
+    });
+
+    return ctx.json(new OkResponse().toJSON());
+  }
+
+  /**
+   * Ingests a named event for the authenticated project's session.
+   * The event is stored in Turso and shown on the project events dashboard.
+   */
+  public static async logEvent(ctx: Context) {
+    const body = await ctx.req.json<LogEventRequest>();
+
+    const data = validateData(LogEventRequestSchema, body);
+
+    if (Array.isArray(data)) {
+      return ctx.json(new ErrorResponse(data).toJSON(), 400);
+    }
+
+    const projectId = ctx.get("projectId") ?? "";
+
+    await TursoDatabaseManager.instance.execute({
+      sql: "INSERT INTO events (session_id, project_id, name, data) VALUES (?, ?, ?, ?)",
+      args: [
+        data.sessionId,
+        projectId,
+        data.name,
+        data.data === undefined ? null : JSON.stringify(data.data),
+      ],
     });
 
     return ctx.json(new OkResponse().toJSON());

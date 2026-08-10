@@ -5,16 +5,16 @@ import starlight from "@astrojs/starlight";
 export default defineConfig({
   integrations: [
     starlight({
-      title: "My Docs",
+      title: "Prism Docs",
       social: {
-        github: "https://github.com/withastro/starlight",
+        github: "https://github.com/OrekuD/prism",
       },
       sidebar: [
         {
           label: "Guides",
           items: [
             // Each item here is one entry in the navigation menu.
-            { label: "Example Guide", link: "/guides/example/" },
+            { label: "Quickstart", link: "/guides/quickstart/" },
           ],
         },
         {

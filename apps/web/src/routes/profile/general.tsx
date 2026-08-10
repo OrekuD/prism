@@ -24,11 +24,13 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useUpdateUserInformationMutation } from "@/network/mutations/useUpdateUserInformationMutation";
 import {
   ChangeEmailRequestSchema,
+  ChangePasswordRequestSchema,
   UpdateUserInformationRequestSchema,
   UpdateUsernameRequestSchema,
 } from "@prism/types";
 import { useUpdateUsernameMutation } from "@/network/mutations/useUpdateUsernameMutation";
 import { useChangeEmailMutation } from "@/network/mutations/useChangeEmailMutation";
+import { useChangePasswordMutation } from "@/network/mutations/useChangePasswordMutation";
 import { useSignOutFromAllSessionsMutation } from "@/network/mutations/useSignOutFromAllSessionsMutation";
 import { Pencil } from "lucide-react";
 import defaultAvatar from "@/assets/images/default_profile.png";
@@ -41,6 +43,7 @@ export function AccountGeneral() {
   const updateUserInformationMutation = useUpdateUserInformationMutation();
   const updateUsernameMutation = useUpdateUsernameMutation();
   const changeEmailMutation = useChangeEmailMutation();
+  const changePasswordMutation = useChangePasswordMutation();
   const signOutFromAllSessionsMutation = useSignOutFromAllSessionsMutation();
   const updateProfilePictureMutation = useUpdateProfilePictureMutation();
 
@@ -63,6 +66,14 @@ export function AccountGeneral() {
     resolver: zodResolver(ChangeEmailRequestSchema),
     defaultValues: {
       email: user?.email || "",
+    },
+  });
+
+  const passwordForm = useForm({
+    resolver: zodResolver(ChangePasswordRequestSchema),
+    defaultValues: {
+      oldPassword: "",
+      newPassword: "",
     },
   });
 
@@ -196,6 +207,64 @@ export function AccountGeneral() {
                     <LoadingSpinner />
                   ) : (
                     "Update"
+                  )}
+                </Button>
+              </CardFooter>
+            </form>
+          </Form>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader className="gap-1">
+          <CardTitle>Password</CardTitle>
+          <CardDescription>Change your account password.</CardDescription>
+        </CardHeader>
+        <CardContent className="px-0 pb-0">
+          <Form {...passwordForm}>
+            <form
+              onSubmit={passwordForm.handleSubmit((values) => {
+                changePasswordMutation.mutate(values);
+                passwordForm.reset();
+              })}
+              className="space-y-6"
+            >
+              <div className="grid grid-cols-2 gap-4 px-6">
+                <FormField
+                  control={passwordForm.control}
+                  name="oldPassword"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Current password</FormLabel>
+                      <FormControl>
+                        <Input type="password" required {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={passwordForm.control}
+                  name="newPassword"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>New password</FormLabel>
+                      <FormControl>
+                        <Input type="password" required {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <CardFooter className="border-t px-6 py-4">
+                <Button
+                  type="submit"
+                  disabled={changePasswordMutation.isPending}
+                >
+                  {changePasswordMutation.isPending ? (
+                    <LoadingSpinner />
+                  ) : (
+                    "Update password"
                   )}
                 </Button>
               </CardFooter>

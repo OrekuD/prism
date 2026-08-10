@@ -7,5 +7,6 @@ const router = new Hono();
 router.use(AnalyticsMiddleware);
 router.post("/sessions", AnalyticsController.startSession);
 router.post("/sessions/end", AnalyticsController.endSession);
+router.post("/events", AnalyticsController.logEvent);
 
 export default router;

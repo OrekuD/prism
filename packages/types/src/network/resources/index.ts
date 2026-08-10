@@ -90,6 +90,15 @@ export type SessionResource = {
   created_at: string;
 };
 
+export type EventResource = {
+  id: number;
+  session_id: string;
+  project_id: string;
+  name: string;
+  data: string | null;
+  created_at: string;
+};
+
 export type ProjectDetailedResource = {
   id: string;
   name: string;

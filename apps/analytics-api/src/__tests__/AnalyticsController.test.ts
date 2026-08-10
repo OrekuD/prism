@@ -76,3 +76,48 @@ describe("AnalyticsController.endSession (session ownership)", () => {
     expect(result).toEqual({ __json: expect.anything() });
   });
 });
+
+describe("AnalyticsController.logEvent (event ingestion)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    execute.mockResolvedValue({ rows: [] });
+  });
+
+  it("stores a validated event for the authenticated project", async () => {
+    const ctx = makeContext(PROJECT_A, {
+      sessionId: SESSION_ID,
+      name: "button-click",
+      data: { label: "signup" },
+    });
+
+    const result = await AnalyticsController.logEvent(ctx);
+
+    expect(result).toMatchObject({ __json: { message: "success" } });
+    const [{ sql, args }] = execute.mock.calls[0];
+    expect(String(sql)).toContain("INSERT INTO events");
+    expect(args).toEqual([
+      SESSION_ID,
+      PROJECT_A,
+      "button-click",
+      JSON.stringify({ label: "signup" }),
+    ]);
+  });
+
+  it("stores an event without optional data as null", async () => {
+    const ctx = makeContext(PROJECT_A, { sessionId: SESSION_ID, name: "page-view" });
+
+    await AnalyticsController.logEvent(ctx);
+
+    const [{ args }] = execute.mock.calls[0];
+    expect(args).toEqual([SESSION_ID, PROJECT_A, "page-view", null]);
+  });
+
+  it("rejects an invalid event body with 400", async () => {
+    const ctx = makeContext(PROJECT_A, { sessionId: SESSION_ID });
+
+    const result = await AnalyticsController.logEvent(ctx);
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ __json: { errors: expect.any(Array) } });
+  });
+});

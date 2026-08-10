@@ -94,7 +94,7 @@ run("analytics database integration", () => {
       const end = await AnalyticsController.endSession(endCtx);
       expect(
         (end as unknown as { __json: { message: string } }).__json.message,
-      ).toBe("ok");
+      ).toBe("success");
 
       const after = await client.execute({
         sql: "SELECT is_online FROM sessions WHERE project_id = ? AND session_id = ?",

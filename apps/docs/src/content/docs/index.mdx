@@ -1,36 +1,57 @@
 ---
-title: Welcome to Starlight
-description: Get started building your docs site with Starlight.
+title: Prism
+description: Real-time website analytics for teams.
 template: splash
 hero:
-  tagline: Congrats on setting up a new Starlight project!
-  image:
-    file: ../../assets/houston.webp
+  tagline: Real-time website analytics for teams
   actions:
-    - text: Example Guide
-      link: /guides/example/
+    - text: Quickstart
+      link: /guides/quickstart/
       icon: right-arrow
       variant: primary
-    - text: Read the Starlight docs
-      link: https://starlight.astro.build
-      icon: external
+    - text: SDK reference
+      link: /reference/sdk/
+      icon: open-book
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-## Next steps
+## What is Prism?
+
+Prism is a self-hostable analytics platform with real-time WebSocket
+delivery, session tracking, and a lightweight browser SDK.
+
+- **Sessions** — every visit is recorded with country, OS, browser, device
+  type, referrer, and coordinates.
+- **Realtime** — new sessions appear on a live map the moment they start.
+- **Events** — log named events with structured data from your site.
+- **Teams** — invite teammates, create projects, and scope access per team.
+
+## Architecture
 
 <CardGrid stagger>
-	<Card title="Update content" icon="pencil">
-		Edit `src/content/docs/index.mdx` to see this page change.
+	<Card title="Web dashboard" icon="seti:react">
+		React + Vite dashboard for teams, projects, sessions, events, and
+		settings.
 	</Card>
-	<Card title="Add new content" icon="add-document">
-		Add Markdown or MDX files to `src/content/docs` to create new pages.
+	<Card title="Main API" icon="cloud">
+		A Cloudflare Worker: auth, teams, projects, and profile APIs backed by
+		Neon (Postgres).
 	</Card>
-	<Card title="Configure your site" icon="setting">
-		Edit your `sidebar` and other config in `astro.config.mjs`.
+	<Card title="Analytics API" icon="activity">
+		A Node/Hono service that ingests sessions and events into Turso and
+		pushes live updates over WebSockets.
 	</Card>
-	<Card title="Read the docs" icon="open-book">
-		Learn more in [the Starlight Docs](https://starlight.astro.build/).
+	<Card title="Browser SDK" icon="seti:javascript">
+		`@prism/core` — one line to start tracking a session, plus event
+		logging with a browser-safe session end.
 	</Card>
 </CardGrid>
+
+## Next steps
+
+- Follow the [Quickstart](/guides/quickstart/) to install the SDK and see
+  your first session on the map.
+- Read the [SDK reference](/reference/sdk/) for the full client API.
+- See the repository README for local development, database setup, and the
+  security model.

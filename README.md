@@ -108,10 +108,12 @@ SDK's development build targets `http://localhost:8080`.
    import { PrismClient } from "@prism/core";
    const prism = new PrismClient({ key: "YOUR_API_KEY" });
    prism.startSession({ referrer: document.referrer, location: "" });
+   await prism.logEvent("button-click", { label: "signup" });
    ```
 
 4. The session appears in the project overview; the realtime page shows a map
    marker for it (requires `VITE_MAPBOX_ACCESS_TOKEN`).
+5. Logged events appear on the project's Events dashboard.
 
 ## Quality gates
 

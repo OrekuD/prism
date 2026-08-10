@@ -6,6 +6,9 @@ import {
   type CreateProjectRequest,
   CreateProjectRequestSchema,
   type ProjectDetailedRequest,
+  type EventResource,
+  type RenameProjectRequest,
+  RenameProjectRequestSchema,
   TeamMemberPermissions,
 } from "@prism/types";
 import { validateData } from "../utils/validateData";
@@ -110,6 +113,100 @@ export class ProjectsController {
     await db`DELETE FROM projects WHERE id = ${projectId}`;
 
     return ctx.json(new OkResponse().toJSON());
+  }
+
+  public static async renameProject(ctx: Context<HonoConfig>) {
+    const projectId = ctx.req.param("projectId");
+
+    if (!projectId) {
+      return ctx.json(new ErrorResponse("project_id_not_found").toJSON(), 404);
+    }
+
+    const body = await ctx.req.json<RenameProjectRequest>();
+
+    const data = validateData(RenameProjectRequestSchema, body);
+
+    if (Array.isArray(data)) {
+      return ctx.json(new ErrorResponse(data).toJSON(), 400);
+    }
+
+    const user = ctx.get("user");
+    if (!user) {
+      return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+    }
+
+    const project =
+      (await DatabaseManager.getInstance(
+        ctx,
+      )`SELECT id, team_id FROM projects WHERE id = ${projectId}`) as Array<Project>;
+
+    if (project.length === 0) {
+      return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
+    }
+
+    const team =
+      (await DatabaseManager.getInstance(
+        ctx,
+      )`SELECT id, owner_id FROM teams WHERE id = ${project[0].team_id}`) as Array<Team>;
+
+    if (team.length === 0) {
+      return ctx.json(new ErrorResponse("team_not_found").toJSON(), 404);
+    }
+
+    const hasPermission = await ProjectsController._hasAdminPermission(
+      ctx,
+      team[0],
+    );
+    if (!hasPermission) {
+      return ctx.json(new ErrorResponse("cannot_rename_project").toJSON(), 403);
+    }
+
+    const updated =
+      (await DatabaseManager.getInstance(
+        ctx,
+      )`UPDATE projects SET name = ${data.name} WHERE id = ${projectId} RETURNING id, name`) as Array<Project>;
+
+    if (updated.length === 0) {
+      return ctx.json(new ErrorResponse("project_not_updated").toJSON(), 400);
+    }
+
+    return ctx.json(new OkResponse().toJSON());
+  }
+
+  public static async getProjectEvents(ctx: Context<HonoConfig>) {
+    const slug = ctx.req.param("slug");
+
+    if (!slug) {
+      return ctx.json(new ErrorResponse("slug_not_found").toJSON(), 404);
+    }
+
+    const project = (await DatabaseManager.getInstance(ctx)`
+      SELECT
+        projects.id as id,
+        projects.team_id as team_id,
+        projects.slug as slug
+      FROM projects
+      WHERE projects.slug = ${slug}`) as Array<Project>;
+
+    if (project.length === 0) {
+      return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
+    }
+
+    const hasPermission = await ProjectsController._hasPermission(
+      ctx,
+      project[0].team_id,
+    );
+
+    if (!hasPermission) {
+      return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
+    }
+
+    const { rows } = await TursoDatabaseManager.getInstance(ctx).execute({
+      sql: "SELECT id, session_id, project_id, name, data, created_at FROM events WHERE project_id = ? ORDER BY created_at DESC, id DESC LIMIT 200",
+      args: [project[0].id],
+    });
+
+    return ctx.json(rows as unknown as Array<EventResource>);
   }
 
   public static async getProjectBySlug(ctx: Context<HonoConfig>) {

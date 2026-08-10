@@ -144,6 +144,20 @@ const end = await request(`${ANALYTICS}/sessions/end`, {
 });
 check("end-session succeeds", end.status === 200, `got ${end.status}`);
 
+// 8b. Log an event and read it back through the events endpoint
+const event = await request(`${ANALYTICS}/events`, {
+  method: "POST",
+  token: analyticsKey,
+  body: { sessionId, name: "e2e-click", data: { label: "smoke" } },
+});
+check("event ingestion succeeds", event.status === 200, `got ${event.status}`);
+
+const events = await request(`${API}/projects/${project?.slug}/events`, { token });
+check(
+  "event appears in the project events",
+  Array.isArray(events.json) && events.json.some((e) => e.name === "e2e-click"),
+);
+
 // 9. A foreign key cannot end sessions (scoped update) — expect 401 with a bogus key
 const bogusEnd = await request(`${ANALYTICS}/sessions/end`, {
   method: "POST",

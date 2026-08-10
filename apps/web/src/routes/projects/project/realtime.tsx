@@ -40,6 +40,7 @@ export function ProjectRealtime() {
     duration: null,
   });
   const { sessions } = useActiveSessionsStore();
+  const mapboxToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
 
   // React.useEffect(() => {
   //   if (!ref.current) return;
@@ -52,6 +53,22 @@ export function ProjectRealtime() {
   // }, []);
   //
 
+  if (!mapboxToken) {
+    return (
+      <WebSocketManager projectId={projectQuery.data?.id}>
+        <div className="w-full relative py-5 h-fullScreenSm md:h-fullScreen grid place-items-center">
+          <div className="text-center space-y-2 px-6">
+            <p className="text-sm font-medium">Realtime map unavailable</p>
+            <p className="text-sm text-muted-foreground">
+              Set <code className="text-xs">VITE_MAPBOX_ACCESS_TOKEN</code> in{" "}
+              <code className="text-xs">apps/web/.env.local</code> to see live
+              session markers.
+            </p>
+          </div>
+        </div>
+      </WebSocketManager>
+    );
+  }
   return (
     <WebSocketManager projectId={projectQuery.data?.id}>
       <div className="w-full relative animate-fade-in isolate py-5 h-fullScreenSm md:h-fullScreen">
@@ -99,15 +116,45 @@ export function ProjectRealtime() {
                   </SheetTrigger>
                   <SheetContent>
                     <SheetHeader>
-                      <SheetTitle>Edit profile</SheetTitle>
+                      <SheetTitle>Session details</SheetTitle>
                       <SheetDescription>
-                        Make changes to your profile here. Click save when
-                        you're done.
+                        Live session captured by the Prism SDK.
                       </SheetDescription>
                     </SheetHeader>
+                    <div className="grid gap-3 py-4 text-sm">
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">Referrer</span>
+                        <span className="truncate">{session.referrer || "—"}</span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">Country</span>
+                        <span>{session.country_code || "—"}</span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">Device</span>
+                        <span>
+                          {session.os} · {session.browser}{" "}
+                          {session.is_mobile === 1 ? "(mobile)" : ""}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">Location</span>
+                        <span>{session.location || "—"}</span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">Coordinates</span>
+                        <span>
+                          {session.lat}, {session.long}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">Started</span>
+                        <span>{new Date(session.created_at).toLocaleString()}</span>
+                      </div>
+                    </div>
                     <SheetFooter>
                       <SheetClose asChild>
-                        <Button type="submit">Save changes</Button>
+                        <Button type="button">Close</Button>
                       </SheetClose>
                     </SheetFooter>
                   </SheetContent>

@@ -1,15 +1,5 @@
-export type AppOpen = {
-  event: "app-open";
+/** A named event with optional structured data, sent with a session. */
+export type AppEvent = {
+  name: string;
+  data?: Record<string, unknown>;
 };
-
-export type AppSignIn = {
-  event: "app-sign-in";
-  text: boolean;
-};
-
-export type AppSignUp = {
-  event: "app-sign-in";
-  data: string;
-};
-
-export type AppEvent = AppOpen | AppSignIn | AppSignUp;

@@ -179,6 +179,20 @@ export const EndSessionRequestSchema = z.strictObject({
 
 export type EndSessionRequest = z.infer<typeof EndSessionRequestSchema>;
 
+export const LogEventRequestSchema = z.strictObject({
+  sessionId: z.string().min(1),
+  name: z.string().min(1).max(128),
+  data: z.record(z.string(), z.unknown()).optional(),
+});
+
+export type LogEventRequest = z.infer<typeof LogEventRequestSchema>;
+
+export const RenameProjectRequestSchema = z.strictObject({
+  name: z.string().min(1).max(120),
+});
+
+export type RenameProjectRequest = z.infer<typeof RenameProjectRequestSchema>;
+
 export const ProjectDetailedRequestSchema = z.strictObject({
   slug: z.string().optional(),
   duration: z
