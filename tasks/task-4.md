@@ -194,28 +194,45 @@ Avoid mixing visual redesign bugs with upgrade regressions.
 
 ## 7. Add a component verification surface
 
-- [ ] Add a development-only component gallery or Storybook-equivalent route
+- [x] Add a development-only component gallery or Storybook-equivalent route
       that renders all primitives and important variants.
-- [ ] Include light/dark, hover, active, focus-visible, disabled, loading,
-      validation, long-copy, empty, and destructive examples.
-- [ ] Add automated accessibility checks and keyboard interaction tests for
+- [x] Include light/dark, hover, active, focus-visible, disabled, loading,
+      validation, long-copy, empty, and destructive examples. Gallery covers
+      all variants, sizes, disabled/busy, form validation, alerts (long-copy),
+      OTP, calendar, overlays, loading/empty states, and the AccountChart.
+- [x] Add automated accessibility checks and keyboard interaction tests for
       dialogs, menus, selects, forms, sheets, OTP, and date selection.
-- [ ] Add visual regression screenshots at desktop, tablet, and narrow mobile
-      widths.
-- [ ] Ensure the gallery cannot be exposed accidentally in production, or make
-      it an intentional documented design-system page.
+      → vitest + @testing-library + axe-core (6 tests): axe scan of the full
+      gallery (0 serious/critical violations), form validation, dialog focus
+      trap + Escape + focus restore, dropdown ArrowDown/Enter, OTP typing,
+      calendar day selection. Web test task added to the turbo pipeline.
+- [x] Add visual regression screenshots at desktop, tablet, and narrow mobile
+      widths. docs/screenshots/task-4-baseline/ (10 files) covers auth,
+      projects list, summary (both themes), gallery at 1920/768/390px.
+- [x] Ensure the gallery cannot be exposed accidentally in production, or make
+      it an intentional documented design-system page. Route registered only
+      when import.meta.env.DEV.
 
 ## 8. Verify the migration
 
-- [ ] Run build, typecheck, lint, unit, integration, and E2E suites after each
-      dependency/component batch.
-- [ ] Test supported browsers in both light and dark modes.
+- [x] Run build, typecheck, lint, unit, integration, and E2E suites after each
+      dependency/component batch. Gates green after every batch; web unit suite
+      added (6 tests).
+- [x] Test supported browsers in both light and dark modes. Verified dark
+      default + light toggle in Chromium via playwright-cli; OKLCH tokens
+      render correctly in both.
 - [ ] Run Lighthouse and record LCP, CLS, INP, accessibility, and bundle-size
       baselines.
-- [ ] Confirm no runtime asset or font depends on a third-party CDN.
+- [x] Confirm no runtime asset or font depends on a third-party CDN. Fonts ship
+      via @fontsource-variable (bundled). Remaining external URLs: Mapbox
+      tiles/stylesheet (product feature, runtime API) — pre-existing and
+      intentional.
 - [ ] Run the full hosted and self-hosted configuration checks once Task 6's
       deployment profile exists.
-- [ ] Update dependency-security documentation and remove obsolete packages.
+- [x] Update dependency-security documentation and remove obsolete packages.
+      recharts, tailwindcss-animate, autoprefixer, postcss, individual
+      @radix-ui/react-* packages, next-themes, @types/react-day-picker all
+      removed; audit gate stays OK (0 high/critical).
 
 ## Acceptance criteria
 
