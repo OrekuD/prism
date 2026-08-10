@@ -47,33 +47,41 @@ export function ProjectEvents() {
             onRetry={() => refetch()}
           />
         ) : data && data.length > 0 ? (
-          <div className="rounded-md border">
-            <table className="w-full text-sm">
+          <div className="border border-border">
+            <table className="w-full text-[13px]">
               <thead>
-                <tr className="border-b bg-muted/50 text-muted-foreground">
-                  <th className="px-4 py-2 text-left font-medium">Event</th>
-                  <th className="px-4 py-2 text-left font-medium">Session</th>
-                  <th className="px-4 py-2 text-left font-medium">Data</th>
-                  <th className="px-4 py-2 text-right font-medium">Time</th>
+                <tr className="border-b border-border text-text-subtle">
+                  <th className="px-4 py-2.5 text-left font-mono text-[11px] font-medium uppercase tracking-[0.09em]">
+                    Event
+                  </th>
+                  <th className="px-4 py-2.5 text-left font-mono text-[11px] font-medium uppercase tracking-[0.09em]">
+                    Session
+                  </th>
+                  <th className="px-4 py-2.5 text-left font-mono text-[11px] font-medium uppercase tracking-[0.09em]">
+                    Data
+                  </th>
+                  <th className="px-4 py-2.5 text-right font-mono text-[11px] font-medium uppercase tracking-[0.09em]">
+                    Time
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {data.map((event) => (
-                  <tr key={event.id} className="border-b last:border-0">
-                    <td className="px-4 py-2 font-medium">{event.name}</td>
-                    <td className="px-4 py-2 text-muted-foreground">
-                      <code className="text-xs">
-                        {event.session_id.slice(0, 8)}…
-                      </code>
+                  <tr key={event.id} className="border-b border-border last:border-0 hover:bg-surface-hover">
+                    <td className="px-4 py-3 font-mono text-[13px] text-text">
+                      {event.name}
                     </td>
-                    <td className="px-4 py-2 text-muted-foreground">
+                    <td className="px-4 py-3 text-text-muted">
+                      <code className="text-xs">{event.session_id.slice(0, 8)}…</code>
+                    </td>
+                    <td className="max-w-[220px] truncate px-4 py-3 text-text-muted">
                       {event.data ? (
                         <code className="text-xs">{event.data}</code>
                       ) : (
                         "—"
                       )}
                     </td>
-                    <td className="px-4 py-2 text-right text-muted-foreground">
+                    <td className="px-4 py-3 text-right font-mono text-[12px] tabular-nums text-text-muted">
                       {formatTime(event.created_at)}
                     </td>
                   </tr>

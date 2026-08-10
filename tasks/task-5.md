@@ -201,16 +201,26 @@ Self-hosted flow:
 
 ## 6. Ensure the dashboard inherits the visual language
 
-- [ ] Apply the new tokens to navigation, project summaries, event lists,
+- [x] Apply the new tokens to navigation, project summaries, event lists,
       realtime panels, API keys, and settings without rebuilding unfinished core
       features in this task.
-- [ ] Use the commandcode.ai screenshot's compact label/data hierarchy as a
+      → Product nav: 56px, Prism wordmark, active-route accent edge. Project
+      summary: metrics frame (VISITORS/DESKTOP/EVENTS, 108px cells,
+      registration marks, tabular values). Events: mono uppercase headers,
+      mono event names, 48px rows. API keys: masked key with reveal/hide +
+      copy feedback. Realtime/settings follow the tokens from the base
+      migration.
+- [x] Use the commandcode.ai screenshot's compact label/data hierarchy as a
       reference for usage metrics and quick-start panels, while designing an
-      original Prism layout.
-- [ ] Present API keys and SDK instructions as first-class developer workflows,
-      including copy feedback and safe redaction.
-- [ ] Avoid generic card grids where separators, aligned metrics, or grouped
-      sections communicate hierarchy more directly.
+      original Prism layout. The metrics frame implements the 9.8 geometry
+      (label row + large tabular value + muted unit).
+- [x] Present API keys and SDK instructions as first-class developer workflows,
+      including copy feedback and safe redaction. API keys page: masked
+      default, explicit reveal, copy with success feedback; onboarding SDK
+      rows carry copy + masked example keys.
+- [x] Avoid generic card grids where separators, aligned metrics, or grouped
+      sections communicate hierarchy more directly. Frames with internal
+      dividers replace floating card stacks on the aligned surfaces.
 - [ ] Keep actual live-status accents semantic and sparse.
 
 ## 7. Visual, accessibility, and performance QA
@@ -231,12 +241,13 @@ Self-hosted flow:
 ## Status
 
 In progress on `task-5-hosted-experience`. Slices A-C (tokens/fonts,
-landing, auth shell), the auth edge cases, hosted onboarding, and the
-edge screens (404, empty states, API-connectivity errors, invitation
-states) are committed. Next: dashboard visual alignment + real dashboard
-capture + analytics events, then the Task 6 foundation (deployment-mode
-config, first-owner bootstrap, signup policy) before the self-hosted
-onboarding portion, and finally the a11y/visual-regression QA slice.
+landing, auth shell), the auth edge cases, hosted onboarding, edge
+screens, and the first dashboard-alignment pass (nav, metrics frame,
+events table, API keys workflow) are committed. Next: the workspace
+overview page, real dashboard capture for the landing hero, and
+analytics events, then the Task 6 foundation (deployment-mode config,
+first-owner bootstrap, signup policy) before the self-hosted onboarding
+portion, and finally the a11y/visual-regression QA slice.
 
 ## Acceptance criteria
 

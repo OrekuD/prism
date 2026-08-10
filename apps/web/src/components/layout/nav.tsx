@@ -30,16 +30,18 @@ export function Nav() {
 	const { pathname } = useLocation();
 
 	return (
-		<div className="fixed top-0 z-50 border-b bg-background w-full flex flex-col h-32 px-4 gap-4 pt-3 md:gap-6 md:pt-0 md:h-16 md:px-8 md:flex-row md:items-center md:justify-between">
+		<div className="fixed top-0 z-50 flex w-full flex-col gap-2 border-b border-border bg-background px-4 py-3 md:h-14 md:flex-row md:items-center md:justify-between md:gap-6 md:px-8 md:py-0">
 			<div className="flex items-center gap-4 lg:gap-6">
-				{pathname === "/" ? null : (
-					<Link to="/">
-						<div className="size-7 rounded-full bg-yellow-600" />
-					</Link>
-				)}
+				<Link
+					to="/"
+					className="flex items-center gap-2 font-mono text-[14px] font-semibold tracking-tight text-foreground"
+				>
+					<span aria-hidden="true" className="size-2 bg-accent" />
+					Prism
+				</Link>
 				<TeamSwitcher />
 			</div>
-			<div className={"flex items-center gap-4 lg:gap-6"}>
+			<div className="flex h-full items-center gap-4 lg:gap-6">
 				<Dialog>
 					<DialogTrigger asChild>
 						<Button variant="outline">Feedback</Button>
@@ -87,15 +89,24 @@ export function Nav() {
 				<Link
 					to="/projects"
 					className={cn(
-						"text-sm font-medium transition-colors duration-150",
+						"relative flex h-full items-center text-sm font-medium transition-colors duration-150",
 						pathname.startsWith("/projects")
 							? "text-foreground"
 							: "text-muted-foreground hover:text-foreground",
 					)}
 				>
 					Projects
+					{pathname.startsWith("/projects") ? (
+						<span
+							aria-hidden="true"
+							className="absolute inset-x-0 bottom-0 h-px bg-accent"
+						/>
+					) : null}
 				</Link>
-				<Link to="#" className="text-sm font-medium text-muted-foreground">
+				<Link
+					to="#"
+					className="relative flex h-full items-center text-sm font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground"
+				>
 					Docs
 				</Link>
 				<UserNav />
