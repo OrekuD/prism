@@ -1,0 +1,37 @@
+- generic [ref=f26e2]:
+  - generic [ref=f26e24]:
+    - generic [ref=f26e25]:
+      - link [ref=f26e26] [cursor=pointer]:
+        - /url: /
+      - button "Select a team" [ref=f26e28]:
+        - generic [ref=f26e29]: BT
+        - paragraph [ref=f26e31]: Baseline User's team
+    - generic [ref=f26e32]:
+      - button "Feedback" [ref=f26e33]
+      - link "Docs" [ref=f26e34] [cursor=pointer]:
+        - /url: /projects
+      - button "BU" [ref=f26e35]
+  - generic [ref=f26e39]:
+    - generic [ref=f26e40]:
+      - searchbox "Search projects..." [ref=f26e46]
+      - generic [ref=f26e47]:
+        - button "New App" [active] [ref=f26e48]
+        - button "Team Settings" [ref=f26e49]
+    - link "Baseline App Project activity over time" [ref=f26e52] [cursor=pointer]:
+      - /url: /projects/mustard-sausage-953455533
+      - generic [ref=f26e53]:
+        - generic [ref=f26e54]: Baseline App
+        - img "Project activity over time" [ref=f26e60]:
+          - generic [ref=f26e61]:
+            - generic [ref=f26e62]: Aug 3
+            - generic [ref=f26e63]: Aug 4
+            - generic [ref=f26e64]: Aug 5
+            - generic [ref=f26e65]: Aug 6
+            - generic [ref=f26e66]: Aug 7
+            - generic [ref=f26e67]: Aug 8
+            - generic [ref=f26e68]: Aug 9
+            - generic [ref=f26e69]: Aug 10
+            - generic [ref=f26e70]: "0.0"
+            - generic [ref=f26e71]: "0.5"
+            - generic [ref=f26e72]: "1.0"
+  - region "Notifications alt+T"

@@ -1,0 +1,38 @@
+- generic:
+  - generic:
+    - generic:
+      - generic:
+        - link:
+          - /url: /
+        - button:
+          - generic: BT
+          - paragraph: Baseline User's team
+      - generic:
+        - button: Feedback
+        - link:
+          - /url: /projects
+          - text: Docs
+        - button:
+          - generic: BU
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - searchbox
+          - generic:
+            - button [expanded]: New App
+            - button: Team Settings
+    - region "Notifications alt+T"
+  - dialog [ref=f26e7]:
+    - generic [ref=f26e8]:
+      - heading "Create Project" [level=2] [ref=f26e9]
+      - paragraph
+    - generic [ref=f26e12]:
+      - generic [ref=f26e14]:
+        - text: Name
+        - textbox [active] [ref=f26e15]
+      - generic [ref=f26e16]:
+        - button "Cancel" [ref=f26e17]
+        - button "Create" [ref=f26e18]
+    - button "Close" [ref=f26e19]

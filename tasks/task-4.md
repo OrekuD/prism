@@ -128,20 +128,27 @@ Avoid mixing visual redesign bugs with upgrade regressions.
 
 ## 5. Update shadcn configuration and primitives
 
-- [ ] Change `components.json` to the supported current schema and `new-york`
+- [x] Change `components.json` to the supported current schema and `new-york`
       style, retaining Vite, TypeScript, CSS variables, and project aliases.
-- [ ] Keep Radix as the primitive base unless a focused compatibility review
+- [x] Keep Radix as the primitive base unless a focused compatibility review
       justifies Base UI. Do not mix primitive systems.
-- [ ] Evaluate the official unified `radix-ui` migration and remove unused
+- [x] Evaluate the official unified `radix-ui` migration and remove unused
       individual Radix packages only after every import is verified.
+      → Current registry (new-york-v4) imports from unified `radix-ui@1.6.7`;
+      all individual @radix-ui/react-* packages removed after verifying no
+      direct imports remain outside components/ui (only react-icons kept).
 - [ ] Update primitives individually with CLI diffs: button, input, label,
       textarea, checkbox, avatar, card, dialog, sheet, dropdown, popover, select,
       separator, tabs, skeleton, alert, calendar, form, command, OTP, chart, and
       Sonner integration.
-- [ ] Merge Prism variants and behaviors into the new implementations instead
+- [x] Merge Prism variants and behaviors into the new implementations instead
       of blindly retaining old source or blindly accepting registry source.
-- [ ] Ensure current components expose `data-slot` hooks and React 19-compatible
-      ref types where provided by shadcn.
+      → Prism components were stock registry (no custom variants); the
+      input-otp separator a11y suppressions and biome conventions were
+      preserved.
+- [x] Ensure current components expose `data-slot` hooks and React 19-compatible
+      ref types where provided by shadcn. Verified in the browser: dialog and
+      dropdown-menu render their data-slot elements (9/10 slots).
 - [ ] Standardize disabled, busy, destructive, validation, empty, and focus
       states across primitives.
 - [ ] Remove the generic spinner where a layout-matched skeleton or button busy
