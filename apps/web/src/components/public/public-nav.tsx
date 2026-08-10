@@ -6,11 +6,7 @@ import { cn } from "@/lib/utils";
 
 const VITE_DOCS_URL: string = import.meta.env.VITE_DOCS_URL ?? "http://localhost:4321";
 
-const navLinks = [
-  { label: "Product", to: "/#product" },
-  { label: "Docs", href: `${VITE_DOCS_URL}` },
-  { label: "Self-host", to: "/#self-host" },
-];
+const docsHref = `${VITE_DOCS_URL}`;
 
 /**
  * Global public navigation (design-system.md 9.1): 2px accent top rail,
@@ -39,29 +35,13 @@ export function PublicNav() {
             Prism
           </Link>
 
-          <div className="hidden items-center gap-8 md:flex">
-            {navLinks.map((link) =>
-              "href" in link ? (
-                <a
-                  key={link.label}
-                  href={link.href}
-                  className="text-[13px] text-text-muted transition-colors duration-150 hover:text-text"
-                >
-                  {link.label}
-                </a>
-              ) : (
-                <a
-                  key={link.label}
-                  href={link.to}
-                  className="text-[13px] text-text-muted transition-colors duration-150 hover:text-text"
-                >
-                  {link.label}
-                </a>
-              ),
-            )}
-          </div>
-
           <div className="hidden items-center gap-6 md:flex">
+            <a
+              href={docsHref}
+              className="text-[13px] text-text-muted transition-colors duration-150 hover:text-text"
+            >
+              Docs
+            </a>
             {isAuthenticated ? null : (
               <Link
                 to="/auth/log-in"
@@ -96,16 +76,13 @@ export function PublicNav() {
         {open ? (
           <div className="border-t border-border md:hidden">
             <div className="mx-auto max-w-[1200px] px-6">
-              {navLinks.map((link) => (
-                <a
-                  key={link.label}
-                  href={"href" in link ? link.href : link.to}
-                  onClick={() => setOpen(false)}
-                  className="flex h-12 items-center border-b border-border text-[14px] text-text-muted hover:text-text"
-                >
-                  {link.label}
-                </a>
-              ))}
+              <a
+                href={docsHref}
+                onClick={() => setOpen(false)}
+                className="flex h-12 items-center border-b border-border text-[14px] text-text-muted hover:text-text"
+              >
+                Docs
+              </a>
               {isAuthenticated ? null : (
                 <Link
                   to="/auth/log-in"
