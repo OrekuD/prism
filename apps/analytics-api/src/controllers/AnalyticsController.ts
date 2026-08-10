@@ -1,12 +1,13 @@
 import {
   StartSessionRequestSchema,
-  StartSessionRequest,
-  EndSessionRequest,
+  type StartSessionRequest,
+  type EndSessionRequest,
   EndSessionRequestSchema,
-  IpInfoResponse,
-  SocketUserConnected,
+  type IpInfoResponse,
+  type SessionResource,
+  type SocketUserConnected,
 } from "@prism/types";
-import { Context } from "hono";
+import type { Context } from "hono";
 import { OkResponse } from "../network/responses/OkResponse.js";
 import { ErrorResponse } from "../network/responses/ErrorResponse.js";
 import { validateData } from "../utils/validateData.js";
@@ -48,7 +49,7 @@ export class AnalyticsController {
     const coords = ipDetailsData.loc.split(",");
     // const coords = [ipDetailsData.latitude, ipDetailsData.longitude];
 
-    const projectId = ctx.get("projectId")!;
+    const projectId = ctx.get("projectId") ?? "";
     const os = getOS(data.userAgent);
     const browser = getBrowser(data.userAgent);
     const mobile = isMobile(data.userAgent);
@@ -74,11 +75,11 @@ export class AnalyticsController {
     let sessionId = "";
 
     if (results.rows.length !== 0) {
-      sessionId = results.rows[0].session_id! as string;
+      sessionId = results.rows[0].session_id as string;
       const message: SocketUserConnected = {
         type: "user-connected",
         data: {
-          session: results.rows[0] as any,
+          session: results.rows[0] as unknown as SessionResource,
         },
       };
       WebSocketManager.emitToClient(projectId, JSON.stringify(message));
@@ -96,9 +97,17 @@ export class AnalyticsController {
       return ctx.json(new ErrorResponse(data).toJSON(), 400);
     }
 
+    // The project id is derived from the authenticated analytics API key, so
+    // a key from one project can never end a session belonging to another.
+    const projectId = ctx.get("projectId");
+
+    if (!projectId) {
+      return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+    }
+
     await TursoDatabaseManager.instance.execute({
-      sql: "UPDATE sessions SET is_online = 0 WHERE session_id = ?",
-      args: [data.sessionId],
+      sql: "UPDATE sessions SET is_online = 0 WHERE session_id = ? AND project_id = ?",
+      args: [data.sessionId, projectId],
     });
 
     return ctx.json(new OkResponse().toJSON());

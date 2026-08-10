@@ -1,5 +1,5 @@
 import { createMiddleware } from "hono/factory";
-import { Context } from "hono";
+import type { Context } from "hono";
 import { ErrorResponse } from "../network/responses/ErrorResponse.js";
 import NeonDatabaseManager from "../managers/NeonDatabaseManager.js";
 

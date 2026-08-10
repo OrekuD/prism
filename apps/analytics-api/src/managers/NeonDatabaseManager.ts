@@ -4,28 +4,33 @@ import dotenv from "dotenv";
 dotenv.config();
 
 class DatabaseManager {
-  public instance: postgres.Sql<{}>;
+  private _instance: postgres.Sql<Record<string, never>> | null = null;
 
-  constructor() {
-    let {
-      NEONDB_PGHOST,
-      NEONDB_PGDATABASE,
-      NEONDB_PGUSER,
-      NEONDB_PGPASSWORD,
-      NEONDB_ENDPOINT_ID,
-    } = process.env;
+  /** Lazily creates the Neon client so startup validation can run first. */
+  public get instance(): postgres.Sql<Record<string, never>> {
+    if (!this._instance) {
+      const {
+        NEONDB_PGHOST,
+        NEONDB_PGDATABASE,
+        NEONDB_PGUSER,
+        NEONDB_PGPASSWORD,
+        NEONDB_ENDPOINT_ID,
+      } = process.env;
 
-    this.instance = postgres({
-      host: NEONDB_PGHOST,
-      database: NEONDB_PGDATABASE,
-      username: NEONDB_PGUSER,
-      password: NEONDB_PGPASSWORD,
-      port: 5432,
-      ssl: "require",
-      connection: {
-        options: `project=${NEONDB_ENDPOINT_ID}`,
-      },
-    });
+      this._instance = postgres({
+        host: NEONDB_PGHOST,
+        database: NEONDB_PGDATABASE,
+        username: NEONDB_PGUSER,
+        password: NEONDB_PGPASSWORD,
+        port: 5432,
+        ssl: "require",
+        connection: {
+          options: `project=${NEONDB_ENDPOINT_ID}`,
+        },
+      });
+    }
+
+    return this._instance;
   }
 }
 

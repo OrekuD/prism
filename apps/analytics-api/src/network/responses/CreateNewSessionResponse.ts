@@ -1,4 +1,4 @@
-import { CreateNewSessionResource } from "@prism/types";
+import type { CreateNewSessionResource } from "@prism/types";
 
 export class CreateNewSessionResponse {
   private sessionId: string;

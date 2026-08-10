@@ -1,10 +1,10 @@
-import { ZodError } from "zod";
+import type { ZodError } from "zod";
 
 export function parseError(error: ZodError): Array<string> {
   const list: Array<string> = [];
 
   try {
-    error.issues.forEach((issue) => {
+    for (const issue of error.issues) {
       const field = issue.path.length > 0 ? issue.path[0] : "";
       const message = issue.message;
 
@@ -13,7 +13,7 @@ export function parseError(error: ZodError): Array<string> {
       } else {
         list.push(message);
       }
-    });
+    }
   } catch (_) {
     return list;
   }

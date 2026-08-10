@@ -1,6 +1,6 @@
-import { JWTPayload, Roles } from "@prism/types";
+import { type JWTPayload, Roles } from "@prism/types";
 import { createMiddleware } from "hono/factory";
-import { Context } from "hono";
+import type { Context } from "hono";
 import jwt from "jsonwebtoken";
 import { ErrorResponse } from "../network/responses/ErrorResponse.js";
 import NeonDatabaseManager from "../managers/NeonDatabaseManager.js";
@@ -23,20 +23,20 @@ export const AuthenticationMiddleware = createMiddleware(
         return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
       }
 
-      const isValid = jwt.verify(split[1], process.env.JWT_SECRET_KEY!);
+      const isValid = jwt.verify(split[1], process.env.JWT_SECRET_KEY ?? "");
 
       if (!isValid) {
         return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
       }
 
-      const accessToken = jwt.decode(split[1]) as { payload: JWTPayload };
+      const accessToken = jwt.decode(split[1]) as JWTPayload | null;
 
-      if (!accessToken.payload.token) {
+      if (!accessToken?.token) {
         return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
       }
 
       const oauthAccessToken =
-        await NeonDatabaseManager.instance`SELECT id, user_id FROM oauth_access_tokens WHERE access_token = ${accessToken.payload.token} AND is_revoked = false AND expiry_at > NOW()`;
+        await NeonDatabaseManager.instance`SELECT id, user_id FROM oauth_access_tokens WHERE access_token = ${accessToken.token} AND is_revoked = false AND expiry_at > NOW()`;
 
       if (oauthAccessToken.length === 0) {
         return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);

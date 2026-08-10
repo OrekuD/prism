@@ -1,4 +1,4 @@
-import { OkResource } from "@prism/types";
+import type { OkResource } from "@prism/types";
 
 export class OkResponse {
   private message: string;
