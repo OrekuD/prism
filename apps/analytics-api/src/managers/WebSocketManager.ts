@@ -12,7 +12,9 @@ import { config } from "dotenv";
 config();
 
 class WebSocketManager {
-  private clients: Map<string, Array<WSContext>>;
+  /** projectId -> subscribed sockets (a socket can be in at most one project). */
+  private clients: Map<string, Set<WSContext>>;
+  /** Reverse lookup: socket -> projectId it is currently subscribed to. */
   private socketProject: WeakMap<WSContext, string>;
 
   constructor() {
@@ -44,55 +46,83 @@ class WebSocketManager {
           return;
         }
 
-        const projectId = message.data.projectId;
-        const existing = this.clients.get(projectId);
-        if (!existing) {
-          this.clients.set(projectId, [ws]);
-        } else {
-          this.clients.set(projectId, [...existing, ws]);
-        }
-        this.socketProject.set(ws, projectId);
+        this.subscribe(ws, message.data.projectId);
         break;
       }
     }
   }
 
   /**
-   * Removes a closed socket from the in-memory client map. Called from the
-   * WebSocket server's onClose handler.
+   * Subscribes a socket to a project, first removing it from any previous
+   * project so a socket is always in exactly one subscription set.
+   */
+  private subscribe(ws: WSContext, projectId: string) {
+    const previousProject = this.socketProject.get(ws);
+    if (previousProject === projectId) {
+      // Idempotent re-subscription: nothing to do, no duplicate entries.
+      return;
+    }
+
+    if (previousProject) {
+      this.removeFromProject(ws, previousProject);
+    }
+
+    const sockets = this.clients.get(projectId);
+    if (!sockets) {
+      this.clients.set(projectId, new Set([ws]));
+    } else {
+      sockets.add(ws);
+    }
+    this.socketProject.set(ws, projectId);
+  }
+
+  private removeFromProject(ws: WSContext, projectId: string) {
+    const sockets = this.clients.get(projectId);
+    if (!sockets) return;
+
+    sockets.delete(ws);
+    if (sockets.size === 0) {
+      this.clients.delete(projectId);
+    }
+  }
+
+  /**
+   * Removes a closed socket from every subscription and deletes empty project
+   * collections. Called from the WebSocket server's onClose handler.
    */
   onClose(ws: WSContext) {
     const projectId = this.socketProject.get(ws);
     if (!projectId) return;
 
     this.socketProject.delete(ws);
-
-    const sockets = this.clients.get(projectId);
-    if (!sockets) return;
-
-    const remaining = sockets.filter((socket) => socket !== ws);
-    if (remaining.length === 0) {
-      this.clients.delete(projectId);
-    } else {
-      this.clients.set(projectId, remaining);
-    }
+    this.removeFromProject(ws, projectId);
   }
 
   broadcast(message: string) {
-    for (const client of this.clients.values()) {
-      for (const ws of client) {
-        ws.send(message);
+    for (const sockets of this.clients.values()) {
+      for (const ws of sockets) {
+        this.safeSend(ws, message);
       }
     }
   }
 
   emitToClient(clientId: string, message: string) {
-    const client = this.clients.get(clientId);
-    if (!client) return false;
-    for (const ws of client) {
-      ws.send(message);
+    const sockets = this.clients.get(clientId);
+    if (!sockets) return false;
+    for (const ws of sockets) {
+      this.safeSend(ws, message);
     }
     return true;
+  }
+
+  /** A failing socket must never disrupt delivery to healthy clients. */
+  private safeSend(ws: WSContext, message: string) {
+    try {
+      ws.send(message);
+    } catch {
+      // Socket is gone; drop it from its subscription.
+      this.onClose(ws);
+    }
   }
 
   getConnectedClientIds() {

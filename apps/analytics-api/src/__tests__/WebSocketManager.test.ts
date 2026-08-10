@@ -300,3 +300,82 @@ describe("WebSocketManager.connect-project", () => {
     expect(WebSocketManager.getConnectedClientIds()).not.toContain(PROJECT_ID);
   });
 });
+
+describe("WebSocketManager subscription lifecycle", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    WebSocketManager.resetForTests();
+  });
+
+  async function subscribe(ws: ReturnType<typeof makeSocket>, projectId: string) {
+    await WebSocketManager.onMessage(
+      {
+        data: JSON.stringify(
+          connectMessage({
+            projectId,
+            token: signAccessToken({ token: OPAQUE_TOKEN, userId: OWNER_ID }),
+          }),
+        ),
+      } as unknown as Event,
+      ws,
+    );
+  }
+
+  it("delivers exactly one event for a duplicate subscription", async () => {
+    defaultDb({});
+    const ws = makeSocket();
+
+    await subscribe(ws, PROJECT_ID);
+    await subscribe(ws, PROJECT_ID);
+
+    const delivered = WebSocketManager.emitToClient(PROJECT_ID, "once");
+    expect(delivered).toBe(true);
+    expect(ws.send).toHaveBeenCalledTimes(1);
+    expect(ws.send).toHaveBeenCalledWith("once");
+  });
+
+  it("stops delivering to the old project when a socket switches projects", async () => {
+    defaultDb({});
+    const ws = makeSocket();
+    const OTHER_PROJECT = "dddddddd-dddd-dddd-dddd-dddddddddddd";
+
+    await subscribe(ws, PROJECT_ID);
+    await subscribe(ws, OTHER_PROJECT);
+
+    expect(WebSocketManager.emitToClient(PROJECT_ID, "old")).toBe(false);
+    expect(WebSocketManager.emitToClient(OTHER_PROJECT, "new")).toBe(true);
+    expect(ws.send).toHaveBeenCalledTimes(1);
+    expect(ws.send).toHaveBeenCalledWith("new");
+    expect(WebSocketManager.getConnectedClientIds()).toEqual([OTHER_PROJECT]);
+  });
+
+  it("removes every reference to a closed socket, even after switching projects", async () => {
+    defaultDb({});
+    const ws = makeSocket();
+    const OTHER_PROJECT = "dddddddd-dddd-dddd-dddd-dddddddddddd";
+
+    await subscribe(ws, PROJECT_ID);
+    await subscribe(ws, OTHER_PROJECT);
+    WebSocketManager.onClose(ws);
+
+    expect(WebSocketManager.getConnectedClientIds()).toHaveLength(0);
+    expect(WebSocketManager.emitToClient(OTHER_PROJECT, "x")).toBe(false);
+  });
+
+  it("does not let a failing socket disrupt delivery to healthy sockets", async () => {
+    defaultDb({});
+    const broken = makeSocket();
+    (broken as unknown as { send: ReturnType<typeof vi.fn> }).send.mockImplementation(
+      () => {
+        throw new Error("socket closed");
+      },
+    );
+    const healthy = makeSocket();
+
+    await subscribe(broken, PROJECT_ID);
+    await subscribe(healthy, PROJECT_ID);
+
+    expect(() => WebSocketManager.emitToClient(PROJECT_ID, "hi")).not.toThrow();
+    expect(healthy.send).toHaveBeenCalledWith("hi");
+  });
+});

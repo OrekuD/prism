@@ -3,7 +3,6 @@ import {
   type StartSessionRequest,
   type EndSessionRequest,
   EndSessionRequestSchema,
-  type IpInfoResponse,
   type SessionResource,
   type SocketUserConnected,
 } from "@prism/types";
@@ -17,6 +16,7 @@ import { getOS } from "../utils/getOS.js";
 import TursoDatabaseManager from "../managers/TursoDatabaseManager.js";
 import WebSocketManager from "../managers/WebSocketManager.js";
 import { CreateNewSessionResponse } from "../network/responses/CreateNewSessionResponse.js";
+import { IpEnrichmentService } from "../services/IpEnrichmentService.js";
 import { v4 } from "uuid";
 import { config } from "dotenv";
 
@@ -32,22 +32,17 @@ export class AnalyticsController {
       return ctx.json(new ErrorResponse(data).toJSON(), 400);
     }
 
+    // Client IP is used only for best-effort geo enrichment and is never
+    // trusted for authorization. Local development falls back to a clearly
+    // local address instead of a hardcoded public one.
     const clientIp =
       ctx.req.header("cf-connecting-ip") ||
-      ctx.req.raw.headers.get("x-forwarded-for") ||
-      "154.161.151.38"; // for testing in development
+      ctx.req.raw.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      "127.0.0.1";
 
-    const ipDetailsResponse = await fetch(
-      `https://ipinfo.io/${clientIp}/json?token=${process.env.IP_INFO_API_TOKEN}`,
-    );
-
-    // const ipDetailsResponse = await fetch(`https://ipapi.co/${clientIp}/json`);
-
-    const ipDetailsData = (await ipDetailsResponse.json()) as IpInfoResponse;
-    // const ipDetailsData = (await ipDetailsResponse.json()) as IpAPIResponse;
-
-    const coords = ipDetailsData.loc.split(",");
-    // const coords = [ipDetailsData.latitude, ipDetailsData.longitude];
+    // Optional, non-blocking: on any failure the session is still recorded
+    // with null geo fields.
+    const enrichment = await IpEnrichmentService.enrich(clientIp);
 
     const projectId = ctx.get("projectId") ?? "";
     const os = getOS(data.userAgent);
@@ -60,14 +55,14 @@ export class AnalyticsController {
         projectId,
         v4(),
         data.referrer,
-        ipDetailsData.country,
+        enrichment.country_code,
         os,
         browser,
         data.location,
         mobile ? 1 : 0,
         clientIp,
-        coords[0],
-        coords[1],
+        enrichment.lat,
+        enrichment.long,
         1,
       ],
     });
