@@ -72,15 +72,29 @@ Avoid mixing visual redesign bugs with upgrade regressions.
 
 ## 2. Upgrade React 19 safely
 
-- [ ] Upgrade `react`, `react-dom`, `@types/react`, and `@types/react-dom`
-      together.
-- [ ] Confirm the modern JSX transform is enabled in every relevant TypeScript
-      configuration.
-- [ ] Run official React codemods where applicable, then review every diff.
-- [ ] Resolve removed/deprecated API usage, ref callback cleanup changes,
+- [x] Upgrade `react`, `react-dom`, `@types/react`, and `@types/react-dom`
+      together. react/react-dom 19.2.8, @types/react 19.2.18, @types/react-dom
+      19.2.4, in one batch with the peer packages.
+- [x] Confirm the modern JSX transform is enabled in every relevant TypeScript
+      configuration. packages/config-typescript/vite.json sets
+      "jsx": "react-jsx" (no React import needed); main.tsx uses createRoot.
+- [x] Run official React codemods where applicable, then review every diff.
+      Audited first: no codemod targets exist — modern JSX transform already
+      active, createRoot in place, and zero ReactDOM.render / PropTypes /
+      defaultProps / string refs / findDOMNode / UNSAFE_* usages (grep
+      verified). No codemods were applicable.
+- [x] Resolve removed/deprecated API usage, ref callback cleanup changes,
       TypeScript JSX differences, and library peer-dependency warnings.
-- [ ] Do not mechanically remove `forwardRef` from app components until their
-      consumers and underlying primitive support are verified.
+      Peer-blocked packages bumped (next-themes 0.4, input-otp 1.4, sonner 2,
+      cmdk 1.1, react-day-picker 9, RHF 7.85, resolvers 5, zustand 5, radix
+      latest); calendar rewritten for day-picker 9; stale @types/react-day-picker
+      removed; the @prism/react react-18 bundling hazard resolved (see the
+      production-build item).
+- [x] Do not mechanically remove `forwardRef` from app components until their
+      consumers and underlying primitive support are verified. No app
+      composites were touched; primitives were replaced wholesale with the
+      current registry (function components) and every call site verified via
+      typecheck + build + browser smoke.
 - [x] Add render/interaction tests for route startup, forms, dialogs, popovers,
       charts, and Mapbox fallback before broad refactoring. Covered by the
       gallery suite (forms, dialogs, dropdowns, OTP, calendar, charts + axe);
@@ -98,7 +112,12 @@ Avoid mixing visual redesign bugs with upgrade regressions.
 - [x] Verify the browser-support target meets Tailwind v4's current minimums.
       v4 needs Chrome 111+/Safari 16.4+/Firefox 128+; dashboard target is
       modern evergreen — acceptable, documented.
-- [ ] Run the official Tailwind upgrade tool in dry/reviewable conditions.
+- [x] Run the official Tailwind upgrade tool in dry/reviewable conditions.
+      npx @tailwindcss/upgrade ran over the migrated app: it applied the
+      current v4.1+ conventions it still found (--spacing(4) function syntax
+      in alert/calendar/command/dropdown-menu/select, h-dvh in join-team).
+      Its package.json/lockfile churn (moving build tooling to runtime deps)
+      was reverted; src changes reviewed and kept. tailwindcss 4.3.3.
 - [x] Replace the PostCSS Tailwind integration with `@tailwindcss/vite`, as this
       is a Vite application.
 - [x] Replace `@tailwind base/components/utilities` with `@import "tailwindcss"`.
@@ -166,10 +185,14 @@ Avoid mixing visual redesign bugs with upgrade regressions.
       → Current registry (new-york-v4) imports from unified `radix-ui@1.6.7`;
       all individual @radix-ui/react-* packages removed after verifying no
       direct imports remain outside components/ui (only react-icons kept).
-- [ ] Update primitives individually with CLI diffs: button, input, label,
+- [x] Update primitives individually with CLI diffs: button, input, label,
       textarea, checkbox, avatar, card, dialog, sheet, dropdown, popover, select,
       separator, tabs, skeleton, alert, calendar, form, command, OTP, chart, and
       Sonner integration.
+      → All 21 replaced with the current new-york-v4 registry sources (chart is
+      TanStack Charts now; the shadcn recharts wrapper was deleted). Registry
+      sources were fetched and reviewed file-by-file instead of the interactive
+      CLI (non-TTY hangs); form/command import paths adjusted to @/components.
 - [x] Merge Prism variants and behaviors into the new implementations instead
       of blindly retaining old source or blindly accepting registry source.
       → Prism components were stock registry (no custom variants); the
@@ -178,8 +201,12 @@ Avoid mixing visual redesign bugs with upgrade regressions.
 - [x] Ensure current components expose `data-slot` hooks and React 19-compatible
       ref types where provided by shadcn. Verified in the browser: dialog and
       dropdown-menu render their data-slot elements (9/10 slots).
-- [ ] Standardize disabled, busy, destructive, validation, empty, and focus
-      states across primitives.
+- [x] Standardize disabled, busy, destructive, validation, empty, and focus
+      states across primitives. Registry-level standardization + gallery
+      coverage: disabled buttons/inputs/checkbox, Loader2 busy states,
+      destructive buttons + alerts + dropdown items, form validation
+      messages, skeleton/empty patterns, focus-visible rings on all
+      interactive primitives (aria-invalid borders on form controls).
 - [x] Remove the generic spinner where a layout-matched skeleton or button busy
       state communicates progress more clearly. App.tsx session gate now uses a
       full-page skeleton; button/pending states use lucide Loader2
@@ -222,8 +249,9 @@ Avoid mixing visual redesign bugs with upgrade regressions.
       trap + Escape + focus restore, dropdown ArrowDown/Enter, OTP typing,
       calendar day selection. Web test task added to the turbo pipeline.
 - [x] Add visual regression screenshots at desktop, tablet, and narrow mobile
-      widths. docs/screenshots/task-4-baseline/ (10 files) covers auth,
-      projects list, summary (both themes), gallery at 1920/768/390px.
+      widths. docs/screenshots/task-4-baseline/ (20 files) covers auth,
+      projects list, summary (both themes), events, realtime, settings,
+      account, dialogs, destructive confirmations, gallery at 1920/768/390px.
 - [x] Ensure the gallery cannot be exposed accidentally in production, or make
       it an intentional documented design-system page. Route registered only
       when import.meta.env.DEV.

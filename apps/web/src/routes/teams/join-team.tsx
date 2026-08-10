@@ -27,7 +27,7 @@ export function JoinTeam() {
   const navigate = useNavigate();
 
   return (
-    <div className="h-[100dvh] w-full grid place-content-center px-4 text-center">
+    <div className="h-dvh w-full grid place-content-center px-4 text-center">
       <Card className="mx-auto w-full md:w-96">
         {!isLoading && !data ? (
           <CardContent className="space-y-4 py-4">
