@@ -2,7 +2,9 @@ import { Loader2 } from "lucide-react";
 import React from "react";
 import { Link } from "react-router-dom";
 import { authClient } from "@/lib/authClient";
+import { AuthAlert } from "@/components/auth/auth-alert";
 import { AuthHeading, AuthShell } from "@/components/auth/auth-shell";
+import { isNetworkError } from "@/components/auth/auth-errors";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -14,14 +16,23 @@ export function ForgotPassword() {
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (isPending) return; // duplicate-submit guard
     setError(null);
     setIsPending(true);
     try {
-      await authClient.requestPasswordReset({ email });
-      // Identical response for known and unknown accounts: no enumeration.
+      const response = await authClient.requestPasswordReset({ email });
+      if (response.error) {
+        // Identical response for known and unknown accounts: no enumeration.
+        setSubmitted(true);
+        return;
+      }
       setSubmitted(true);
-    } catch {
-      setError("Something went wrong. Please try again.");
+    } catch (err) {
+      setError(
+        isNetworkError(err)
+          ? "Cannot reach Prism. Check your connection and try again."
+          : "Something went wrong. Please try again.",
+      );
     } finally {
       setIsPending(false);
     }
@@ -65,11 +76,7 @@ export function ForgotPassword() {
                 className="h-10"
               />
             </div>
-            {error ? (
-              <p className="text-[13px] text-danger" role="alert">
-                {error}
-              </p>
-            ) : null}
+            {error ? <AuthAlert>{error}</AuthAlert> : null}
             <button
               type="submit"
               aria-busy={isPending}

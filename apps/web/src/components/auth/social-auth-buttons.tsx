@@ -1,3 +1,4 @@
+import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /** Inline GitHub mark: lucide removed brand icons; keep one icon family. */
@@ -20,15 +21,21 @@ export function SocialAuthButtons({
   providers,
   onSocial,
   actionLabel = "Continue with",
+  pendingProvider = null,
   className,
 }: {
   providers: EnabledProviders;
   onSocial: (provider: "github" | "google") => void;
   actionLabel?: string;
+  /** Provider currently redirecting; both buttons disable while set. */
+  pendingProvider?: "github" | "google" | null;
   className?: string;
 }) {
   const enabled = providers.github || providers.google;
   if (!enabled) return null;
+
+  const buttonClass =
+    "flex h-[42px] items-center justify-center gap-2.5 rounded-[2px] border border-border-strong bg-canvas text-[13px] font-medium text-text transition-colors duration-150 hover:border-text-subtle hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-45";
 
   return (
     <div className={cn("grid gap-2.5", className)}>
@@ -36,9 +43,15 @@ export function SocialAuthButtons({
         <button
           type="button"
           onClick={() => onSocial("github")}
-          className="flex h-[42px] items-center justify-center gap-2.5 rounded-[2px] border border-border-strong bg-canvas text-[13px] font-medium text-text transition-colors duration-150 hover:border-text-subtle hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          disabled={pendingProvider !== null}
+          aria-busy={pendingProvider === "github"}
+          className={buttonClass}
         >
-          <GitHubMark className="size-4" />
+          {pendingProvider === "github" ? (
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <GitHubMark className="size-4" />
+          )}
           {actionLabel} GitHub
         </button>
       ) : null}
@@ -46,14 +59,20 @@ export function SocialAuthButtons({
         <button
           type="button"
           onClick={() => onSocial("google")}
-          className="flex h-[42px] items-center justify-center gap-2.5 rounded-[2px] border border-border-strong bg-canvas text-[13px] font-medium text-text transition-colors duration-150 hover:border-text-subtle hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          disabled={pendingProvider !== null}
+          aria-busy={pendingProvider === "google"}
+          className={buttonClass}
         >
-          <span
-            aria-hidden="true"
-            className="grid size-4 place-items-center rounded-full border border-border-strong font-mono text-[10px] font-bold"
-          >
-            G
-          </span>
+          {pendingProvider === "google" ? (
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <span
+              aria-hidden="true"
+              className="grid size-4 place-items-center rounded-full border border-border-strong font-mono text-[10px] font-bold"
+            >
+              G
+            </span>
+          )}
           {actionLabel} Google
         </button>
       ) : null}

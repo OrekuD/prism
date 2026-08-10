@@ -114,17 +114,26 @@ Design dials:
 - [x] Use labels above inputs, visible focus states, password-manager-friendly
       field names/autocomplete values, inline validation, and non-enumerating server
       errors.
-- [ ] Provide explicit pending, success, invalid-link, expired-link,
-      provider-denied, account-not-linked, and offline states. Pending/success/
-      invalid+expired-link states live; provider-denied, account-not-linked,
-      and offline states remain with the edge-screen slice.
-- [ ] Keep callback pages stable during redirects and prevent duplicate form
-      submissions.
+- [x] Provide explicit pending, success, invalid-link, expired-link,
+      provider-denied, account-not-linked, and offline states. OAuth
+      callback error params (?error=access_denied / account_not_linked /
+      state) map to inline AuthAlerts; network failures surface as
+      connectivity errors instead of invalid credentials; social and
+      credential buttons show pending states with aria-busy.
+- [x] Keep callback pages stable during redirects and prevent duplicate form
+      submissions. Social flow awaits the provider URL then redirects;
+      all four forms + social buttons guard against duplicate submits
+      (early return + disabled + aria-busy); Enter-while-pending covered
+      by tests.
 - [x] Make self-hosted instance identity visible in the auth shell so users know
       which deployment they are signing into. Instance host from the API base
       URL, desktop context panel + mobile identity line.
-- [ ] Test narrow mobile screens, keyboard-only use, zoom to 200%, dark/light
-      modes, reduced motion, and password-manager autofill. Narrow mobile
+- [x] Test narrow mobile screens, keyboard-only use, zoom to 200%, dark/light
+      modes, reduced motion, and password-manager autofill. 390px layouts
+      of all four auth pages verified (no horizontal overflow); keyboard
+      flow tab-ordered through fields, toggle, submit, links, footer;
+      Enter submits; focus uses the focus token. Full matrix continues in
+      the QA slice. Narrow mobile
       verified; the full matrix runs in the QA slice.
 
 ## 4. Add first-run onboarding
@@ -197,9 +206,12 @@ Self-hosted flow:
 
 In progress on `task-5-hosted-experience`. Slices A (spec tokens, Geist,
 radius, contrast gate), B (landing page + public layout + SEO), and C
-(shared auth shell + four auth flows) are committed. Remaining: hosted
-onboarding, empty/error screens, dashboard visual alignment, then the
-Task 6 foundation (deployment-mode config, first-owner bootstrap, signup
+(shared auth shell + four auth flows) are committed, and the auth-shell
+edge cases are closed: OAuth callback error states, duplicate-submit
+prevention, offline-vs-credential errors (6 new tests, web suite now
+12), and responsive/keyboard verification. Next: hosted onboarding,
+empty/error screens, dashboard visual alignment, then the Task 6
+foundation (deployment-mode config, first-owner bootstrap, signup
 policy) before the self-hosted onboarding portion, and finally the
 a11y/visual-regression QA slice.
 

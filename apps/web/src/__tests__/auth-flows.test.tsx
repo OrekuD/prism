@@ -1,0 +1,125 @@
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
+import { LogIn } from "@/routes/auth/log-in";
+import { CreateAccount } from "@/routes/auth/create-account";
+import { ForgotPassword } from "@/routes/auth/forgot-password";
+
+const signInEmail = vi.fn();
+const signUpEmail = vi.fn();
+const signInSocial = vi.fn();
+const requestPasswordReset = vi.fn();
+
+vi.mock("@/lib/authClient", () => ({
+  authClient: {
+    signIn: {
+      email: (...args: unknown[]) => signInEmail(...args),
+      social: (...args: unknown[]) => signInSocial(...args),
+    },
+    signUp: { email: (...args: unknown[]) => signUpEmail(...args) },
+    requestPasswordReset: (...args: unknown[]) => requestPasswordReset(...args),
+  },
+  authBaseUrl: "http://localhost:8787",
+  fetchEnabledProviders: async () => ({ github: false, google: false }),
+  resendVerificationEmail: async () => undefined,
+}));
+
+function renderPage(page: React.ReactNode, initialPath = "/auth/log-in") {
+  return render(
+    <MemoryRouter initialEntries={[initialPath]}>{page}</MemoryRouter>,
+  );
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+describe("auth failure states", () => {
+  it("shows the OAuth denied state from ?error=access_denied", async () => {
+    renderPage(<LogIn />, "/auth/log-in?error=access_denied");
+    expect(
+      await screen.findByText(/You denied access to your account/i),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the account-not-linked state from ?error=account_not_linked", async () => {
+    renderPage(<CreateAccount />, "/auth/create-account?error=account_not_linked");
+    expect(
+      await screen.findByText(/not linked to a Prism account/i),
+    ).toBeInTheDocument();
+  });
+
+  it("reports a network failure instead of invalid credentials", async () => {
+    signInEmail.mockRejectedValue(new TypeError("Failed to fetch"));
+    renderPage(<LogIn />);
+
+    await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "password123");
+    await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(
+      await screen.findByText(/Cannot reach Prism/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Invalid email or password/i)).not.toBeInTheDocument();
+  });
+
+  it("shows a non-enumerating error for bad credentials", async () => {
+    signInEmail.mockResolvedValue({ error: { message: "Invalid email or password" } });
+    renderPage(<LogIn />);
+
+    await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "wrong-password");
+    await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(
+      await screen.findByText(/Invalid email or password/i),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("duplicate-submit prevention", () => {
+  it("submits the sign-in form only once while pending", async () => {
+    let resolveSignIn: ((value: unknown) => void) | undefined;
+    signInEmail.mockReturnValue(
+      new Promise((resolve) => {
+        resolveSignIn = resolve;
+      }),
+    );
+    renderPage(<LogIn />);
+
+    const email = screen.getByLabelText("Email");
+    const password = screen.getByLabelText("Password");
+    const submit = screen.getByRole("button", { name: "Sign in" });
+
+    await userEvent.type(email, "user@example.com");
+    await userEvent.type(password, "password123");
+    await userEvent.click(submit);
+    expect(submit).toBeDisabled();
+    // Enter while pending must not trigger a second request.
+    await userEvent.keyboard("{Enter}");
+    resolveSignIn({ data: null, error: null });
+    await waitFor(() => expect(submit).not.toBeDisabled());
+    expect(signInEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it("guards the forgot-password form against double submission", async () => {
+    let resolveReset: ((value: unknown) => void) | undefined;
+    requestPasswordReset.mockReturnValue(
+      new Promise((resolve) => {
+        resolveReset = resolve;
+      }),
+    );
+    renderPage(<ForgotPassword />, "/auth/forgot-password");
+
+    await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
+    const submit = screen.getByRole("button", { name: "Send reset link" });
+    await userEvent.click(submit);
+    await userEvent.keyboard("{Enter}");
+    resolveReset({ data: null, error: null });
+    await waitFor(() =>
+      expect(screen.getByText(/the reset link is on its way/i)).toBeInTheDocument(),
+    );
+    expect(requestPasswordReset).toHaveBeenCalledTimes(1);
+  });
+});

@@ -1,8 +1,10 @@
 import { Loader2, Mail } from "lucide-react";
 import React from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { authClient, fetchEnabledProviders } from "@/lib/authClient";
+import { AuthAlert } from "@/components/auth/auth-alert";
 import { AuthHeading, AuthShell, OrEmailDivider } from "@/components/auth/auth-shell";
+import { isNetworkError, oauthErrorMessage } from "@/components/auth/auth-errors";
 import { PasswordInput } from "@/components/auth/password-input";
 import {
   type EnabledProviders,
@@ -23,11 +25,16 @@ const RESEND_COOLDOWN_SECONDS = 60;
 
 export function CreateAccount() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const oauthError = oauthErrorMessage(searchParams.get("error"));
   const [name, setName] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [isPending, setIsPending] = React.useState(false);
+  const [pendingProvider, setPendingProvider] = React.useState<
+    "github" | "google" | null
+  >(null);
   const [sentTo, setSentTo] = React.useState<string | null>(null);
   const [providers, setProviders] = React.useState<EnabledProviders>({
     github: false,
@@ -51,12 +58,18 @@ export function CreateAccount() {
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (isPending) return; // duplicate-submit guard
     setError(null);
     setIsPending(true);
     try {
       const response = await authClient.signUp.email({ email, password, name });
       if (response.error) {
-        throw new Error(response.error.message ?? "Something went wrong.");
+        setError(
+          isNetworkError(response.error)
+            ? "Cannot reach Prism. Check your connection and try again."
+            : (response.error.message ?? "Something went wrong. Try again."),
+        );
+        return;
       }
       if (response.data?.user?.emailVerified) {
         // Local development auto-verifies new users: continue directly.
@@ -68,15 +81,39 @@ export function CreateAccount() {
       setCooldown(RESEND_COOLDOWN_SECONDS);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Something went wrong. Try again.",
+        isNetworkError(err)
+          ? "Cannot reach Prism. Check your connection and try again."
+          : "Something went wrong. Try again.",
       );
     } finally {
       setIsPending(false);
     }
   };
 
-  const onSocial = (provider: "github" | "google") => {
-    authClient.signIn.social({ provider, callbackURL: "/projects" });
+  const onSocial = async (provider: "github" | "google") => {
+    if (pendingProvider) return; // duplicate-submit guard
+    setError(null);
+    setPendingProvider(provider);
+    try {
+      const response = await authClient.signIn.social({
+        provider,
+        callbackURL: "/projects",
+      });
+      if (response.error) {
+        setError("Sign-in with the provider failed. Try again.");
+        return;
+      }
+      if (response.data?.url) {
+        window.location.assign(response.data.url);
+      }
+    } catch (err) {
+      setError(
+        isNetworkError(err)
+          ? "Cannot reach Prism. Check your connection and try again."
+          : "Sign-in with the provider failed. Try again.",
+      );
+      setPendingProvider(null);
+    }
   };
 
   const onResend = () => {
@@ -137,7 +174,13 @@ export function CreateAccount() {
             description="A personal team and workspace are created for you automatically."
           />
           <div className="grid gap-4">
-            <SocialAuthButtons providers={providers} onSocial={onSocial} />
+            {oauthError ? <AuthAlert>{oauthError}</AuthAlert> : null}
+            {error ? <AuthAlert>{error}</AuthAlert> : null}
+            <SocialAuthButtons
+              providers={providers}
+              onSocial={onSocial}
+              pendingProvider={pendingProvider}
+            />
             <OrEmailDivider />
             <form onSubmit={onSubmit} className="grid gap-4">
               <div className="grid gap-2">
@@ -171,11 +214,6 @@ export function CreateAccount() {
                 onChange={setPassword}
                 hint="At least 8 characters."
               />
-              {error ? (
-                <p className="text-[13px] text-danger" role="alert">
-                  {error}
-                </p>
-              ) : null}
               <button
                 type="submit"
                 aria-busy={isPending}

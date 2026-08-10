@@ -2,7 +2,9 @@ import { Loader2 } from "lucide-react";
 import React from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { authClient } from "@/lib/authClient";
+import { AuthAlert } from "@/components/auth/auth-alert";
 import { AuthHeading, AuthShell } from "@/components/auth/auth-shell";
+import { isNetworkError } from "@/components/auth/auth-errors";
 import { PasswordInput } from "@/components/auth/password-input";
 
 export function ResetPassword() {
@@ -17,6 +19,7 @@ export function ResetPassword() {
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (isPending) return; // duplicate-submit guard
     setError(null);
     if (password !== confirm) {
       setError("Passwords do not match.");
@@ -24,10 +27,21 @@ export function ResetPassword() {
     }
     setIsPending(true);
     try {
-      await authClient.resetPassword({ newPassword: password, token });
+      const response = await authClient.resetPassword({
+        newPassword: password,
+        token,
+      });
+      if (response.error) {
+        setInvalidLink(true);
+        return;
+      }
       navigate("/auth/log-in");
-    } catch {
-      setInvalidLink(true);
+    } catch (err) {
+      if (isNetworkError(err)) {
+        setError("Cannot reach Prism. Check your connection and try again.");
+      } else {
+        setInvalidLink(true);
+      }
     } finally {
       setIsPending(false);
     }
@@ -85,11 +99,7 @@ export function ResetPassword() {
             value={confirm}
             onChange={setConfirm}
           />
-          {error ? (
-            <p className="text-[13px] text-danger" role="alert">
-              {error}
-            </p>
-          ) : null}
+          {error ? <AuthAlert>{error}</AuthAlert> : null}
           <button
             type="submit"
             aria-busy={isPending}

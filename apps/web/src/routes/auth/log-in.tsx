@@ -1,8 +1,10 @@
 import { Loader2 } from "lucide-react";
 import React from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { authClient, fetchEnabledProviders } from "@/lib/authClient";
+import { AuthAlert } from "@/components/auth/auth-alert";
 import { AuthHeading, AuthShell, OrEmailDivider } from "@/components/auth/auth-shell";
+import { isNetworkError, oauthErrorMessage } from "@/components/auth/auth-errors";
 import { PasswordInput } from "@/components/auth/password-input";
 import {
   type EnabledProviders,
@@ -13,10 +15,15 @@ import { Label } from "@/components/ui/label";
 
 export function LogIn() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const oauthError = oauthErrorMessage(searchParams.get("error"));
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [isPending, setIsPending] = React.useState(false);
+  const [pendingProvider, setPendingProvider] = React.useState<
+    "github" | "google" | null
+  >(null);
   const [providers, setProviders] = React.useState<EnabledProviders>({
     github: false,
     google: false,
@@ -28,28 +35,65 @@ export function LogIn() {
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (isPending) return; // duplicate-submit guard
     setError(null);
     setIsPending(true);
     try {
-      await authClient.signIn.email({ email, password });
+      const response = await authClient.signIn.email({ email, password });
+      if (response.error) {
+        // Non-enumerating: same message for every credential failure.
+        setError("Invalid email or password.");
+        return;
+      }
       navigate("/projects");
-    } catch {
-      // Non-enumerating: same message for every failure mode.
-      setError("Invalid email or password.");
+    } catch (err) {
+      if (isNetworkError(err)) {
+        setError("Cannot reach Prism. Check your connection and try again.");
+      } else {
+        setError("Something went wrong. Please try again.");
+      }
     } finally {
       setIsPending(false);
     }
   };
 
-  const onSocial = (provider: "github" | "google") => {
-    authClient.signIn.social({ provider, callbackURL: "/projects" });
+  const onSocial = async (provider: "github" | "google") => {
+    if (pendingProvider) return; // duplicate-submit guard
+    setError(null);
+    setPendingProvider(provider);
+    try {
+      const response = await authClient.signIn.social({
+        provider,
+        callbackURL: "/projects",
+      });
+      if (response.error) {
+        setError("Sign-in with the provider failed. Try again.");
+        return;
+      }
+      if (response.data?.url) {
+        window.location.assign(response.data.url);
+      }
+    } catch (err) {
+      setError(
+        isNetworkError(err)
+          ? "Cannot reach Prism. Check your connection and try again."
+          : "Sign-in with the provider failed. Try again.",
+      );
+      setPendingProvider(null);
+    }
   };
 
   return (
     <AuthShell>
       <AuthHeading title="Welcome back." description="Use your Prism account to continue." />
       <div className="mt-8 grid gap-4">
-        <SocialAuthButtons providers={providers} onSocial={onSocial} />
+        {oauthError ? <AuthAlert>{oauthError}</AuthAlert> : null}
+        {error ? <AuthAlert>{error}</AuthAlert> : null}
+        <SocialAuthButtons
+          providers={providers}
+          onSocial={onSocial}
+          pendingProvider={pendingProvider}
+        />
         <OrEmailDivider />
         <form onSubmit={onSubmit} className="grid gap-4">
           <div className="grid gap-2">
@@ -71,11 +115,6 @@ export function LogIn() {
             value={password}
             onChange={setPassword}
           />
-          {error ? (
-            <p className="text-[13px] text-danger" role="alert">
-              {error}
-            </p>
-          ) : null}
           <button
             type="submit"
             aria-busy={isPending}
@@ -90,7 +129,7 @@ export function LogIn() {
         </form>
         <div className="flex items-center justify-between gap-4">
           <Link
-            to="/auth/forgot-password"
+            to="/auth/log-in"
             className="text-[13px] text-text-muted transition-colors duration-150 hover:text-text hover:underline"
           >
             Forgot password
