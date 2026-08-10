@@ -122,6 +122,43 @@ yarn lint        # Biome per workspace
 yarn test        # Vitest (unit + security regression tests)
 ```
 
+Coverage is enforced per workspace (`test:coverage`, thresholds in each
+`vitest.config.ts`, policy in `docs/coverage.md`).
+
+### Integration tests (opt-in, isolated databases only)
+
+The integration suites hit real databases and are **skipped by default** so
+they never touch the shared development databases. Point them at an isolated
+test database / disposable Neon branch and disposable Turso database:
+
+```sh
+# Product flows (Neon): signup transaction, username scoping, team departure,
+# project-key uniqueness
+PRISM_RUN_INTEGRATION=1 yarn workspace prism-api test
+
+# Analytics flows (Turso): session start/read/end, cross-project scoping
+PRISM_RUN_INTEGRATION=1 yarn workspace prism-analytics-api test
+```
+
+### E2E smoke test
+
+With the services running locally (and real or disposable credentials):
+
+```sh
+node scripts/e2e-smoke.mjs
+```
+
+Covers: sign up → sign in → create team → create project → start a session
+through the ingestion API → verify the session appears in the team-project
+summary (Turso) → end the session → verify a bogus key cannot end sessions.
+
+### CI
+
+`.github/workflows/security.yml` runs the dependency audit weekly and on
+lockfile changes; it fails only when a high/critical advisory is reachable
+from a production workspace and is not documented (see
+`docs/dependency-security.md` and `scripts/audit-check.mjs`).
+
 Security regression tests live in:
 
 - `apps/analytics-api/src/__tests__/WebSocketManager.test.ts` — WebSocket
