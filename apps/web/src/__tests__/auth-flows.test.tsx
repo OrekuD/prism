@@ -3,6 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { LogIn } from "@/routes/auth/log-in";
+import { Index } from "@/routes/index";
+import axe from "axe-core";
 import { CreateAccount } from "@/routes/auth/create-account";
 import { ForgotPassword } from "@/routes/auth/forgot-password";
 
@@ -13,6 +15,7 @@ const requestPasswordReset = vi.fn();
 
 vi.mock("@/lib/authClient", () => ({
   authClient: {
+    useSession: () => ({ data: null, isPending: false }),
     signIn: {
       email: (...args: unknown[]) => signInEmail(...args),
       social: (...args: unknown[]) => signInSocial(...args),
@@ -23,6 +26,18 @@ vi.mock("@/lib/authClient", () => ({
   authBaseUrl: "http://localhost:8787",
   fetchEnabledProviders: async () => ({ github: false, google: false }),
   resendVerificationEmail: async () => undefined,
+}));
+
+vi.mock("@/lib/runtimeConfig", () => ({
+  loadRuntimeConfig: async () => ({
+    deploymentMode: "hosted",
+    instanceName: "Prism",
+    signupPolicy: "open",
+    baseUrl: "http://localhost:8787",
+    setupRequired: false,
+    providers: { github: false, google: false },
+    mailConfigured: false,
+  }),
 }));
 
 function renderPage(page: React.ReactNode, initialPath = "/auth/log-in") {
@@ -75,6 +90,30 @@ describe("auth failure states", () => {
     expect(
       await screen.findByText(/Invalid email or password/i),
     ).toBeInTheDocument();
+  });
+});
+
+describe("public surfaces axe scan", () => {
+  it("landing page has no serious/critical violations", async () => {
+    const { container } = renderPage(<Index />, "/");
+    const results = await axe.run(container, {
+      rules: { "color-contrast": { enabled: false } },
+    });
+    const serious = results.violations.filter(
+      (v) => v.impact === "critical" || v.impact === "serious",
+    );
+    expect(serious).toEqual([]);
+  });
+
+  it("auth shell has no serious/critical violations", async () => {
+    const { container } = renderPage(<LogIn />, "/auth/log-in");
+    const results = await axe.run(container, {
+      rules: { "color-contrast": { enabled: false } },
+    });
+    const serious = results.violations.filter(
+      (v) => v.impact === "critical" || v.impact === "serious",
+    );
+    expect(serious).toEqual([]);
   });
 });
 

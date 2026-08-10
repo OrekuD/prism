@@ -109,7 +109,7 @@ export function ProjectRealtime() {
                   <SheetTrigger asChild>
                     <button
                       type="button"
-                      className="size-5 bg-blue-600 rounded-full animate-scale-pulse"
+                      className="size-5 bg-blue-600 rounded-full animate-scale-pulse motion-reduce:animate-none"
                     />
                   </SheetTrigger>
                   <SheetContent>

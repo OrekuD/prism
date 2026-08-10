@@ -10,31 +10,97 @@ import {
 } from "react-router-dom";
 import { RootLayout } from "./components/layout/root-layout";
 import { PublicLayout } from "./components/layout/public-layout";
+import { lazy } from "react";
+
+/**
+ * Route-level code splitting: the dashboard subtree (charts, mapbox,
+ * radix composites) loads only when a dashboard route is entered, keeping
+ * the public landing/auth entry small (LCP budget, task-5 section 7).
+ */
+const Projects = lazy(() =>
+  import("./routes/projects").then((m) => ({ default: m.Projects })),
+);
+const NewProject = lazy(() =>
+  import("./routes/projects/new").then((m) => ({ default: m.NewProject })),
+);
+const ProjectLayout = lazy(() =>
+  import("./components/layout/project-layout").then((m) => ({
+    default: m.ProjectLayout,
+  })),
+);
+const ProjectSummary = lazy(() =>
+  import("./routes/projects/project/summary").then((m) => ({
+    default: m.ProjectSummary,
+  })),
+);
+const ProjectEvents = lazy(() =>
+  import("./routes/projects/project/events").then((m) => ({
+    default: m.ProjectEvents,
+  })),
+);
+const ProjectRealtime = lazy(() =>
+  import("./routes/projects/project/realtime").then((m) => ({
+    default: m.ProjectRealtime,
+  })),
+);
+const ProjectSettingsLayout = lazy(() =>
+  import("./components/layout/project-settings-layout").then((m) => ({
+    default: m.ProjectSettingsLayout,
+  })),
+);
+const ProjectSettingsApiKeys = lazy(() =>
+  import("./routes/projects/project/settings/api-keys").then((m) => ({
+    default: m.ProjectSettingsApiKeys,
+  })),
+);
+const ProjectSettingsGeneral = lazy(() =>
+  import("./routes/projects/project/settings/general").then((m) => ({
+    default: m.ProjectSettingsGeneral,
+  })),
+);
+const AccountGeneral = lazy(() =>
+  import("./routes/profile/general").then((m) => ({
+    default: m.AccountGeneral,
+  })),
+);
+const AccountSecurity = lazy(() =>
+  import("./routes/profile/security").then((m) => ({
+    default: m.AccountSecurity,
+  })),
+);
+const AccountAuthentication = lazy(() =>
+  import("./routes/profile/authentication").then((m) => ({
+    default: m.AccountAuthentication,
+  })),
+);
+const AccountTeams = lazy(() =>
+  import("./routes/profile/teams").then((m) => ({
+    default: m.AccountTeams,
+  })),
+);
+const AccountLayout = lazy(() =>
+  import("./components/layout/account-layout").then((m) => ({
+    default: m.AccountLayout,
+  })),
+);
+const Onboarding = lazy(() =>
+  import("./routes/onboarding").then((m) => ({ default: m.Onboarding })),
+);
+const Overview = lazy(() =>
+  import("./routes/overview").then((m) => ({ default: m.Overview })),
+);
+const JoinTeam = lazy(() =>
+  import("./routes/teams/join-team").then((m) => ({ default: m.JoinTeam })),
+);
+
 import { Index } from "./routes/index";
 import { LogIn } from "./routes/auth/log-in";
 import { CreateAccount } from "./routes/auth/create-account";
-import { Projects } from "./routes/projects";
-import { NewProject } from "./routes/projects/new";
-import { ProjectLayout } from "./components/layout/project-layout";
-import { ProjectSummary } from "./routes/projects/project/summary";
-import { ProjectEvents } from "./routes/projects/project/events";
-import { AccountGeneral } from "./routes/profile/general";
-import { AccountSecurity } from "./routes/profile/security";
-import { AccountAuthentication } from "./routes/profile/authentication";
-import { AccountTeams } from "./routes/profile/teams";
-import { AccountLayout } from "./components/layout/account-layout";
 import { ForgotPassword } from "./routes/auth/forgot-password";
 import { ResetPassword } from "./routes/auth/reset-password";
 import { useRefreshUser } from "./hooks/useRefreshUser";
-import { JoinTeam } from "./routes/teams/join-team";
-import { ProjectSettingsLayout } from "./components/layout/project-settings-layout";
-import { ProjectSettingsApiKeys } from "./routes/projects/project/settings/api-keys";
-import { ProjectSettingsGeneral } from "./routes/projects/project/settings/general";
-import { ProjectRealtime } from "./routes/projects/project/realtime";
 import { Skeleton } from "./components/ui/skeleton";
 import { Gallery } from "./routes/gallery";
-import { Onboarding } from "./routes/onboarding";
-import { Overview } from "./routes/overview";
 import { NotFound } from "./routes/not-found";
 
 const defaultRouter = createBrowserRouter(

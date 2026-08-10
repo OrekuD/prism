@@ -49,6 +49,7 @@ function Hero() {
             alt="The Prism workspace overview: usage summary, quick links, and the connect-a-project panel"
             width={1600}
             height={1000}
+            fetchPriority="high"
             className="block h-auto w-full"
           />
         </Frame>
