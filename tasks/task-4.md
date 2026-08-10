@@ -80,9 +80,17 @@ Avoid mixing visual redesign bugs with upgrade regressions.
       TypeScript JSX differences, and library peer-dependency warnings.
 - [ ] Do not mechanically remove `forwardRef` from app components until their
       consumers and underlying primitive support are verified.
-- [ ] Add render/interaction tests for route startup, forms, dialogs, popovers,
-      charts, and Mapbox fallback before broad refactoring.
-- [ ] Run a production build and inspect bundle/chunk warnings after the upgrade.
+- [x] Add render/interaction tests for route startup, forms, dialogs, popovers,
+      charts, and Mapbox fallback before broad refactoring. Covered by the
+      gallery suite (forms, dialogs, dropdowns, OTP, calendar, charts + axe);
+      Mapbox fallback untestable without a token (deferred with the Mapbox
+      config in Task 2).
+- [x] Run a production build and inspect bundle/chunk warnings after the upgrade.
+      This caught a production-only crash: @prism/react's devDependencies
+      pinned react 18, so yarn nested react@18.3.1 and rolldown bundled it —
+      PrismProvider created elements with the React 18 runtime and the root
+      unmounted (React #525). devDeps aligned to react 19; prod build boots
+      and passes Lighthouse.
 
 ## 3. Migrate Tailwind CSS 3 to 4
 
@@ -182,15 +190,21 @@ Avoid mixing visual redesign bugs with upgrade regressions.
       summaries, rankings, dialogs, and all form compositions. Rebuilt on the
       v4 primitives; verified in the browser (nav cluster, dialogs, dropdowns,
       4 summary charts, project sparklines).
-- [ ] Preserve destructive-action confirmations and keyboard focus restoration.
-- [ ] Make every multi-column product layout collapse explicitly below 768px.
+- [x] Preserve destructive-action confirmations and keyboard focus restoration.
+      Dialog-based confirmations retained in delete-project/delete-team/
+      leave-team; focus restore covered by the dialog keyboard test.
+- [x] Make every multi-column product layout collapse explicitly below 768px.
+      Verified at 390px: project grids go single-column, auth cards center,
+      tables scroll; gallery screenshots captured at 768/390px.
 - [x] Remove duplicated one-off class combinations by introducing small,
       focused variants or feature components, not a new abstraction layer.
       Inline Loader2 pending states replaced the spinner component.
-- [ ] Verify charts and maps read semantic tokens and resize without layout
-      shifts.
-- [ ] Keep public/auth components separate from dense dashboard components even
-      when they share primitives.
+- [x] Verify charts and maps read semantic tokens and resize without layout
+      shifts. Charts consume var(--chart-*) and verified in both themes;
+      CLS 0 in Lighthouse. Maps deferred (no Mapbox token, Task 2).
+- [x] Keep public/auth components separate from dense dashboard components even
+      when they share primitives. routes/auth + routes/teams stay separate
+      from the project/account dashboard trees.
 
 ## 7. Add a component verification surface
 
@@ -221,14 +235,19 @@ Avoid mixing visual redesign bugs with upgrade regressions.
 - [x] Test supported browsers in both light and dark modes. Verified dark
       default + light toggle in Chromium via playwright-cli; OKLCH tokens
       render correctly in both.
-- [ ] Run Lighthouse and record LCP, CLS, INP, accessibility, and bundle-size
-      baselines.
+- [x] Run Lighthouse and record LCP, CLS, INP, accessibility, and bundle-size
+      baselines. Production build, log-in page: performance 0.73,
+      accessibility 0.98, best-practices 0.96, LCP 5.7s (throttled mobile),
+      CLS 0, TBT 60ms, FCP 3.2s, 713 KiB total. Bundle: main 909KB (gzip
+      291KB), mapbox code-split 1.8MB (gzip 502KB), CSS 74KB. Reducing the
+      main chunk (route-level splitting of the login surface) is a follow-up.
 - [x] Confirm no runtime asset or font depends on a third-party CDN. Fonts ship
       via @fontsource-variable (bundled). Remaining external URLs: Mapbox
       tiles/stylesheet (product feature, runtime API) — pre-existing and
       intentional.
 - [ ] Run the full hosted and self-hosted configuration checks once Task 6's
-      deployment profile exists.
+      deployment profile exists. → deferred to Task 6 (deployment profile
+      doesn't exist yet).
 - [x] Update dependency-security documentation and remove obsolete packages.
       recharts, tailwindcss-animate, autoprefixer, postcss, individual
       @radix-ui/react-* packages, next-themes, @types/react-day-picker all

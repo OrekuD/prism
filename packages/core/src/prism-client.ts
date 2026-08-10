@@ -15,7 +15,10 @@ export class PrismClient {
       throw new Error("Prism Api key not provided");
     }
     this.apiKey = apiKey;
-    this.startSession();
+    // Session bootstrap is best-effort analytics plumbing: it must never
+    // produce an unhandled rejection that could take down the host app
+    // (React 19 unmounts the root on uncaught effect errors).
+    this.startSession().catch(() => undefined);
     this.trackError();
   }
 
@@ -56,7 +59,7 @@ export class PrismClient {
       "/sessions",
       body,
     );
-    if (response.sessionId) {
+    if (response?.sessionId) {
       this.sessionId = response.sessionId;
     }
   }
