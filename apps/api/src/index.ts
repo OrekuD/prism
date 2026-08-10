@@ -3,8 +3,11 @@ import type { Bindings } from "hono/types";
 import type { Event } from "@cloudflare/workers-types";
 import { Resend } from "resend";
 import { validatePrismConfig } from "./config";
+import { createNeonProductDb } from "./database/db";
+import { setRuntimeAdapter } from "./runtime";
 
 async function main() {
+  setRuntimeAdapter({ createProductDb: createNeonProductDb });
   Server.startServer();
 }
 

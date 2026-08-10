@@ -21,7 +21,7 @@ export function generateConfirmEmailTemplate({
       <table align="center" width="100%" border="0" cellPadding="0" cellSpacing="0" role="presentation" style="max-width:37.5em;background-color:#ffffff;border:1px solid #f0f0f0;padding:45px;border-radius:6px">
         <tbody>
           <tr style="width:100%">
-            <td><img alt="Prism logo" height="26" src="https://res.cloudinary.com/orekud/image/upload/v1716760242/Prism-assets/logo_black_spianu.png" style="display:block;outline:none;border:none;text-decoration:none" />
+            <td style="font-family:ui-monospace,Menlo,monospace;font-size:15px;font-weight:600;color:#111116;letter-spacing:-0.02em">&#9632;&nbsp;Prism</td>
               <table align="center" width="100%" border="0" cellPadding="0" cellSpacing="0" role="presentation">
                 <tbody>
                   <tr>
@@ -61,7 +61,7 @@ export function generateResetPasswordTemplate({
         <table align="center" width="100%" border="0" cellPadding="0" cellSpacing="0" role="presentation" style="max-width:37.5em;background-color:#ffffff;border:1px solid #f0f0f0;padding:45px;border-radius:6px">
           <tbody>
             <tr style="width:100%">
-              <td><img alt="Prism logo" height="26" src="https://res.cloudinary.com/orekud/image/upload/v1716760242/Prism-assets/logo_black_spianu.png" style="display:block;outline:none;border:none;text-decoration:none" />
+              <td style="font-family:ui-monospace,Menlo,monospace;font-size:15px;font-weight:600;color:#111116;letter-spacing:-0.02em">&#9632;&nbsp;Prism</td>
                 <table align="center" width="100%" border="0" cellPadding="0" cellSpacing="0" role="presentation">
                   <tbody>
                     <tr>

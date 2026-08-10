@@ -6,6 +6,7 @@ import {
   CardContent,
   CardDescription,
 } from "@/components/ui/card";
+import "mapbox-gl/dist/mapbox-gl.css";
 import MapGL, { Marker } from "react-map-gl/mapbox";
 import countries from "@/data/countries.json";
 import { useTheme } from "@/components/theme-provider";

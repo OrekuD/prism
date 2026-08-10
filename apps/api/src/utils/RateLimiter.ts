@@ -1,4 +1,9 @@
 /**
+ * NOTE (task-6 section 3): this is the documented single-process fallback
+ * for rate limiting. Multi-replica deployments must front the API with a
+ * shared limiter (reverse proxy / Redis); per-process counters are not
+ * shared across replicas.
+ *
  * Minimal fixed-window in-memory rate limiter.
  *
  * Suitable for per-process dev/soft limits. In the Cloudflare Worker this is

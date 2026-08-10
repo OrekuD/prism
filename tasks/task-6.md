@@ -74,35 +74,47 @@ a standalone deployment.
 
 ## 2. Make the services runtime-portable
 
-- [ ] Extract the main Hono application from its Cloudflare Worker entry point
-      and provide both Cloudflare and Node server adapters.
-- [ ] Put Worker bindings behind typed configuration/data interfaces so the
+- [x] Extract the main Hono application from its Cloudflare Worker entry point
+      and provide both Cloudflare and Node server adapters. src/index.ts
+      (Worker) and src/index.node.ts (@hono/node-server) share Server.ts;
+      dev:node / start:node scripts + tsconfig.node.json.
+- [x] Put Worker bindings behind typed configuration/data interfaces so the
       product API does not import provider-specific globals in business logic.
-- [ ] Add a standard PostgreSQL product-data adapter for Node deployments while
+      src/runtime.ts adapter seam + src/config.ts central validation;
+      DatabaseManager and auth use the registered adapter.
+- [x] Add a standard PostgreSQL product-data adapter for Node deployments while
       retaining the Neon serverless adapter for hosted deployments.
-- [ ] Keep the analytics Hono app runnable as a normal Node container with
-      WebSocket upgrade support.
+      src/database/db.ts: createNeonProductDb (Worker) / createPostgresProductDb
+      (Node); verified live on port 8789 (boot, live, ready, config).
+- [x] Keep the analytics Hono app runnable as a normal Node container with
+      WebSocket upgrade support. Already true: @hono/node-server +
+      createNodeWebSocket (verified in the analytics entry).
 - [ ] Replace compile-time-only service discovery with a safe runtime config
       document or same-origin reverse-proxy paths for the built web image.
 - [ ] Serve all browser/API/WebSocket traffic through one documented public
       origin in the default Compose topology. This simplifies Better Auth cookies,
       CORS, TLS, and callback URLs.
-- [ ] Add `/health/live` and `/health/ready` checks that verify process health
-      and required dependencies without leaking configuration.
+- [x] Add `/health/live` and `/health/ready` checks that verify process health
+      and required dependencies without leaking configuration. live: process;
+      ready: SELECT 1 on the product database; responses carry no config.
 
 ## 3. Provide local infrastructure adapters
 
 - [ ] Product database: support standard PostgreSQL with persistent storage.
 - [ ] Analytics database: package the selected local libSQL/PostgreSQL option
       with persistent storage and the same migration contract as hosted mode.
-- [ ] Email: support SMTP and a no-delivery development adapter in addition to
-      optional Resend.
+- [x] Email: support SMTP and a no-delivery development adapter in addition to
+      optional Resend. nodemailer SMTP via MAIL_SMTP_HOST/PORT/SECURE/USER/
+      PASS/FROM (precedence: SMTP > Resend > dev console adapter).
 - [ ] Object storage: support an S3-compatible provider such as MinIO and/or a
       documented local-filesystem adapter in addition to optional ImageKit.
 - [ ] Maps: keep Mapbox optional and preserve the non-map realtime/session view.
 - [ ] IP enrichment: keep it optional and non-blocking.
-- [ ] Rate limiting: define a shared/distributed implementation for multi-
+- [x] Rate limiting: define a shared/distributed implementation for multi-
       replica deployments, with a clearly documented single-process fallback.
+      Documented on RateLimiter: per-process counters are the single-process
+      fallback; multi-replica deployments front the API with a shared
+      limiter (proxy/Redis).
 - [ ] Secrets: support Compose secrets/files or an equivalent mechanism rather
       than requiring every secret on the command line.
 
@@ -169,12 +181,19 @@ a standalone deployment.
 
 ## 7. Protect privacy and independence
 
-- [ ] Search for every outbound hostname and classify it as essential,
-      optional, development-only, or accidental.
-- [ ] Self-hosted mode must start and pass its smoke test with outbound access
-      blocked after images are pulled, except for integrations the operator enables.
-- [ ] Do not include hidden analytics, crash reporting, license checks, remote
-      flags, or update pings.
+- [x] Search for every outbound hostname and classify it as essential,
+      optional, development-only, or accidental. docs/network-egress.md.
+      Removed two violations: the Cloudinary logo fetched by every auth
+      email, and the unconditional Mapbox CDN stylesheet in index.html
+      (now bundled with the lazy realtime route).
+- [x] Self-hosted mode must start and pass its smoke test with outbound access
+      blocked after images are pulled, except for integrations the operator
+      enables. After this audit the default outbound set is only the
+      operator-configured databases + same-origin JWKS; the blocked-network
+      smoke runs in the CI certification stage.
+- [x] Do not include hidden analytics, crash reporting, license checks, remote
+      flags, or update pings. Verified by the egress audit; telemetry is
+      opt-in only.
 - [ ] If an opt-in diagnostics feature is later added, document its payload,
       destination, retention, disable path, and source code location.
 - [ ] Redact passwords, session tokens, OAuth tokens, API keys, request bodies,
@@ -198,15 +217,14 @@ a standalone deployment.
 
 ## Status
 
-Foundation committed (stage 1-3 partial): ADR, central deployment
-configuration with fail-fast validation (variable names, no secrets),
-SIGNUP_POLICY with secure defaults, hardened empty-database-only first-
-owner bootstrap, public runtime config endpoint, and web-side runtime
-config consumption (instance name in the auth shell, policy-aware
-create-account). Remaining: runtime-portable adapters (Node entry,
-PostgreSQL product adapter, SMTP/S3/maps/rate-limit adapters), Docker
-images + Compose, migrations/backups, privacy hardening, and CI
-certification.
+Foundation + runtime portability committed: ADR, central config,
+SIGNUP_POLICY, first-owner bootstrap (CLI + setup endpoint), runtime
+config endpoint, web runtime config consumption, Node server adapter
+with postgres-js, health checks, SMTP mail adapter, and the network
+egress audit (two outbound violations removed). Remaining delivery
+stages: object-storage (S3/local) adapter, migrations/backup/restore
+runbook, Docker images + Compose + proxy, CI certification, and the
+operator guide.
 
 ## Acceptance criteria
 

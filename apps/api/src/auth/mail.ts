@@ -1,15 +1,18 @@
 /**
- * Provider-neutral mail interface for the auth module.
+ * Provider-neutral mail interface for the auth module (task-6 section 3).
  *
- * - Hosted/local with RESEND_API_KEY set: delivers via Resend.
- * - Development without Resend: logs the email to the server console.
- * - Production without Resend: reports missing mail configuration without
- *   printing the recipient or the actionable verification/reset link.
+ * Adapter precedence:
+ * - MAIL_SMTP_HOST set: SMTP via nodemailer (self-hosted default).
+ * - RESEND_API_KEY set: Resend (hosted default).
+ * - Otherwise: development console adapter (prints the actionable link to
+ *   the server log, never sends); production warns without printing
+ *   recipients or links.
  *
  * Email delivery is never awaited on the response path by Better Auth
  * callbacks; the Worker runtime schedules these as background tasks.
  */
 import { Resend } from "resend";
+import nodemailer from "nodemailer";
 import {
   generateConfirmEmailTemplate,
   generateResetPasswordTemplate,
@@ -76,12 +79,34 @@ export async function dispatchEmail(
       break;
   }
 
+  if (env.MAIL_SMTP_HOST) {
+    // SMTP adapter (self-hosted): credentials are optional for local
+    // relays; MAIL_FROM defaults to a clearly local address.
+    const transporter = nodemailer.createTransport({
+      host: env.MAIL_SMTP_HOST,
+      port: Number.parseInt(env.MAIL_SMTP_PORT ?? "587", 10),
+      secure: env.MAIL_SMTP_SECURE === "true",
+      auth:
+        env.MAIL_SMTP_USER && env.MAIL_SMTP_PASS
+          ? { user: env.MAIL_SMTP_USER, pass: env.MAIL_SMTP_PASS }
+          : undefined,
+    });
+    await transporter.sendMail({
+      from: env.MAIL_FROM ?? "Prism <no-reply@localhost>",
+      to: message.to,
+      subject: message.subject,
+      html,
+    });
+    return;
+  }
+
   const apiKey = env.RESEND_API_KEY;
 
   if (!apiKey) {
     if (env.ENVIRONMENT !== "development") {
       console.warn(
-        "[prism-auth][mail] delivery skipped: no production mail provider is configured",
+        "[prism-auth][mail] delivery skipped: no production mail provider is configured. " +
+          "Set MAIL_SMTP_HOST (SMTP) or RESEND_API_KEY (Resend).",
       );
       return;
     }

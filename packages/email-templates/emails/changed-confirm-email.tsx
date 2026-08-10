@@ -23,7 +23,7 @@ export const ConfirmEmail = ({ name, confirmEmailLink }: ConfirmEmailProps) => {
       <Body style={main}>
         <Container style={container}>
           <Img
-            src={`https://res.cloudinary.com/orekud/image/upload/v1716760242/Prism-assets/logo_black_spianu.png`}
+            src={`data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='14' viewBox='0 0 60 14'%3E%3Crect width='6' height='6' fill='%236547e8'/%3E%3Ctext x='10' y='11' font-family='monospace' font-size='11' font-weight='600' fill='%23111116'%3EPrism%3C/text%3E%3C/svg%3E`}
             height="26"
             alt="Prism logo"
           />

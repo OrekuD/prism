@@ -6,8 +6,7 @@
  */
 import { betterAuth, type BetterAuthOptions, type Auth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { drizzle } from "drizzle-orm/neon-http";
-import { neon } from "@neondatabase/serverless";
+import { createProductDb } from "../database/db";
 import * as authSchema from "../database/schema/auth";
 import { buildAuthOptions } from "./options";
 import type { Bindings } from "../types/types";
@@ -16,8 +15,9 @@ let cached: Auth | null = null;
 
 export function getAuth(env: Bindings): Auth {
   if (!cached) {
-    const client = neon(env.DATABASE_URL);
-    const db = drizzle(client);
+    const db = createProductDb(
+      env as unknown as Record<string, string | undefined>,
+    ).drizzle as never;
     cached = betterAuth({
       ...buildAuthOptions(
         env as unknown as Record<string, string | undefined>,

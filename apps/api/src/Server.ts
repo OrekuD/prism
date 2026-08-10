@@ -6,6 +6,7 @@ import { swaggerUI } from "@hono/swagger-ui";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { getAuth } from "./auth/auth";
 import { isOriginAllowed } from "./utils/cors";
+import { DatabaseManager } from "./managers/DatabaseManager";
 import { setEmailExecutor } from "./auth/mail";
 import { ErrorResponse } from "./network/responses/ErrorResponse";
 import { RateLimiter, clientIpFrom } from "./utils/RateLimiter";
@@ -41,6 +42,25 @@ class Server {
 
     this.instance.get("/", async (ctx) => {
       return ctx.text("Waguan");
+    });
+
+    /**
+     * Health checks (task-6 section 2): /health/live is process health,
+     * /health/ready verifies the product database. No configuration is
+     * leaked in the responses.
+     */
+    this.instance.get("/health/live", (ctx) => {
+      return ctx.json({ status: "ok" });
+    });
+
+    this.instance.get("/health/ready", async (ctx) => {
+      try {
+        const db = DatabaseManager.getInstance(ctx);
+        await db`SELECT 1`;
+        return ctx.json({ status: "ready" });
+      } catch {
+        return ctx.json({ status: "not_ready" }, 503);
+      }
     });
 
     /**
