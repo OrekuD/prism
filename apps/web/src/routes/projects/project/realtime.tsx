@@ -6,11 +6,11 @@ import {
   CardContent,
   CardDescription,
 } from "@/components/ui/card";
-import Map, { Marker } from "react-map-gl";
+import MapGL, { Marker } from "react-map-gl/mapbox";
 import countries from "@/data/countries.json";
 import { useTheme } from "@/components/theme-provider";
 import { useIsDarkTheme } from "@/hooks/useIsDarkTheme";
-import { MapRef } from "react-map-gl";
+import type { MapRef } from "react-map-gl/mapbox";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeftIcon } from "@radix-ui/react-icons";
 import {
@@ -56,14 +56,15 @@ export function ProjectRealtime() {
     <WebSocketManager projectId={projectQuery.data?.id}>
       <div className="w-full relative animate-fade-in isolate py-5 h-fullScreenSm md:h-fullScreen">
         <button
+          type="button"
           className="absolute top-9 left-3 h-10 bg-background rounded-lg px-2 z-20 flex items-center gap-2 text-sm"
           onClick={() => navigate(-1)}
         >
           <ArrowLeftIcon className="text-primary" />
           Go back
         </button>
-        <Map
-          mapboxAccessToken="pk.eyJ1Ijoib3Jla3VkIiwiYSI6ImNseWZpOW4xcTA1OXoya3NrdnRtemx2bG4ifQ.ntXi9XxB4bmaYhBOk9MUcw"
+        <MapGL
+          mapboxAccessToken={import.meta.env.VITE_MAPBOX_ACCESS_TOKEN}
           initialViewState={{
             longitude: -1.023194,
             latitude: 7.946527,
@@ -84,16 +85,17 @@ export function ProjectRealtime() {
           {sessions.map((session) => {
             return (
               <Marker
-                // longitude={-0.2012}
-                // latitude={5.5486}
-                longitude={parseFloat(session.long)}
-                latitude={parseFloat(session.lat)}
+                longitude={Number.parseFloat(session.long)}
+                latitude={Number.parseFloat(session.lat)}
                 anchor="bottom"
                 key={session.id}
               >
                 <Sheet>
                   <SheetTrigger asChild>
-                    <button className="size-5 bg-blue-600 rounded-full animate-scale-pulse" />
+                    <button
+                      type="button"
+                      className="size-5 bg-blue-600 rounded-full animate-scale-pulse"
+                    />
                   </SheetTrigger>
                   <SheetContent>
                     <SheetHeader>
@@ -113,7 +115,7 @@ export function ProjectRealtime() {
               </Marker>
             );
           })}
-        </Map>
+        </MapGL>
       </div>
     </WebSocketManager>
   );

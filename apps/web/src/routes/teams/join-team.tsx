@@ -52,7 +52,7 @@ export function JoinTeam() {
                     teamId: data.id,
                   });
 
-                  if (response && response.message) {
+                  if (response?.message) {
                     navigate("/projects");
                   }
                 }}

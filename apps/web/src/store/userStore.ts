@@ -1,5 +1,5 @@
 import { LocalStorageKeys } from "@/constants/LocalStorageKeys";
-import {
+import type {
   ChangeEmailResource,
   ProfilePictureResource,
   ProfileResource,

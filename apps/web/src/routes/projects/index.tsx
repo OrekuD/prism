@@ -2,7 +2,7 @@ import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  ChartConfig,
+  type ChartConfig,
   ChartContainer,
   ChartLegend,
   ChartLegendContent,
@@ -90,6 +90,7 @@ export function Projects() {
         {projectsQuery.isLoading || projectsQuery.isRefetching ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {placeholders.map((_, index) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholder list with no stable identity
               <Card key={index}>
                 <CardHeader>
                   <Skeleton className="h-[20px]" />

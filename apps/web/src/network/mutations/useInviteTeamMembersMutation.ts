@@ -6,7 +6,7 @@ import type {
   OkResource,
   SendTeamInvitesRequest,
 } from "@prism/types";
-import { AxiosError } from "axios";
+import type { AxiosError } from "axios";
 
 async function inviteTeamMembers({
   teamId,

@@ -3,18 +3,18 @@ import { axiosInstance } from "@/utils/axiosInstance";
 import { toast } from "sonner";
 import {
   DeleteTeamRequest,
-  ErrorResource,
+  type ErrorResource,
   JoinTeamRequest,
-  LeaveTeamRequest,
-  OkResource,
-  TeamResource,
+  type LeaveTeamRequest,
+  type OkResource,
+  type TeamResource,
 } from "@prism/types";
-import { AxiosError, AxiosResponse } from "axios";
+import type { AxiosError, AxiosResponse } from "axios";
 
 async function leaveTeam(payload: LeaveTeamRequest) {
   const url = `/teams/${payload.teamId}/leave`;
 
-  const response = await axiosInstance.post<any, AxiosResponse<OkResource>>(
+  const response = await axiosInstance.post<OkResource>(
     url,
     payload,
   );

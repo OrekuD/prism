@@ -1,13 +1,16 @@
 import React from "react";
 import { RankingsChart } from "./rankings-chart";
 import { useProjectQuery } from "@/network/queries/useProjectQuery";
+import type { ProjectDetailedRequest } from "@prism/types";
 import { useParams, useSearchParams } from "react-router-dom";
 
 export function RankingsSummary() {
   const { slug } = useParams<{ slug: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const duration: any = searchParams.get("duration");
+  const duration = searchParams.get(
+    "duration",
+  ) as ProjectDetailedRequest["duration"];
   const { data, isLoading } = useProjectQuery({ slug, duration });
 
   return (

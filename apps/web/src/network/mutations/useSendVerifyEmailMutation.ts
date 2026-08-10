@@ -2,7 +2,7 @@ import { useMutation } from "@tanstack/react-query";
 import { axiosInstance } from "@/utils/axiosInstance";
 import { toast } from "sonner";
 import type { ErrorResource } from "@prism/types";
-import { AxiosError } from "axios";
+import type { AxiosError } from "axios";
 
 async function sendVerifyEmail() {
   const url = "/user/send-verify-email";

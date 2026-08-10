@@ -7,7 +7,7 @@ import type {
   ProfilePictureResource,
   UpdateProfilePictureRequest,
 } from "@prism/types";
-import { AxiosError } from "axios";
+import type { AxiosError } from "axios";
 
 async function updateProfile(payload: UpdateProfilePictureRequest) {
   const url = "/user/update-profile-picture";

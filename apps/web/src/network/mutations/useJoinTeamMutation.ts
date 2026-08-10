@@ -3,17 +3,17 @@ import { axiosInstance } from "@/utils/axiosInstance";
 import { toast } from "sonner";
 import {
   DeleteTeamRequest,
-  ErrorResource,
-  JoinTeamRequest,
-  OkResource,
+  type ErrorResource,
+  type JoinTeamRequest,
+  type OkResource,
   TeamResource,
 } from "@prism/types";
-import { AxiosError, AxiosResponse } from "axios";
+import type { AxiosError, AxiosResponse } from "axios";
 
 async function joinTeam(payload: JoinTeamRequest) {
   const url = `/teams/${payload.teamId}/join`;
 
-  const response = await axiosInstance.post<any, AxiosResponse<OkResource>>(
+  const response = await axiosInstance.post<OkResource>(
     url,
     payload,
   );

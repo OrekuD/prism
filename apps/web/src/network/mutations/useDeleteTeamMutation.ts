@@ -1,13 +1,13 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { axiosInstance } from "@/utils/axiosInstance";
 import { toast } from "sonner";
-import { DeleteTeamRequest, OkResource, TeamResource } from "@prism/types";
-import { AxiosResponse } from "axios";
+import type { DeleteTeamRequest, OkResource, TeamResource } from "@prism/types";
+import type { AxiosResponse } from "axios";
 
 async function deleteTeam(payload: DeleteTeamRequest) {
   const url = `/teams/${payload.teamId}`;
 
-  const response = await axiosInstance.delete<any, AxiosResponse<OkResource>>(
+  const response = await axiosInstance.delete<OkResource>(
     url,
   );
 

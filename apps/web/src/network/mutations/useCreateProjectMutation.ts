@@ -8,7 +8,7 @@ import type {
   OkResource,
   TeamResource,
 } from "@prism/types";
-import { AxiosError } from "axios";
+import type { AxiosError } from "axios";
 
 async function createProject(payload: CreateProjectRequest) {
   const url = `/projects/${payload.teamId}`;

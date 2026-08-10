@@ -6,7 +6,7 @@ import type {
   ErrorResource,
   TeamResource,
 } from "@prism/types";
-import { AxiosError } from "axios";
+import type { AxiosError } from "axios";
 
 async function createTeam(payload: CreateTeamRequest) {
   const url = "/teams";

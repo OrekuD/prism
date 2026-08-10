@@ -25,7 +25,7 @@ import { CreateTeam } from "@/components/ui/create-team";
 import { useDeleteTeamMutation } from "@/network/mutations/useDeleteTeamMutation";
 import { InviteTeamMembers } from "@/components/ui/invite-team-members";
 import { useSearch } from "@/hooks/useSearch";
-import { TeamResource } from "@prism/types";
+import type { TeamResource } from "@prism/types";
 import Fuse from "fuse.js";
 import { TeamCard } from "@/components/ui/team-card";
 import { DeleteTeam } from "@/components/ui/delete-team";
@@ -86,8 +86,9 @@ export function AccountTeams() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
-            {Boolean(searchQuery.trim()) ? (
+            {searchQuery.trim() ? (
               <button
+                type="button"
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 size-6 grid place-items-center rounded-full bg-muted"
                 onClick={() => setSearchQuery("")}
               >

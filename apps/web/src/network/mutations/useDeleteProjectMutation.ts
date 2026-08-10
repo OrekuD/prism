@@ -1,17 +1,17 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { axiosInstance } from "@/utils/axiosInstance";
 import { toast } from "sonner";
-import {
+import type {
   DeleteProjectRequest,
   OkResource,
   ProjectResource,
 } from "@prism/types";
-import { AxiosResponse } from "axios";
+import type { AxiosResponse } from "axios";
 
 async function deleteProject(payload: DeleteProjectRequest) {
   const url = `/projects/${payload.projectId}`;
 
-  const response = await axiosInstance.delete<any, AxiosResponse<OkResource>>(
+  const response = await axiosInstance.delete<OkResource>(
     url,
   );
 

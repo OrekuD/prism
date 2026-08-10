@@ -11,6 +11,7 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { useProjectQuery } from "@/network/queries/useProjectQuery";
+import type { ProjectDetailedRequest } from "@prism/types";
 import { ValueNoneIcon } from "@radix-ui/react-icons";
 import { Skeleton } from "../ui/skeleton";
 import {
@@ -45,7 +46,9 @@ export function ProjectLayout() {
   const { slug } = useParams<{ slug: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const duration: any = searchParams.get("duration");
+  const duration = searchParams.get(
+    "duration",
+  ) as ProjectDetailedRequest["duration"];
 
   const isRealtime = pathname.includes("realtime");
 
@@ -112,10 +115,11 @@ export function ProjectLayout() {
                   key={url}
                   disabled={!projectQuery.data}
                   onClick={() => {
+                    if (!slug) return;
                     if (!url) {
-                      navigate(`/projects/${slug!}`);
+                      navigate(`/projects/${slug}`);
                     } else {
-                      navigate(`/projects/${slug!}/${url}`);
+                      navigate(`/projects/${slug}/${url}`);
                     }
                   }}
                 >

@@ -7,7 +7,7 @@ import type {
   ProfileResource,
   UpdateUserInformationRequest,
 } from "@prism/types";
-import { AxiosError } from "axios";
+import type { AxiosError } from "axios";
 
 async function updateUserInformation(payload: UpdateUserInformationRequest) {
   const url = "/user";

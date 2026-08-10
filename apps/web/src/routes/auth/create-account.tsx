@@ -21,7 +21,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { SignUpRequest, SignUpRequestSchema } from "@prism/types";
+import { type SignUpRequest, SignUpRequestSchema } from "@prism/types";
 
 export function CreateAccount() {
   const signUpMutation = useSignUpMutation();

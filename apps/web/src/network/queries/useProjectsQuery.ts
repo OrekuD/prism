@@ -1,7 +1,7 @@
 import { LocalStorageKeys } from "@/constants/LocalStorageKeys";
 import { useActiveTeamStore } from "@/store/activeTeamStore";
 import { axiosInstance } from "@/utils/axiosInstance";
-import { ProjectResource } from "@prism/types";
+import type { ProjectResource } from "@prism/types";
 import { useQuery } from "@tanstack/react-query";
 
 async function projects(teamId: string) {
@@ -15,7 +15,12 @@ export function useProjectsQuery() {
   const { teamId } = useActiveTeamStore();
   return useQuery<Array<ProjectResource>>({
     queryKey: ["projects", teamId],
-    queryFn: () => projects(teamId!),
+    queryFn: () => {
+      if (!teamId) {
+        return Promise.reject(new Error("No active team selected"));
+      }
+      return projects(teamId);
+    },
     enabled:
       Boolean(localStorage.getItem(LocalStorageKeys.TOKEN)) && Boolean(teamId),
     refetchOnWindowFocus: false,

@@ -21,7 +21,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useSignInMutation } from "@/network/mutations/useSignInMutation";
 import { useUserStore } from "@/store/userStore";
-import { SignInRequest, SignInRequestSchema } from "@prism/types";
+import { type SignInRequest, SignInRequestSchema } from "@prism/types";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 
 export function LogIn() {

@@ -10,6 +10,7 @@ import {
 import { DeleteProject } from "@/components/ui/delete-project";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProjectQuery } from "@/network/queries/useProjectQuery";
+import type { ProjectDetailedRequest } from "@prism/types";
 import React from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 
@@ -17,7 +18,9 @@ export function ProjectSettingsGeneral() {
   const { slug } = useParams<{ slug: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const duration: any = searchParams.get("duration");
+  const duration = searchParams.get(
+    "duration",
+  ) as ProjectDetailedRequest["duration"];
   const { data, isLoading } = useProjectQuery({ slug, duration });
 
   return (

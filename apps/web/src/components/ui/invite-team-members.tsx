@@ -113,13 +113,14 @@ export function InviteTeamMembers(props: Props) {
               </form>
             </Form>
             <div className="flex items-center gap-2 flex-wrap">
-              {emails.map((email, index) => (
+              {emails.map((email) => (
                 <div
-                  key={index}
+                  key={email}
                   className="flex items-center pl-2 pr-1 gap-2 h-6 text-xs border rounded-full"
                 >
                   {email}
                   <button
+                    type="button"
                     onClick={() =>
                       setEmails((emails) =>
                         emails.filter((_email) => email !== _email),
@@ -135,6 +136,7 @@ export function InviteTeamMembers(props: Props) {
         </div>
         <DialogFooter className="items-center">
           <button
+            type="button"
             className="text-xs font-medium border h-7 rounded-full flex items-center px-4 mr-auto gap-2 transition-opacity disabled:opacity-50"
             disabled={teamInviteLinkQuery.isLoading}
             onClick={async () => {

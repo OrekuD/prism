@@ -1,4 +1,4 @@
-import React from "react";
+import type React from "react";
 import {
   Dialog,
   DialogContent,
@@ -21,7 +21,7 @@ import {
   FormLabel,
   FormMessage,
 } from "./form";
-import { z } from "zod";
+import type { z } from "zod";
 import { useCreateTeamMutation } from "@/network/mutations/useCreateTeamMutation";
 import { LoadingSpinner } from "./loading-spinner";
 

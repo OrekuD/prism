@@ -9,7 +9,7 @@ import React from "react";
 export function useSearch(
   query: string,
   minCharactersCallback: () => void,
-  searchFunction: (...args: any[]) => void,
+  searchFunction: (...args: unknown[]) => void,
 ) {
   React.useEffect(() => {
     if (query.length < 3) {
@@ -27,5 +27,5 @@ export function useSearch(
         clearTimeout(timeoutHandle);
       }
     };
-  }, [query]);
+  }, [query, minCharactersCallback, searchFunction]);
 }

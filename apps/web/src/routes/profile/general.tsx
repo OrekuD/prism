@@ -222,6 +222,7 @@ export function AccountGeneral() {
                         ? user.profile.profilePictureUrl
                         : defaultAvatar
                   }
+                  alt=""
                   className="w-full h-full object-cover rounded-full selection:bg-transparent"
                 />
                 <div className="absolute bottom-0 right-0 size-6 bg-background rounded-full grid place-items-center shadow-xl">
@@ -251,9 +252,10 @@ export function AccountGeneral() {
               updateProfilePictureMutation.isPending || !uploadedProfileImage
             }
             onClick={async () => {
+              if (!uploadedProfileImage) return;
               const { profilePictureUrl } =
                 await updateProfilePictureMutation.mutateAsync({
-                  file: uploadedProfileImage!,
+                  file: uploadedProfileImage,
                 });
 
               if (profilePictureUrl) {

@@ -1,6 +1,6 @@
-import React from "react";
+import type React from "react";
 import { useUserStore } from "@/store/userStore";
-import { TeamResource } from "@prism/types";
+import type { TeamResource } from "@prism/types";
 import { getInitials } from "@/utils/getInitials";
 import {
   DropdownMenu,
@@ -31,7 +31,7 @@ export function TeamCard({
   const { user } = useUserStore();
   const activeTeamStore = useActiveTeamStore();
 
-  const isOwner = user!.id === team.ownerId;
+  const isOwner = user?.id === team.ownerId;
 
   return (
     <div className="rounded-md border flex items-center gap-3 px-2 h-16">
@@ -54,7 +54,10 @@ export function TeamCard({
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="size-10 rounded-lg ml-1 grid place-items-center transition duration-200 hover:bg-border/60">
+            <button
+              type="button"
+              className="size-10 rounded-lg ml-1 grid place-items-center transition duration-200 hover:bg-border/60"
+            >
               <EllipsisVertical />
             </button>
           </DropdownMenuTrigger>

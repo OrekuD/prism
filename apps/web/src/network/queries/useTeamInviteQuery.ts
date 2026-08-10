@@ -17,7 +17,12 @@ export function useTeamInviteQuery() {
 
   return useQuery<TeamInviteResource>({
     queryKey: ["team-invite"],
-    queryFn: () => teamInvite(token!),
+    queryFn: () => {
+      if (!token) {
+        return Promise.reject(new Error("Missing invite token"));
+      }
+      return teamInvite(token);
+    },
     enabled: Boolean(token),
   });
 }

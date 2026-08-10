@@ -2,8 +2,8 @@ import { LocalStorageKeys } from "@/constants/LocalStorageKeys";
 import { useActiveTeamStore } from "@/store/activeTeamStore";
 import { axiosInstance } from "@/utils/axiosInstance";
 import {
-  ProjectDetailedRequest,
-  ProjectDetailedResource,
+  type ProjectDetailedRequest,
+  type ProjectDetailedResource,
   ProjectResource,
 } from "@prism/types";
 import { useQuery } from "@tanstack/react-query";

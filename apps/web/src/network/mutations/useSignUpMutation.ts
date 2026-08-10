@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { useAuthenticationStore } from "@/store/authenticationStore";
 import { useUserStore } from "@/store/userStore";
 import type { AuthResource, ErrorResource, SignUpRequest } from "@prism/types";
-import { AxiosError } from "axios";
+import type { AxiosError } from "axios";
 
 async function signUp(payload: SignUpRequest) {
   const url = "/auth/sign-up";

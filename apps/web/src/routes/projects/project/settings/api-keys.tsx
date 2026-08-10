@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProjectQuery } from "@/network/queries/useProjectQuery";
+import type { ProjectDetailedRequest } from "@prism/types";
 import { CopyIcon } from "@radix-ui/react-icons";
 import React from "react";
 import { useParams, useSearchParams } from "react-router-dom";
@@ -17,7 +18,9 @@ export function ProjectSettingsApiKeys() {
   const { slug } = useParams<{ slug: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const duration: any = searchParams.get("duration");
+  const duration = searchParams.get(
+    "duration",
+  ) as ProjectDetailedRequest["duration"];
   const { data, isLoading } = useProjectQuery({ slug, duration });
 
   return (
@@ -34,6 +37,7 @@ export function ProjectSettingsApiKeys() {
             <div className="w-full flex justify-between items-center">
               <p className="text-sm">{data?.apiKey}</p>
               <button
+                type="button"
                 onClick={async () => {
                   await navigator.clipboard.writeText(data?.apiKey || "");
                   toast("Api key copied to clipboard");

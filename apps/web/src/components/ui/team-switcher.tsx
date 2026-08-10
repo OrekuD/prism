@@ -34,7 +34,7 @@ export function TeamSwitcher() {
     if (activeTeamStore.teamId) return;
 
     activeTeamStore.setTeamId(data[0].id);
-  }, [data, activeTeamStore?.teamId]);
+  }, [data, activeTeamStore.setTeamId, activeTeamStore.teamId]);
 
   const activeTeam = React.useMemo(() => {
     if (!data) return null;
@@ -76,7 +76,7 @@ export function TeamSwitcher() {
     }
 
     return groups;
-  }, [activeTeam, data]);
+  }, [data]);
 
   return (
     <>

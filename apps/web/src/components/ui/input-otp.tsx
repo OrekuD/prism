@@ -60,6 +60,8 @@ const InputOTPSeparator = React.forwardRef<
   React.ElementRef<"div">,
   React.ComponentPropsWithoutRef<"div">
 >(({ ...props }, ref) => (
+  // biome-ignore lint/a11y/useFocusableInteractive: decorative separator between OTP input slots (shadcn/ui input-otp pattern)
+  // biome-ignore lint/a11y/useSemanticElements: decorative separator between OTP input slots (shadcn/ui input-otp pattern)
   <div ref={ref} role="separator" {...props}>
     <Dot />
   </div>

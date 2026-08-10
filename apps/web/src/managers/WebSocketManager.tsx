@@ -1,7 +1,6 @@
-import { LocalStorageKeys } from "@/constants/LocalStorageKeys";
 import { useActiveSessionsStore } from "@/store/activeSessionsStore";
-import { useUserStore } from "@/store/userStore";
-import { SocketConnectProject, SocketMessageTypes } from "@prism/types";
+import { useAuthenticationStore } from "@/store/authenticationStore";
+import type { SocketConnectProject, SocketMessageTypes } from "@prism/types";
 import React from "react";
 
 type Props = {
@@ -9,49 +8,41 @@ type Props = {
 };
 
 export function WebSocketManager(props: React.PropsWithChildren<Props>) {
-  const activeSessionsStore = useActiveSessionsStore();
-  const userStore = useUserStore();
+  const addSession = useActiveSessionsStore((store) => store.addSession);
+  const accessToken = useAuthenticationStore(
+    (store) => store.authentication?.accessToken,
+  );
+  const projectId = props.projectId;
 
   React.useEffect(() => {
-    if (!props.projectId || !userStore.user) return;
+    if (!projectId || !accessToken) return;
 
-    const url = import.meta.env.DEV
-      ? import.meta.env.VITE_WS_API_URL.slice(7)
-      : import.meta.env.VITE_WS_API_URL.slice(8);
-
-    const protocol = import.meta.env.DEV ? "ws" : "wss";
-
-    const ws = new WebSocket(`${protocol}://${url}/ws`);
+    const ws = new WebSocket(`${import.meta.env.VITE_WS_API_URL}/ws`);
 
     ws.onopen = () => {
-      console.log("WebSocket connection established");
       const message: SocketConnectProject = {
         type: "connect-project",
         data: {
-          projectId: props.projectId!,
-          userId: userStore.user!.id,
+          projectId,
+          // The signed access token is the only identity the server trusts.
+          token: accessToken,
         },
       };
       ws.send(JSON.stringify(message));
     };
 
     ws.onerror = () => {
-      console.log("Could not establish a connection");
+      console.log("Could not establish a WebSocket connection");
     };
 
     ws.onmessage = (event) => {
-      console.log("message");
-
       const message: SocketMessageTypes = JSON.parse(event.data);
 
       switch (message.type) {
         case "user-connected":
-          // console.log({ message });
-          activeSessionsStore.addSession(message.data.session);
+          addSession(message.data.session);
           break;
       }
-
-      console.log("message");
     };
 
     ws.onclose = () => {
@@ -61,7 +52,7 @@ export function WebSocketManager(props: React.PropsWithChildren<Props>) {
     return () => {
       ws.close();
     };
-  }, [props.projectId]);
+  }, [projectId, accessToken, addSession]);
 
   return <>{props.children}</>;
 }

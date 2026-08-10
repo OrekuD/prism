@@ -7,7 +7,7 @@ import type {
   ChangeEmailResource,
   ErrorResource,
 } from "@prism/types";
-import { AxiosError } from "axios";
+import type { AxiosError } from "axios";
 import { useSendVerifyEmailMutation } from "./useSendVerifyEmailMutation";
 
 async function changeEmail(payload: ChangeEmailRequest) {

@@ -9,7 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  ChartConfig,
+  type ChartConfig,
   ChartContainer,
   ChartLegend,
   ChartLegendContent,
@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/chart";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useProjectQuery } from "@/network/queries/useProjectQuery";
+import type { ProjectDetailedRequest } from "@prism/types";
 import { Skeleton } from "./skeleton";
 
 const chartConfig = {
@@ -38,7 +39,9 @@ export function ActivitySummary() {
   const { slug } = useParams<{ slug: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const duration: any = searchParams.get("duration");
+  const duration = searchParams.get(
+    "duration",
+  ) as ProjectDetailedRequest["duration"];
   const { data, isLoading } = useProjectQuery({ slug, duration });
   const [activeChart, setActiveChart] =
     React.useState<keyof typeof chartConfig>("desktop");
@@ -63,6 +66,7 @@ export function ActivitySummary() {
             return (
               <button
                 key={chart}
+                type="button"
                 data-active={activeChart === chart}
                 className="w-36 relative z-30 flex flex-1 flex-col justify-center px-6 gap-1 border-t py-4 text-left even:border-l data-[active=true]:bg-muted/50 sm:border-l sm:border-t-0 sm:py-6"
                 onClick={() => setActiveChart(chart)}

@@ -76,6 +76,7 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
 
   return (
     <style
+      // biome-ignore lint/security/noDangerouslySetInnerHtml: static CSS variables generated from the chart theme tokens (shadcn/ui pattern)
       dangerouslySetInnerHTML={{
         __html: Object.entries(THEMES).map(
           ([theme, prefix]) => `

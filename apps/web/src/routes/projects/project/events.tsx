@@ -8,5 +8,5 @@ import {
 } from "@/components/ui/card";
 
 export function ProjectEvents() {
-  return <div className="space-y-4"></div>;
+  return <div className="space-y-4" />;
 }

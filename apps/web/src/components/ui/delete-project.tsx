@@ -13,6 +13,7 @@ import { LoadingSpinner } from "./loading-spinner";
 import { useDeleteTeamMutation } from "@/network/mutations/useDeleteTeamMutation";
 import { useDeleteProjectMutation } from "@/network/mutations/useDeleteProjectMutation";
 import { useProjectQuery } from "@/network/queries/useProjectQuery";
+import type { ProjectDetailedRequest } from "@prism/types";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 export function DeleteProject(props: React.PropsWithChildren) {
@@ -21,7 +22,9 @@ export function DeleteProject(props: React.PropsWithChildren) {
   const { slug } = useParams<{ slug: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const duration: any = searchParams.get("duration");
+  const duration = searchParams.get(
+    "duration",
+  ) as ProjectDetailedRequest["duration"];
   const projectQuery = useProjectQuery({ slug, duration });
   const deleteProjectMutation = useDeleteProjectMutation();
 
@@ -54,10 +57,11 @@ export function DeleteProject(props: React.PropsWithChildren) {
               !projectQuery.data
             }
             onClick={async () => {
+              if (!projectQuery.data) return;
               const response = await deleteProjectMutation.mutateAsync({
-                teamId: projectQuery.data!.teamId,
-                projectId: projectQuery.data!.id,
-                slug: projectQuery.data!.slug,
+                teamId: projectQuery.data.teamId,
+                projectId: projectQuery.data.id,
+                slug: projectQuery.data.slug,
               });
               if (response?.message) {
                 setOpen(false);

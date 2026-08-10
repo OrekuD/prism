@@ -47,7 +47,7 @@ export function UserNav() {
     }
 
     if (user?.profile?.lastName) {
-      name = name + " " + user.profile.lastName;
+      name = `${name} ${user.profile.lastName}`;
     }
 
     return name;
@@ -70,7 +70,7 @@ export function UserNav() {
       <DropdownMenuContent className="w-56" align="end" forceMount>
         <DropdownMenuLabel className="font-normal">
           <div className="flex flex-col space-y-1">
-            {Boolean(name) ? (
+            {name ? (
               <p className="text-sm font-medium leading-none">{name}</p>
             ) : null}
             <p className="text-xs leading-none text-muted-foreground">
@@ -94,6 +94,7 @@ export function UserNav() {
                 const isActive = _theme.value === theme.theme;
                 return (
                   <button
+                    type="button"
                     onClick={() => {
                       theme.setTheme(_theme.value);
                     }}

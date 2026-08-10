@@ -43,8 +43,9 @@ export function CreateNewProject(props: React.PropsWithChildren) {
   });
 
   async function onSubmit(values: z.infer<typeof createProjectFormSchema>) {
+    if (!teamId) return;
     const { message } = await createProjectMutation.mutateAsync({
-      teamId: teamId!,
+      teamId,
       name: values.name,
     });
 
@@ -60,7 +61,7 @@ export function CreateNewProject(props: React.PropsWithChildren) {
       <DialogContent className="w-[90vw] md:w-full rounded-lg">
         <DialogHeader>
           <DialogTitle>Create Project</DialogTitle>
-          <DialogDescription></DialogDescription>
+          <DialogDescription />
         </DialogHeader>
         <div>
           <div className="w-full space-y-4">
