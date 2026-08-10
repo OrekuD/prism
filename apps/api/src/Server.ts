@@ -1,6 +1,6 @@
 import { cors } from "hono/cors";
 import { router as Router } from "./routers/Router";
-import { HonoConfig } from "./types/types";
+import type { HonoConfig } from "./types/types";
 import { swaggerUI } from "@hono/swagger-ui";
 import { OpenAPIHono } from "@hono/zod-openapi";
 
@@ -21,7 +21,7 @@ class Server {
         "SELECT * FROM sessions",
       ).all();
 
-      let postsDocs: any = [];
+      const postsDocs = [];
       // await ctx.get('db').insert(posts).values({ text: 'example 2' }).returning().execute();
 
       // await ctx.get('client').connect();

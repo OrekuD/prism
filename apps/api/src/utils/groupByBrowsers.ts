@@ -1,4 +1,4 @@
-import { Session } from "../models/Session";
+import type { Session } from "../models/Session";
 
 export function groupByBrowsers(sessions: Array<Session>) {
   const map: Map<string, number> = new Map();
@@ -9,14 +9,14 @@ export function groupByBrowsers(sessions: Array<Session>) {
   map.set("Edge", 0);
   map.set("Internet Explorer", 0);
 
-  sessions.forEach(({ browser }) => {
-    if (map.has(browser)) {
-      const oldValue = map.get(browser);
-      map.set(browser, oldValue! + 1);
+  for (const { browser } of sessions) {
+    const oldValue = map.get(browser);
+    if (oldValue !== undefined) {
+      map.set(browser, oldValue + 1);
     } else {
       map.set(browser, 1);
     }
-  });
+  }
 
   return map;
 }

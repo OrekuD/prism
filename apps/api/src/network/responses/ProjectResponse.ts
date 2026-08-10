@@ -1,6 +1,6 @@
-import { ProjectResource, TeamResource } from "@prism/types";
-import { Project } from "../../models/Project";
-import { Session } from "../../models/Session";
+import { type ProjectResource, TeamResource } from "@prism/types";
+import type { Project } from "../../models/Project";
+import type { Session } from "../../models/Session";
 import { groupSessionsByDateAndPlatform } from "../../utils/groupSessionsByDateAndPlatform";
 
 export class ProjectResponse {

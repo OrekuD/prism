@@ -1,5 +1,5 @@
-import { Context } from "hono";
-import { HonoConfig, MailProps } from "../types/types";
+import type { Context } from "hono";
+import type { HonoConfig, MailProps } from "../types/types";
 import { Resend } from "resend";
 import {
   generateConfirmEmailTemplate,
@@ -18,8 +18,8 @@ export class MailManager {
     mail: MailProps,
     recipientEmail: string | Array<string>,
   ) {
-    if (!this.resend) {
-      this.resend = new Resend(ctx.env.RESEND_API_KEY);
+    if (!MailManager.resend) {
+      MailManager.resend = new Resend(ctx.env.RESEND_API_KEY);
     }
 
     let html = "";
@@ -56,7 +56,7 @@ export class MailManager {
         break;
     }
 
-    const { error, data } = await this.resend.emails.send({
+    const { error, data } = await MailManager.resend.emails.send({
       from: "Prism <onboarding@resend.dev>",
       to: Array.isArray(recipientEmail) ? recipientEmail : [recipientEmail],
       subject,

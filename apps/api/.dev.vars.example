@@ -1,0 +1,27 @@
+# Required for startup
+# Copy this file to .dev.vars and fill in real values. NEVER commit .dev.vars.
+# Use a development-safe Neon branch, never production.
+
+# Existing Neon/Postgres product database (development branch)
+DATABASE_URL=
+
+# Long random secret shared with the analytics API (JWT signing).
+# Generate one with: openssl rand -hex 32
+JWT_SECRET_KEY=
+
+# Web dashboard origin, used for links in emails (e.g. verify-email)
+CLIENT_URL=http://localhost:3001
+
+# Optional until email flows are tested
+RESEND_API_KEY=
+
+# Optional until upload flows are tested
+IMAGE_KIT_API_KEY=
+
+# Application identity used in email templates
+PROJECT_NAME=prism_local
+
+# Analytics: Turso (canonical analytics store) and IP enrichment
+TURSO_DATABASE_URL=
+TURSO_AUTH_TOKEN=
+IP_INFO_API_TOKEN=

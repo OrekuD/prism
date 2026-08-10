@@ -1,4 +1,4 @@
-import { ChangeEmailResource } from "@prism/types";
+import type { ChangeEmailResource } from "@prism/types";
 
 export class ChangeEmailResponse {
   private email: string;

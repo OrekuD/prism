@@ -1,6 +1,6 @@
-import { User } from "../../models/User";
+import type { User } from "../../models/User";
 import { UserResponse } from "./UserResponse";
-import { AuthResource } from "@prism/types";
+import type { AuthResource } from "@prism/types";
 
 export class AuthResponse {
   private user: User;

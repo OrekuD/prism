@@ -1,4 +1,4 @@
-import { z } from "zod";
+import type { z, ZodError } from "zod";
 import { parseError } from "./parseError";
 
 /**
@@ -13,8 +13,8 @@ export function validateData<T>(
 ): T | Array<string> {
   try {
     return schema.parse(data, {}) as T;
-  } catch (error: any) {
+  } catch (error) {
     // throw new JSONError('invalid_data', parseError(error), 400);
-    return parseError(error);
+    return parseError(error as ZodError);
   }
 }

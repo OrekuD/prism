@@ -1,9 +1,9 @@
 import {
-  ProjectDetailedResource,
+  type ProjectDetailedResource,
   ProjectResource,
   TeamResource,
 } from "@prism/types";
-import { Project } from "../../models/Project";
+import type { Project } from "../../models/Project";
 
 export class ProjectDetailedResponse {
   private project: Project;

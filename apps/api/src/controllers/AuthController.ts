@@ -1,46 +1,46 @@
-import { Context } from "hono";
-import { HonoConfig } from "../types/types";
+import type { Context } from "hono";
+import type { HonoConfig } from "../types/types";
 import {
   Roles,
-  JWTPayload,
-  ForgotPasswordRequest,
+  type JWTPayload,
+  type ForgotPasswordRequest,
   ForgotPasswordRequestSchema,
-  MagicLinkSignInRequest,
+  type MagicLinkSignInRequest,
   MagicLinkSignInRequestSchema,
-  OTPSignInRequest,
+  type OTPSignInRequest,
   OTPSignInRequestSchema,
-  RequestMagicLinkSignInRequest,
+  type RequestMagicLinkSignInRequest,
   RequestMagicLinkSignInRequestSchema,
-  RequestOTPSignInRequest,
+  type RequestOTPSignInRequest,
   RequestOTPSignInRequestSchema,
-  ResetPasswordRequest,
+  type ResetPasswordRequest,
   ResetPasswordRequestSchema,
-  SignInRequest,
+  type SignInRequest,
   SignInRequestSchema,
-  SignUpRequest,
+  type SignUpRequest,
   SignUpRequestSchema,
-  VerifyEmailRequest,
+  type VerifyEmailRequest,
   VerifyEmailRequestSchema,
-  UserJWTPayload,
+  type UserJWTPayload,
 } from "@prism/types";
 import { validateData } from "../utils/validateData";
 import { DatabaseManager } from "../managers/DatabaseManager";
-import { User } from "../models/User";
+import type { User } from "../models/User";
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
-import { OAuthAccessToken } from "../models/OAuthAccessToken";
-import jwt, { JwtPayload } from "@tsndr/cloudflare-worker-jwt";
+import type { OAuthAccessToken } from "../models/OAuthAccessToken";
+import jwt from "@tsndr/cloudflare-worker-jwt";
 import { AuthResponse } from "../network/responses/AuthResponse";
 import { ErrorResponse } from "../network/responses/ErrorResponse";
 import { OkResponse } from "../network/responses/OkResponse";
-import { LoginAttempt } from "../models/LoginAttempt";
+import type { LoginAttempt } from "../models/LoginAttempt";
 import { differenceInMinutes } from "date-fns/differenceInMinutes";
 import { MailManager } from "../managers/MailManager";
 import { isPast } from "date-fns/isPast";
 import { addMinutes } from "date-fns/addMinutes";
 import { addDays } from "date-fns/addDays";
 import { addHours } from "date-fns/addHours";
-import { OTPSignIn } from "../models/OTPSignIn";
+import type { OTPSignIn } from "../models/OTPSignIn";
 
 export class AuthController {
   public static async signIn(ctx: Context<HonoConfig>) {
@@ -392,7 +392,10 @@ export class AuthController {
   }
 
   public static async signOutFromAllSessions(ctx: Context<HonoConfig>) {
-    const user = ctx.get("user")!;
+    const user = ctx.get("user");
+    if (!user) {
+      return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+    }
 
     await DatabaseManager.getInstance(
       ctx,
@@ -558,7 +561,7 @@ export class AuthController {
       },
     );
 
-    const refreshToken: string = await jwt.sign<JwtPayload>(
+    const refreshToken: string = await jwt.sign<JWTPayload>(
       {
         token: refreshTokenString,
         expiryAt: refreshExpiryAt.getTime(),

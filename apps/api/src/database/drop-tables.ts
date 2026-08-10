@@ -18,12 +18,12 @@ const main = async () => {
       WHERE schemaname = 'public';
     `);
 
-    tables.forEach(async (table) => {
+    for (const table of tables) {
       const tablename = table.tablename as string;
       await db.execute(
         sql`DROP TABLE IF EXISTS ${sql.identifier(tablename)} CASCADE`,
       );
-    });
+    }
 
     await db.execute(sql`COMMIT`);
     console.log("Database tables dropped.");

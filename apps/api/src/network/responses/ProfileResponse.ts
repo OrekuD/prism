@@ -1,5 +1,5 @@
-import { ProfileResource } from "@prism/types";
-import { Profile } from "../../models/Profile";
+import type { ProfileResource } from "@prism/types";
+import type { Profile } from "../../models/Profile";
 
 export class ProfileResponse {
   private profile: Profile;

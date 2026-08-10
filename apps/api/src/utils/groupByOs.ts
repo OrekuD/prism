@@ -1,4 +1,4 @@
-import { Session } from "../models/Session";
+import type { Session } from "../models/Session";
 
 export function groupByOs(sessions: Array<Session>) {
   const map: Map<string, number> = new Map();
@@ -8,14 +8,14 @@ export function groupByOs(sessions: Array<Session>) {
   map.set("Android", 0);
   map.set("iOS", 0);
 
-  sessions.forEach(({ os }) => {
-    if (map.has(os)) {
-      const oldValue = map.get(os);
-      map.set(os, oldValue! + 1);
+  for (const { os } of sessions) {
+    const oldValue = map.get(os);
+    if (oldValue !== undefined) {
+      map.set(os, oldValue + 1);
     } else {
       map.set(os, 1);
     }
-  });
+  }
 
   return map;
 }

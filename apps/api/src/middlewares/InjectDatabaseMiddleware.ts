@@ -1,6 +1,6 @@
 import { createMiddleware } from "hono/factory";
-import { HonoConfig } from "../types/types";
-import { Context } from "hono";
+import type { HonoConfig } from "../types/types";
+import type { Context } from "hono";
 import { Client, neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-serverless";
 

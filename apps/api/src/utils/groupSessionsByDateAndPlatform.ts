@@ -1,5 +1,5 @@
-import { ProjectDetailedRequest, ProjectDetailedResource } from "@prism/types";
-import { Session } from "../models/Session";
+import type { ProjectDetailedRequest, ProjectDetailedResource } from "@prism/types";
+import type { Session } from "../models/Session";
 
 export function groupSessionsByDateAndPlatform(
   sessions: Session[],
@@ -43,7 +43,7 @@ export function groupSessionsByDateAndPlatform(
   }
 
   // Count sessions for each date and platform
-  sessions.forEach((session) => {
+  for (const session of sessions) {
     const date = session.created_at.split(" ")[0]; // This extracts YYYY-MM-DD
     if (new Date(date) >= startDate && new Date(date) <= endDate) {
       const counts = countMap.get(date) || { mobileCount: 0, desktopCount: 0 };
@@ -54,7 +54,7 @@ export function groupSessionsByDateAndPlatform(
       }
       countMap.set(date, counts);
     }
-  });
+  }
 
   // Convert map to array of objects
   return Array.from(countMap, ([date, counts]) => ({

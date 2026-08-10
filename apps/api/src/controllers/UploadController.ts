@@ -1,7 +1,7 @@
-import { Context } from "hono";
-import { HonoConfig } from "../types/types";
+import type { Context } from "hono";
+import type { HonoConfig } from "../types/types";
 import crypto from "node:crypto";
-import { ImageKitIOResource } from "@prism/types";
+import type { ImageKitIOResource } from "@prism/types";
 
 export class UploadController {
   public static async uploadSingle(
@@ -24,7 +24,7 @@ export class UploadController {
         method: "POST",
         body: formData,
         headers: {
-          Authorization: `Basic ${btoa(ctx.env.IMAGE_KIT_API_KEY + ":")}`,
+          Authorization: `Basic ${btoa(`${ctx.env.IMAGE_KIT_API_KEY}:`)}`,
         },
       },
     );
@@ -45,7 +45,7 @@ export class UploadController {
     await fetch(`https://api.imagekit.io/v1/files/${fileId}`, {
       method: "DELETE",
       headers: {
-        Authorization: `Basic ${btoa(ctx.env.IMAGE_KIT_API_KEY + ":")}`,
+        Authorization: `Basic ${btoa(`${ctx.env.IMAGE_KIT_API_KEY}:`)}`,
         "Content-Type": "application/json",
       },
     });

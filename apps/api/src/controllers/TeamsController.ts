@@ -1,16 +1,16 @@
-import { Context } from "hono";
-import { HonoConfig } from "../types/types";
+import type { Context } from "hono";
+import type { HonoConfig } from "../types/types";
 import { validateData } from "../utils/validateData";
 import { DatabaseManager } from "../managers/DatabaseManager";
 import { ErrorResponse } from "../network/responses/ErrorResponse";
 import { TeamResponse } from "../network/responses/TeamResponse";
-import { Team } from "../models/Team";
+import type { Team } from "../models/Team";
 import {
-  CreateTeamRequest,
+  type CreateTeamRequest,
   CreateTeamRequestSchema,
-  SendTeamInvitesRequest,
+  type SendTeamInvitesRequest,
   SendTeamInvitesRequestSchema,
-  TeamInviteJWTPayload,
+  type TeamInviteJWTPayload,
   TeamMemberPermissions,
 } from "@prism/types";
 import { OkResponse } from "../network/responses/OkResponse";
@@ -18,14 +18,17 @@ import jwt from "@tsndr/cloudflare-worker-jwt";
 import { addDays } from "date-fns/addDays";
 import { TeamInviteResponse } from "../network/responses/TeamInviteResponse";
 import { TeamInviteLinkResponse } from "../network/responses/TeamInviteLinkResponse";
-import { TeamMember } from "../models/TeamMember";
+import type { TeamMember } from "../models/TeamMember";
 import { ProjectResponse } from "../network/responses/ProjectResponse";
-import { Session } from "../models/Session";
-import { Project } from "../models/Project";
+import type { Session } from "../models/Session";
+import type { Project } from "../models/Project";
 
 export class TeamsController {
   public static async teams(ctx: Context<HonoConfig>) {
-    const user = ctx.get("user")!;
+    const user = ctx.get("user");
+    if (!user) {
+      return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+    }
     const db = DatabaseManager.getInstance(ctx);
 
     const userCreatedTeams = (await db`
@@ -106,7 +109,10 @@ export class TeamsController {
       return ctx.json(new ErrorResponse(data).toJSON(), 400);
     }
 
-    const user = ctx.get("user")!;
+    const user = ctx.get("user");
+    if (!user) {
+      return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+    }
 
     const db = DatabaseManager.getInstance(ctx);
 
@@ -145,7 +151,10 @@ export class TeamsController {
       return ctx.json(new ErrorResponse(data).toJSON(), 400);
     }
 
-    const user = ctx.get("user")!;
+    const user = ctx.get("user");
+    if (!user) {
+      return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+    }
 
     const db = DatabaseManager.getInstance(ctx);
 
@@ -193,7 +202,7 @@ export class TeamsController {
       .map((_, i) => `($${i * 3 + 1}, $${i * 3 + 2}, $${i * 3 + 3})`)
       .join(", ");
 
-    await db(
+    await db.query(
       `INSERT INTO team_invites(team_id, email, status) VALUES ${placeholders} RETURNING id;`,
       values.flat(),
     );
@@ -222,7 +231,10 @@ export class TeamsController {
       return ctx.json(new ErrorResponse("team_id_not_found").toJSON(), 404);
     }
 
-    const user = ctx.get("user")!;
+    const user = ctx.get("user");
+    if (!user) {
+      return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+    }
 
     const db = DatabaseManager.getInstance(ctx);
 
@@ -261,7 +273,10 @@ export class TeamsController {
       return ctx.json(new ErrorResponse("team_id_not_found").toJSON(), 404);
     }
 
-    const user = ctx.get("user")!;
+    const user = ctx.get("user");
+    if (!user) {
+      return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+    }
     const db = DatabaseManager.getInstance(ctx);
 
     const team =
@@ -287,7 +302,10 @@ export class TeamsController {
       return ctx.json(new ErrorResponse("team_id_not_found").toJSON(), 401);
     }
 
-    const user = ctx.get("user")!;
+    const user = ctx.get("user");
+    if (!user) {
+      return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+    }
     const db = DatabaseManager.getInstance(ctx);
 
     const team =
@@ -309,7 +327,10 @@ export class TeamsController {
       return ctx.json(new ErrorResponse("team_id_not_found").toJSON(), 400);
     }
 
-    const user = ctx.get("user")!;
+    const user = ctx.get("user");
+    if (!user) {
+      return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+    }
 
     const db = DatabaseManager.getInstance(ctx);
 
@@ -358,7 +379,10 @@ export class TeamsController {
       return ctx.json(new ErrorResponse("team_id_not_found").toJSON(), 401);
     }
 
-    const user = ctx.get("user")!;
+    const user = ctx.get("user");
+    if (!user) {
+      return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+    }
     const db = DatabaseManager.getInstance(ctx);
 
     const team =

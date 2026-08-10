@@ -1,5 +1,5 @@
-import { User } from "../../models/User";
-import { UserResource } from "@prism/types";
+import type { User } from "../../models/User";
+import type { UserResource } from "@prism/types";
 import { ProfileResponse } from "./ProfileResponse";
 
 export class UserResponse {

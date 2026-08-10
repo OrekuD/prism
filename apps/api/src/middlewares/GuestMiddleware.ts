@@ -1,11 +1,11 @@
 import { DatabaseTables } from "../types/types";
 import { createMiddleware } from "hono/factory";
-import { HonoConfig } from "../types/types";
-import { Context } from "hono";
+import type { HonoConfig } from "../types/types";
+import type { Context } from "hono";
 import jwt from "@tsndr/cloudflare-worker-jwt";
 import { DatabaseManager } from "../managers/DatabaseManager";
-import { User } from "../models/User";
-import { JWTPayload, Roles } from "@prism/types";
+import type { User } from "../models/User";
+import { type JWTPayload, Roles } from "@prism/types";
 
 export const GuestMiddleware = createMiddleware(
   async (ctx: Context<HonoConfig>, next) => {

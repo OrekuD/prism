@@ -1,15 +1,15 @@
-import { NeonQueryFunction, neon } from "@neondatabase/serverless";
-import { HonoConfig } from "../types/types";
-import { Context } from "hono";
+import { type NeonQueryFunction, neon } from "@neondatabase/serverless";
+import type { HonoConfig } from "../types/types";
+import type { Context } from "hono";
 
 export class DatabaseManager {
   private static instance: NeonQueryFunction<false, false>;
 
   public static getInstance(ctx: Context<HonoConfig>) {
-    if (!this.instance) {
-      this.instance = neon(ctx.env.DATABASE_URL, { arrayMode: false });
+    if (!DatabaseManager.instance) {
+      DatabaseManager.instance = neon(ctx.env.DATABASE_URL, { arrayMode: false });
     }
 
-    return this.instance;
+    return DatabaseManager.instance;
   }
 }

@@ -1,5 +1,5 @@
-import { TeamResource } from "@prism/types";
-import { Team } from "../../models/Team";
+import type { TeamResource } from "@prism/types";
+import type { Team } from "../../models/Team";
 
 export class TeamResponse {
   private team: Team;

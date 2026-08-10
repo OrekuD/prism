@@ -1,6 +1,6 @@
 import { v4 } from "uuid";
-import { HonoConfig } from "../types/types";
-import { Context } from "hono";
+import type { HonoConfig } from "../types/types";
+import type { Context } from "hono";
 
 class WebSocketManager {
   private clients: Map<string, WebSocket>;
@@ -37,9 +37,9 @@ class WebSocketManager {
   }
 
   broadcast(message: string) {
-    this.clients.forEach((client) => {
+    for (const client of this.clients.values()) {
       client.send(message);
-    });
+    }
   }
 
   emitToClient(clientId: string, message: string) {

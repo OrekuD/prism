@@ -1,13 +1,11 @@
-import { Client, NeonQueryFunction } from "@neondatabase/serverless";
-import { NeonDatabase } from "drizzle-orm/neon-serverless";
-import { HonoRequest } from "hono";
-import { User } from "../models/User";
-import { KVNamespace } from "@cloudflare/workers-types/experimental";
+import type { Client, NeonQueryFunction } from "@neondatabase/serverless";
+import type { NeonDatabase } from "drizzle-orm/neon-serverless";
+import type { HonoRequest } from "hono";
+import type { User } from "../models/User";
 
 export type Bindings = {
   DATABASE_URL: string;
   JWT_SECRET_KEY: string;
-  Prism_KV_STORE: KVNamespace;
   CLIENT_URL: string;
   RESEND_API_KEY: string;
   IMAGE_KIT_API_KEY: string;
@@ -23,7 +21,7 @@ export type HonoConfig = {
 };
 
 export type PromiseResolve = (value: void | PromiseLike<void>) => void;
-export type PromiseReject = (reason: any) => void;
+export type PromiseReject = (reason: unknown) => void;
 
 export type Gender = "male" | "female" | "other";
 

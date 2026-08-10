@@ -1,4 +1,4 @@
-import { ErrorResource } from "@prism/types";
+import type { ErrorResource } from "@prism/types";
 
 export class ErrorResponse {
   private errors: Array<string>;

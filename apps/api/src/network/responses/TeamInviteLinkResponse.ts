@@ -1,4 +1,4 @@
-import { TeamInviteLinkResource } from "@prism/types";
+import type { TeamInviteLinkResource } from "@prism/types";
 
 export class TeamInviteLinkResponse {
   private teamInviteUrl: string;

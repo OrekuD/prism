@@ -1,27 +1,27 @@
-import { Context } from "hono";
-import { HonoConfig } from "../types/types";
+import type { Context } from "hono";
+import type { HonoConfig } from "../types/types";
 import {
-  ChangeEmailRequest,
+  type ChangeEmailRequest,
   ChangeEmailRequestSchema,
-  ChangePasswordRequest,
+  type ChangePasswordRequest,
   ChangePasswordRequestSchema,
-  UpdateUserInformationRequest,
+  type UpdateUserInformationRequest,
   UpdateUserInformationRequestSchema,
-  UpdateUsernameRequest,
+  type UpdateUsernameRequest,
   UpdateUsernameRequestSchema,
 } from "@prism/types";
 import { validateData } from "../utils/validateData";
 import { DatabaseManager } from "../managers/DatabaseManager";
-import { User } from "../models/User";
+import type { User } from "../models/User";
 import bcrypt from "bcryptjs";
 import { ErrorResponse } from "../network/responses/ErrorResponse";
 import { OkResponse } from "../network/responses/OkResponse";
-import { Profile } from "../models/Profile";
+import type { Profile } from "../models/Profile";
 import { UserResponse } from "../network/responses/UserResponse";
 import { AuthController } from "./AuthController";
 import { MailManager } from "../managers/MailManager";
 import { UploadController } from "./UploadController";
-import { ProfilePicture } from "../models/ProfilePicture";
+import type { ProfilePicture } from "../models/ProfilePicture";
 import { ProfilePictureResponse } from "../network/responses/ProfilePictureResponse";
 import { ProfileResponse } from "../network/responses/ProfileResponse";
 import { ChangeEmailResponse } from "../network/responses/ChangeEmailResponse";
@@ -29,7 +29,11 @@ import { UpdateUsernameResponse } from "../network/responses/UpdateUsernameRespo
 
 export class UserController {
   public static async currentUser(ctx: Context<HonoConfig>) {
-    return ctx.json(new UserResponse(ctx.get("user")!).toJSON());
+    const user = ctx.get("user");
+    if (!user) {
+      return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+    }
+    return ctx.json(new UserResponse(user).toJSON());
   }
 
   public static async changePassword(ctx: Context<HonoConfig>) {
@@ -42,8 +46,11 @@ export class UserController {
     }
 
     const user = ctx.get("user");
+    if (!user) {
+      return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+    }
 
-    if (!bcrypt.compareSync(data.oldPassword, user!.password)) {
+    if (!bcrypt.compareSync(data.oldPassword, user.password)) {
       return ctx.json(
         new ErrorResponse("old_password_incorrect").toJSON(),
         400,
@@ -58,15 +65,15 @@ export class UserController {
     const db = DatabaseManager.getInstance(ctx);
 
     const rows =
-      await db`UPDATE users SET password = ${hashedPassword} WHERE id = ${user!.id} RETURNING id`;
+      await db`UPDATE users SET password = ${hashedPassword} WHERE id = ${user.id} RETURNING id`;
 
     if (rows.length === 0) {
       return ctx.json(new ErrorResponse("database_error").toJSON(), 400);
     }
 
-    await db`DELETE FROM oauth_access_tokens WHERE user_id = ${user!.id}`;
+    await db`DELETE FROM oauth_access_tokens WHERE user_id = ${user.id}`;
 
-    return AuthController._authenticate(ctx, user!);
+    return AuthController._authenticate(ctx, user);
   }
 
   public static async changeEmail(ctx: Context<HonoConfig>) {
@@ -78,7 +85,10 @@ export class UserController {
       return ctx.json(new ErrorResponse(data).toJSON(), 400);
     }
 
-    const user = ctx.get("user")!;
+    const user = ctx.get("user");
+    if (!user) {
+      return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+    }
 
     const db = DatabaseManager.getInstance(ctx);
 
@@ -89,7 +99,7 @@ export class UserController {
       return ctx.json(new ErrorResponse("email_taken").toJSON(), 400);
     }
 
-    if (user.profile!.email_verified_at === null) {
+    if (user.profile?.email_verified_at === null) {
       // const confirmEmailLink = await AuthController._generateVerifyEmailURL(ctx, userObject!.id);
       // await MailManager.dispatch(
       // 	ctx,
@@ -129,7 +139,10 @@ export class UserController {
   }
 
   public static async sendVerifyEmail(ctx: Context<HonoConfig>) {
-    const user = ctx.get("user")!;
+    const user = ctx.get("user");
+    if (!user) {
+      return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+    }
     const confirmEmailLink = await AuthController._generateVerifyEmailURL(
       ctx,
       user.id,
@@ -140,7 +153,7 @@ export class UserController {
       {
         name: "confirm-email",
         props: {
-          name: user?.profile?.first_name || user!.email,
+          name: user?.profile?.first_name || user?.email,
           confirmEmailLink,
         },
       },
@@ -151,11 +164,14 @@ export class UserController {
   }
 
   public static async updateProfilePicture(ctx: Context<HonoConfig>) {
-    const user = ctx.get("user")!;
+    const user = ctx.get("user");
+    if (!user) {
+      return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+    }
 
     const body = await ctx.req.parseBody();
 
-    const file: File | undefined = body["file"] as File;
+    const file: File | undefined = body.file as File;
 
     if (!file) {
       return ctx.json(new ErrorResponse("file_not_found").toJSON(), 401);
@@ -199,7 +215,10 @@ export class UserController {
       return ctx.json(new ErrorResponse(data).toJSON(), 400);
     }
 
-    const user = ctx.get("user")!;
+    const user = ctx.get("user");
+    if (!user) {
+      return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+    }
 
     const db = DatabaseManager.getInstance(ctx);
 
@@ -222,7 +241,10 @@ export class UserController {
       return ctx.json(new ErrorResponse(data).toJSON(), 400);
     }
 
-    const user = ctx.get("user")!;
+    const user = ctx.get("user");
+    if (!user) {
+      return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+    }
 
     if (user.user_name?.toLowerCase() === data.userName.toLowerCase()) {
       return ctx.json(new UserResponse(user).toJSON());

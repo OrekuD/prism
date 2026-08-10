@@ -1,23 +1,23 @@
-import { Context } from "hono";
-import { DatabaseTables, HonoConfig } from "../types/types";
+import type { Context } from "hono";
+import { DatabaseTables, type HonoConfig } from "../types/types";
 import { DatabaseManager } from "../managers/DatabaseManager";
 import { generateProjectSlug } from "../utils/generateProjectSlug";
 import {
-  CreateProjectRequest,
+  type CreateProjectRequest,
   CreateProjectRequestSchema,
-  ProjectDetailedRequest,
+  type ProjectDetailedRequest,
   TeamMemberPermissions,
 } from "@prism/types";
 import { validateData } from "../utils/validateData";
 import { ErrorResponse } from "../network/responses/ErrorResponse";
-import { Team } from "../models/Team";
-import { TeamMember } from "../models/TeamMember";
+import type { Team } from "../models/Team";
+import type { TeamMember } from "../models/TeamMember";
 import { OkResponse } from "../network/responses/OkResponse";
-import { Project } from "../models/Project";
+import type { Project } from "../models/Project";
 import { ProjectResponse } from "../network/responses/ProjectResponse";
 import { ProjectDetailedResponse } from "../network/responses/ProjectDetailedResponse";
 import { generateApiKey } from "../utils/generateApiKey";
-import { Session } from "../models/Session";
+import type { Session } from "../models/Session";
 import { groupSessionsByDateAndPlatform } from "../utils/groupSessionsByDateAndPlatform";
 import { groupByBrowsers } from "../utils/groupByBrowsers";
 import { groupByOs } from "../utils/groupByOs";
@@ -34,7 +34,10 @@ export class ProjectsController {
       return ctx.json(new ErrorResponse(data).toJSON(), 400);
     }
 
-    const user = ctx.get("user")!;
+    const user = ctx.get("user");
+    if (!user) {
+      return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+    }
 
     const db = DatabaseManager.getInstance(ctx);
 
@@ -75,7 +78,10 @@ export class ProjectsController {
       return ctx.json(new ErrorResponse("project_id_not_found").toJSON(), 404);
     }
 
-    const user = ctx.get("user")!;
+    const user = ctx.get("user");
+    if (!user) {
+      return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+    }
     const db = DatabaseManager.getInstance(ctx);
 
     const project =
@@ -180,7 +186,7 @@ export class ProjectsController {
       args: [project[0].id],
     });
 
-    const sessionResults: Array<Session> = rows as any;
+    const sessionResults = rows as unknown as Array<Session>;
 
     const desktop = sessionResults.filter(
       ({ is_mobile }) => is_mobile === 0,
@@ -208,7 +214,10 @@ export class ProjectsController {
     ctx: Context<HonoConfig>,
     teamId: string,
   ): Promise<boolean> {
-    const user = ctx.get("user")!;
+    const user = ctx.get("user");
+    if (!user) {
+      return false;
+    }
 
     const team = (await DatabaseManager.getInstance(
       ctx,
@@ -237,7 +246,10 @@ export class ProjectsController {
     ctx: Context<HonoConfig>,
     team: Team,
   ): Promise<boolean> {
-    const user = ctx.get("user")!;
+    const user = ctx.get("user");
+    if (!user) {
+      return false;
+    }
 
     if (user.id === team.owner_id) {
       return true;

@@ -1,4 +1,4 @@
-import { UpdateUsernameResource } from "@prism/types";
+import type { UpdateUsernameResource } from "@prism/types";
 
 export class UpdateUsernameResponse {
   private username: string;
