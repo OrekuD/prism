@@ -1,6 +1,7 @@
 import { Menu, X } from "lucide-react";
 import React from "react";
 import { Link } from "react-router-dom";
+import { authClient } from "@/lib/authClient";
 import { cn } from "@/lib/utils";
 
 const VITE_DOCS_URL: string = import.meta.env.VITE_DOCS_URL ?? "http://localhost:4321";
@@ -18,6 +19,8 @@ const navLinks = [
  */
 export function PublicNav() {
   const [open, setOpen] = React.useState(false);
+  const { data: sessionData } = authClient.useSession();
+  const isAuthenticated = Boolean(sessionData?.session);
 
   return (
     <header>
@@ -59,17 +62,19 @@ export function PublicNav() {
           </div>
 
           <div className="hidden items-center gap-6 md:flex">
+            {isAuthenticated ? null : (
+              <Link
+                to="/auth/log-in"
+                className="text-[13px] font-medium text-text-muted transition-colors duration-150 hover:text-text"
+              >
+                Sign in
+              </Link>
+            )}
             <Link
-              to="/auth/log-in"
-              className="text-[13px] font-medium text-text-muted transition-colors duration-150 hover:text-text"
+              to={isAuthenticated ? "/projects" : "/auth/create-account"}
+              className="inline-flex h-[38px] items-center rounded-[2px] bg-accent px-5 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
             >
-              Sign in
-            </Link>
-            <Link
-              to="/auth/create-account"
-              className="inline-flex h-[38px] items-center rounded-full bg-[#f2f2f4] px-5 text-[13px] font-medium text-text-inverse transition-colors duration-150 hover:bg-white"
-            >
-              Get started
+              {isAuthenticated ? "Dashboard" : "Get started"}
             </Link>
           </div>
 
@@ -101,22 +106,24 @@ export function PublicNav() {
                   {link.label}
                 </a>
               ))}
+              {isAuthenticated ? null : (
+                <Link
+                  to="/auth/log-in"
+                  onClick={() => setOpen(false)}
+                  className="flex h-12 items-center border-b border-border text-[14px] text-text-muted hover:text-text"
+                >
+                  Sign in
+                </Link>
+              )}
               <Link
-                to="/auth/log-in"
-                onClick={() => setOpen(false)}
-                className="flex h-12 items-center border-b border-border text-[14px] text-text-muted hover:text-text"
-              >
-                Sign in
-              </Link>
-              <Link
-                to="/auth/create-account"
+                to={isAuthenticated ? "/projects" : "/auth/create-account"}
                 onClick={() => setOpen(false)}
                 className={cn(
-                  "my-4 flex h-11 items-center justify-center rounded-full",
-                  "bg-[#f2f2f4] text-[14px] font-medium text-text-inverse",
+                  "my-4 flex h-11 items-center justify-center rounded-[2px]",
+                  "bg-accent text-[14px] font-medium text-primary-foreground",
                 )}
               >
-                Get started
+                {isAuthenticated ? "Dashboard" : "Get started"}
               </Link>
             </div>
           </div>

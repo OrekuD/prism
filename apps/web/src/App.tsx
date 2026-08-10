@@ -55,10 +55,17 @@ const defaultRouter = createBrowserRouter(
 
 const authenticatedRouter = createBrowserRouter(
   createRoutesFromElements(
-    <Route path="/" element={<RootLayout />}>
-      <Route path="" element={<Index />} />
-      <Route path="join" element={<JoinTeam />} />
-      <Route path="projects">
+    <>
+      {/* The landing page always renders with the public layout and nav,
+          even when signed in. Equal-score "/" routes resolve in
+          declaration order, so the landing wins at "/" and the product
+          shell handles every other path. */}
+      <Route path="/" element={<PublicLayout />}>
+        <Route path="" element={<Index />} />
+      </Route>
+      <Route path="/" element={<RootLayout />}>
+        <Route path="join" element={<JoinTeam />} />
+        <Route path="projects">
         <Route path="" element={<Projects />} />
         <Route path="new" element={<NewProject />} />
         <Route path=":slug" element={<ProjectLayout />}>
@@ -79,8 +86,9 @@ const authenticatedRouter = createBrowserRouter(
         <Route path="authentication" element={<AccountAuthentication />} />
         <Route path="teams" element={<AccountTeams />} />
       </Route>
-      <Route path="*" element={<Navigate to="/projects" />} />
-    </Route>,
+        <Route path="*" element={<Navigate to="/projects" />} />
+      </Route>
+    </>,
   ),
 );
 
