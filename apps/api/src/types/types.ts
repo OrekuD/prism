@@ -7,6 +7,8 @@ export type Bindings = {
   DATABASE_URL: string;
   JWT_SECRET_KEY: string;
   CLIENT_URL: string;
+  /** Optional comma-separated list of extra dashboard origins for CORS. */
+  CORS_ALLOWED_ORIGINS?: string;
   RESEND_API_KEY: string;
   IMAGE_KIT_API_KEY: string;
   PROJECT_NAME: string;

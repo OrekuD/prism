@@ -15,6 +15,7 @@ import { DatabaseManager } from "../managers/DatabaseManager";
 import type { User } from "../models/User";
 import bcrypt from "bcryptjs";
 import { ErrorResponse } from "../network/responses/ErrorResponse";
+import { validateImageFile } from "../utils/validateImageFile";
 import { OkResponse } from "../network/responses/OkResponse";
 import type { Profile } from "../models/Profile";
 import { UserResponse } from "../network/responses/UserResponse";
@@ -174,7 +175,13 @@ export class UserController {
     const file: File | undefined = body.file as File;
 
     if (!file) {
-      return ctx.json(new ErrorResponse("file_not_found").toJSON(), 401);
+      return ctx.json(new ErrorResponse("file_not_found").toJSON(), 400);
+    }
+
+    const validationErrors = await validateImageFile(file);
+
+    if (validationErrors.length > 0) {
+      return ctx.json(new ErrorResponse(validationErrors).toJSON(), 400);
     }
 
     const uploadResult = await UploadController.uploadSingle(
