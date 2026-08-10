@@ -10,6 +10,11 @@ usable for both the hosted platform and a standalone self-hosted instance.
 This task follows the Better Auth and React/Tailwind/shadcn migrations. It does
 not expand the unfinished analytics core beyond what these entry flows require.
 
+Implementation source of truth: [`docs/design-system.md`](../docs/design-system.md).
+It translates the Command Code references into exact Prism tokens, geometry,
+component anatomy, page wireframes, states, responsive rules, and visual QA
+requirements for an agent that cannot inspect the screenshots directly.
+
 ## Design read
 
 Prism is a developer-facing analytics product for technical founders and

@@ -42,11 +42,11 @@ product route behavior and analytics concepts should remain recognizable.
 
 Design dials:
 
-| Dial | Value | Meaning |
-| --- | ---: | --- |
-| Design variance | 6/10 | Structured asymmetry, not experimental navigation |
-| Motion intensity | 3/10 | Tactile feedback and short state transitions only |
-| Visual density | 6/10 | Compact developer-tool UI with deliberate breathing room |
+| Dial             | Value | Meaning                                                  |
+| ---------------- | ----: | -------------------------------------------------------- |
+| Design variance  |  6/10 | Structured asymmetry, not experimental navigation        |
+| Motion intensity |  3/10 | Tactile feedback and short state transitions only        |
+| Visual density   |  6/10 | Compact developer-tool UI with deliberate breathing room |
 
 The dark theme is the canonical visual target because both references are dark.
 A light theme must still exist for product accessibility and user preference,
@@ -77,6 +77,27 @@ important characteristics are:
 - A small outlined documentation button aligned to the panel's upper right.
 - No shadows, glass, large radii, gradients, or ornamental illustration in the
   dashboard itself.
+
+The supplied close crop of the usage strip clarifies the component geometry:
+
+- The section label is only about 18px above the metric grid, measured from the
+  label baseline to the top rule. It should feel attached to the grid rather
+  than like a separate heading block.
+- The strip is one visual row: three equal cells, roughly 108px high, separated
+  by 10-12px gutters. Do not render three conventional floating cards.
+- Every cell has a 1px top, bottom, left, and right rule. The repeated vertical
+  rules at the gutter edges are intentional.
+- A 5-6px registration square is centered over the border at all four corners
+  of every cell. At shared gutter edges, both adjacent cells retain their own
+  marks.
+- The icon and label begin roughly 22px from the left and 25px from the top.
+  The value begins on the same left axis about 18px below the label row.
+- The label row uses one small semantic-color icon followed by cool-gray mono
+  text. The value is white; the unit is markedly smaller, lower contrast, and
+  baseline-aligned.
+- Empty successful data is shown as an intentional real zero such as `0`,
+  `0.00`, or `$0.00`, followed by a contextual unit. Loading uses a skeleton
+  and must never masquerade as zero.
 
 ### 3.2 Pricing screenshot
 
@@ -168,31 +189,31 @@ their frame instead of creating detached containers.
 The hex values below are the visual source of truth for the first pass. Convert
 to OKLCH only if the conversion is measured and does not visibly change them.
 
-| Token | Value | Use |
-| --- | --- | --- |
-| `canvas` | `#050506` | Viewport and primary page background |
-| `canvas-subtle` | `#08080A` | Slightly differentiated page regions |
-| `surface` | `#0B0B0E` | Inputs, code rows, compact inset areas |
-| `surface-raised` | `#111116` | Menus, icon wells, elevated controls |
-| `surface-hover` | `#17171D` | Hovered rows and controls |
-| `surface-active` | `#1D1D25` | Pressed or selected neutral state |
-| `border` | `#25252C` | Default hairlines and panel outlines |
-| `border-strong` | `#383842` | Focused group edges and major dividers |
-| `text` | `#F2F2F4` | Primary text and important numbers |
-| `text-muted` | `#A3A3AD` | Descriptions, units, secondary nav |
-| `text-subtle` | `#6B6B75` | Metadata, disabled copy, step numbers |
-| `text-inverse` | `#09090B` | Text on white primary public CTA |
-| `accent` | `#6547E8` | Prism action/selection violet |
-| `accent-hover` | `#765AF0` | Hovered violet action |
-| `accent-active` | `#5337CB` | Pressed violet action |
-| `accent-soft` | `#241A5A` | Selected background without full emphasis |
-| `focus` | `#9B89FF` | Keyboard focus ring |
-| `link` | `#5F7DFF` | Inline documentation links |
-| `success` | `#20D99A` | Connected, live, copied, successful |
-| `warning` | `#F2A51A` | Delayed, attention, partial configuration |
-| `danger` | `#F05D6C` | Destructive and error states |
-| `info` | `#4DA3FF` | Informational state or chart series |
-| `event` | `#BE5BE8` | Event-related semantic series |
+| Token            | Value     | Use                                       |
+| ---------------- | --------- | ----------------------------------------- |
+| `canvas`         | `#050506` | Viewport and primary page background      |
+| `canvas-subtle`  | `#08080A` | Slightly differentiated page regions      |
+| `surface`        | `#0B0B0E` | Inputs, code rows, compact inset areas    |
+| `surface-raised` | `#111116` | Menus, icon wells, elevated controls      |
+| `surface-hover`  | `#17171D` | Hovered rows and controls                 |
+| `surface-active` | `#1D1D25` | Pressed or selected neutral state         |
+| `border`         | `#25252C` | Default hairlines and panel outlines      |
+| `border-strong`  | `#383842` | Focused group edges and major dividers    |
+| `text`           | `#F2F2F4` | Primary text and important numbers        |
+| `text-muted`     | `#A3A3AD` | Descriptions, units, secondary nav        |
+| `text-subtle`    | `#6B6B75` | Metadata, disabled copy, step numbers     |
+| `text-inverse`   | `#09090B` | Text on white primary public CTA          |
+| `accent`         | `#6547E8` | Prism action/selection violet             |
+| `accent-hover`   | `#765AF0` | Hovered violet action                     |
+| `accent-active`  | `#5337CB` | Pressed violet action                     |
+| `accent-soft`    | `#241A5A` | Selected background without full emphasis |
+| `focus`          | `#9B89FF` | Keyboard focus ring                       |
+| `link`           | `#5F7DFF` | Inline documentation links                |
+| `success`        | `#20D99A` | Connected, live, copied, successful       |
+| `warning`        | `#F2A51A` | Delayed, attention, partial configuration |
+| `danger`         | `#F05D6C` | Destructive and error states              |
+| `info`           | `#4DA3FF` | Informational state or chart series       |
+| `event`          | `#BE5BE8` | Event-related semantic series             |
 
 Rules:
 
@@ -207,31 +228,31 @@ Rules:
 
 ### 5.2 Light theme tokens
 
-| Token | Value |
-| --- | --- |
-| `canvas` | `#F6F6F8` |
-| `canvas-subtle` | `#F0F0F3` |
-| `surface` | `#FFFFFF` |
+| Token            | Value     |
+| ---------------- | --------- |
+| `canvas`         | `#F6F6F8` |
+| `canvas-subtle`  | `#F0F0F3` |
+| `surface`        | `#FFFFFF` |
 | `surface-raised` | `#F7F7F9` |
-| `surface-hover` | `#EEEEF2` |
+| `surface-hover`  | `#EEEEF2` |
 | `surface-active` | `#E6E6EC` |
-| `border` | `#D8D8DF` |
-| `border-strong` | `#BCBCC7` |
-| `text` | `#111116` |
-| `text-muted` | `#5D5D68` |
-| `text-subtle` | `#7B7B87` |
-| `text-inverse` | `#F7F7F9` |
-| `accent` | `#5637D4` |
-| `accent-hover` | `#482CB8` |
-| `accent-active` | `#3D249F` |
-| `accent-soft` | `#EAE5FF` |
-| `focus` | `#5637D4` |
-| `link` | `#3159D8` |
-| `success` | `#087A55` |
-| `warning` | `#9A6100` |
-| `danger` | `#C72F45` |
-| `info` | `#176FC1` |
-| `event` | `#8B32B5` |
+| `border`         | `#D8D8DF` |
+| `border-strong`  | `#BCBCC7` |
+| `text`           | `#111116` |
+| `text-muted`     | `#5D5D68` |
+| `text-subtle`    | `#7B7B87` |
+| `text-inverse`   | `#F7F7F9` |
+| `accent`         | `#5637D4` |
+| `accent-hover`   | `#482CB8` |
+| `accent-active`  | `#3D249F` |
+| `accent-soft`    | `#EAE5FF` |
+| `focus`          | `#5637D4` |
+| `link`           | `#3159D8` |
+| `success`        | `#087A55` |
+| `warning`        | `#9A6100` |
+| `danger`         | `#C72F45` |
+| `info`           | `#176FC1` |
+| `event`          | `#8B32B5` |
 
 Light mode keeps the same hierarchy and radius system. It does not introduce
 warm paper colors, shadows on every card, or a separate marketing identity.
@@ -330,26 +351,27 @@ Fallback stacks:
 
 ```css
 --font-sans: "Geist", "Helvetica Neue", Arial, sans-serif;
---font-mono: "Geist Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+--font-mono:
+  "Geist Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 ```
 
 ### 6.2 Type scale
 
-| Role | Desktop | Mobile | Font | Weight | Tracking | Line height |
-| --- | --- | --- | --- | ---: | --- | ---: |
-| Marketing display | 52px | 38px | Sans | 650 | `-0.045em` | 1.02 |
-| Marketing H1 long | 40px | 34px | Sans | 650 | `-0.035em` | 1.08 |
-| Product page title | 26px | 22px | Mono | 650 | `-0.025em` | 1.18 |
-| Product section title | 18px | 17px | Sans | 600 | `-0.015em` | 1.25 |
-| Panel title | 15px | 15px | Sans | 550 | `-0.01em` | 1.3 |
-| Body | 14px | 14px | Sans | 400 | `0` | 1.55 |
-| Body small | 13px | 13px | Sans | 400 | `0` | 1.5 |
-| Label | 11px | 11px | Mono | 500 | `0.09em` | 1.3 |
-| Metadata | 11px | 11px | Mono | 400 | `0.04em` | 1.35 |
-| Code | 13px | 12px | Mono | 400 | `0` | 1.5 |
-| Metric large | 32px | 28px | Mono | 650 | `-0.04em` | 1 |
-| Pricing/hero number | 48px | 40px | Sans | 600 | `-0.055em` | 1 |
-| Button | 13px | 13px | Sans | 550 | `-0.005em` | 1 |
+| Role                  | Desktop | Mobile | Font | Weight | Tracking   | Line height |
+| --------------------- | ------- | ------ | ---- | -----: | ---------- | ----------: |
+| Marketing display     | 52px    | 38px   | Sans |    650 | `-0.045em` |        1.02 |
+| Marketing H1 long     | 40px    | 34px   | Sans |    650 | `-0.035em` |        1.08 |
+| Product page title    | 26px    | 22px   | Mono |    650 | `-0.025em` |        1.18 |
+| Product section title | 18px    | 17px   | Sans |    600 | `-0.015em` |        1.25 |
+| Panel title           | 15px    | 15px   | Sans |    550 | `-0.01em`  |         1.3 |
+| Body                  | 14px    | 14px   | Sans |    400 | `0`        |        1.55 |
+| Body small            | 13px    | 13px   | Sans |    400 | `0`        |         1.5 |
+| Label                 | 11px    | 11px   | Mono |    500 | `0.09em`   |         1.3 |
+| Metadata              | 11px    | 11px   | Mono |    400 | `0.04em`   |        1.35 |
+| Code                  | 13px    | 12px   | Mono |    400 | `0`        |         1.5 |
+| Metric large          | 32px    | 28px   | Mono |    650 | `-0.04em`  |           1 |
+| Pricing/hero number   | 48px    | 40px   | Sans |    600 | `-0.055em` |           1 |
+| Button                | 13px    | 13px   | Sans |    550 | `-0.005em` |           1 |
 
 ### 6.3 Type rules
 
@@ -359,7 +381,7 @@ Fallback stacks:
 - Units sit on the same baseline as values but use body-small sizing and muted
   color.
 - Uppercase labels are reserved for functional categories such as `USAGE
-  SUMMARY`, `API KEY`, or `LIVE`. Do not put uppercase eyebrows above every
+SUMMARY`, `API KEY`, or `LIVE`. Do not put uppercase eyebrows above every
   marketing section.
 - Use `//` before selected product/public headings, not all headings. Maximum one
   `//` heading in every three major page sections.
@@ -374,21 +396,21 @@ Fallback stacks:
 Use a 4px base:
 
 | Token | Pixels |
-| --- | ---: |
-| `1` | 4 |
-| `2` | 8 |
-| `3` | 12 |
-| `4` | 16 |
-| `5` | 20 |
-| `6` | 24 |
-| `7` | 28 |
-| `8` | 32 |
-| `10` | 40 |
-| `12` | 48 |
-| `14` | 56 |
-| `16` | 64 |
-| `20` | 80 |
-| `24` | 96 |
+| ----- | -----: |
+| `1`   |      4 |
+| `2`   |      8 |
+| `3`   |     12 |
+| `4`   |     16 |
+| `5`   |     20 |
+| `6`   |     24 |
+| `7`   |     28 |
+| `8`   |     32 |
+| `10`  |     40 |
+| `12`  |     48 |
+| `14`  |     56 |
+| `16`  |     64 |
+| `20`  |     80 |
+| `24`  |     96 |
 
 Do not add arbitrary 17px, 23px, or 37px gaps unless optical alignment requires
 it and a comment explains why.
@@ -426,13 +448,13 @@ The workspace screenshot uses a much wider product canvas:
 
 ### 7.4 Breakpoints
 
-| Name | Width | Main behavior |
-| --- | --- | --- |
-| Narrow | `<480px` | Single column, 16px gutters, compact nav |
-| Mobile | `480-767px` | Single column, full-width controls |
-| Tablet | `768-1023px` | Two-column metrics/links where useful |
-| Desktop | `1024-1439px` | Full public rail and three-column product grid |
-| Wide | `>=1440px` | Wider product gutters; content max remains bounded |
+| Name    | Width         | Main behavior                                      |
+| ------- | ------------- | -------------------------------------------------- |
+| Narrow  | `<480px`      | Single column, 16px gutters, compact nav           |
+| Mobile  | `480-767px`   | Single column, full-width controls                 |
+| Tablet  | `768-1023px`  | Two-column metrics/links where useful              |
+| Desktop | `1024-1439px` | Full public rail and three-column product grid     |
+| Wide    | `>=1440px`    | Wider product gutters; content max remains bounded |
 
 Do not rely on accidental flex wrapping. Every component must declare its
 layout at narrow, tablet, and desktop widths.
@@ -622,13 +644,29 @@ Marketing label:
 
 Desktop:
 
-- Minimum height: 108px.
-- Padding: 20px 22px.
-- Header row: 12px icon, 10px gap, 11px uppercase mono label.
-- Value row: 18px top margin.
-- Value: 30-32px mono, weight 650, tabular numerals.
-- Unit: 12px sans, `text-subtle`, 8px left gap, baseline aligned.
+- Height: 108px in the overview strip. Allow a 104-112px range only when the
+  surrounding product shell requires optical adjustment.
+- Padding: 22px left/right, 24px top, 18px bottom.
+- Header row: 12px icon, 9px gap, 11px uppercase mono label, 16px line-height.
+- Value row: 14px top margin, 32px line-height.
+- Value: 30-32px mono, weight 650, tabular numerals and no wrap.
+- Unit: 12px sans, `text-subtle`, 8px left gap, baseline aligned about 4px above
+  the value row's bottom edge.
 - Optional change indicator: below value, 11px mono, semantic color plus text.
+
+Strip assembly:
+
+- Use `grid-template-columns: repeat(3, minmax(0, 1fr))` with a 10-12px gap.
+- Each frame draws its complete 1px border; do not collapse borders.
+- Add four registration marks with pseudo-elements or a reusable overlay. Each
+  mark is 6px square, `surface-canvas` filled, and `border-default` bordered.
+  Center each mark on its corner using a 3px negative offset.
+- Keep marks `pointer-events: none` and hidden from assistive technology.
+- In a single-column mobile stack, retain all four marks. Increase the vertical
+  gap to 12px so adjacent marks do not visually merge.
+- Suggested Prism icon mapping: visitors `Users` in emerald, sessions
+  `Activity` in violet, events `Zap` in amber. Use the existing Lucide set and
+  never substitute emoji.
 
 Do not display a perfect zero/loading value before data exists. Use a metric-
 shaped skeleton, then render `0` only after a successful empty response.
@@ -944,7 +982,8 @@ At a 1248px viewport:
 - Heading-to-subheading gap: 8px.
 - Introduction-to-first-label gap: 42px.
 - Label-to-metric-grid gap: 14px.
-- Metric cells: three equal columns, 12px gap, 108px minimum height.
+- Metric cells: three equal columns, 10-12px gap, exactly 108px high in the
+  reference-aligned overview layout.
 - Metric-grid-to-quick-label gap: 38px.
 - Quick-link cells: three equal columns, 12px gap, 128px minimum height.
 - Quick-grid-to-setup-label gap: 46px.
@@ -1125,15 +1164,15 @@ Examples:
 
 Motion communicates feedback and state, not atmosphere.
 
-| Interaction | Duration | Easing/behavior |
-| --- | ---: | --- |
-| Color/border hover | 120ms | ease-out |
-| Button press | 80ms | 1px translate or 0.99 scale |
-| Dropdown/popover enter | 140ms | opacity + 4px translate |
-| Dialog enter | 180ms | opacity + 0.985 to 1 scale |
-| Route content reveal | 160ms | opacity only, optional |
-| New realtime row | 150ms | opacity only |
-| Skeleton shimmer | 1400ms | only if reduced motion is off |
+| Interaction            | Duration | Easing/behavior               |
+| ---------------------- | -------: | ----------------------------- |
+| Color/border hover     |    120ms | ease-out                      |
+| Button press           |     80ms | 1px translate or 0.99 scale   |
+| Dropdown/popover enter |    140ms | opacity + 4px translate       |
+| Dialog enter           |    180ms | opacity + 0.985 to 1 scale    |
+| Route content reveal   |    160ms | opacity only, optional        |
+| New realtime row       |    150ms | opacity only                  |
+| Skeleton shimmer       |   1400ms | only if reduced motion is off |
 
 Rules:
 
@@ -1249,20 +1288,20 @@ heading.
 
 Use current shadcn components for behavior, then style them to this spec.
 
-| Prism pattern | shadcn/Radix basis | Required customization |
-| --- | --- | --- |
-| Button | Button | 2px radius, Prism variants, stable busy state |
-| Form field | Form/Input/Label | 40px input, strong focus, inline errors |
-| Dialog | Dialog | Sharp frame, restrained overlay/shadow |
-| Mobile nav | Sheet | Full-width row layout, product tokens |
-| Menus | Dropdown Menu | Dense 32-36px rows, sharp surface |
-| Project selector | Command/Popover | Mono metadata, keyboard search |
-| Tabs | Tabs | Rectangular, border-based, violet active state |
-| Alerts | Alert | Inline contextual treatment, no generic card look |
-| Toast | Sonner | Transient feedback only |
-| Skeleton | Skeleton | Geometry-specific variants |
-| Charts | Chart/Recharts | Prism series, mono axes, accessible summary |
-| Date range | Calendar/Popover | Dense product treatment and mobile sheet |
+| Prism pattern    | shadcn/Radix basis | Required customization                            |
+| ---------------- | ------------------ | ------------------------------------------------- |
+| Button           | Button             | 2px radius, Prism variants, stable busy state     |
+| Form field       | Form/Input/Label   | 40px input, strong focus, inline errors           |
+| Dialog           | Dialog             | Sharp frame, restrained overlay/shadow            |
+| Mobile nav       | Sheet              | Full-width row layout, product tokens             |
+| Menus            | Dropdown Menu      | Dense 32-36px rows, sharp surface                 |
+| Project selector | Command/Popover    | Mono metadata, keyboard search                    |
+| Tabs             | Tabs               | Rectangular, border-based, violet active state    |
+| Alerts           | Alert              | Inline contextual treatment, no generic card look |
+| Toast            | Sonner             | Transient feedback only                           |
+| Skeleton         | Skeleton           | Geometry-specific variants                        |
+| Charts           | Chart/Recharts     | Prism series, mono axes, accessible summary       |
+| Date range       | Calendar/Popover   | Dense product treatment and mobile sheet          |
 
 Prism-specific composites must not remain in `components/ui`. Place them under
 feature or layout directories, for example:
@@ -1301,14 +1340,14 @@ a fake customer logo, testimonial, product metric, price, or API key.
 
 Capture these viewports for every major page:
 
-| Target | Width x height |
-| --- | --- |
-| Narrow mobile | 320 x 720 |
-| Standard mobile | 390 x 844 |
-| Tablet | 768 x 1024 |
-| Small desktop | 1024 x 768 |
-| Reference desktop | 1248 x 1085 |
-| Wide desktop | 1440 x 1000 |
+| Target            | Width x height |
+| ----------------- | -------------- |
+| Narrow mobile     | 320 x 720      |
+| Standard mobile   | 390 x 844      |
+| Tablet            | 768 x 1024     |
+| Small desktop     | 1024 x 768     |
+| Reference desktop | 1248 x 1085    |
+| Wide desktop      | 1440 x 1000    |
 
 For each viewport verify:
 
@@ -1333,7 +1372,7 @@ For each viewport verify:
 ### Visual identity
 
 - [ ] Canonical dark theme matches the near-black, hairline, high-density
-  reference language.
+      reference language.
 - [ ] Public pages use the framed central rail.
 - [ ] Product overview uses the wide three-column frame system.
 - [ ] Violet is the only general brand accent.
@@ -1373,15 +1412,14 @@ For each viewport verify:
 - [ ] Screen-reader labels and live regions are appropriate.
 - [ ] Charts/maps have text alternatives.
 - [ ] LCP is below 2.5s, CLS below 0.1, and INP below 200ms in the production
-  build.
+      build.
 - [ ] Fonts, screenshots, and critical assets are locally served/optimized.
 
 ### Hosted and self-hosted behavior
 
 - [ ] Hosted signup path is clear.
 - [ ] Self-host path is equally discoverable but does not compete as a second
-  primary CTA.
+      primary CTA.
 - [ ] Self-hosted auth names the local instance.
 - [ ] No Prism cloud account or outbound service is silently required.
 - [ ] Missing optional integrations degrade gracefully.
-

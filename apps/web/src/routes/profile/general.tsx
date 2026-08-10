@@ -22,16 +22,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useUpdateUserInformationMutation } from "@/network/mutations/useUpdateUserInformationMutation";
-import {
-  ChangeEmailRequestSchema,
-  ChangePasswordRequestSchema,
-  UpdateUserInformationRequestSchema,
-  UpdateUsernameRequestSchema,
-} from "@prism/types";
-import { useUpdateUsernameMutation } from "@/network/mutations/useUpdateUsernameMutation";
-import { useChangeEmailMutation } from "@/network/mutations/useChangeEmailMutation";
-import { useChangePasswordMutation } from "@/network/mutations/useChangePasswordMutation";
-import { useSignOutFromAllSessionsMutation } from "@/network/mutations/useSignOutFromAllSessionsMutation";
+import { UpdateUserInformationRequestSchema } from "@prism/types";
 import { Pencil } from "lucide-react";
 import defaultAvatar from "@/assets/images/default_profile.png";
 import { useUpdateProfilePictureMutation } from "@/network/mutations/useUpdateProfilePictureMutation";
@@ -41,10 +32,6 @@ export function AccountGeneral() {
   const [uploadedProfileImage, setUploadedProfileImage] =
     React.useState<File | null>(null);
   const updateUserInformationMutation = useUpdateUserInformationMutation();
-  const updateUsernameMutation = useUpdateUsernameMutation();
-  const changeEmailMutation = useChangeEmailMutation();
-  const changePasswordMutation = useChangePasswordMutation();
-  const signOutFromAllSessionsMutation = useSignOutFromAllSessionsMutation();
   const updateProfilePictureMutation = useUpdateProfilePictureMutation();
 
   const profileForm = useForm({
@@ -52,28 +39,6 @@ export function AccountGeneral() {
     defaultValues: {
       firstName: user?.profile?.firstName || "",
       lastName: user?.profile?.lastName || "",
-    },
-  });
-
-  const usernameForm = useForm({
-    resolver: zodResolver(UpdateUsernameRequestSchema),
-    defaultValues: {
-      userName: user?.userName || "",
-    },
-  });
-
-  const emailForm = useForm({
-    resolver: zodResolver(ChangeEmailRequestSchema),
-    defaultValues: {
-      email: user?.email || "",
-    },
-  });
-
-  const passwordForm = useForm({
-    resolver: zodResolver(ChangePasswordRequestSchema),
-    defaultValues: {
-      oldPassword: "",
-      newPassword: "",
     },
   });
 
@@ -137,143 +102,6 @@ export function AccountGeneral() {
       </Card>
       <Card>
         <CardHeader className="gap-1">
-          <CardTitle>Username</CardTitle>
-          <CardDescription>Your Prism username</CardDescription>
-        </CardHeader>
-        <CardContent className="px-0 pb-0">
-          <Form {...usernameForm}>
-            <form
-              onSubmit={usernameForm.handleSubmit((values) =>
-                updateUsernameMutation.mutate(values)
-              )}
-              className="space-y-6"
-            >
-              <FormField
-                control={usernameForm.control}
-                name="userName"
-                render={({ field }) => (
-                  <FormItem className="px-6">
-                    <FormControl>
-                      <Input placeholder="" required {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <CardFooter className="border-t px-6 py-4">
-                <Button
-                  type="submit"
-                  disabled={updateUsernameMutation.isPending}
-                >
-                  {updateUsernameMutation.isPending ? (
-                    <LoadingSpinner />
-                  ) : (
-                    "Update"
-                  )}
-                </Button>
-              </CardFooter>
-            </form>
-          </Form>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader className="gap-1">
-          <CardTitle>Email</CardTitle>
-          <CardDescription>Your Prism email.</CardDescription>
-        </CardHeader>
-        <CardContent className="px-0 pb-0">
-          <Form {...emailForm}>
-            <form
-              onSubmit={emailForm.handleSubmit((values) =>
-                changeEmailMutation.mutate(values)
-              )}
-              className="space-y-6"
-            >
-              <FormField
-                control={emailForm.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem className="px-6">
-                    <FormControl>
-                      <Input placeholder="" type="email" required {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <CardFooter className="border-t px-6 py-4">
-                <Button type="submit" disabled={changeEmailMutation.isPending}>
-                  {changeEmailMutation.isPending ? (
-                    <LoadingSpinner />
-                  ) : (
-                    "Update"
-                  )}
-                </Button>
-              </CardFooter>
-            </form>
-          </Form>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader className="gap-1">
-          <CardTitle>Password</CardTitle>
-          <CardDescription>Change your account password.</CardDescription>
-        </CardHeader>
-        <CardContent className="px-0 pb-0">
-          <Form {...passwordForm}>
-            <form
-              onSubmit={passwordForm.handleSubmit((values) => {
-                changePasswordMutation.mutate(values);
-                passwordForm.reset();
-              })}
-              className="space-y-6"
-            >
-              <div className="grid grid-cols-2 gap-4 px-6">
-                <FormField
-                  control={passwordForm.control}
-                  name="oldPassword"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Current password</FormLabel>
-                      <FormControl>
-                        <Input type="password" required {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={passwordForm.control}
-                  name="newPassword"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>New password</FormLabel>
-                      <FormControl>
-                        <Input type="password" required {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              <CardFooter className="border-t px-6 py-4">
-                <Button
-                  type="submit"
-                  disabled={changePasswordMutation.isPending}
-                >
-                  {changePasswordMutation.isPending ? (
-                    <LoadingSpinner />
-                  ) : (
-                    "Update password"
-                  )}
-                </Button>
-              </CardFooter>
-            </form>
-          </Form>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader className="gap-1">
           <CardTitle>Avatar</CardTitle>
           <CardDescription>Select an avatar</CardDescription>
         </CardHeader>
@@ -300,93 +128,43 @@ export function AccountGeneral() {
               </div>
             </label>
             <Input
-              placeholder="Display Name"
-              type="file"
               id="profile-picture-input"
-              accept="image/*"
+              type="file"
               className="hidden"
-              disabled={updateProfilePictureMutation.isPending}
-              onChange={(e) => {
-                if (e.target.files) {
-                  const files = Array.from(e.target.files);
-                  setUploadedProfileImage(files[0]);
+              accept="image/png,image/jpeg,image/gif,image/webp,image/heic,image/heif"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) {
+                  setUploadedProfileImage(file);
                 }
               }}
             />
+            <Button
+              type="button"
+              className="mt-4"
+              disabled={
+                updateProfilePictureMutation.isPending || !uploadedProfileImage
+              }
+              onClick={async () => {
+                if (!uploadedProfileImage) return;
+                const { profilePictureUrl } =
+                  await updateProfilePictureMutation.mutateAsync({
+                    file: uploadedProfileImage,
+                  });
+
+                if (profilePictureUrl) {
+                  setUploadedProfileImage(null);
+                }
+              }}
+            >
+              {updateProfilePictureMutation.isPending ? (
+                <LoadingSpinner />
+              ) : (
+                "Upload avatar"
+              )}
+            </Button>
           </form>
         </CardContent>
-        <CardFooter className="border-t px-6 py-4 gap-4">
-          <Button
-            disabled={
-              updateProfilePictureMutation.isPending || !uploadedProfileImage
-            }
-            onClick={async () => {
-              if (!uploadedProfileImage) return;
-              const { profilePictureUrl } =
-                await updateProfilePictureMutation.mutateAsync({
-                  file: uploadedProfileImage,
-                });
-
-              if (profilePictureUrl) {
-                setUploadedProfileImage(null);
-              }
-            }}
-          >
-            {updateProfilePictureMutation.isPending ? (
-              <LoadingSpinner />
-            ) : (
-              "Update"
-            )}
-          </Button>
-          {uploadedProfileImage ? (
-            <Button
-              variant="outline"
-              className="border-destructive/75"
-              onClick={() => setUploadedProfileImage(null)}
-              disabled={updateProfilePictureMutation.isPending}
-            >
-              Reset
-            </Button>
-          ) : null}
-        </CardFooter>
-      </Card>
-      <Card className="border-destructive">
-        <CardHeader className="gap-1">
-          <CardTitle className="text-destructive">
-            Sign Out From All Sessions
-          </CardTitle>
-          <CardDescription>
-            This will sign you out of all other active sessions.
-          </CardDescription>
-        </CardHeader>
-        <CardFooter className="border-t px-6 py-4">
-          <Button
-            variant="destructive"
-            disabled={signOutFromAllSessionsMutation.isPending}
-            onClick={() => signOutFromAllSessionsMutation.mutate()}
-          >
-            {signOutFromAllSessionsMutation.isPending ? (
-              <LoadingSpinner />
-            ) : (
-              "Sign out"
-            )}
-          </Button>
-        </CardFooter>
-      </Card>
-      <Card className="border-destructive">
-        <CardHeader className="gap-1">
-          <CardTitle className="text-destructive">Delete Account</CardTitle>
-          <CardDescription>Warning: Permanent Account Deletion</CardDescription>
-          <CardDescription>
-            This will irreversibly remove your Personal Account and all
-            associated content from Prism.
-          </CardDescription>
-        </CardHeader>
-        <CardFooter className="border-t px-6 py-4">
-          <Button variant="destructive" disabled>
-            Delete my account
-          </Button>
-        </CardFooter>
       </Card>
     </div>
   );

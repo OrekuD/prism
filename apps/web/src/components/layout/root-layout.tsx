@@ -1,12 +1,13 @@
 import React from "react";
+import { authClient } from "@/lib/authClient";
 import { Outlet, useLocation } from "react-router-dom";
 import { Nav } from "../ui/nav";
-import { useAuthenticationStore } from "@/store/authenticationStore";
 
 const excludedPaths = ["/join"];
 
 export function RootLayout() {
-  const { isAuthenticated } = useAuthenticationStore();
+  const { data: sessionData } = authClient.useSession();
+  const isAuthenticated = Boolean(sessionData?.session);
   const { pathname } = useLocation();
 
   if (isAuthenticated) {

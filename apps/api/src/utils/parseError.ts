@@ -5,7 +5,7 @@ export function parseError(error: ZodError): Array<string> {
 
   try {
     for (const issue of error.issues) {
-      const field = issue.path.length > 0 ? issue.path[0] : "";
+      const field = issue.path.length > 0 ? String(issue.path[0]) : "";
       const message = issue.message;
 
       if (field) {

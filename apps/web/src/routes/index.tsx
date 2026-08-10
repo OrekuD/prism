@@ -1,10 +1,11 @@
 import { Button } from "@/components/ui/button";
-import { useAuthenticationStore } from "@/store/authenticationStore";
 import React from "react";
+import { authClient } from "@/lib/authClient";
 import { Link } from "react-router-dom";
 
 export function Index() {
-  const { isAuthenticated } = useAuthenticationStore();
+  const { data: sessionData } = authClient.useSession();
+  const isAuthenticated = Boolean(sessionData?.session);
   return (
     <div className="flex flex-col items-center gap-2">
       {isAuthenticated ? (

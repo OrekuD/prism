@@ -1,4 +1,3 @@
-import { LocalStorageKeys } from "@/constants/LocalStorageKeys";
 import { axiosInstance } from "@/utils/axiosInstance";
 import type { TeamResource } from "@prism/types";
 import { useQuery } from "@tanstack/react-query";
@@ -14,6 +13,6 @@ export function useTeamsQuery() {
   return useQuery<Array<TeamResource>>({
     queryKey: ["teams"],
     queryFn: teams,
-    enabled: Boolean(localStorage.getItem(LocalStorageKeys.TOKEN)),
+    enabled: true,
   });
 }

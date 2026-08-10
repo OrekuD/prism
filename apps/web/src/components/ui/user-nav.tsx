@@ -15,7 +15,7 @@ import { Laptop, LogOut, Moon, Settings, Sun } from "lucide-react";
 import { useTheme } from "../theme-provider";
 import { useUserStore } from "@/store/userStore";
 import { getInitials } from "@/utils/getInitials";
-import { useSignOutMutation } from "@/network/mutations/useSignOutMutation";
+import { authClient } from "@/lib/authClient";
 import { LoadingSpinner } from "./loading-spinner";
 
 const themes = [
@@ -36,7 +36,6 @@ const themes = [
 export function UserNav() {
   const { user } = useUserStore();
   const theme = useTheme();
-  const signOutMutation = useSignOutMutation();
 
   const name = React.useMemo(() => {
     if (user?.userName) return user.userName;
@@ -111,19 +110,15 @@ export function UserNav() {
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          onClick={(e) => {
-            signOutMutation.mutate();
+          onClick={async (e) => {
             e.preventDefault();
+            await authClient.signOut();
+            window.location.href = "/auth/log-in";
           }}
           className="justify-between"
-          disabled={signOutMutation.isPending}
         >
           Log out
-          {signOutMutation.isPending ? (
-            <LoadingSpinner className="size-4" />
-          ) : (
-            <LogOut className="size-4" />
-          )}
+          <LogOut className="size-4" />
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

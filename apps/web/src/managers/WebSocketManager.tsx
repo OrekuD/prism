@@ -1,5 +1,5 @@
 import { useActiveSessionsStore } from "@/store/activeSessionsStore";
-import { useAuthenticationStore } from "@/store/authenticationStore";
+import { authClient, getServiceToken } from "@/lib/authClient";
 import type { SocketConnectProject, SocketMessageTypes } from "@prism/types";
 import React from "react";
 
@@ -9,50 +9,62 @@ type Props = {
 
 export function WebSocketManager(props: React.PropsWithChildren<Props>) {
   const addSession = useActiveSessionsStore((store) => store.addSession);
-  const accessToken = useAuthenticationStore(
-    (store) => store.authentication?.accessToken,
-  );
+  const { data: sessionData } = authClient.useSession();
   const projectId = props.projectId;
 
   React.useEffect(() => {
-    if (!projectId || !accessToken) return;
+    if (!projectId || !sessionData?.session) return;
 
-    const ws = new WebSocket(`${import.meta.env.VITE_WS_API_URL}/ws`);
+    let ws: WebSocket | null = null;
+    let cancelled = false;
 
-    ws.onopen = () => {
-      const message: SocketConnectProject = {
-        type: "connect-project",
-        data: {
-          projectId,
-          // The signed access token is the only identity the server trusts.
-          token: accessToken,
-        },
-      };
-      ws.send(JSON.stringify(message));
-    };
+    // Request a short-lived service JWT for the analytics WebSocket. The
+    // cookie session stays the primary credential; the JWT is only for the
+    // analytics service (issuer/audience-bound, ~15m expiry).
+    getServiceToken()
+      .then((token) => {
+        if (cancelled || !token) return;
 
-    ws.onerror = () => {
-      console.log("Could not establish a WebSocket connection");
-    };
+        ws = new WebSocket(`${import.meta.env.VITE_WS_API_URL}/ws`);
 
-    ws.onmessage = (event) => {
-      const message: SocketMessageTypes = JSON.parse(event.data);
+        ws.onopen = () => {
+          const message: SocketConnectProject = {
+            type: "connect-project",
+            data: {
+              projectId,
+              token,
+            },
+          };
+          ws?.send(JSON.stringify(message));
+        };
 
-      switch (message.type) {
-        case "user-connected":
-          addSession(message.data.session);
-          break;
-      }
-    };
+        ws.onerror = () => {
+          console.log("Could not establish a WebSocket connection");
+        };
 
-    ws.onclose = () => {
-      console.log("WebSocket connection closed");
-    };
+        ws.onmessage = (event) => {
+          const message: SocketMessageTypes = JSON.parse(event.data);
+
+          switch (message.type) {
+            case "user-connected":
+              addSession(message.data.session);
+              break;
+          }
+        };
+
+        ws.onclose = () => {
+          console.log("WebSocket connection closed");
+        };
+      })
+      .catch(() => {
+        console.log("Could not obtain a service token");
+      });
 
     return () => {
-      ws.close();
+      cancelled = true;
+      ws?.close();
     };
-  }, [projectId, accessToken, addSession]);
+  }, [projectId, sessionData?.session, addSession]);
 
   return <>{props.children}</>;
 }

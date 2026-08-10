@@ -10,15 +10,16 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useJoinTeamMutation } from "@/network/mutations/useJoinTeamMutation";
 import { useTeamInviteQuery } from "@/network/queries/useTeamInviteQuery";
-import { useAuthenticationStore } from "@/store/authenticationStore";
 import { useUserStore } from "@/store/userStore";
 import React from "react";
+import { authClient } from "@/lib/authClient";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 export function JoinTeam() {
   const joinTeamMutation = useJoinTeamMutation();
   const { isLoading, data } = useTeamInviteQuery();
-  const { isAuthenticated } = useAuthenticationStore();
+  const { data: sessionData } = authClient.useSession();
+  const isAuthenticated = Boolean(sessionData?.session);
   const { user } = useUserStore();
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token");

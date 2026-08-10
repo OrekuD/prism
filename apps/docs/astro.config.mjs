@@ -1,14 +1,15 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import mdx from "@astrojs/mdx";
 
 // https://astro.build/config
 export default defineConfig({
   integrations: [
     starlight({
       title: "Prism Docs",
-      social: {
-        github: "https://github.com/OrekuD/prism",
-      },
+      social: [
+        { icon: "github", label: "GitHub", href: "https://github.com/OrekuD/prism" },
+      ],
       sidebar: [
         {
           label: "Guides",
@@ -19,9 +20,10 @@ export default defineConfig({
         },
         {
           label: "Reference",
-          autogenerate: { directory: "reference" },
+          items: [{ autogenerate: { directory: "reference" } }],
         },
       ],
     }),
+    mdx(),
   ],
 });

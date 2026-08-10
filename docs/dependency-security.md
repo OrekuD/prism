@@ -7,9 +7,9 @@ Status after the Task 2 dependency pass (2026-08). Generated from
 
 | Metric | Task 1 baseline | Now |
 | --- | --- | --- |
-| Total advisories | 314 | 52 |
+| Total advisories | 314 | 44 |
 | Critical | 2 | 0 |
-| High | 122 | 3 |
+| High | 122 | 0 |
 | Moderate | 163 | 40 |
 | Low | 27 | 5 |
 
@@ -30,23 +30,12 @@ build-time-only workspace.
 | `jsonwebtoken` (`jws`) | prism-analytics-api | upgraded to 9.0.3 |
 | `form-data`, `js-cookie`, `minimatch`, `glob`, `cross-spawn` | transitive | patched via resolutions |
 
-## Remaining high findings (documented)
+## Resolved during Task 3
 
-### `astro` < 5.15.8 / < 6.3.3 / < 6.4.6 — prism-docs (3 advisories)
-
-- **Reachability**: build-time only. `astro build` runs locally and in CI to
-  produce a static site; the generated output is plain HTML/JS with no
-  server-side execution. The vulnerable behavior is not reachable from
-  deployed code and the docs content is first-party and trusted.
-- **Why not upgraded now**: astro 4.16 is the last release of the 4.x line;
-  the fixes require astro 5/6, which is a major migration (config API
-  changes) and also requires a matching Starlight major. The docs content is
-  still the starter pages and will be rewritten in Task 13; the astro 6
-  migration is bundled with that work.
-- **Owner**: @OrekuD — **Follow-up**: Task 13 (docs rewrite + astro 6).
-- **Compensating controls**: docs are not deployed to a runtime; no untrusted
-  input reaches the build; the dependency-review CI job (below) will flag
-  this again if it is not resolved by then.
+- **astro 4.x -> 7.2 + Starlight 0.41** (previously the last 3 high
+  advisories, all on the EOL astro 4 line): upgraded with the content-layer
+  migration (`docsLoader()`, `src/content.config.ts`) and @astrojs/mdx 7.
+  The audit now reports **zero high/critical advisories**.
 
 ## Resolutions in effect (root `package.json`)
 

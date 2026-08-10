@@ -78,6 +78,15 @@ class Server {
       return auth.handler(ctx.req.raw);
     });
 
+    // Public provider inventory so the UI can hide unavailable buttons.
+    this.instance.get("/api/auth/providers", (ctx) => {
+      const env = ctx.env as Bindings;
+      return ctx.json({
+        github: Boolean(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET),
+        google: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
+      });
+    });
+
     /**
      * Dashboard-only CORS: browser origins must be explicitly allowed via
      * CLIENT_URL or the CORS_ALLOWED_ORIGINS binding. Requests without an

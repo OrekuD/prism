@@ -1,105 +1,85 @@
 import React from "react";
+import { Link } from "react-router-dom";
+import { authClient } from "@/lib/authClient";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { useForm } from "react-hook-form";
-import {
-  type ForgotPasswordRequest,
-  ForgotPasswordRequestSchema,
-} from "@prism/types";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useForgotPasswordMutation } from "@/network/mutations/useForgotPasswordMutation";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-} from "@/components/ui/form";
-import { CheckCircledIcon } from "@radix-ui/react-icons";
 
 export function ForgotPassword() {
-  const forgotPasswordMutation = useForgotPasswordMutation();
+  const [email, setEmail] = React.useState("");
+  const [submitted, setSubmitted] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [isPending, setIsPending] = React.useState(false);
 
-  const form = useForm({
-    resolver: zodResolver(ForgotPasswordRequestSchema),
-    defaultValues: {
-      email: "",
-    },
-  });
-
-  function onSubmit(values: ForgotPasswordRequest) {
-    forgotPasswordMutation.mutate(values);
-  }
+  const onSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    setIsPending(true);
+    try {
+      await authClient.requestPasswordReset({ email });
+      // Same response for known and unknown accounts: no user enumeration.
+      setSubmitted(true);
+    } catch (err) {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setIsPending(false);
+    }
+  };
 
   return (
-    <div className="h-[100dvh] w-full grid place-content-center px-4">
-      {forgotPasswordMutation.isSuccess ? (
-        <Card className="mx-auto w-full text-center md:w-96">
-          <CardHeader className="grid place-items-center">
-            <CheckCircledIcon className="size-10" />
-            <CardTitle className="text-2xl">Check your email</CardTitle>
-            <CardDescription>
-              Instructions have been sent to reset your password.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      ) : (
-        <Card className="mx-auto w-full md:w-96">
-          <CardHeader>
-            <CardTitle className="text-2xl">Forgot Password</CardTitle>
-            <CardDescription>
-              Enter the email address associated with your account
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4">
-              <Form {...form}>
-                <form
-                  onSubmit={form.handleSubmit(onSubmit)}
-                  className="space-y-4"
-                >
-                  <FormField
-                    control={form.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Email</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="m@example.com"
-                            type="email"
-                            {...field}
-                          />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                  <Button
-                    type="submit"
-                    className="w-full"
-                    disabled={forgotPasswordMutation.isPending}
-                  >
-                    {forgotPasswordMutation.isPending ? (
-                      <LoadingSpinner />
-                    ) : (
-                      "Submit"
-                    )}
-                  </Button>
-                </form>
-              </Form>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+    <div className="flex min-h-screen items-center justify-center p-4">
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <CardTitle>Reset your password</CardTitle>
+          <CardDescription>
+            We'll email you a link to set a new password.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {submitted ? (
+            <p className="text-sm text-muted-foreground">
+              If an account exists for that email, a reset link is on its way.
+              Check your inbox (and the server console in local development).
+            </p>
+          ) : (
+            <form onSubmit={onSubmit} className="grid gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                />
+              </div>
+              {error ? (
+                <p className="text-sm text-destructive">{error}</p>
+              ) : null}
+              <Button type="submit" disabled={isPending}>
+                {isPending ? <LoadingSpinner /> : "Send reset link"}
+              </Button>
+            </form>
+          )}
+        </CardContent>
+        <CardFooter>
+          <Link
+            to="/auth/log-in"
+            className="text-sm text-muted-foreground hover:underline"
+          >
+            Back to sign in
+          </Link>
+        </CardFooter>
+      </Card>
     </div>
   );
 }

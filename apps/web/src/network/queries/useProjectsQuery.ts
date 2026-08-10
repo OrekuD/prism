@@ -1,4 +1,3 @@
-import { LocalStorageKeys } from "@/constants/LocalStorageKeys";
 import { useActiveTeamStore } from "@/store/activeTeamStore";
 import { axiosInstance } from "@/utils/axiosInstance";
 import type { ProjectResource } from "@prism/types";
@@ -21,8 +20,7 @@ export function useProjectsQuery() {
       }
       return projects(teamId);
     },
-    enabled:
-      Boolean(localStorage.getItem(LocalStorageKeys.TOKEN)) && Boolean(teamId),
+    enabled: Boolean(teamId),
     refetchOnWindowFocus: false,
   });
 }

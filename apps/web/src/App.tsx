@@ -1,4 +1,5 @@
 import React from "react";
+import { authClient } from "@/lib/authClient";
 import {
   createBrowserRouter,
   createRoutesFromElements,
@@ -22,16 +23,13 @@ import { AccountTeams } from "./routes/profile/teams";
 import { AccountLayout } from "./components/layout/account-layout";
 import { ForgotPassword } from "./routes/auth/forgot-password";
 import { ResetPassword } from "./routes/auth/reset-password";
-import { useAuthenticationStore } from "./store/authenticationStore";
 import { useRefreshUser } from "./hooks/useRefreshUser";
 import { JoinTeam } from "./routes/teams/join-team";
-import { usePrism } from "@prism/react";
 import { ProjectSettingsLayout } from "./components/layout/project-settings-layout";
 import { ProjectSettingsApiKeys } from "./routes/projects/project/settings/api-keys";
 import { ProjectSettingsGeneral } from "./routes/projects/project/settings/general";
 import { ProjectRealtime } from "./routes/projects/project/realtime";
-
-// try sqlite in memory as redis-like db
+import { LoadingSpinner } from "./components/ui/loading-spinner";
 
 const defaultRouter = createBrowserRouter(
   createRoutesFromElements(
@@ -80,19 +78,27 @@ const authenticatedRouter = createBrowserRouter(
   ),
 );
 
+/**
+ * Session-driven routing. While the initial session check is pending, a
+ * loading state is shown so protected routes never flash or redirect
+ * incorrectly.
+ */
 export function App() {
-  const authenticationStore = useAuthenticationStore();
-  const { logEvent, logCustomEvent } = usePrism();
+  const { data: sessionData, isPending } = authClient.useSession();
 
-  useRefreshUser();
+  useRefreshUser(Boolean(sessionData?.session));
+
+  if (isPending) {
+    return (
+      <div className="grid h-screen w-full place-items-center">
+        <LoadingSpinner />
+      </div>
+    );
+  }
 
   return (
     <RouterProvider
-      router={
-        authenticationStore.isAuthenticated
-          ? authenticatedRouter
-          : defaultRouter
-      }
+      router={sessionData?.session ? authenticatedRouter : defaultRouter}
     />
   );
 }

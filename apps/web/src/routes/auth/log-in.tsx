@@ -1,130 +1,130 @@
 import React from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { authClient, fetchEnabledProviders } from "@/lib/authClient";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Link } from "react-router-dom";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useSignInMutation } from "@/network/mutations/useSignInMutation";
-import { useUserStore } from "@/store/userStore";
-import { type SignInRequest, SignInRequestSchema } from "@prism/types";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 
 export function LogIn() {
-  const signInMutation = useSignInMutation();
-  const { user } = useUserStore();
+  const navigate = useNavigate();
+  const [email, setEmail] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [error, setError] = React.useState<string | null>(null);
+  const [isPending, setIsPending] = React.useState(false);
+  const [providers, setProviders] = React.useState<{
+    github: boolean;
+    google: boolean;
+  }>({ github: false, google: false });
 
-  const form = useForm({
-    resolver: zodResolver(SignInRequestSchema),
-    defaultValues: {
-      email: "",
-      password: "",
-    },
-  });
+  React.useEffect(() => {
+    fetchEnabledProviders().then(setProviders);
+  }, []);
 
-  function onSubmit(values: SignInRequest) {
-    signInMutation.mutate(values);
-  }
+  const onSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    setIsPending(true);
+    try {
+      await authClient.signIn.email({ email, password });
+      navigate("/projects");
+    } catch (err) {
+      setError("Invalid email or password");
+    } finally {
+      setIsPending(false);
+    }
+  };
+
+  const onSocial = (provider: "github" | "google") => {
+    authClient.signIn.social({ provider, callbackURL: "/projects" });
+  };
 
   return (
-    <div className="h-[100dvh] w-full grid place-content-center px-4">
-      <Card className="mx-auto w-full md:w-96">
+    <div className="flex min-h-screen items-center justify-center p-4">
+      <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="text-2xl">Login</CardTitle>
-          <CardDescription>
-            Enter your email below to login to your account
-          </CardDescription>
+          <CardTitle>Sign in to Prism</CardTitle>
+          <CardDescription>Enter your credentials below.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4">
-            <Form {...form}>
-              <form
-                onSubmit={form.handleSubmit(onSubmit)}
-                className="space-y-4"
-              >
-                <FormField
-                  control={form.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Email</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="m@example.com"
-                          type="email"
-                          {...field}
-                        />
-                      </FormControl>
-                      {/* <FormDescription /> */}
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Password</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="*******"
-                          type="password"
-                          {...field}
-                        />
-                      </FormControl>
-                      {/* <FormDescription /> */}
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+          <form onSubmit={onSubmit} className="grid gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                required
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                required
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+              />
+            </div>
+            {error ? (
+              <p className="text-sm text-destructive">{error}</p>
+            ) : null}
+            <Button type="submit" disabled={isPending}>
+              {isPending ? <LoadingSpinner /> : "Sign in"}
+            </Button>
+          </form>
+          {(providers.github || providers.google) ? (
+            <div className="mt-4 grid gap-2">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="h-px flex-1 bg-border" />
+                or continue with
+                <span className="h-px flex-1 bg-border" />
+              </div>
+              {providers.github ? (
                 <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={signInMutation.isPending}
+                  type="button"
+                  variant="outline"
+                  onClick={() => onSocial("github")}
                 >
-                  {signInMutation.isPending ? <LoadingSpinner /> : "Login"}
+                  GitHub
                 </Button>
-              </form>
-              <Link
-                to="/auth/forgot-password"
-                className="mt-1 text-center inline-block text-sm underline"
-              >
-                Forgot your password?
-              </Link>
-            </Form>
-
-            {/* <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => {
-                authenticationStore.setIsAuthenticated(true);
-              }}
-            >
-              Login with Google
-            </Button> */}
-          </div>
-          <div className="mt-4 text-center text-sm">
-            Don&apos;t have an account?{" "}
-            <Link to="/auth/create-account" className="underline">
-              Create one
-            </Link>
-          </div>
+              ) : null}
+              {providers.google ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => onSocial("google")}
+                >
+                  Google
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
         </CardContent>
+        <CardFooter className="flex-col items-start gap-2">
+          <Link
+            to="/auth/forgot-password"
+            className="text-sm text-muted-foreground hover:underline"
+          >
+            Forgot your password?
+          </Link>
+          <Link
+            to="/auth/create-account"
+            className="text-sm text-muted-foreground hover:underline"
+          >
+            Don't have an account? Create one
+          </Link>
+        </CardFooter>
       </Card>
     </div>
   );

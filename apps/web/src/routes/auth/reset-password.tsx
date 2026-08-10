@@ -1,130 +1,79 @@
 import React from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { authClient } from "@/lib/authClient";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { useResetPasswordMutation } from "@/network/mutations/useResetPasswordMutation";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
-import { useSearchParams } from "react-router-dom";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { z } from "zod";
-
-const formSchema = z.strictObject({
-  password: z.string(),
-  confirmPassword: z.string(),
-});
 
 export function ResetPassword() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const token = searchParams.get("token");
-  const resetPasswordMutation = useResetPasswordMutation();
+  const token = searchParams.get("token") ?? "";
+  const [password, setPassword] = React.useState("");
+  const [error, setError] = React.useState<string | null>(null);
+  const [isPending, setIsPending] = React.useState(false);
 
-  const form = useForm({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      password: "",
-      confirmPassword: "",
-    },
-  });
-
-  function onSubmit(values: z.infer<typeof formSchema>) {
-    if (!token) return;
-
-    if (values.password !== values.confirmPassword) {
-      form.setError("password", {
-        message: "Passwords do not match",
-      });
-      return;
+  const onSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    setIsPending(true);
+    try {
+      await authClient.resetPassword({ newPassword: password, token });
+      navigate("/auth/log-in");
+    } catch (err) {
+      setError(
+        "This reset link is invalid or has expired. Request a new one.",
+      );
+    } finally {
+      setIsPending(false);
     }
-
-    resetPasswordMutation.mutate({
-      password: values.password,
-      resetPasswordToken: token,
-    });
-  }
+  };
 
   return (
-    <div className="h-[100dvh] w-full grid place-content-center px-4">
-      <Card className="mx-auto w-full md:w-96">
+    <div className="flex min-h-screen items-center justify-center p-4">
+      <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="text-2xl">Reset Password</CardTitle>
-          <CardDescription>
-            Enter a new password to reset your old one.
-          </CardDescription>
+          <CardTitle>Set a new password</CardTitle>
+          <CardDescription>Choose a strong password.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4">
-            <Form {...form}>
-              <form
-                onSubmit={form.handleSubmit(onSubmit)}
-                className="space-y-4"
-              >
-                <FormField
-                  control={form.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Password</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="*******"
-                          type="password"
-                          required
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="confirmPassword"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Confirm Password</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="*******"
-                          type="password"
-                          required
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={resetPasswordMutation.isPending}
-                >
-                  {resetPasswordMutation.isPending ? (
-                    <LoadingSpinner />
-                  ) : (
-                    "Reset Password"
-                  )}
-                </Button>
-              </form>
-            </Form>
-          </div>
+          <form onSubmit={onSubmit} className="grid gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="password">New password</Label>
+              <Input
+                id="password"
+                type="password"
+                required
+                minLength={8}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+              />
+            </div>
+            {error ? (
+              <p className="text-sm text-destructive">{error}</p>
+            ) : null}
+            <Button type="submit" disabled={isPending || !token}>
+              {isPending ? <LoadingSpinner /> : "Reset password"}
+            </Button>
+          </form>
         </CardContent>
+        <CardFooter>
+          <Link
+            to="/auth/log-in"
+            className="text-sm text-muted-foreground hover:underline"
+          >
+            Back to sign in
+          </Link>
+        </CardFooter>
       </Card>
     </div>
   );

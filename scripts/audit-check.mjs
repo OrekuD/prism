@@ -24,13 +24,10 @@ const PRODUCTION_ROOTS = new Set([
 /**
  * Documented accepted findings: advisory id -> { owner, followUp }.
  * Add an entry here only after recording the rationale in
- * docs/dependency-security.md.
+ * docs/dependency-security.md. Currently empty: no blocking production
+ * findings and no accepted high/critical advisories.
  */
-const ALLOWLIST = new Map([
-  // astro 4.x line, build-time only; astro 6 migration bundled with the
-  // docs rewrite in Task 13. Owner: @OrekuD.
-  ["GHSA-5cqj-7fw8-3q6g", { owner: "@OrekuD", followUp: "Task 13" }],
-]);
+const ALLOWLIST = new Map();
 
 const lines = readFileSync(0, "utf8")
   .split("\n")

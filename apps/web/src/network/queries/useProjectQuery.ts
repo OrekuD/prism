@@ -1,4 +1,3 @@
-import { LocalStorageKeys } from "@/constants/LocalStorageKeys";
 import { useActiveTeamStore } from "@/store/activeTeamStore";
 import { axiosInstance } from "@/utils/axiosInstance";
 import {
@@ -22,9 +21,7 @@ export function useProjectQuery(payload: ProjectDetailedRequest) {
   return useQuery<ProjectDetailedResource>({
     queryKey: ["project", payload.slug, payload.duration],
     queryFn: () => project(payload),
-    enabled:
-      Boolean(localStorage.getItem(LocalStorageKeys.TOKEN)) &&
-      Boolean(payload.slug),
+    enabled: Boolean(payload.slug),
     refetchOnWindowFocus: false,
   });
 }
