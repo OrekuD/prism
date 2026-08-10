@@ -1,5 +1,4 @@
 import { LocalStorageKeys } from "@/constants/LocalStorageKeys";
-import type { AuthResource } from "@prism/types";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 

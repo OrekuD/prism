@@ -5,23 +5,44 @@
 # Existing Neon/Postgres product database (development branch)
 DATABASE_URL=
 
-# Long random secret shared with the analytics API (JWT signing).
-# Generate one with: openssl rand -hex 32
+# Long random secret — signs Better Auth sessions and encrypts the JWKS
+# private key. Generate one with: openssl rand -hex 32
 JWT_SECRET_KEY=
 
-# Web dashboard origin, used for links in emails (e.g. verify-email)
+# Deployment URL of this API. Used as the Better Auth base URL, cookie
+# scope, and issuer for service JWTs. Local development:
+BASE_URL=http://localhost:8787
+
+# development | production (secure cookies only in production)
+ENVIRONMENT=development
+
+# Web dashboard origin, used for links in emails and CORS
 CLIENT_URL=http://localhost:3001
 
 # Optional: extra comma-separated dashboard origins allowed by CORS
 # CORS_ALLOWED_ORIGINS=https://app.prism.example.com
 
-# Optional until email flows are tested
+# Self-hosted instances: set to false to close public signup after creating
+# the first admin (yarn workspace prism-api db:bootstrap-admin)
+ALLOW_PUBLIC_SIGNUP=true
+
+# Optional social providers (enabled only when BOTH id and secret are set).
+# Callback URLs (configure these in the provider dashboards):
+#   GitHub:  {BASE_URL}/api/auth/callback/github
+#   Google:  {BASE_URL}/api/auth/callback/google
+# GITHUB_CLIENT_ID=
+# GITHUB_CLIENT_SECRET=
+# GOOGLE_CLIENT_ID=
+# GOOGLE_CLIENT_SECRET=
+
+# Email: Resend when set; otherwise a development console adapter prints the
+# verification/reset links to the server log.
 RESEND_API_KEY=
 
 # Optional until upload flows are tested
 IMAGE_KIT_API_KEY=
 
-# Application identity used in email templates
+# Application identity
 PROJECT_NAME=prism_local
 
 # Analytics: Turso (canonical analytics store) and IP enrichment

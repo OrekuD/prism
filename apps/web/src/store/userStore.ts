@@ -1,9 +1,7 @@
 import { LocalStorageKeys } from "@/constants/LocalStorageKeys";
 import type {
-  ChangeEmailResource,
   ProfilePictureResource,
   ProfileResource,
-  UpdateUsernameResource,
   UserResource,
 } from "@prism/types";
 import { create } from "zustand";
@@ -13,8 +11,6 @@ type UserStore = {
   user: UserResource | null;
   setUser: (value: UserResource | null) => void;
   updateProfile: (value: ProfileResource) => void;
-  changeEmail: (value: ChangeEmailResource) => void;
-  updateUsername: (value: UpdateUsernameResource) => void;
   updateProfilePicture: (value: ProfilePictureResource) => void;
 };
 
@@ -33,22 +29,6 @@ export const useUserStore = create<UserStore>()(
 
         set({
           user: { ...user, profile: value },
-        });
-      },
-      changeEmail: (value) => {
-        const user = state().user;
-        if (!user) return;
-
-        set({
-          user: { ...user, email: value.email },
-        });
-      },
-      updateUsername: (value) => {
-        const user = state().user;
-        if (!user) return;
-
-        set({
-          user: { ...user, userName: value.username },
         });
       },
       updateProfilePicture: (value) => {

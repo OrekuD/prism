@@ -15,7 +15,8 @@
     "db:generate": "drizzle-kit generate",
     "db:drop-tables": "tsx src/database/drop-tables.ts",
     "db:reinstall": "rm -rf drizzle/** && yarn db:drop-tables && yarn db:generate && yarn db:migrate",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "db:bootstrap-admin": "tsx src/database/bootstrap-admin.ts"
   },
   "dependencies": {
     "@hono/swagger-ui": "^0.6.1",
@@ -32,7 +33,6 @@
     "hono": "^4.13.1",
     "postgres": "^3.4.9",
     "resend": "^6.18.1",
-    "ulidx": "^2.3.0",
     "uuid": "^12.0.0",
     "zod": "^4.0.0"
   },

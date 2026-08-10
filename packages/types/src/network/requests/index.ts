@@ -1,29 +1,10 @@
 import { z } from "zod";
 
-export const ChangeEmailRequestSchema = z.strictObject({
-  email: z.string().email(),
-});
-
-export type ChangeEmailRequest = z.infer<typeof ChangeEmailRequestSchema>;
-
-export const ChangePasswordRequestSchema = z.strictObject({
-  oldPassword: z.string(),
-  newPassword: z.string(),
-});
-
-export type ChangePasswordRequest = z.infer<typeof ChangePasswordRequestSchema>;
-
 export const CreateTeamRequestSchema = z.strictObject({
   name: z.string(),
 });
 
 export type CreateTeamRequest = z.infer<typeof CreateTeamRequestSchema>;
-
-export const ForgotPasswordRequestSchema = z.strictObject({
-  email: z.string().email(),
-});
-
-export type ForgotPasswordRequest = z.infer<typeof ForgotPasswordRequestSchema>;
 
 export const MagicLinkSignInRequestSchema = z.strictObject({
   token: z.string(),
@@ -32,12 +13,6 @@ export const MagicLinkSignInRequestSchema = z.strictObject({
 export type MagicLinkSignInRequest = z.infer<
   typeof MagicLinkSignInRequestSchema
 >;
-
-export const OTPSignInRequestSchema = z.strictObject({
-  otp: z.number(),
-});
-
-export type OTPSignInRequest = z.infer<typeof OTPSignInRequestSchema>;
 
 export const RequestMagicLinkSignInRequestSchema = z.strictObject({
   email: z.string().email(),
@@ -54,29 +29,6 @@ export const RequestOTPSignInRequestSchema = z.strictObject({
 export type RequestOTPSignInRequest = z.infer<
   typeof RequestOTPSignInRequestSchema
 >;
-
-export const ResetPasswordRequestSchema = z.strictObject({
-  resetPasswordToken: z.string(),
-  password: z.string(),
-});
-
-export type ResetPasswordRequest = z.infer<typeof ResetPasswordRequestSchema>;
-
-export const SignInRequestSchema = z.strictObject({
-  email: z.string().email(),
-  password: z.string(),
-});
-
-export type SignInRequest = z.infer<typeof SignInRequestSchema>;
-
-export const SignUpRequestSchema = z.strictObject({
-  email: z.string().email(),
-  firstname: z.string(),
-  lastname: z.string(),
-  password: z.string(),
-});
-
-export type SignUpRequest = z.infer<typeof SignUpRequestSchema>;
 
 const maxFileSize = 5000000;
 const acceptedImages = [
@@ -110,18 +62,6 @@ export const UpdateUserInformationRequestSchema = z.strictObject({
 export type UpdateUserInformationRequest = z.infer<
   typeof UpdateUserInformationRequestSchema
 >;
-
-export const UpdateUsernameRequestSchema = z.strictObject({
-  userName: z.string(),
-});
-
-export type UpdateUsernameRequest = z.infer<typeof UpdateUsernameRequestSchema>;
-
-export const VerifyEmailRequestSchema = z.strictObject({
-  token: z.string(),
-});
-
-export type VerifyEmailRequest = z.infer<typeof VerifyEmailRequestSchema>;
 
 export const SendTeamInvitesRequestSchema = z.strictObject({
   emails: z.array(z.string()),

@@ -6844,11 +6844,6 @@ kysely@^0.28.5:
   resolved "https://registry.yarnpkg.com/kysely/-/kysely-0.28.17.tgz#cb8c74696b911a43c595f752b653b90ed56d42b9"
   integrity sha512-nbD8lB9EB3wNdMhOCdx5Li8DxnLbvKByylRLcJ1h+4SkrowVeECAyZlyiKMThF7xFdRz0jSQ2MoJr+wXux2y0Q==
 
-layerr@^2.0.1:
-  version "2.1.0"
-  resolved "https://registry.yarnpkg.com/layerr/-/layerr-2.1.0.tgz#7b2aa335837b856fd25b3dd4fb44dc17d0785491"
-  integrity sha512-xDD9suWxfBYeXgqffRVH/Wqh+mqZrQcqPRn0I0ijl7iJQ7vu8gMGPt1Qop59pEW/jaIDNUN7+PX1Qk40+vuflg==
-
 leac@^0.6.0:
   version "0.6.0"
   resolved "https://registry.yarnpkg.com/leac/-/leac-0.6.0.tgz#dcf136e382e666bd2475f44a1096061b70dc0912"
@@ -9980,13 +9975,6 @@ uint8array-extras@^1.5.0:
   version "1.5.0"
   resolved "https://registry.yarnpkg.com/uint8array-extras/-/uint8array-extras-1.5.0.tgz#10d2a85213de3ada304fea1c454f635c73839e86"
   integrity sha512-rvKSBiC5zqCCiDZ9kAOszZcDvdAHwwIKJG33Ykj43OKcWsnmcBRL09YTU4nOeHZ8Y2a7l1MgTd08SBe9A8Qj6A==
-
-ulidx@^2.3.0:
-  version "2.3.0"
-  resolved "https://registry.yarnpkg.com/ulidx/-/ulidx-2.3.0.tgz#0ed0360b40b7f5ddb88f636d470c51ffebdbee58"
-  integrity sha512-36piWNqcdp9hKlQewyeehCaALy4lyx3FodsCxHuV6i0YdexSkjDOubwxEVr2yi4kh62L/0MgyrxqG4K+qtovnw==
-  dependencies:
-    layerr "^2.0.1"
 
 ultrahtml@^1.6.0:
   version "1.7.0"

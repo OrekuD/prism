@@ -1,27 +1,11 @@
 import { Roles } from "../../enums";
 
-export type AuthResource = {
-  accessToken: string;
-  refreshToken: string;
-  expiryAt: number;
-  refreshExpiryAt: number;
-  user: UserResource;
-};
-
 export type ErrorResource = {
   errors: Array<string>;
 };
 
 export type OkResource = {
   message: string;
-};
-
-export type ChangeEmailResource = {
-  email: string;
-};
-
-export type UpdateUsernameResource = {
-  username: string;
 };
 
 export type ProfilePictureResource = {

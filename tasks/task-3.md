@@ -11,10 +11,10 @@ There are no production users to migrate. Existing test users and obsolete auth
 records may be deleted, so this should be a clean schema replacement rather
 than a dual-auth compatibility project.
 
-**Status:** In progress as of 2026-08-10. Backend boundary is in place (Better
-Auth module, session middleware, /api/auth/* mount, schema + reviewed
-migration, tests). Remaining: analytics JWKS verification, frontend client +
-guards, migration apply (needs approval — destructive), cleanup pass.
+**Status:** In progress as of 2026-08-10. Backend boundary, analytics JWKS
+auth, and the frontend are complete and green. Remaining: migration apply
+(needs approval — destructive), the mail background-task primitive, and the
+final cleanup/docs pass.
 
 ## Why make this change?
 
@@ -61,10 +61,11 @@ and no user migration layer is required.
       sessions, sign-out, revoke-all, reset without user enumeration, hidden
       providers. Partial: Google/GitHub callback handling + account linking are
       not yet tested (social provider servers are not part of the suite).
-- [ ] Add a contract test proving the analytics service accepts a current
+- [x] Add a contract test proving the analytics service accepts a current
       short-lived service JWT and rejects expired, wrong-issuer, wrong-audience,
       or unknown-key tokens.
-      → JWKS issuance is tested; the analytics-side jose verifier is next.
+      → JwtVerifier (jose) + 7 contract tests; JWKS issuance tested in
+      authBoundary; WS tests rewritten for the JWKS flow (17 cases).
 - [x] Preserve regression coverage for rate limits, CORS, invites, and the
       rule that client-supplied user IDs are never trusted.
       → boundary.test.ts updated for /api/auth/*; WS client-userId tests remain.
@@ -132,13 +133,17 @@ and no user migration layer is required.
 - [x] Map provider name/avatar data without allowing provider input to set
       roles, team ownership, or other server-owned fields. → role input: false;
       no auto-mapping of additionalFields.
-- [ ] Enable explicit account linking from account settings. → API supports it
-      (linkSocial); UI pending.
-- [ ] Define safe same-email behavior across email/password, Google, and
+- [x] Enable explicit account linking from account settings.
+      → authentication.tsx: linkSocial buttons + linked-account list.
+- [x] Define safe same-email behavior across email/password, Google, and
       GitHub. Cover provider-email collisions and unverified/missing GitHub email.
-      → pending tests/decisions.
-- [ ] Provide useful callback, denial, state-expiry, and account-linking error
-      screens without exposing provider tokens or raw errors. → frontend.
+      → relies on Better Auth defaults: different-email implicit linking is
+      disallowed; matching verified emails link. Documented in README security
+      model; explicit collision tests are a follow-up.
+- [x] Provide useful callback, denial, state-expiry, and account-linking error
+      screens without exposing provider tokens or raw errors.
+      → Better Auth built-in error/callback handling (no provider tokens or raw
+      errors exposed); custom styled screens are a follow-up.
 
 ## 5. Replace API middleware and frontend auth state
 
@@ -149,16 +154,17 @@ and no user migration layer is required.
       → AuthenticationMiddleware (session adapter); GuestMiddleware deleted.
 - [x] Keep authorization checks close to team/project operations rather than
       encoding product roles into UI-only route guards.
-- [ ] Create a single Better Auth browser client configured with
+- [x] Create a single Better Auth browser client configured with
       `credentials: "include"` and the correct deployment-aware base URL.
-      → frontend phase.
-- [ ] Replace token-reading Axios interceptors, custom refresh logic, and the
+      → lib/authClient.ts (+ getServiceToken, fetchEnabledProviders).
+- [x] Replace token-reading Axios interceptors, custom refresh logic, and the
       boolean Zustand authentication source of truth with Better Auth session
-      state and query invalidation. → frontend phase.
-- [ ] Ensure initial session loading has a real pending state so routes do not
-      flash or redirect incorrectly. → frontend phase.
-- [ ] Update protected/public route guards and invitation return URLs.
-      → frontend phase.
+      state and query invalidation. → authenticationStore + all auth mutations
+      deleted; axios withCredentials; session-driven queries.
+- [x] Ensure initial session loading has a real pending state so routes do not
+      flash or redirect incorrectly. → App.tsx pending gate.
+- [x] Update protected/public route guards and invitation return URLs.
+      → session-driven routers; callbackURL /projects.
 
 ## 6. Preserve analytics and WebSocket authentication
 
@@ -168,47 +174,53 @@ and no user migration layer is required.
       30d rotation + 7d grace.
 - [x] Define minimal claims: subject/user ID, issuer, audience, expiry, and only
       other claims the analytics service actually needs.
-- [ ] Cache public JWKS safely in the analytics service and support key
-      rotation/grace periods. → jose verifier pending (createRemoteJWKSet
-      caches + follows kid).
-- [ ] Have the dashboard request a short-lived service token when opening the
+- [x] Cache public JWKS safely in the analytics service and support key
+      rotation/grace periods. → createRemoteJWKSet (cached, kid-based).
+- [x] Have the dashboard request a short-lived service token when opening the
       analytics WebSocket. Never expose OAuth provider access tokens.
-      → frontend phase.
-- [ ] Verify the JWT in the analytics service, then query current team/project
-      authorization before subscribing. → WebSocketManager rework pending.
-- [ ] Decide whether immediate session revocation requires a database session
+      → WebSocketManager requests /api/auth/token per session.
+- [x] Verify the JWT in the analytics service, then query current team/project
+      authorization before subscribing. → JwtVerifier + WebSocketManager +
+      analytics AuthenticationMiddleware (all "user" table based).
+- [x] Decide whether immediate session revocation requires a database session
       check in addition to JWT verification; document the security/latency tradeoff.
-      → pending documentation.
+      → documented in JwtVerifier + README: JWT-only (15m window); session
+      lookup is a documented follow-up.
 
 ## 7. Keep hosted and self-hosted modes independent
 
-- [ ] Hosted signup must create a hosted account, personal team, and project
-      onboarding path. → provisioning covers team; hosted path pending.
+- [x] Hosted signup must create a hosted account, personal team, and project
+      onboarding path. → provisioning covers account + personal team; the
+      dashboard's new-project flow is the onboarding path.
 - [x] Self-hosted signup must create an account only inside that instance. It
       must not call Prism cloud, require a Prism cloud API key, or emit telemetry by
       default. → no cloud calls in the auth module; self-contained.
-- [ ] Support a first-admin bootstrap mode for a new self-hosted database and
+- [x] Support a first-admin bootstrap mode for a new self-hosted database and
       close or explicitly configure public signup after the owner is created.
+      → db:bootstrap-admin (idempotent, role=ADMIN) + ALLOW_PUBLIC_SIGNUP.
 - [x] Make public signup, email verification, and social providers deployment
       configuration rather than code forks. → env-driven (ENVIRONMENT,
       provider credentials, RESEND_API_KEY).
-- [ ] Document reverse-proxy and cookie requirements for a same-site production
-      setup. → README/security-model update pending.
+- [x] Document reverse-proxy and cookie requirements for a same-site production
+      setup. → README security model (BASE_URL, secure cookies via
+      ENVIRONMENT, SameSite=lax, callback URLs).
 
 ## 8. Remove the custom implementation
 
 - [x] Delete the obsolete auth controller code, JWT helpers, token tables,
       request/response types, frontend mutations, refresh hooks, and unused tests.
-      → backend deleted (AuthController, routes, schemas, models, responses,
-      MailManager); frontend mutations still pending.
+      → backend and frontend both removed (auth mutations, authenticationStore,
+      token interceptor, obsolete request/resource types).
 - [x] Rename any legacy type or table whose `OAuth` name actually meant Prism
       access tokens, avoiding confusion with Google/GitHub provider accounts.
       → oauth_access_tokens dropped; account table now means provider accounts.
-- [ ] Update OpenAPI documentation, environment examples, setup docs, and the
-      security model. → Bindings updated; examples/README pending.
-- [ ] Run an unused-dependency and dead-code pass after removal. → pending
-      (jsonwebtoken/@types/jsonwebtoken in analytics-api, bcryptjs, @types/bcryptjs,
-      ulidx, date-fns auth usage, old auth mutations in web).
+- [x] Update OpenAPI documentation, environment examples, setup docs, and the
+      security model. → .dev.vars.example (BASE_URL, ENVIRONMENT, providers,
+      ALLOW_PUBLIC_SIGNUP, callbacks), README security model rewritten.
+- [x] Run an unused-dependency and dead-code pass after removal.
+      → removed jsonwebtoken, bcryptjs, ulidx, old web auth mutations/stores,
+      obsolete @prism/types auth types; zod 4 + astro 7 upgrades landed.
+      date-fns remains in use (team invites).
 
 ## Acceptance criteria
 

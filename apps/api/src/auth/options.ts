@@ -82,6 +82,9 @@ export function buildAuthOptions(
     },
     emailAndPassword: {
       enabled: true,
+      // Self-hosted instances can close public signup after the owner is
+      // created (see src/database/bootstrap-admin.ts).
+      disableSignUp: env.ALLOW_PUBLIC_SIGNUP === "false",
       minPasswordLength: 8,
       sendResetPassword: async ({ user, url }) => {
         await dispatchEmail(env, {

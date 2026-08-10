@@ -40,7 +40,7 @@ run("product database integration", () => {
   beforeAll(async () => {
     if (!enabled) return;
     // Ensure the schema exists (idempotent) before testing.
-    await db()`SELECT 1 FROM users LIMIT 1`;
+    await db()`SELECT 1 FROM "user" LIMIT 1`;
   });
 
   it("signup creates a user, profile, and personal team atomically", async () => {
@@ -48,8 +48,8 @@ run("product database integration", () => {
     const mail = email();
 
     const user = await db()`
-      INSERT INTO users (email, password, role)
-      VALUES (${mail}, 'hashed', 1)
+      INSERT INTO "user" (id, name, email, email_verified, role)
+      VALUES (gen_random_uuid(), 'Integration Test', ${mail}, true, 1)
       RETURNING id`;
     const userId = user[0].id;
 
@@ -70,7 +70,7 @@ run("product database integration", () => {
 
     await db()`DELETE FROM teams WHERE owner_id = ${userId}`;
     await db()`DELETE FROM profiles WHERE user_id = ${userId}`;
-    await db()`DELETE FROM users WHERE id = ${userId}`;
+    await db()`DELETE FROM "user" WHERE id = ${userId}`;
   });
 
   it("username updates affect only the authenticated user", async () => {
@@ -79,22 +79,22 @@ run("product database integration", () => {
     const mailB = email();
 
     const a = await db()`
-      INSERT INTO users (email, password, role) VALUES (${mailA}, 'h', 1) RETURNING id`;
+      INSERT INTO "user" (id, name, email, email_verified, role) VALUES (gen_random_uuid(), 'A', ${mailA}, true, 1) RETURNING id`;
     const b = await db()`
-      INSERT INTO users (email, password, role) VALUES (${mailB}, 'h', 1) RETURNING id`;
+      INSERT INTO "user" (id, name, email, email_verified, role) VALUES (gen_random_uuid(), 'B', ${mailB}, true, 1) RETURNING id`;
     const userIdA = a[0].id;
     const userIdB = b[0].id;
 
     // Update user A's username with the (bug-fixed) scoped query shape.
     await db()`
-      UPDATE users SET user_name = 'scoped-name' WHERE id = ${userIdA} RETURNING id`;
+      UPDATE "user" SET user_name = 'scoped-name' WHERE id = ${userIdA} RETURNING id`;
 
-    const rowsA = await db()`SELECT user_name FROM users WHERE id = ${userIdA}`;
-    const rowsB = await db()`SELECT user_name FROM users WHERE id = ${userIdB}`;
+    const rowsA = await db()`SELECT user_name FROM "user" WHERE id = ${userIdA}`;
+    const rowsB = await db()`SELECT user_name FROM "user" WHERE id = ${userIdB}`;
     expect(rowsA[0].user_name).toBe("scoped-name");
     expect(rowsB[0].user_name).toBeNull();
 
-    await db()`DELETE FROM users WHERE id IN (${userIdA}, ${userIdB})`;
+    await db()`DELETE FROM "user" WHERE id IN (${userIdA}, ${userIdB})`;
   });
 
   it("leaving a team removes only the requested membership", async () => {
@@ -103,9 +103,9 @@ run("product database integration", () => {
     const ownerMail = email();
 
     const owner = await db()`
-      INSERT INTO users (email, password, role) VALUES (${ownerMail}, 'h', 1) RETURNING id`;
+      INSERT INTO "user" (id, name, email, email_verified, role) VALUES (gen_random_uuid(), 'Owner', ${ownerMail}, true, 1) RETURNING id`;
     const member = await db()`
-      INSERT INTO users (email, password, role) VALUES (${mail}, 'h', 1) RETURNING id`;
+      INSERT INTO "user" (id, name, email, email_verified, role) VALUES (gen_random_uuid(), 'Key User', ${mail}, true, 1) RETURNING id`;
 
     const teamA = await db()`
       INSERT INTO teams (owner_id, name, is_personal)
@@ -128,14 +128,14 @@ run("product database integration", () => {
 
     await db()`DELETE FROM team_members WHERE user_id = ${member[0].id}`;
     await db()`DELETE FROM teams WHERE id IN (${teamA[0].id}, ${teamB[0].id})`;
-    await db()`DELETE FROM users WHERE id IN (${owner[0].id}, ${member[0].id})`;
+    await db()`DELETE FROM "user" WHERE id IN (${owner[0].id}, ${member[0].id})`;
   });
 
   it("project API keys are unique and project-scoped", async () => {
     if (!enabled) return;
     const mail = email();
     const user = await db()`
-      INSERT INTO users (email, password, role) VALUES (${mail}, 'h', 1) RETURNING id`;
+      INSERT INTO "user" (id, name, email, email_verified, role) VALUES (gen_random_uuid(), 'Key User', ${mail}, true, 1) RETURNING id`;
     const team = await db()`
       INSERT INTO teams (owner_id, name, is_personal)
       VALUES (${user[0].id}, 'Team', FALSE) RETURNING id`;
@@ -157,6 +157,6 @@ run("product database integration", () => {
     await db()`DELETE FROM project_api_keys WHERE project_id = ${project[0].id}`;
     await db()`DELETE FROM projects WHERE id = ${project[0].id}`;
     await db()`DELETE FROM teams WHERE id = ${team[0].id}`;
-    await db()`DELETE FROM users WHERE id = ${user[0].id}`;
+    await db()`DELETE FROM "user" WHERE id = ${user[0].id}`;
   });
 });

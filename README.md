@@ -176,29 +176,50 @@ Security regression tests live in:
 
 ## Security model
 
-- **WebSocket subscriptions** require a signed access-token JWT (the same token
-  used for API requests). The server verifies the JWT, checks the backing
-  OAuth access-token row (revoked/expired tokens are rejected), derives the
-  user from the token, and only subscribes users who own or belong to the
-  project's team. A `userId` sent by the client is ignored.
+- **Authentication is Better Auth** (self-hosted, in the main API):
+  - Dashboard sessions are HTTP-only, SameSite cookies (`prism.session_token`)
+    — never `localStorage`. Sessions can be revoked individually or globally.
+  - Email/password (min 8 chars), plus GitHub/Google when credentials are
+    configured; providers are hidden otherwise. Callback URLs:
+    `{BASE_URL}/api/auth/callback/{github|google}`.
+  - Password reset and email verification go through a provider-neutral mail
+    adapter: Resend when `RESEND_API_KEY` is set, otherwise a development
+    console adapter prints the link. Responses never reveal whether an email
+    exists.
+  - Sensitive actions (create team/project, send invites) require a verified
+    email.
+  - Self-hosted instances can close public signup
+    (`ALLOW_PUBLIC_SIGNUP=false`) after creating the first admin with
+    `yarn workspace prism-api db:bootstrap-admin`.
+- **Service authentication (analytics API + WebSocket)** uses the Better Auth
+  JWT plugin: the dashboard requests a short-lived token (issuer `prism`,
+  audience `prism-analytics`, RS256, ~15m expiry) from `/api/auth/token` and
+  the analytics service verifies it against `/api/auth/jwks` (cached, kid-
+  based rotation with a grace period). The browser session is never replaced
+  by a long-lived JWT, and OAuth provider tokens stay encrypted in the
+  `account` table — never exposed to the web app. Revocation tradeoff: JWT-
+  only verification (no per-request session lookup), so a revoked session
+  stays usable until token expiry.
+- **Authorization stays in Prism**: Better Auth establishes identity; team
+  membership, project access, and API-key scope are always checked in the
+  controllers. Client-supplied user IDs are never trusted (WebSocket tests
+  cover this).
 - **Analytics write keys** are public identifiers by design (browser SDKs must
-  embed them), but they are restricted to session ingestion; they cannot read
-  data or manage projects. Session-ending requests are scoped to the project
-  that owns the key. Abuse controls (rate limiting, allowed-origin rules) are
-  planned follow-ups.
+  embed them), but they are restricted to session/event ingestion; they cannot
+  read data or manage projects. Session-ending requests are scoped to the
+  project that owns the key. Rate limits (auth 20/min, ingestion 120/min,
+  WS 30/min per IP) return 429 with Retry-After.
 - The dashboard's Mapbox token is configured via `VITE_MAPBOX_ACCESS_TOKEN`,
   not hardcoded.
 
 ## Notes & known follow-ups
 
-- Dependency modernization landed through 2025-era versions; remaining majors
-  (React 19, React Router 7, Zod 4, Tailwind 4, Biome 2, TypeScript 6/7) are
-  intentionally deferred — see commit messages for the upgrade batches and
-  verification performed.
-- Remaining `yarn audit` findings are in dev-only tooling (`apps/docs` Astro
-  image pipeline, `packages/email-templates` preview server) and are tracked
-  as follow-ups; product runtimes (hono, drizzle-orm, jsonwebtoken, axios,
-  react-router, wrangler) are on patched versions.
+- Remaining majors (React 19, React Router 7, Tailwind 4, Biome 2, TypeScript
+  6/7) are intentionally deferred — see commit messages for the upgrade
+  batches and verification performed. Zod 4 and Astro 7 (docs) were upgraded
+  during Task 3; `yarn audit` reports zero high/critical advisories.
+- `packages/email-templates` preview server advisories are dev-only tooling
+  (see docs/dependency-security.md).
 - `apps/api` has no dedicated build output — `wrangler deploy` bundles the
   worker; the `build` script runs the type check.
 - `@prism/email-templates` `build`/`export` renders templates with
