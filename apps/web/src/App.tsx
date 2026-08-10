@@ -9,6 +9,7 @@ import {
   Navigate,
 } from "react-router-dom";
 import { RootLayout } from "./components/layout/root-layout";
+import { PublicLayout } from "./components/layout/public-layout";
 import { Index } from "./routes/index";
 import { LogIn } from "./routes/auth/log-in";
 import { CreateAccount } from "./routes/auth/create-account";
@@ -35,7 +36,7 @@ import { Gallery } from "./routes/gallery";
 
 const defaultRouter = createBrowserRouter(
   createRoutesFromElements(
-    <Route path="/" element={<RootLayout />}>
+    <Route path="/" element={<PublicLayout />}>
       <Route path="" element={<Index />} />
       <Route path="join" element={<JoinTeam />} />
       <Route path="auth">
