@@ -1,8 +1,26 @@
 import { cors } from "hono/cors";
+import { createMiddleware } from "hono/factory";
 import { router as Router } from "./routers/Router";
 import type { Bindings, HonoConfig } from "./types/types";
 import { swaggerUI } from "@hono/swagger-ui";
 import { OpenAPIHono } from "@hono/zod-openapi";
+import { getAuth } from "./auth/auth";
+import { ErrorResponse } from "./network/responses/ErrorResponse";
+import { RateLimiter, clientIpFrom } from "./utils/RateLimiter";
+
+// Soft per-IP throttle for all Better Auth endpoints (signup, sign-in, OTP,
+// reset, social callbacks). In-memory, per isolate — production enforcement
+// needs a shared store (see README security model).
+export const authRateLimiter = new RateLimiter(60_000, 20);
+
+const authRateLimit = createMiddleware(async (ctx, next) => {
+  const { allowed, retryAfterSeconds } = authRateLimiter.hit(clientIpFrom(ctx));
+  if (!allowed) {
+    ctx.header("Retry-After", String(retryAfterSeconds));
+    return ctx.json(new ErrorResponse("rate_limited").toJSON(), 429);
+  }
+  await next();
+});
 
 class Server {
   private instance: OpenAPIHono<HonoConfig>;
@@ -21,6 +39,43 @@ class Server {
 
     this.instance.get("/", async (ctx) => {
       return ctx.text("Waguan");
+    });
+
+    /**
+     * Better Auth: cookie sessions, email/password, social providers, and
+     * the JWT/JWKS service-token endpoints under /api/auth/*.
+     * CORS with credentials must allow the dashboard origin explicitly.
+     */
+    this.instance.use(
+      "/api/auth/*",
+      cors({
+        origin: (origin, c) => {
+          const env = c.env as Bindings;
+          const allowed = [
+            env.CLIENT_URL,
+            ...(env.CORS_ALLOWED_ORIGINS ?? "")
+              .split(",")
+              .map((entry) => entry.trim())
+              .filter(Boolean),
+          ].filter(Boolean);
+
+          if (!origin) {
+            return "*";
+          }
+          if (allowed.includes(origin)) {
+            return origin;
+          }
+          return null;
+        },
+        credentials: true,
+        allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        maxAge: 86400,
+      }),
+    );
+    this.instance.use("/api/auth/*", authRateLimit);
+    this.instance.all("/api/auth/*", (ctx) => {
+      const auth = getAuth(ctx.env);
+      return auth.handler(ctx.req.raw);
     });
 
     /**

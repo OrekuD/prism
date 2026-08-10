@@ -26,6 +26,7 @@
     "@prism/types": "*",
     "@tsndr/cloudflare-worker-jwt": "^3.2.2",
     "bcryptjs": "^3.0.3",
+    "better-auth": "^1.6.26",
     "date-fns": "^3.6.0",
     "dotenv": "^16.6.1",
     "drizzle-orm": "^0.45.2",
@@ -37,6 +38,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@better-auth/cli": "^1.4.21",
     "@biomejs/biome": "^1.9.4",
     "@cloudflare/workers-types": "^4.20260702.1",
     "@types/bcryptjs": "^3.0.0",

@@ -1,7 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import Server from "../Server";
-import { authRateLimiter } from "../routers/AuthRouter";
-import { inviteLimiter } from "../routers/TeamsRouter";
+import Server, { authRateLimiter } from "../Server";
 import type { Bindings } from "../types/types";
 
 const ENV = {
@@ -13,7 +11,7 @@ const ENV = {
 
 function preflight(origin: string) {
   return Server.getInstance().request(
-    "/api/v1/auth/sign-in",
+    "/api/auth/sign-in/email",
     {
       method: "OPTIONS",
       headers: {
@@ -28,7 +26,6 @@ function preflight(origin: string) {
 describe("main API boundary (CORS + rate limits)", () => {
   beforeEach(() => {
     authRateLimiter.reset();
-    inviteLimiter.reset();
   });
 
   it("allows an approved dashboard origin", async () => {
@@ -69,9 +66,12 @@ describe("main API boundary (CORS + rate limits)", () => {
 
   it("returns 429 for auth endpoints past the rate limit", async () => {
     Server.startServer();
+
+    // The Better Auth handler needs a real database; the rate limiter runs
+    // first, so every attempt is counted before the handler is reached.
     const attempt = () =>
       Server.getInstance().request(
-        "/api/v1/auth/sign-in",
+        "/api/auth/sign-in/email",
         {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -80,26 +80,16 @@ describe("main API boundary (CORS + rate limits)", () => {
         ENV,
       );
 
-    // The GuestMiddleware rejects without a valid token; the limiter counts
-    // the attempts before that. 10 allowed, then blocked.
     const statuses: Array<number> = [];
-    for (let i = 0; i < 11; i += 1) {
+    for (let i = 0; i < 21; i += 1) {
       statuses.push((await attempt()).status);
     }
 
     const blocked = statuses[statuses.length - 1];
-    expect(statuses.slice(0, 10).every((s) => s !== 429)).toBe(true);
+    expect(statuses.slice(0, 20).every((s) => s !== 429)).toBe(true);
     expect(blocked).toBe(429);
 
-    const retry = await Server.getInstance().request(
-      "/api/v1/auth/sign-in",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email: "a@b.c", password: "x" }),
-      },
-      ENV,
-    );
+    const retry = await attempt();
     expect(Number(retry.headers.get("retry-after"))).toBeGreaterThan(0);
   });
 });

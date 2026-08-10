@@ -1,13 +1,13 @@
 import { pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { DatabaseTables } from '../../types/types';
-import { users } from './users';
+import { user } from './auth';
 
 export const profilePictures = pgTable(
 	DatabaseTables.PROFILE_PICTURES,
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
-		user_id: uuid('user_id')
-			.references(() => users.id, {
+		user_id: text('user_id')
+			.references(() => user.id, {
 				onDelete: 'cascade',
 			})
 			.notNull(),

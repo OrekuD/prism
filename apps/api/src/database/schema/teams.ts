@@ -1,11 +1,11 @@
 import { pgTable, text, timestamp, uuid, boolean } from "drizzle-orm/pg-core";
 import { DatabaseTables } from "../../types/types";
-import { users } from "./users";
+import { user } from "./auth";
 
 export const teams = pgTable(DatabaseTables.TEAMS, {
   id: uuid("id").defaultRandom().primaryKey(),
-  owner_id: uuid("owner_id")
-    .references(() => users.id, {
+  owner_id: text("owner_id")
+    .references(() => user.id, {
       onDelete: "cascade",
     })
     .notNull(),

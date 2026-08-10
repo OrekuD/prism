@@ -1,5 +1,9 @@
 # Task 2: Resolve the recovery-review blockers
 
+**Status:** Complete as of 2026-08-10. The JWT secret was rotated. The live
+Mapbox token is intentionally deferred by the project owner; the application
+has a verified no-token fallback.
+
 ## Goal
 
 Finish the local recovery work by making the existing Neon and Turso databases safe to use from every service, fixing the confirmed data-integrity and analytics defects, and proving the critical flows with regression and integration tests.
@@ -302,4 +306,3 @@ yarn typecheck
 yarn lint
 yarn test
 ```
-

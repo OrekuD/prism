@@ -1,78 +1,53 @@
-import { type JWTPayload, Roles } from "@prism/types";
 import { createMiddleware } from "hono/factory";
-import type { HonoConfig } from "../types/types";
 import type { Context } from "hono";
-import jwt from "@tsndr/cloudflare-worker-jwt";
-import { DatabaseManager } from "../managers/DatabaseManager";
-import type { User } from "../models/User";
+import { getAuth } from "../auth/auth";
+import type { HonoConfig } from "../types/types";
 import { ErrorResponse } from "../network/responses/ErrorResponse";
 
+/**
+ * Session-to-Prism-user adapter.
+ *
+ * Better Auth establishes identity (cookie session); this middleware attaches
+ * the typed Prism user to the Hono context. All authorization (teams,
+ * projects, invites, API keys) stays in Prism controllers — never trust a
+ * client-supplied identity.
+ */
 export const AuthenticationMiddleware = createMiddleware(
   async (ctx: Context<HonoConfig>, next) => {
     try {
-      const authHeaderValue = ctx.req.header("Authorization");
+      const auth = getAuth(ctx.env);
+      const session = await auth.api.getSession({
+        headers: ctx.req.raw.headers,
+      });
 
-      if (!authHeaderValue) {
+      if (!session) {
         return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
       }
 
-      const split = authHeaderValue.split("Bearer ");
-
-      if (split.length !== 2) {
-        return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
-      }
-
-      const isValid = await jwt.verify(split[1], ctx.env.JWT_SECRET_KEY);
-
-      if (!isValid) {
-        return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
-      }
-
-      const accessToken = jwt.decode(split[1]) as { payload: JWTPayload };
-
-      if (!accessToken.payload.token) {
-        return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
-      }
-
-      const oauthAccessToken = await DatabaseManager.getInstance(
-        ctx,
-      )`SELECT id, user_id FROM oauth_access_tokens WHERE access_token = ${accessToken.payload.token} AND is_revoked = false AND expiry_at > NOW()`;
-
-      if (oauthAccessToken.length === 0) {
-        return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
-      }
-
-      const user = (await DatabaseManager.getInstance(ctx)`
-			SELECT
-				users.id as id,
-				users.email as email,
-				users.user_name as user_name,
-				users.role as role,
-				json_build_object(
-					'first_name', profiles.first_name,
-					'last_name', profiles.last_name,
-					'gender', profiles.gender,
-					'email_verified_at', profiles.email_verified_at,
-					'profile_picture_url', COALESCE(profile_pictures.profile_picture_url, '')
-				) AS profile
-			FROM
-				users
-			JOIN
-				profiles ON users.id = profiles.user_id
-			LEFT JOIN
-			  profile_pictures ON users.id = profile_pictures.user_id
-			WHERE users.id = ${oauthAccessToken[0].user_id} AND users.role = ${Roles.USER};
-			`) as Array<User>;
-
-      if (user.length === 0) {
-        return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
-      }
-
-      ctx.set("user", user[0]);
-      ctx.set("oauthAccessTokenId", oauthAccessToken[0].id);
-    } catch (error) {
+      ctx.set("user", session.user as never);
+    } catch {
       return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
     }
+    await next();
+  },
+);
+
+/**
+ * Guards sensitive product actions behind a verified email address.
+ * Unverified users can still browse and manage basic account settings, but
+ * cannot create teams, projects, or invite members.
+ */
+export const RequireVerifiedEmailMiddleware = createMiddleware(
+  async (ctx: Context<HonoConfig>, next) => {
+    const user = ctx.get("user") as { emailVerified?: boolean } | undefined;
+
+    if (!user?.emailVerified) {
+      return ctx.json(
+        new ErrorResponse("email_not_verified").toJSON(),
+        403,
+      );
+    }
+
     await next();
   },
 );

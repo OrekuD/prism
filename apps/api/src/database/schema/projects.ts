@@ -6,15 +6,15 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { DatabaseTables } from "../../types/types";
-import { users } from "./users";
+import { user } from "./auth";
 import { teams } from "./teams";
 
 export const projects = pgTable(
   DatabaseTables.PROJECTS,
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    creator_id: uuid("creator_id")
-      .references(() => users.id)
+    creator_id: text("creator_id")
+      .references(() => user.id)
       .notNull(),
     team_id: uuid("team_id")
       .references(() => teams.id, {

@@ -1,0 +1,147 @@
+/**
+ * Shared Better Auth options for Prism.
+ *
+ * Used by:
+ * - the Cloudflare Worker runtime (apps/api/src/auth/auth.ts)
+ * - the Better Auth CLI for schema generation (apps/api/auth.config.ts)
+ * - tests
+ *
+ * The database instance is injected so each runtime can use its own driver
+ * (neon-http on the Worker, postgres-js for the CLI and Node tooling).
+ */
+import type { BetterAuthOptions } from "better-auth";
+import { jwt } from "better-auth/plugins";
+import { github, google } from "better-auth/social-providers";
+import { provisionUserResources } from "./provision.js";
+import { dispatchEmail } from "./mail.js";
+
+export type AuthEnv = Record<string, string | undefined>;
+
+export function isProduction(env: AuthEnv) {
+  return env.ENVIRONMENT === "production";
+}
+
+export function buildAuthOptions(
+  env: AuthEnv,
+  db: {
+    insert: (table: unknown) => unknown;
+    select: (table: unknown) => unknown;
+  },
+): BetterAuthOptions {
+  const production = isProduction(env);
+  const baseURL = env.BASE_URL ?? "http://localhost:8787";
+  const trustedOrigins = [
+    env.CLIENT_URL ?? "http://localhost:3001",
+    ...(env.CORS_ALLOWED_ORIGINS ?? "")
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean),
+  ].filter(Boolean);
+
+  const githubEnabled = Boolean(
+    env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET,
+  );
+  const googleEnabled = Boolean(
+    env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET,
+  );
+
+  return {
+    appName: "Prism",
+    baseURL,
+    secret: env.JWT_SECRET_KEY ?? "",
+    trustedOrigins,
+    advanced: {
+      // UUID-compatible ids keep Better Auth users valid FK targets for the
+      // existing product tables (profiles, teams, memberships, projects).
+      database: {
+        generateId: "uuid",
+      },
+      useSecureCookies: production,
+      defaultCookieAttributes: {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: production,
+      },
+      cookiePrefix: "prism",
+    },
+    user: {
+      additionalFields: {
+        userName: {
+          type: "string",
+          required: false,
+          input: true,
+        },
+        // Server-owned role: not writable through client or provider input.
+        role: {
+          type: "number",
+          required: false,
+          defaultValue: 1,
+          input: false,
+        },
+      },
+    },
+    emailAndPassword: {
+      enabled: true,
+      minPasswordLength: 8,
+      sendResetPassword: async ({ user, url }) => {
+        await dispatchEmail(env, {
+          to: user.email,
+          subject: "Password Reset Request for Your Prism Account",
+          template: "reset-password",
+          props: { name: user.name, resetLink: url },
+        });
+      },
+    },
+    emailVerification: {
+      sendVerificationEmail: async ({ user, url }) => {
+        await dispatchEmail(env, {
+          to: user.email,
+          subject: "Confirm Email for your Prism Account",
+          template: "confirm-email",
+          props: { name: user.name, confirmEmailLink: url },
+        });
+      },
+      autoSignInAfterVerification: true,
+    },
+    socialProviders: {
+      ...(githubEnabled
+        ? { github: github({ clientId: env.GITHUB_CLIENT_ID ?? "", clientSecret: env.GITHUB_CLIENT_SECRET ?? "" }) }
+        : {}),
+      ...(googleEnabled
+        ? { google: google({ clientId: env.GOOGLE_CLIENT_ID ?? "", clientSecret: env.GOOGLE_CLIENT_SECRET ?? "" }) }
+        : {}),
+    } as BetterAuthOptions["socialProviders"],
+    databaseHooks: {
+      user: {
+        create: {
+          after: async (user) => {
+            // Idempotent: retries cannot create duplicate profiles/teams.
+            // Provisioning failure must not break signup; it is retried on
+            // the next login via the idempotent check.
+            try {
+              await provisionUserResources(db as never, user as never);
+            } catch (error) {
+              console.warn(
+                "[prism-auth] profile/team provisioning failed:",
+                error instanceof Error ? error.message : error,
+              );
+            }
+          },
+        },
+      },
+    },
+    plugins: [
+      jwt({
+        jwt: {
+          issuer: "prism",
+          audience: "prism-analytics",
+        },
+        jwks: {
+          keyPairConfig: { alg: "RS256" },
+          rotationInterval: 60 * 60 * 24 * 30, // 30 days
+          gracePeriod: 60 * 60 * 24 * 7, // 7 days of overlap for rotation
+        },
+      }),
+    ],
+  };
+}

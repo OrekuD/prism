@@ -1,7 +1,5 @@
-import type { Client, NeonQueryFunction } from "@neondatabase/serverless";
-import type { NeonDatabase } from "drizzle-orm/neon-serverless";
 import type { HonoRequest } from "hono";
-import type { User } from "../models/User";
+import type { PrismUser } from "../models/User";
 
 export type Bindings = {
   DATABASE_URL: string;
@@ -9,6 +7,13 @@ export type Bindings = {
   CLIENT_URL: string;
   /** Optional comma-separated list of extra dashboard origins for CORS. */
   CORS_ALLOWED_ORIGINS?: string;
+  /** Deployment URL of this API (used for Better Auth base URL and cookies). */
+  BASE_URL?: string;
+  ENVIRONMENT?: string;
+  GITHUB_CLIENT_ID?: string;
+  GITHUB_CLIENT_SECRET?: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
   RESEND_API_KEY: string;
   IMAGE_KIT_API_KEY: string;
   PROJECT_NAME: string;
@@ -26,23 +31,17 @@ export type PromiseReject = (reason: unknown) => void;
 
 export type Gender = "male" | "female" | "other";
 
-export interface Request extends HonoRequest {
-  client: Client;
-}
+export interface Request extends HonoRequest {}
 
 declare module "hono" {
   interface ContextVariableMap {
-    sql: NeonQueryFunction<false, false>;
-    db: NeonDatabase<Record<string, never>>;
-    client: Client;
-    user: User | null | undefined;
-    oauthAccessTokenId: string | undefined;
+    user: PrismUser | null | undefined;
     projectId: string | undefined | null;
   }
 }
 
 export class DatabaseTables {
-  static USERS = "users";
+  static USERS = "user";
   static PROFILES = "profiles";
   static OAUTH_ACCESS_TOKENS = "oauth_access_tokens";
   static LOGIN_ATTEMPTS = "login_attempts";
@@ -61,14 +60,6 @@ export type CorrectTimeStamps<T> = T & {
   createdAt: string;
 };
 
-export type WelcomeMail = {
-  name: "welcome";
-  props: {
-    name: string;
-    confirmEmailLink: string;
-  };
-};
-
 export type ConfirmEmailMail = {
   name: "confirm-email";
   props: {
@@ -84,42 +75,3 @@ export type ResetPasswordMail = {
     resetLink: string;
   };
 };
-
-export type MagicLinkMail = {
-  name: "magic-link";
-  props: {
-    magicLink: string;
-  };
-};
-
-export type OTPSignInMail = {
-  name: "otp-sign-in";
-  props: {
-    otp: string;
-  };
-};
-
-export type EmailChangedMail = {
-  name: "new-email";
-  props: {
-    name: string;
-    confirmEmailLink: string;
-  };
-};
-
-export type TeamInviteMail = {
-  name: "team-invite";
-  props: {
-    teamName: string;
-    teamInviteLink: string;
-  };
-};
-
-export type MailProps =
-  | WelcomeMail
-  | ResetPasswordMail
-  | ConfirmEmailMail
-  | MagicLinkMail
-  | OTPSignInMail
-  | EmailChangedMail
-  | TeamInviteMail;
