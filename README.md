@@ -1,36 +1,166 @@
-# Turborepo kitchen sink starter
+# Prism
 
-This is an official starter Turborepo with multiple meta-frameworks all working in harmony and sharing packages.
+Real-time website analytics for teams: a Cloudflare Worker API, a Node analytics
+API with WebSockets, a React dashboard, and a browser SDK.
 
-This example also shows how to use [Workspace Configurations](https://turbo.build/repo/docs/core-concepts/monorepos/configuring-workspaces).
+## Stack
 
-## Using this example
+| Workspace | What it is | Local URL |
+| --- | --- | --- |
+| `apps/web` (`prism-web`) | React/Vite dashboard | http://localhost:3001 |
+| `apps/api` (`prism-api`) | Cloudflare Worker product API (auth, teams, projects) | http://localhost:8787 |
+| `apps/analytics-api` (`prism-analytics-api`) | Node/Hono analytics API + WebSocket server | http://localhost:8080 |
+| `apps/docs` (`prism-docs`) | Astro Starlight docs | http://localhost:4321 |
+| `packages/core` (`@prism/core`) | Browser analytics SDK (`PrismClient`) | — |
+| `packages/prism-react` (`@prism/react`) | React bindings for the SDK | — |
+| `packages/types` (`@prism/types`) | Shared request/response types & schemas | — |
 
-Run the following command:
+## Prerequisites
+
+- **Node 20** (LTS). The repo declares `engines.node >= 20`; development is
+  verified on Node 20.19.x. Install via nvm: `nvm install 20 && nvm use 20`.
+- **Yarn Classic 1.22.19** (the repo is pinned via `packageManager`).
+  Activate it with Corepack:
+
+  ```sh
+  corepack enable
+  corepack prepare yarn@1.22.19 --activate
+  ```
+
+## Install
 
 ```sh
-npx create-turbo@latest -e kitchen-sink
+yarn install --frozen-lockfile
 ```
 
-## What's inside?
+The lockfile is committed; use `--frozen-lockfile` for reproducible installs.
 
-This Turborepo includes the following packages and apps:
+## Local environment files
 
-### Apps and Packages
+All real credentials live in git-ignored files. Copy the `.example` files and
+fill them in — never commit secrets.
 
-- `api`: an [Cloudflare Worker](https://workers.cloudflare.com/) server
-- `web`: a [Vite](https://vitejs.dev/) single page app
-- `docs`: a [Astro Starlight](https://starlight.astro.build/) blog
-- `@prism/jest-presets`: Jest configurations
-- `@prism/logger`: isomorphic logger (a small wrapper around console.log)
-- `@prism/typescript-config`: tsconfig.json's used throughout the monorepo
+| File | Purpose |
+| --- | --- |
+| `apps/api/.dev.vars` | Worker bindings: Neon `DATABASE_URL`, `JWT_SECRET_KEY`, `CLIENT_URL`, optional `RESEND_API_KEY`/`IMAGE_KIT_API_KEY`, Turso + ipinfo tokens |
+| `apps/analytics-api/.env` | `PORT`, same `JWT_SECRET_KEY` as the main API, Turso URL/token, Neon `NEONDB_*` connection details, ipinfo token |
+| `apps/web/.env.local` | `VITE_API_URL=http://localhost:8787`, `VITE_WS_API_URL=ws://localhost:8080`, `VITE_MAPBOX_ACCESS_TOKEN` (your own Mapbox public token) |
 
-Each package and app is 100% [TypeScript](https://www.typescriptlang.org/).
+Generate a JWT secret with `openssl rand -hex 32` and use the **same value** in
+the main API and the analytics API.
 
-### Utilities
+Both APIs validate their required variables at startup and exit with a list of
+what is missing, so a misconfigured environment fails fast instead of blowing
+up on the first database call.
 
-This Turborepo has some additional tools already setup for you:
+## Databases
 
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [Jest](https://jestjs.io) test runner for all things JavaScript
-- [Prettier](https://prettier.io) for code formatting
+### Product data (Neon/Postgres)
+
+Copy an existing Neon connection string into `apps/api/.dev.vars` → `DATABASE_URL`
+and mirror the host/database/user/password/endpoint into the `NEONDB_*` values of
+`apps/analytics-api/.env`. **Use a development branch, never production.**
+
+Apply the Drizzle migrations (only after confirming the target):
+
+```sh
+yarn workspace prism-api db:migrate
+```
+
+Do **not** run `db:reinstall` — it drops every table in the target schema.
+
+### Analytics data (Turso — canonical store)
+
+Sessions live in Turso/libSQL. Setup is idempotent and never drops tables:
+
+```sh
+yarn workspace prism-analytics-api db:setup
+```
+
+The older D1 path (`apps/api/d1`, `db:d1-init*`) is legacy and kept only for
+history — do not initialize it for new setups.
+
+## Run everything
+
+```sh
+yarn dev
+```
+
+Or run workspaces individually:
+
+```sh
+yarn workspace prism-api dev          # Worker API on :8787
+yarn workspace prism-analytics-api dev  # analytics API + WS on :8080
+yarn workspace prism-web dev          # dashboard on :3001
+```
+
+`@prism/core` and `@prism/react` build in watch mode as part of `yarn dev`; the
+SDK's development build targets `http://localhost:8080`.
+
+### Smoke flow
+
+1. Open http://localhost:3001 and create an account.
+2. Create/select a team, create a project, copy its analytics key
+   (project → Settings → API keys).
+3. In the browser console, start a session with the SDK:
+
+   ```js
+   import { PrismClient } from "@prism/core";
+   const prism = new PrismClient({ key: "YOUR_API_KEY" });
+   prism.startSession({ referrer: document.referrer, location: "" });
+   ```
+
+4. The session appears in the project overview; the realtime page shows a map
+   marker for it (requires `VITE_MAPBOX_ACCESS_TOKEN`).
+
+## Quality gates
+
+```sh
+yarn build       # all workspaces
+yarn typecheck   # tsc --noEmit per workspace
+yarn lint        # Biome per workspace
+yarn test        # Vitest (unit + security regression tests)
+```
+
+Security regression tests live in:
+
+- `apps/analytics-api/src/__tests__/WebSocketManager.test.ts` — WebSocket
+  authentication: unauthenticated/invalid/revoked/expired tokens are rejected,
+  client-supplied user IDs are never trusted, project membership is enforced,
+  closed sockets are removed.
+- `apps/analytics-api/src/__tests__/AnalyticsController.test.ts` — session
+  updates are scoped to the authenticated project.
+- `apps/analytics-api/src/__tests__/AnalyticsMiddleware.test.ts` — analytics
+  key validation.
+- `apps/api/src/__tests__/AuthenticationMiddleware.test.ts` — API token
+  verification path.
+
+## Security model
+
+- **WebSocket subscriptions** require a signed access-token JWT (the same token
+  used for API requests). The server verifies the JWT, checks the backing
+  OAuth access-token row (revoked/expired tokens are rejected), derives the
+  user from the token, and only subscribes users who own or belong to the
+  project's team. A `userId` sent by the client is ignored.
+- **Analytics write keys** are public identifiers by design (browser SDKs must
+  embed them), but they are restricted to session ingestion; they cannot read
+  data or manage projects. Session-ending requests are scoped to the project
+  that owns the key. Abuse controls (rate limiting, allowed-origin rules) are
+  planned follow-ups.
+- The dashboard's Mapbox token is configured via `VITE_MAPBOX_ACCESS_TOKEN`,
+  not hardcoded.
+
+## Notes & known follow-ups
+
+- Dependency modernization landed through 2025-era versions; remaining majors
+  (React 19, React Router 7, Zod 4, Tailwind 4, Biome 2, TypeScript 6/7) are
+  intentionally deferred — see commit messages for the upgrade batches and
+  verification performed.
+- Remaining `yarn audit` findings are in dev-only tooling (`apps/docs` Astro
+  image pipeline, `packages/email-templates` preview server) and are tracked
+  as follow-ups; product runtimes (hono, drizzle-orm, jsonwebtoken, axios,
+  react-router, wrangler) are on patched versions.
+- `apps/api` has no dedicated build output — `wrangler deploy` bundles the
+  worker; the `build` script runs the type check.
+- `@prism/email-templates` `build`/`export` renders templates with
+  `react-email`; the preview server (`email dev`) is dev-only tooling.
