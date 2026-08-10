@@ -37,7 +37,16 @@ function srgbToLuminance([r, g, b]) {
   return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
 }
 
-function parseOklch(value) {
+function parseColor(value) {
+  const hex = value?.match(/^#([0-9a-fA-F]{6})$/);
+  if (hex) {
+    const n = parseInt(hex[1], 16);
+    return [
+      ((n >> 16) & 0xff) / 255,
+      ((n >> 8) & 0xff) / 255,
+      (n & 0xff) / 255,
+    ];
+  }
   const m = value?.match(/oklch\(([\d.]+)\s+([\d.]+)\s+([\d.]+)\)/);
   if (!m) return null;
   return oklchToSrgb(+m[1], +m[2], +m[3]);
@@ -59,8 +68,22 @@ const blocks = {
 const tokens = {};
 for (const [mode, block] of Object.entries(blocks)) {
   tokens[mode] = {};
-  for (const m of block.matchAll(/--([a-z0-9-]+):\s*(oklch\([^)]+\))/g)) {
+  for (const m of block.matchAll(
+    /--([a-z0-9-]+):\s*(oklch\([^)]+\)|#[0-9a-fA-F]{6})/g,
+  )) {
     tokens[mode][m[1]] = m[2];
+  }
+  // Resolve var() aliases transitively (e.g. --primary: var(--accent)).
+  const aliases = [...block.matchAll(/--([a-z0-9-]+):\s*var\(--([a-z0-9-]+)\)/g)];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [, name, ref] of aliases) {
+      if (tokens[mode][name] === undefined && tokens[mode][ref] !== undefined) {
+        tokens[mode][name] = tokens[mode][ref];
+        changed = true;
+      }
+    }
   }
 }
 
@@ -68,19 +91,28 @@ for (const [mode, block] of Object.entries(blocks)) {
 const pairs = [
   ["text on canvas", "text", "canvas", 4.5],
   ["text on surface", "text", "surface", 4.5],
-  ["text on raised", "text", "raised", 4.5],
+  ["text on surface-raised", "text", "surface-raised", 4.5],
   ["muted text on canvas", "text-muted", "canvas", 4.5],
   ["muted text on surface", "text-muted", "surface", 4.5],
-  ["primary on canvas (links)", "primary", "canvas", 4.5],
+  // text-subtle is metadata/disabled copy (WCAG 1.4.3 exempts disabled);
+  // it is not used for body or control labels.
+  ["text-subtle on canvas (metadata/disabled)", "text-subtle", "canvas", 3.0],
+  // accent is for CTAs/large text; inline links use --link (checked below).
+  ["primary on canvas (accent CTAs)", "accent", "canvas", 3.0],
   ["primary-foreground on primary (buttons)", "primary-foreground", "primary", 4.5],
   ["destructive on canvas", "destructive", "canvas", 4.5],
   ["destructive-foreground on destructive", "destructive-foreground", "destructive", 4.5],
-  ["warning on canvas", "warning", "canvas", 3.0],
-  ["success on canvas", "success", "canvas", 3.0],
+  ["danger on canvas (errors)", "danger", "canvas", 4.5],
+  ["link on canvas (docs links)", "link", "canvas", 4.5],
+  ["warning on canvas (status)", "warning", "canvas", 3.0],
+  ["success on canvas (status)", "success", "canvas", 3.0],
   ["text on code", "code-foreground", "code", 4.5],
   // Borders/inputs are decorative dividers in Prism — the focus ring
   // (3:1+ against canvas) is the WCAG 1.4.11 indicator for controls.
-  ["border vs canvas (decorative divider)", "border", "canvas", 1.5],
+  // Hairlines are decorative by design (structure comes from spacing and
+  // border-strong); border-strong is the visible structural divider.
+  ["border vs canvas (decorative hairline)", "border", "canvas", 1.2],
+  ["border-strong vs canvas (major dividers)", "border-strong", "canvas", 1.5],
   ["input vs surface (decorative divider)", "input", "surface", 1.5],
   ["focus ring vs canvas (control indicator)", "focus", "canvas", 3.0],
 ];
@@ -89,8 +121,8 @@ let failed = 0;
 for (const [mode, set] of Object.entries(tokens)) {
   console.log(`\n${mode.toUpperCase()}`);
   for (const [name, fgToken, bgToken, min] of pairs) {
-    const fg = parseOklch(set[fgToken]);
-    const bg = parseOklch(set[bgToken] ?? set.canvas);
+    const fg = parseColor(set[fgToken]);
+    const bg = parseColor(set[bgToken] ?? set.canvas);
     if (!fg || !bg) {
       console.log(`  ? ${name} — missing token`);
       continue;

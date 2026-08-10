@@ -5,129 +5,132 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * ── Prism design tokens ─────────────────────────────────────────────────────
- * Named OKLCH semantic tokens (Task 4). Dark is the brand-forward
- * presentation; light mirrors it from the same token names.
+ * ── Prism design tokens (Task 5) ───────────────────────────────────────────
+ * Source of truth: docs/design-system.md sections 5-7. Hex values are the
+ * canonical first pass; the dark theme is the brand-forward presentation.
  *
- * Canonical names: canvas / surface / raised / text / text-muted / border /
- * input / focus / primary / destructive / warning / success / chart-* / code.
- * Legacy shadcn aliases (--background, --card, ...) map to the same values so
- * existing components keep working unchanged.
- *
- * Accessibility: text + muted text pairs pass WCAG AA 4.5:1 in both modes;
- * verified by scripts/token-contrast.mjs at the end of the Task 4 batch.
+ * Canonical names: canvas / canvas-subtle / surface / surface-raised /
+ * surface-hover / surface-active / border / border-strong / text /
+ * text-muted / text-subtle / text-inverse / accent (+hover/active/soft) /
+ * focus / link / success / warning / danger / info / event.
+ * Legacy shadcn aliases map to the same values so components keep working.
  */
 
 :root {
-  /* canvas — app background (near-black/off-white, never pure) */
-  --canvas: oklch(0.982 0.003 285);
+  color-scheme: light;
 
-  /* surfaces */
-  --surface: oklch(0.995 0.001 285);
-  --raised: oklch(1 0 0);
+  --canvas: #f6f6f8;
+  --canvas-subtle: #f0f0f3;
+  --surface: #ffffff;
+  --surface-raised: #f7f7f9;
+  --surface-hover: #eeeef2;
+  --surface-active: #e6e6ec;
+  --border: #d8d8df;
+  --border-strong: #bcbcc7;
+  --text: #111116;
+  --text-muted: #5d5d68;
+  --text-subtle: #7b7b87;
+  --text-inverse: #f7f7f9;
+  --accent: #5637d4;
+  --accent-hover: #482cb8;
+  --accent-active: #3d249f;
+  --accent-soft: #eae5ff;
+  --focus: #5637d4;
+  --link: #3159d8;
+  --success: #087a55;
+  --warning: #9a6100;
+  --danger: #c72f45;
+  --info: #176fc1;
+  --event: #8b32b5;
 
-  /* text */
-  --text: oklch(0.225 0.02 285);
-  --text-muted: oklch(0.47 0.02 285);
+  /* Charts: the semantic palette, spectrally distinct in both modes. */
+  --chart-1: #6d4af2;
+  --chart-2: #176fc1;
+  --chart-3: #9a6100;
+  --chart-4: #c72f45;
+  --chart-5: #087a55;
 
-  /* hairlines + controls */
-  --border: oklch(0.845 0.011 285);
-  --input: oklch(0.85 0.012 285);
-  --focus: oklch(0.48 0.23 285);
+  /* Sharp two-part radius system (design-system.md 4.2). */
+  --radius: 2px;
+  --radius-control: 2px;
+  --radius-global-cta: 999px;
 
-  /* single Prism accent (violet, refraction-inspired) */
-  --primary: oklch(0.48 0.23 285);
-  --primary-foreground: oklch(0.99 0 0);
-
-  /* semantic states */
-  --destructive: oklch(0.55 0.2 25);
-  --destructive-foreground: oklch(0.99 0 0);
-  --warning: oklch(0.62 0.14 75);
-  --success: oklch(0.55 0.13 155);
-
-  /* surfaces for secondary actions + emphasis */
-  --surface-muted: oklch(0.955 0.006 285);
-  --surface-accent: oklch(0.945 0.02 285);
-  --surface-secondary: oklch(0.955 0.006 285);
-
-  /* code surfaces */
-  --code: oklch(0.965 0.005 285);
-  --code-foreground: oklch(0.3 0.03 285);
-
-  /* charts — 5 distinguishable hues (data states, not decoration) */
-  --chart-1: oklch(0.55 0.2 285);
-  --chart-2: oklch(0.65 0.13 210);
-  --chart-3: oklch(0.72 0.13 75);
-  --chart-4: oklch(0.62 0.17 25);
-  --chart-5: oklch(0.62 0.12 160);
-
-  --radius: 0.375rem;
-
-  /* Legacy aliases (shadcn v3 names) — same values as the canonical tokens. */
+  /* Legacy shadcn aliases */
   --background: var(--canvas);
   --foreground: var(--text);
   --card: var(--surface);
   --card-foreground: var(--text);
-  --popover: var(--raised);
+  --popover: var(--surface-raised);
   --popover-foreground: var(--text);
-  --primary-legacy: var(--primary);
-  --secondary: var(--surface-secondary);
+  --primary: var(--accent);
+  --primary-foreground: #f7f7f9;
+  --secondary: var(--surface-raised);
   --secondary-foreground: var(--text);
-  --muted: var(--surface-muted);
+  --muted: var(--surface-raised);
   --muted-foreground: var(--text-muted);
-  --accent: var(--surface-accent);
+  --accent-legacy: var(--surface-hover);
   --accent-foreground: var(--text);
+  --destructive: var(--danger);
+  --destructive-foreground: #f7f7f9;
+  --input: var(--border-strong);
   --ring: var(--focus);
+  --code: var(--surface);
+  --code-foreground: var(--text);
 }
 
 .dark {
-  --canvas: oklch(0.155 0.012 285);
+  color-scheme: dark;
 
-  --surface: oklch(0.195 0.014 285);
-  --raised: oklch(0.235 0.016 285);
+  --canvas: #050506;
+  --canvas-subtle: #08080a;
+  --surface: #0b0b0e;
+  --surface-raised: #111116;
+  --surface-hover: #17171d;
+  --surface-active: #1d1d25;
+  --border: #25252c;
+  --border-strong: #383842;
+  --text: #f2f2f4;
+  --text-muted: #a3a3ad;
+  --text-subtle: #6b6b75;
+  --text-inverse: #09090b;
+  --accent: #6547e8;
+  --accent-hover: #765af0;
+  --accent-active: #5337cb;
+  --accent-soft: #241a5a;
+  --focus: #9b89ff;
+  --link: #5f7dff;
+  --success: #20d99a;
+  --warning: #f2a51a;
+  --danger: #f05d6c;
+  --info: #4da3ff;
+  --event: #be5be8;
 
-  --text: oklch(0.93 0.005 285);
-  --text-muted: oklch(0.75 0.015 285);
-
-  --border: oklch(0.36 0.016 285);
-  --input: oklch(0.38 0.017 285);
-  --focus: oklch(0.72 0.16 285);
-
-  --primary: oklch(0.74 0.16 285);
-  --primary-foreground: oklch(0.2 0.02 285);
-
-  --destructive: oklch(0.66 0.19 25);
-  --destructive-foreground: oklch(0.16 0.015 285);
-  --warning: oklch(0.78 0.13 75);
-  --success: oklch(0.72 0.14 155);
-
-  --surface-muted: oklch(0.215 0.014 285);
-  --surface-accent: oklch(0.26 0.03 285);
-  --surface-secondary: oklch(0.215 0.014 285);
-
-  --code: oklch(0.19 0.013 285);
-  --code-foreground: oklch(0.85 0.02 285);
-
-  --chart-1: oklch(0.72 0.16 285);
-  --chart-2: oklch(0.75 0.11 210);
-  --chart-3: oklch(0.8 0.12 75);
-  --chart-4: oklch(0.72 0.15 25);
-  --chart-5: oklch(0.75 0.11 160);
+  --chart-1: #8b7cf6;
+  --chart-2: #4da3ff;
+  --chart-3: #f2a51a;
+  --chart-4: #f05d6c;
+  --chart-5: #20d99a;
 
   --background: var(--canvas);
   --foreground: var(--text);
   --card: var(--surface);
   --card-foreground: var(--text);
-  --popover: var(--raised);
+  --popover: var(--surface-raised);
   --popover-foreground: var(--text);
-  --primary-legacy: var(--primary);
-  --secondary: var(--surface-secondary);
+  --primary: var(--accent);
+  --primary-foreground: #f7f7f9;
+  --secondary: var(--surface-raised);
   --secondary-foreground: var(--text);
-  --muted: var(--surface-muted);
+  --muted: var(--surface-raised);
   --muted-foreground: var(--text-muted);
-  --accent: var(--surface-accent);
+  --accent-legacy: var(--surface-hover);
   --accent-foreground: var(--text);
+  --destructive: var(--danger);
+  --destructive-foreground: var(--text-inverse);
+  --input: var(--border-strong);
   --ring: var(--focus);
+  --code: var(--surface);
+  --code-foreground: var(--text);
 }
 
 /*
@@ -136,21 +139,28 @@
  */
 @theme inline {
   --color-canvas: var(--canvas);
+  --color-canvas-subtle: var(--canvas-subtle);
   --color-surface: var(--surface);
-  --color-raised: var(--raised);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-active: var(--surface-active);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-text: var(--text);
   --color-text-muted: var(--text-muted);
-  --color-border: var(--border);
-  --color-input: var(--input);
+  --color-text-subtle: var(--text-subtle);
+  --color-text-inverse: var(--text-inverse);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-active: var(--accent-active);
+  --color-accent-soft: var(--accent-soft);
   --color-focus: var(--focus);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-warning: var(--warning);
+  --color-link: var(--link);
   --color-success: var(--success);
-  --color-code: var(--code);
-  --color-code-foreground: var(--code-foreground);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+  --color-event: var(--event);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
@@ -164,27 +174,31 @@
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
+  --color-accent-legacy: var(--accent-legacy);
   --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-code: var(--code);
+  --color-code-foreground: var(--code-foreground);
 
-  --radius-sm: calc(var(--radius) - 2px);
-  --radius-md: var(--radius);
-  --radius-lg: calc(var(--radius) + 2px);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius-sm: var(--radius-control);
+  --radius-md: var(--radius-control);
+  --radius-lg: var(--radius-control);
+  --radius-xl: var(--radius-control);
 
-  /* Self-hosted type ramp (fonts shipped via @fontsource, no CDN) */
-  --font-sans: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI",
-    Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji",
-    "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
-  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo,
-    Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  /* Self-hosted type ramp (Geist Sans + Geist Mono via @fontsource) */
+  --font-sans: "Geist Variable", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo,
+    Monaco, Consolas, "Liberation Mono", monospace;
 
-  /* Full-height content areas */
   --height-full-screen: calc(100dvh - 4rem);
   --height-full-screen-sm: calc(100dvh - 8rem);
 
