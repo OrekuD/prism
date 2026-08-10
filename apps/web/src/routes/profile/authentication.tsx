@@ -13,10 +13,14 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 
 import { authClient, authBaseUrl, fetchEnabledProviders } from "@/lib/authClient";
+import { useResendVerificationEmail } from "@/hooks/useResendVerificationEmail";
 
 type LinkedAccount = { provider: string; accountId: string };
 
 export function AccountAuthentication() {
+  const { data: sessionData } = authClient.useSession();
+  const emailVerified = Boolean(sessionData?.user?.emailVerified);
+  const { resend, isPending: isResendPending } = useResendVerificationEmail();
   const [userName, setUserName] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [accounts, setAccounts] = React.useState<Array<LinkedAccount>>([]);
@@ -101,6 +105,42 @@ export function AccountAuthentication() {
 
   return (
     <div className="grid gap-6">
+      {!emailVerified ? (
+        <Card>
+          <CardHeader className="gap-1">
+            <CardTitle>Verify your email</CardTitle>
+            <CardDescription>
+              A verified email is required to create teams, projects, and
+              invite members.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center gap-3">
+            <p className="text-sm text-muted-foreground">
+              We sent a confirmation link to{" "}
+              <span className="font-medium text-foreground">
+                {sessionData?.user?.email}
+              </span>
+              . Didn't receive it?
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isResendPending}
+              onClick={() => {
+                if (sessionData?.user?.email) {
+                  resend(sessionData.user.email);
+                }
+              }}
+            >
+              {isResendPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                "Resend verification email"
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
       <Card>
         <CardHeader className="gap-1">
           <CardTitle>Username</CardTitle>

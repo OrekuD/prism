@@ -43,6 +43,33 @@ export async function getServiceToken(): Promise<string | null> {
 export type EnabledProviders = { github: boolean; google: boolean };
 
 /** Reads which social providers the API has credentials for. */
+/**
+ * Requests a fresh verification email for the signed-in user's address.
+ * The endpoint is session-authenticated; the server never reveals whether
+ * an address exists (anti-enumeration), so failures surface as generic
+ * errors only when the request itself is rejected.
+ */
+export async function resendVerificationEmail(
+  email: string,
+): Promise<void> {
+  const response = await fetch(
+    `${authBaseUrl}/api/auth/send-verification-email`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email }),
+    },
+  );
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as
+      | { message?: string }
+      | null;
+    throw new Error(body?.message ?? `Request failed (${response.status})`);
+  }
+}
+
 export async function fetchEnabledProviders(): Promise<EnabledProviders> {
   try {
     const response = await fetch(`${authBaseUrl}/api/auth/providers`);
