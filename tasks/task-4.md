@@ -63,11 +63,12 @@ Avoid mixing visual redesign bugs with upgrade regressions.
       → Surveyed all peers. React 19 blockers to bump: next-themes, input-otp,
       react-day-picker, sonner, cmdk (+ all @radix-ui/*). recharts was REPLACED
       by TanStack Charts 0.9.0 per product decision (recharts removed).
-- [ ] Capture desktop/mobile screenshots of auth, projects, project summary,
+- [x] Capture desktop/mobile screenshots of auth, projects, project summary,
       events, realtime, settings, account, dialogs, popovers, and destructive flows.
-      → Baseline captured so far in docs/screenshots/task-4-baseline/ (gallery
-      account chart, project summary desktop, projects list desktop + mobile);
-      remaining flows after the framework upgrade.
+      → 20 files in docs/screenshots/task-4-baseline/: auth (login/create,
+      dark), projects list (desktop + mobile), summary (light + dark),
+      dialog open, events, realtime, project settings, account security,
+      team dialog, destructive confirmation, gallery (desktop/tablet/mobile).
 
 ## 2. Upgrade React 19 safely
 
@@ -252,6 +253,12 @@ Avoid mixing visual redesign bugs with upgrade regressions.
       recharts, tailwindcss-animate, autoprefixer, postcss, individual
       @radix-ui/react-* packages, next-themes, @types/react-day-picker all
       removed; audit gate stays OK (0 high/critical).
+
+## Status
+
+Complete as of 2026-08-10, with one deferred item: the hosted/self-hosted
+configuration checks in section 8 wait for Task 6's deployment profile.
+Everything else is done and committed on `task-4-react19-tailwind4`.
 
 ## Acceptance criteria
 

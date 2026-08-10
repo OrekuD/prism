@@ -1,0 +1,20 @@
+- generic [ref=f64e2]:
+  - generic [ref=f64e5]:
+    - generic [ref=f64e6]:
+      - generic [ref=f64e7]: Create your Prism account
+      - generic [ref=f64e8]: A personal team and workspace are created for you automatically.
+    - generic [ref=f64e10]:
+      - generic [ref=f64e11]:
+        - generic [ref=f64e12]: Name
+        - textbox "Name" [ref=f64e13]
+      - generic [ref=f64e14]:
+        - generic [ref=f64e15]: Email
+        - textbox "Email" [ref=f64e16]
+      - generic [ref=f64e17]:
+        - generic [ref=f64e18]: Password
+        - textbox "Password" [ref=f64e19]
+        - paragraph [ref=f64e20]: At least 8 characters.
+      - button "Create account" [ref=f64e21]
+    - link "Already have an account? Sign in" [ref=f64e23] [cursor=pointer]:
+      - /url: /auth/log-in
+  - region "Notifications alt+T"
