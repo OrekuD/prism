@@ -140,14 +140,25 @@ Design dials:
 
 Hosted flow:
 
-- [ ] After authentication, collect only missing profile information.
-- [ ] Create or confirm the personal team/workspace.
-- [ ] Create the first project and issue its analytics write key.
-- [ ] Show framework-neutral and React-specific SDK installation snippets with
-      copy actions and redacted/example keys.
-- [ ] Wait for and visibly confirm the first real session/event rather than
-      claiming setup succeeded before ingestion is observed.
-- [ ] Provide a clear skip/resume path and persist onboarding progress.
+- [x] After authentication, collect only missing profile information. Onboarding
+      step 1 confirms the provisioned name/email instead of re-collecting.
+- [x] Create or confirm the personal team/workspace. Step 2 confirms the
+      auto-provisioned personal team.
+- [x] Create the first project and issue its analytics write key. Step 3
+      creates the project and reveals the key once with copy + a
+      save-confirmation checkbox before advancing.
+- [x] Show framework-neutral and React-specific SDK installation snippets with
+      copy actions and redacted/example keys. Step 5 shows install/init/verify
+      rows with copy; keys in shared snippets are masked after the reveal
+      step.
+- [x] Wait for and visibly confirm the first real session/event rather than
+      claiming setup succeeded before ingestion is observed. Step 5 polls
+      GET /api/v1/projects/:slug/events until a real event arrives (4s
+      interval + manual check); verified end-to-end with a live ingestion
+      POST.
+- [x] Provide a clear skip/resume path and persist onboarding progress.
+      Progress persisted per step in localStorage; refresh resumes; skip
+      marks the flow done; completion redirects to /projects.
 
 Self-hosted flow:
 
@@ -204,16 +215,15 @@ Self-hosted flow:
 
 ## Status
 
-In progress on `task-5-hosted-experience`. Slices A (spec tokens, Geist,
-radius, contrast gate), B (landing page + public layout + SEO), and C
-(shared auth shell + four auth flows) are committed, and the auth-shell
-edge cases are closed: OAuth callback error states, duplicate-submit
-prevention, offline-vs-credential errors (6 new tests, web suite now
-12), and responsive/keyboard verification. Next: hosted onboarding,
-empty/error screens, dashboard visual alignment, then the Task 6
-foundation (deployment-mode config, first-owner bootstrap, signup
-policy) before the self-hosted onboarding portion, and finally the
-a11y/visual-regression QA slice.
+In progress on `task-5-hosted-experience`. Slices A-C (tokens/fonts,
+landing, auth shell) and the auth edge cases are committed, and the
+hosted onboarding flow is complete: profile -> workspace -> project +
+key -> SDK install -> real first-event verification -> project overview,
+with persisted resume and skip. Next: empty/error screens, dashboard
+visual alignment + real dashboard capture + analytics events, then the
+Task 6 foundation (deployment-mode config, first-owner bootstrap,
+signup policy) before the self-hosted onboarding portion, and finally
+the a11y/visual-regression QA slice.
 
 ## Acceptance criteria
 

@@ -33,6 +33,7 @@ import { ProjectSettingsGeneral } from "./routes/projects/project/settings/gener
 import { ProjectRealtime } from "./routes/projects/project/realtime";
 import { Skeleton } from "./components/ui/skeleton";
 import { Gallery } from "./routes/gallery";
+import { Onboarding } from "./routes/onboarding";
 
 const defaultRouter = createBrowserRouter(
   createRoutesFromElements(
@@ -65,6 +66,7 @@ const authenticatedRouter = createBrowserRouter(
       </Route>
       <Route path="/" element={<RootLayout />}>
         <Route path="join" element={<JoinTeam />} />
+        <Route path="onboarding" element={<Onboarding />} />
         <Route path="projects">
         <Route path="" element={<Projects />} />
         <Route path="new" element={<NewProject />} />

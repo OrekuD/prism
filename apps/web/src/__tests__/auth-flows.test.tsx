@@ -98,7 +98,7 @@ describe("duplicate-submit prevention", () => {
     expect(submit).toBeDisabled();
     // Enter while pending must not trigger a second request.
     await userEvent.keyboard("{Enter}");
-    resolveSignIn({ data: null, error: null });
+    resolveSignIn?.({ data: null, error: null });
     await waitFor(() => expect(submit).not.toBeDisabled());
     expect(signInEmail).toHaveBeenCalledTimes(1);
   });
@@ -116,7 +116,7 @@ describe("duplicate-submit prevention", () => {
     const submit = screen.getByRole("button", { name: "Send reset link" });
     await userEvent.click(submit);
     await userEvent.keyboard("{Enter}");
-    resolveReset({ data: null, error: null });
+    resolveReset?.({ data: null, error: null });
     await waitFor(() =>
       expect(screen.getByText(/the reset link is on its way/i)).toBeInTheDocument(),
     );

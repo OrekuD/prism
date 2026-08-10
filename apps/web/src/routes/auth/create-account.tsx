@@ -72,8 +72,9 @@ export function CreateAccount() {
         return;
       }
       if (response.data?.user?.emailVerified) {
-        // Local development auto-verifies new users: continue directly.
-        navigate("/projects");
+        // Local development auto-verifies new users: continue directly
+        // into the hosted onboarding flow.
+        navigate("/onboarding");
         return;
       }
       // Hosted flow: wait for the verification click before provisioning.
