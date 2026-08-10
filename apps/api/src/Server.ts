@@ -5,6 +5,7 @@ import type { Bindings, HonoConfig } from "./types/types";
 import { swaggerUI } from "@hono/swagger-ui";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { getAuth } from "./auth/auth";
+import { isOriginAllowed } from "./utils/cors";
 import { setEmailExecutor } from "./auth/mail";
 import { ErrorResponse } from "./network/responses/ErrorResponse";
 import { RateLimiter, clientIpFrom } from "./utils/RateLimiter";
@@ -51,19 +52,10 @@ class Server {
       "/api/auth/*",
       cors({
         origin: (origin, c) => {
-          const env = c.env as Bindings;
-          const allowed = [
-            env.CLIENT_URL,
-            ...(env.CORS_ALLOWED_ORIGINS ?? "")
-              .split(",")
-              .map((entry) => entry.trim())
-              .filter(Boolean),
-          ].filter(Boolean);
-
           if (!origin) {
             return "*";
           }
-          if (allowed.includes(origin)) {
+          if (isOriginAllowed(origin, c.env as Bindings)) {
             return origin;
           }
           return null;

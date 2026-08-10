@@ -36,6 +36,12 @@ export function buildAuthOptions(
       .split(",")
       .map((origin) => origin.trim())
       .filter(Boolean),
+    // Development: trust any localhost/127.0.0.1 port so dev servers on
+    // any port work; production stays locked to the explicit allowlist.
+    // better-auth's matchesOriginPattern treats "*" as a wildcard.
+    ...(env.ENVIRONMENT === "development"
+      ? ["http://localhost:*", "http://127.0.0.1:*"]
+      : []),
   ].filter(Boolean);
 
   const githubEnabled = Boolean(
