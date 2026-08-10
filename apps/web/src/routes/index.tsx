@@ -43,17 +43,19 @@ function Hero() {
       </div>
 
       <div className="lg:col-span-7">
-        <Frame className="p-4 sm:p-6">
-          <div className="grid gap-2">
-            <CodeCopyRow command={installCommand} />
-            <CodeCopyRow command={initializeCommand} />
-            <CodeCopyRow command={verifyCommand} />
-          </div>
-          <p className="mt-4 px-1 text-[13px] leading-relaxed text-text-muted">
-            The first session and event appear in your project overview in
-            realtime, while the WebSocket stays open.
-          </p>
+        <Frame className="overflow-hidden p-0">
+          <img
+            src="/dashboard-preview.png"
+            alt="The Prism workspace overview: usage summary, quick links, and the connect-a-project panel"
+            width={1600}
+            height={1000}
+            className="block h-auto w-full"
+          />
         </Frame>
+        <p className="mt-3 px-1 text-[12px] leading-relaxed text-text-subtle">
+          The real Prism workspace: usage summary, quick links, and the
+          connect-a-project panel.
+        </p>
       </div>
     </section>
   );

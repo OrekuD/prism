@@ -11,6 +11,7 @@ import {
   SocialAuthButtons,
 } from "@/components/auth/social-auth-buttons";
 import { useResendVerificationEmail } from "@/hooks/useResendVerificationEmail";
+import { TELEMETRY_EVENTS, trackTelemetry } from "@/lib/telemetry";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -72,6 +73,7 @@ export function CreateAccount() {
         return;
       }
       if (response.data?.user?.emailVerified) {
+        trackTelemetry(TELEMETRY_EVENTS.signupMethod, { method: "email" });
         // Local development auto-verifies new users: continue directly
         // into the hosted onboarding flow.
         navigate("/onboarding");
@@ -105,6 +107,9 @@ export function CreateAccount() {
         return;
       }
       if (response.data?.url) {
+        trackTelemetry(TELEMETRY_EVENTS.signupMethod, {
+          method: provider,
+        });
         window.location.assign(response.data.url);
       }
     } catch (err) {

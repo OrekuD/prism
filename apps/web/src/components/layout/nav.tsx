@@ -87,6 +87,23 @@ export function Nav() {
 				</Dialog>
 
 				<Link
+					to="/overview"
+					className={cn(
+						"relative flex h-full items-center text-sm font-medium transition-colors duration-150",
+						pathname === "/overview"
+							? "text-foreground"
+							: "text-muted-foreground hover:text-foreground",
+					)}
+				>
+					Overview
+					{pathname === "/overview" ? (
+						<span
+							aria-hidden="true"
+							className="absolute inset-x-0 bottom-0 h-px bg-accent"
+						/>
+					) : null}
+				</Link>
+				<Link
 					to="/projects"
 					className={cn(
 						"relative flex h-full items-center text-sm font-medium transition-colors duration-150",

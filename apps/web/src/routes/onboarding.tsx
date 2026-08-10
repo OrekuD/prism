@@ -14,6 +14,7 @@ import {
   saveProgress,
 } from "@/lib/onboarding";
 import { useProjectsQuery } from "@/network/queries/useProjectsQuery";
+import { TELEMETRY_EVENTS, trackTelemetry } from "@/lib/telemetry";
 import { useTeamsQuery } from "@/network/queries/useTeamsQuery";
 import { cn } from "@/lib/utils";
 
@@ -103,6 +104,7 @@ export function Onboarding() {
     const updated = { ...(progress ?? {}), step: next };
     setProgress(updated);
     saveProgress(updated);
+    trackTelemetry(TELEMETRY_EVENTS.onboardingStep, { step: next });
   };
 
   // Resume: a saved project means steps 4-6 are re-enterable.
@@ -152,6 +154,7 @@ export function Onboarding() {
       const events = await fetchProjectEvents(projectSlug);
       if (events.length > 0) {
         setFirstEvent(true);
+        trackTelemetry(TELEMETRY_EVENTS.firstEventSuccess, {});
         const updated = { ...(progress ?? {}), step: 6 };
         setProgress(updated);
         saveProgress(updated);

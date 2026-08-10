@@ -2,6 +2,7 @@ import { Menu, X } from "lucide-react";
 import React from "react";
 import { Link } from "react-router-dom";
 import { authClient } from "@/lib/authClient";
+import { TELEMETRY_EVENTS, trackTelemetry } from "@/lib/telemetry";
 import { cn } from "@/lib/utils";
 
 const VITE_DOCS_URL: string = import.meta.env.VITE_DOCS_URL ?? "http://localhost:4321";
@@ -38,6 +39,7 @@ export function PublicNav() {
           <div className="hidden items-center gap-6 md:flex">
             <a
               href={docsHref}
+              onClick={() => trackTelemetry(TELEMETRY_EVENTS.docsClick, { source: "nav" })}
               className="text-[13px] text-text-muted transition-colors duration-150 hover:text-text"
             >
               Docs

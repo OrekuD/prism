@@ -70,9 +70,13 @@ Design dials:
       structured data, sitemap behavior, and robots rules for public pages.
       Title/description/OG/theme-color in index.html + robots.txt; canonical/
       sitemap deferred until Task 6 defines the public domain.
-- [ ] Preserve existing analytics event names where useful; define intentional
+- [x] Preserve existing analytics event names where useful; define intentional
       new events for signup method, onboarding progress, docs clicks, and first
       event success without collecting sensitive form content.
+      lib/telemetry.ts: typed event catalog (prism.signup_method,
+      prism.onboarding_step, prism.docs_click, prism.first_event_success),
+      no-op unless VITE_TELEMETRY_KEY opts in - self-hosted deployments
+      never phone home by default.
 
 ## 2. Build the public landing page
 
@@ -85,10 +89,12 @@ Design dials:
       send an event, and see the session in realtime. Real SDK rows
       (yarn add @prism/core, new PrismClient with redacted key, logEvent)
       with copy controls; JavaScript/React tabs.
-- [ ] Use a real Prism dashboard capture or functioning embedded preview after
+- [x] Use a real Prism dashboard capture or functioning embedded preview after
       the dashboard styling is stable. Do not manufacture a fake product UI.
-      Hero panel currently shows the live setup rows; the dashboard capture
-      slot swaps in during the dashboard-alignment slice.
+      Hero now shows a real capture of the live workspace overview
+      (public/dashboard-preview.png, explicit dimensions, framed); the
+      interactive setup rows live in the Connect-a-project section. A
+      fresh capture replaces it in the final QA pass.
 - [x] Explain hosted versus self-hosted deployment honestly, including which
       infrastructure the operator owns.
 - [x] Include focused sections for realtime sessions, events, API keys, team
@@ -242,12 +248,12 @@ Self-hosted flow:
 
 In progress on `task-5-hosted-experience`. Slices A-C (tokens/fonts,
 landing, auth shell), the auth edge cases, hosted onboarding, edge
-screens, and the first dashboard-alignment pass (nav, metrics frame,
-events table, API keys workflow) are committed. Next: the workspace
-overview page, real dashboard capture for the landing hero, and
-analytics events, then the Task 6 foundation (deployment-mode config,
-first-owner bootstrap, signup policy) before the self-hosted onboarding
-portion, and finally the a11y/visual-regression QA slice.
+screens, dashboard alignment (nav, metrics frame, events table, API
+keys), the workspace overview page, the real dashboard capture in the
+landing hero, and the telemetry event catalog are committed. Next: the
+Task 6 foundation (deployment-mode config, first-owner bootstrap,
+signup policy) before the self-hosted onboarding portion, then the
+self-hosted flow, and finally the a11y/visual-regression QA slice.
 
 ## Acceptance criteria
 
