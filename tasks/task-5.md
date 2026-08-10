@@ -174,15 +174,30 @@ Self-hosted flow:
 
 ## 5. Refresh temporary and edge screens
 
-- [ ] Create a branded not-found page for public and authenticated contexts.
-- [ ] Create maintenance/unavailable and API-connectivity error states.
-- [ ] Create empty states for no teams, no projects, no sessions, no events, and
-      unavailable Mapbox, each with one appropriate next action.
-- [ ] Create invitation accepted, invitation invalid/expired, and access-denied
-      states.
-- [ ] Add skeletons that match final layouts rather than centered spinners.
-- [ ] Standardize toast usage for transient confirmation only; keep actionable
-      errors inline or in contextual alerts.
+- [x] Create a branded not-found page for public and authenticated contexts.
+      Session-aware 404 (mono 404, page-not-found label, back-to-projects or
+      landing CTA) wired into both routers.
+- [x] Create maintenance/unavailable and API-connectivity error states.
+      ErrorState component (danger tones, role=alert, retry action) applied
+      to the projects list and events page with refetch; offline auth
+      messaging covered in the auth slice.
+- [x] Create empty states for no teams, no projects, no sessions, no events, and
+      unavailable Mapbox, each with one appropriate next action. EmptyState
+      component (framed, label/title/description/action): projects page links
+      to onboarding, events page shows the logEvent snippet + SDK docs, the
+      activity summary shows a no-sessions state on zero totals, realtime has
+      a no-token map state, teams keep the existing minimal state.
+- [x] Create invitation accepted, invitation invalid/expired, and access-denied
+      states. Join page: accepted state ("You're in" + go-to-projects),
+      expired state with a re-invite hint; cross-team access returns 404 via
+      the API (verified live).
+- [x] Add skeletons that match final layouts rather than centered spinners.
+      Layout-matched skeletons on events/summary/projects/join; the session
+      gate uses a full-page skeleton (Task 4); no centered spinners remain.
+- [x] Standardize toast usage for transient confirmation only; keep actionable
+      errors inline or in contextual alerts. Route-level failures now use
+      contextual ErrorState; toasts remain for copy/saved/transient
+      confirmations only.
 
 ## 6. Ensure the dashboard inherits the visual language
 
@@ -216,14 +231,12 @@ Self-hosted flow:
 ## Status
 
 In progress on `task-5-hosted-experience`. Slices A-C (tokens/fonts,
-landing, auth shell) and the auth edge cases are committed, and the
-hosted onboarding flow is complete: profile -> workspace -> project +
-key -> SDK install -> real first-event verification -> project overview,
-with persisted resume and skip. Next: empty/error screens, dashboard
-visual alignment + real dashboard capture + analytics events, then the
-Task 6 foundation (deployment-mode config, first-owner bootstrap,
-signup policy) before the self-hosted onboarding portion, and finally
-the a11y/visual-regression QA slice.
+landing, auth shell), the auth edge cases, hosted onboarding, and the
+edge screens (404, empty states, API-connectivity errors, invitation
+states) are committed. Next: dashboard visual alignment + real dashboard
+capture + analytics events, then the Task 6 foundation (deployment-mode
+config, first-owner bootstrap, signup policy) before the self-hosted
+onboarding portion, and finally the a11y/visual-regression QA slice.
 
 ## Acceptance criteria
 

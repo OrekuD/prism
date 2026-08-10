@@ -34,6 +34,7 @@ import { ProjectRealtime } from "./routes/projects/project/realtime";
 import { Skeleton } from "./components/ui/skeleton";
 import { Gallery } from "./routes/gallery";
 import { Onboarding } from "./routes/onboarding";
+import { NotFound } from "./routes/not-found";
 
 const defaultRouter = createBrowserRouter(
   createRoutesFromElements(
@@ -49,7 +50,7 @@ const defaultRouter = createBrowserRouter(
       {import.meta.env.DEV ? (
         <Route path="__gallery" element={<Gallery />} />
       ) : null}
-      <Route path="*" element={<Navigate to="/auth/log-in" />} />
+      <Route path="*" element={<NotFound />} />
     </Route>,
   ),
 );
@@ -88,7 +89,7 @@ const authenticatedRouter = createBrowserRouter(
         <Route path="authentication" element={<AccountAuthentication />} />
         <Route path="teams" element={<AccountTeams />} />
       </Route>
-        <Route path="*" element={<Navigate to="/projects" />} />
+        <Route path="*" element={<NotFound />} />
       </Route>
     </>,
   ),

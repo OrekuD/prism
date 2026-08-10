@@ -10,6 +10,7 @@ import { scaleBand } from "@tanstack/charts/scales/band";
 import { scaleLinear } from "@tanstack/charts/scales/linear";
 import { tooltip } from "@tanstack/charts/tooltip";
 import { Chart } from "@tanstack/charts/react";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useMemo } from "react";
 import type { ProjectDetailedResource } from "@prism/types";
 
@@ -61,6 +62,12 @@ export function RankingsChart(props: Props) {
       <CardContent>
         {props.isLoading ? (
           <div className="h-[250px] w-full animate-pulse rounded-md bg-surface-hover" />
+        ) : ranked.length === 0 ? (
+          <EmptyState
+            label="No data"
+            title={`No ${props.label.toLowerCase()} data yet`}
+            description="Rankings appear once sessions have been recorded."
+          />
         ) : (
           <Chart
             definition={definition}

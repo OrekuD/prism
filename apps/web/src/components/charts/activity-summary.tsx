@@ -16,6 +16,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { useProjectQuery } from "@/network/queries/useProjectQuery";
 import type { ProjectDetailedRequest } from "@prism/types";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 
 const chartConfig = {
   views: {
@@ -127,6 +128,12 @@ export function ActivitySummary() {
       <CardContent className="px-2 sm:p-6">
         {isLoading ? (
           <Skeleton className="aspect-auto h-[250px] w-full" />
+        ) : total.desktop + total.mobile === 0 ? (
+          <EmptyState
+            label="No sessions"
+            title="No sessions in this range"
+            description="Send your first session with the Prism SDK using the project key, then come back here."
+          />
         ) : (
           <Chart
             definition={definition}

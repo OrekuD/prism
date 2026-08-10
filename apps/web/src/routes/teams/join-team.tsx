@@ -25,13 +25,30 @@ export function JoinTeam() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token");
   const navigate = useNavigate();
+  const [joined, setJoined] = React.useState(false);
 
   return (
     <div className="h-dvh w-full grid place-content-center px-4 text-center">
       <Card className="mx-auto w-full md:w-96">
-        {!isLoading && !data ? (
+        {joined ? (
+          <CardContent className="space-y-4 py-4">
+            <CardTitle className="text-xl">You're in</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              You now have access to {data?.name}. Projects and analytics are
+              shared with the rest of the team.
+            </p>
+            <div className="grid place-items-center">
+              <Button asChild>
+                <Link to="/projects">Go to projects</Link>
+              </Button>
+            </div>
+          </CardContent>
+        ) : !isLoading && !data ? (
           <CardContent className="space-y-4 py-4">
             <CardTitle className="text-xl">Link has expired</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Ask the team owner to send a new invitation.
+            </p>
           </CardContent>
         ) : (
           <CardContent className="space-y-4 py-4">
@@ -55,7 +72,7 @@ export function JoinTeam() {
                   });
 
                   if (response?.message) {
-                    navigate("/projects");
+                    setJoined(true);
                   }
                 }}
               >

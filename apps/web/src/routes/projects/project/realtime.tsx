@@ -26,6 +26,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { WebSocketManager } from "@/managers/WebSocketManager";
 import { useProjectQuery } from "@/network/queries/useProjectQuery";
 import { useActiveSessionsStore } from "@/store/activeSessionsStore";
@@ -56,15 +57,12 @@ export function ProjectRealtime() {
   if (!mapboxToken) {
     return (
       <WebSocketManager projectId={projectQuery.data?.id}>
-        <div className="w-full relative py-5 h-full-screen-sm md:h-full-screen grid place-items-center">
-          <div className="text-center space-y-2 px-6">
-            <p className="text-sm font-medium">Realtime map unavailable</p>
-            <p className="text-sm text-muted-foreground">
-              Set <code className="text-xs">VITE_MAPBOX_ACCESS_TOKEN</code> in{" "}
-              <code className="text-xs">apps/web/.env.local</code> to see live
-              session markers.
-            </p>
-          </div>
+        <div className="w-full relative py-5 h-full-screen-sm md:h-full-screen">
+          <EmptyState
+            label="Realtime"
+            title="Map unavailable"
+            description="Set VITE_MAPBOX_ACCESS_TOKEN in apps/web/.env.local to see live session markers. Session data keeps flowing either way."
+          />
         </div>
       </WebSocketManager>
     );

@@ -7,7 +7,12 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
 import { useProjectEventsQuery } from "@/network/queries/useProjectEventsQuery";
+
+const VITE_DOCS_URL: string =
+  import.meta.env.VITE_DOCS_URL ?? "http://localhost:4321";
 import { useParams } from "react-router-dom";
 
 function formatTime(value: string) {
@@ -18,7 +23,7 @@ function formatTime(value: string) {
 
 export function ProjectEvents() {
   const { slug } = useParams<{ slug: string }>();
-  const { data, isLoading } = useProjectEventsQuery(slug);
+  const { data, isLoading, isError, refetch } = useProjectEventsQuery(slug);
 
   return (
     <Card>
@@ -35,6 +40,12 @@ export function ProjectEvents() {
             <Skeleton className="h-8 w-full" />
             <Skeleton className="h-8 w-full" />
           </div>
+        ) : isError ? (
+          <ErrorState
+            title="Could not load events"
+            description="Prism could not reach the events store. Check your connection and try again."
+            onRetry={() => refetch()}
+          />
         ) : data && data.length > 0 ? (
           <div className="rounded-md border">
             <table className="w-full text-sm">
@@ -71,10 +82,19 @@ export function ProjectEvents() {
             </table>
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground py-6 text-center">
-            No events yet. Log events from your site with{" "}
-            <code className="text-xs">prism.logEvent("name", data)</code>.
-          </p>
+          <EmptyState
+            label="No events"
+            title="No events yet"
+            description={'Log events from your site with prism.logEvent("name", data) using the project key, then watch them appear here in realtime.'}
+            action={
+              <a
+                href={`${VITE_DOCS_URL}/reference/sdk`}
+                className="text-[13px] font-medium text-link transition-colors duration-150 hover:underline"
+              >
+                Read the SDK reference
+              </a>
+            }
+          />
         )}
       </CardContent>
     </Card>
