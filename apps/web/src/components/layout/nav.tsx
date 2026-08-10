@@ -2,6 +2,7 @@ import React from "react";
 import { TeamSwitcher } from "./team-switcher";
 import { UserNav } from "./user-nav";
 import { Link, useLocation } from "react-router-dom";
+import { cn } from "@/lib/utils";
 import {
 	Dialog,
 	DialogClose,
@@ -83,7 +84,18 @@ export function Nav() {
 					</DialogContent>
 				</Dialog>
 
-				<Link to="#" className="text-sm font-medium">
+				<Link
+					to="/projects"
+					className={cn(
+						"text-sm font-medium transition-colors duration-150",
+						pathname.startsWith("/projects")
+							? "text-foreground"
+							: "text-muted-foreground hover:text-foreground",
+					)}
+				>
+					Projects
+				</Link>
+				<Link to="#" className="text-sm font-medium text-muted-foreground">
 					Docs
 				</Link>
 				<UserNav />
