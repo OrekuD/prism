@@ -1,0 +1,40 @@
+- generic:
+  - generic:
+    - generic:
+      - generic:
+        - link:
+          - /url: /
+        - button:
+          - generic: BT
+          - paragraph: Baseline User's team
+      - generic:
+        - button: Feedback
+        - link:
+          - /url: /projects
+          - text: Docs
+        - button:
+          - generic: BU
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - searchbox
+          - generic:
+            - button [expanded]: New App
+            - button: Team Settings
+        - generic:
+          - generic:
+            - paragraph: You do not have any projects for this team.
+  - dialog [ref=f11e7]:
+    - generic [ref=f11e8]:
+      - heading "Create Project" [level=2] [ref=f11e9]
+      - paragraph
+    - generic [ref=f11e12]:
+      - generic [ref=f11e14]:
+        - text: Name
+        - textbox [active] [ref=f11e15]
+      - generic [ref=f11e16]:
+        - button "Cancel" [ref=f11e17] [cursor=pointer]
+        - button "Create" [ref=f11e18] [cursor=pointer]
+    - button "Close" [ref=f11e19] [cursor=pointer]

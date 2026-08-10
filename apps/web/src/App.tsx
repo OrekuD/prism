@@ -30,6 +30,7 @@ import { ProjectSettingsApiKeys } from "./routes/projects/project/settings/api-k
 import { ProjectSettingsGeneral } from "./routes/projects/project/settings/general";
 import { ProjectRealtime } from "./routes/projects/project/realtime";
 import { LoadingSpinner } from "./components/ui/loading-spinner";
+import { Gallery } from "./routes/gallery";
 
 const defaultRouter = createBrowserRouter(
   createRoutesFromElements(
@@ -42,6 +43,9 @@ const defaultRouter = createBrowserRouter(
         <Route path="forgot-password" element={<ForgotPassword />} />
         <Route path="reset-password" element={<ResetPassword />} />
       </Route>
+      {import.meta.env.DEV ? (
+        <Route path="__gallery" element={<Gallery />} />
+      ) : null}
       <Route path="*" element={<Navigate to="/auth/log-in" />} />
     </Route>,
   ),

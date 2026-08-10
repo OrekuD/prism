@@ -1,5 +1,5 @@
 import React from "react";
-import { RankingsChart } from "./rankings-chart";
+import { RankingsChart } from "@/components/charts/rankings-chart";
 import { useProjectQuery } from "@/network/queries/useProjectQuery";
 import type { ProjectDetailedRequest } from "@prism/types";
 import { useParams, useSearchParams } from "react-router-dom";

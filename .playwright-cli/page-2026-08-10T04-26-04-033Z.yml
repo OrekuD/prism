@@ -1,0 +1,22 @@
+- generic [ref=f11e2]:
+  - generic [ref=f11e24]:
+    - generic [ref=f11e25]:
+      - link [ref=f11e26] [cursor=pointer]:
+        - /url: /
+      - button "Select a team" [ref=f11e28] [cursor=pointer]:
+        - generic [ref=f11e29]: BT
+        - paragraph [ref=f11e31]: Baseline User's team
+    - generic [ref=f11e34]:
+      - button "Feedback" [ref=f11e35] [cursor=pointer]
+      - link "Docs" [ref=f11e36] [cursor=pointer]:
+        - /url: /projects
+      - button "BU" [ref=f11e37] [cursor=pointer]
+  - generic [ref=f11e42]:
+    - searchbox "Search projects..." [ref=f11e48]
+    - generic [ref=f11e49]:
+      - button "New App" [active] [ref=f11e50] [cursor=pointer]
+      - button "Team Settings" [ref=f11e51] [cursor=pointer]
+  - region "Notifications alt+T":
+    - list:
+      - status [ref=f11e69]:
+        - generic [ref=f11e70]: Project created succesfully

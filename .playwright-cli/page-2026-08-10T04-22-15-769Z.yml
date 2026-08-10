@@ -1,0 +1,56 @@
+- generic:
+  - generic:
+    - generic:
+      - generic:
+        - link:
+          - /url: /
+        - button [disabled]: No teams found
+      - generic:
+        - button: Feedback
+        - link:
+          - /url: /account/teams
+          - text: Docs
+        - button
+    - generic:
+      - generic:
+        - generic:
+          - heading [level=2]: Settings
+          - paragraph: Manage your account settings.
+        - generic:
+          - complementary:
+            - navigation:
+              - link:
+                - /url: /account/general
+                - text: General
+              - link:
+                - /url: /account/security
+                - text: Security
+              - link:
+                - /url: /account/teams
+                - text: Teams
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - heading [level=3]: Teams
+                    - paragraph: Manage the teams you belong to.
+                  - button [expanded]: Create Team
+                - generic:
+                  - generic:
+                    - textbox:
+                      - /placeholder: Search teams...
+                  - generic: No teams found
+  - dialog [ref=f7e47]:
+    - generic [ref=f7e48]:
+      - heading "Create team" [level=2] [ref=f7e49]
+      - paragraph [ref=f7e50]: Add a new team
+    - generic [ref=f7e51]:
+      - generic [ref=f7e52]:
+        - text: Team Name
+        - textbox "Team Name" [active] [ref=f7e53]:
+          - /placeholder: Team Inc.
+      - generic [ref=f7e54]:
+        - button "Cancel" [ref=f7e55] [cursor=pointer]
+        - button "Create" [ref=f7e56] [cursor=pointer]
+    - button "Close" [ref=f7e57] [cursor=pointer]

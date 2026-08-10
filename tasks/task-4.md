@@ -45,11 +45,17 @@ Avoid mixing visual redesign bugs with upgrade regressions.
 - [ ] Move product-specific components such as team/project dialogs, summary
       panels, charts, navigation, and user menus into feature/layout directories.
 - [ ] Record component usage with `rg` before deleting or replacing anything.
-- [ ] Identify third-party packages with React 19 peer constraints, especially
+- [x] Identify third-party packages with React 19 peer constraints, especially
       React Hook Form, Radix, charts, maps, date pickers, command menus, OTP, query,
       router, and testing tools.
+      → Surveyed all peers. React 19 blockers to bump: next-themes, input-otp,
+      react-day-picker, sonner, cmdk (+ all @radix-ui/*). recharts was REPLACED
+      by TanStack Charts 0.9.0 per product decision (recharts removed).
 - [ ] Capture desktop/mobile screenshots of auth, projects, project summary,
       events, realtime, settings, account, dialogs, popovers, and destructive flows.
+      → Baseline captured so far in docs/screenshots/task-4-baseline/ (gallery
+      account chart, project summary desktop, projects list desktop + mobile);
+      remaining flows after the framework upgrade.
 
 ## 2. Upgrade React 19 safely
 

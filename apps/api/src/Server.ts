@@ -74,20 +74,23 @@ class Server {
       }),
     );
     this.instance.use("/api/auth/*", authRateLimit);
-    this.instance.all("/api/auth/*", (ctx) => {
-      // Keep scheduled emails (verification/reset) alive beyond the response.
-      setEmailExecutor((promise) => ctx.executionCtx.waitUntil(promise));
-      const auth = getAuth(ctx.env);
-      return auth.handler(ctx.req.raw);
-    });
 
     // Public provider inventory so the UI can hide unavailable buttons.
+    // MUST be registered before the catch-all below: Hono matches in
+    // registration order, and better-auth would otherwise 404 it.
     this.instance.get("/api/auth/providers", (ctx) => {
       const env = ctx.env as Bindings;
       return ctx.json({
         github: Boolean(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET),
         google: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
       });
+    });
+
+    this.instance.all("/api/auth/*", (ctx) => {
+      // Keep scheduled emails (verification/reset) alive beyond the response.
+      setEmailExecutor((promise) => ctx.executionCtx.waitUntil(promise));
+      const auth = getAuth(ctx.env);
+      return auth.handler(ctx.req.raw);
     });
 
     /**
@@ -118,6 +121,7 @@ class Server {
         },
         allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         maxAge: 86400,
+        credentials: true,
       }),
     );
     this.instance.route("/api/v1", Router);
