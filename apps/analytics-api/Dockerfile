@@ -3,6 +3,7 @@
 FROM node:22-alpine AS builder
 WORKDIR /repo
 COPY package.json yarn.lock ./
+COPY packages/config-typescript/package.json packages/config-typescript/package.json
 COPY packages/types/package.json packages/types/package.json
 COPY packages/core/package.json packages/core/package.json
 COPY packages/email-templates/package.json packages/email-templates/package.json
@@ -10,6 +11,8 @@ COPY packages/prism-react/package.json packages/prism-react/package.json
 COPY apps/analytics-api/package.json apps/analytics-api/package.json
 RUN yarn install --frozen-lockfile
 COPY . .
+# Workspace packages ship no committed dist — build @prism/types first
+RUN yarn workspace @prism/types build
 RUN yarn workspace prism-analytics-api build
 
 FROM node:22-alpine
@@ -22,6 +25,8 @@ COPY packages/email-templates/package.json packages/email-templates/package.json
 COPY packages/prism-react/package.json packages/prism-react/package.json
 COPY apps/analytics-api/package.json apps/analytics-api/package.json
 RUN yarn install --frozen-lockfile --production --ignore-scripts && yarn cache clean
+# Runtime imports of @prism/types resolve through the workspace symlink.
+COPY --from=builder /repo/packages/types/dist ./packages/types/dist
 COPY --from=builder /repo/apps/analytics-api/dist ./apps/analytics-api/dist
 COPY --from=builder /repo/apps/analytics-api/db ./apps/analytics-api/db
 WORKDIR /repo/apps/analytics-api

@@ -23,7 +23,24 @@ The implementation source of truth is
 
 ## Status
 
-**Complete.** Implemented in six reviewable slices on
+> **PIVOT (docs migration): the documentation site is being rebuilt on
+> Fumadocs (Next.js 16) at `apps/docs-new`.** The Fumadocs bootstrap, full
+> content migration (36 pages), glass layout, Prism design pass, and the
+> Task 6 closure pass are committed. The legacy Astro/Starlight site
+> (`apps/docs`) is kept until route parity, redirects, builds, search, and
+> self-hosted documentation are verified on the Fumadocs site — then it is
+> retired and task evidence links are re-pointed.
+>
+> **The Starlight-specific instructions below are superseded and will be
+> revised before further implementation.** Sections referencing Starlight
+> components, expressive-code, Astro config, and the docs design system
+> should be read against the Fumadocs architecture (fumadocs-core loader
+> source, fumadocs-mdx, fumadocs-ui layouts — glass + home, Tailwind CSS 4
+> with the `--color-fd-*` token mapping, MDX content with `meta.json`).
+> Items already delivered on the Fumadocs site should be re-verified
+> against the new implementation rather than re-done.
+
+**Original status (legacy site):** Implemented in six reviewable slices on
 `task-5-hosted-experience` (commits: slice A `a52f13a` … slice F pending —
 see below). Content inventory and component prototyping happened first;
 deployment instructions describe only Task-6-certified capabilities.

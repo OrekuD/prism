@@ -13,6 +13,7 @@
 import type { Context } from "hono";
 import { resolvePrismConfig, resolveStorageDriver } from "../config";
 import type { Bindings, HonoConfig } from "../types/types";
+import { logger } from "../utils/logger";
 
 export type StoredFile = {
   /** Deletion key: ImageKit file id, S3 object key, or local path. */
@@ -65,10 +66,9 @@ const imagekitDriver = (env: Record<string, string | undefined>): StorageDriver 
       },
     });
     if (!response.ok) {
-      console.warn(
-        "[prism-storage] imagekit upload failed:",
-        response.status,
-      );
+      logger.warn("storage", "imagekit upload failed", {
+        status: response.status,
+      });
       return null;
     }
     const data = (await response.json()) as {
@@ -205,11 +205,10 @@ const s3Driver = (env: Record<string, string | undefined>): StorageDriver => {
         await file.arrayBuffer(),
       );
       if (!response.ok) {
-        console.warn(
-          "[prism-storage] s3 upload failed:",
-          response.status,
-          await response.text().catch(() => ""),
-        );
+        logger.warn("storage", "s3 upload failed", {
+          status: response.status,
+          body: await response.text().catch(() => ""),
+        });
         return null;
       }
       return {
@@ -222,11 +221,10 @@ const s3Driver = (env: Record<string, string | undefined>): StorageDriver => {
     async delete(key) {
       const response = await signedRequest(cfg, "DELETE", key);
       if (!response.ok) {
-        console.warn(
-          "[prism-storage] s3 delete failed:",
-          response.status,
-          await response.text().catch(() => ""),
-        );
+        logger.warn("storage", "s3 delete failed", {
+          status: response.status,
+          body: await response.text().catch(() => ""),
+        });
       }
     },
   };

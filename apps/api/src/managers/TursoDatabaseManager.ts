@@ -2,6 +2,7 @@ import { createClient, type Client } from "@libsql/client/web";
 import { resolveDeploymentMode } from "../config";
 import type { HonoConfig } from "../types/types";
 import type { Context } from "hono";
+import { logger } from "../utils/logger";
 
 /**
  * Analytics store (two-store architecture, task-6 ADR-0001). The product
@@ -34,9 +35,9 @@ export class TursoDatabaseManager {
       }
       if (!TursoDatabaseManager.warned) {
         TursoDatabaseManager.warned = true;
-        console.warn(
-          "[prism-api] TURSO_DATABASE_URL is not set: analytics reads return empty. " +
-            "Set it to enable events/sessions on this instance.",
+        logger.warn(
+          "analytics-store",
+          "TURSO_DATABASE_URL is not set: analytics reads return empty. Set it to enable events/sessions on this instance.",
         );
       }
       TursoDatabaseManager.instance = {

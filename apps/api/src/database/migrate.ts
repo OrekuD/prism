@@ -2,6 +2,7 @@ import { config } from "dotenv";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { drizzle as drizzlePostgres } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import { logger } from "../utils/logger";
 
 // .env first (self-hosted Node operators), then .dev.vars (local wrangler
 // dev). Shell variables are never overridden.
@@ -25,6 +26,8 @@ const main = async () => {
   process.exit(0);
 };
 main().catch((error) => {
-  console.error("[prism-migrate] Failed:", error);
+  logger.error("migrate", "failed", {
+    message: error instanceof Error ? error.message : error,
+  });
   process.exit(1);
 });

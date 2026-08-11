@@ -10,6 +10,7 @@ import type { Bindings, HonoConfig } from "../types/types";
 import * as authSchema from "../database/schema/auth";
 import { Roles } from "@prism/types";
 import { ErrorResponse } from "../network/responses/ErrorResponse";
+import { logger } from "../utils/logger";
 
 /** Stale-claim threshold: a claim older than this with zero users means
  * the previous setup request crashed before creating anything. */
@@ -120,8 +121,9 @@ export class SetupController {
           error.message,
         )
       ) {
-        console.warn(
-          "[prism-setup] setup_claim table is missing — apply migrations (yarn workspace prism-api db:migrate).",
+        logger.warn(
+          "setup",
+          "setup_claim table is missing — apply migrations (yarn workspace prism-api db:migrate).",
         );
         return ctx.json(new ErrorResponse("database_not_ready").toJSON(), 503);
       }
@@ -191,10 +193,9 @@ export class SetupController {
     } catch (error) {
       // Roll back: a partially configured owner must not close setup.
       await SetupController.rollbackOwner(productDb.query, userId);
-      console.warn(
-        "[prism-setup] owner promotion/provisioning failed, rolled back:",
-        error instanceof Error ? error.message : error,
-      );
+      logger.warn("setup", "owner promotion/provisioning failed, rolled back", {
+        message: error instanceof Error ? error.message : error,
+      });
       return ctx.json(new ErrorResponse("signup_failed").toJSON(), 500);
     }
 
@@ -261,10 +262,9 @@ export class SetupController {
       await query`DELETE FROM "user" WHERE id = ${userId}`;
       await SetupController.releaseClaim(query);
     } catch (error) {
-      console.warn(
-        "[prism-setup] rollback incomplete:",
-        error instanceof Error ? error.message : error,
-      );
+      logger.warn("setup", "rollback incomplete", {
+        message: error instanceof Error ? error.message : error,
+      });
     }
   }
 }

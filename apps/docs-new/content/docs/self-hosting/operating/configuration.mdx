@@ -67,10 +67,36 @@ Callbacks: `{BASE_URL}/api/auth/callback/{github|google}`.
 | Variable | Requirement | Default |
 | --- | --- | --- |
 | `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` | Optional | — |
+| `ANALYTICS_RETENTION_DAYS` | Non-negative integer; unset/0 disables retention deletion | `0` (disabled) |
 
 Without the store, analytics reads return empty and the rest of the instance
 works (one-time warning at boot). Self-hosted defaults to the bundled sqld
 container; set these only when using Turso.
+
+## Retention
+
+`ANALYTICS_RETENTION_DAYS` controls deletion of expired analytics data.
+**Unset or `0` disables deletion** (the default — no surprise data loss); a
+positive integer enables batched deletion of sessions (and their events)
+older than that many days. Events are deleted before sessions, in one atomic
+batch.
+
+Run it from the analytics container (or locally against your store):
+
+```sh
+docker compose exec analytics node dist/src/retention.js --status
+docker compose exec analytics node dist/src/retention.js --dry-run
+docker compose exec analytics node dist/src/retention.js
+```
+
+- `--status` prints configuration and row counts (read-only).
+- `--dry-run` prints what would be deleted without deleting.
+- The plain invocation applies the deletion and reports affected rows.
+- Invalid values (negative, non-integer) fail fast at invocation.
+
+Schedule it (e.g. a nightly cron) once you have chosen a window. Deleted
+data cannot be recovered — keep a volume snapshot if you need a safety net
+(see [Backup & restore](/docs/self-hosting/operating/backup-restore)).
 
 ## Object storage
 

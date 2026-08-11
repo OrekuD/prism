@@ -17,6 +17,7 @@ import Server from "./Server";
 import { validatePrismConfig } from "./config";
 import { createPostgresProductDb } from "./database/db";
 import { setRuntimeAdapter } from "./runtime";
+import { logger } from "./utils/logger";
 
 loadDotenv();
 
@@ -26,11 +27,9 @@ const env = process.env as Record<string, string | undefined>;
 
 const problems = validatePrismConfig(env);
 if (problems.length > 0) {
-  console.error(
-    ["[prism-api] Configuration is invalid:", ...problems.map((p) => `  - ${p}`)].join(
-      "\n",
-    ),
-  );
+  logger.error("api", "configuration invalid", {
+    problems: problems.map((p) => `  - ${p}`),
+  });
   process.exit(1);
 }
 
@@ -52,4 +51,4 @@ serve({
   port,
 });
 
-console.log(`[prism-api] Node server listening on http://localhost:${port}`);
+logger.info("api", "node server listening", { url: `http://localhost:${port}` });

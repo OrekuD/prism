@@ -1,6 +1,7 @@
 import { serve } from "@hono/node-server";
 import dotenv from "dotenv";
 import { app, injectWebSocket } from "./app.js";
+import { logger } from "./utils/logger.js";
 
 dotenv.config();
 
@@ -34,20 +35,17 @@ function validateEnvironment() {
     return;
   }
 
-  console.error(
-    [
-      "[prism-analytics-api] Missing required environment variables:",
-      ...missing.map((key) => `  - ${key}`),
-      "",
-      "Copy apps/analytics-api/.env.example to apps/analytics-api/.env and fill in the values.",
-    ].join("\n"),
+  logger.error(
+    "analytics",
+    "missing required environment variables — copy apps/analytics-api/.env.example to apps/analytics-api/.env and fill in the values",
+    { missing },
   );
   process.exit(1);
 }
 
 validateEnvironment();
 
-console.log(`Server is running on port ${port}`);
+logger.info("analytics", "server running", { port });
 
 const server = serve({
   fetch: app.fetch,

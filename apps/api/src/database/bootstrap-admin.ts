@@ -34,6 +34,7 @@ import { buildAuthOptions } from "../auth/options";
 import { provisionUserResources } from "../auth/provision";
 import { createPostgresProductDb } from "../database/db";
 import { Roles } from "@prism/types";
+import { logger } from "../utils/logger";
 
 // .env first (self-hosted Node operators), then .dev.vars (local wrangler
 // dev). Shell variables are never overridden.
@@ -44,14 +45,15 @@ const email = process.env.ADMIN_EMAIL;
 const password = process.env.ADMIN_PASSWORD;
 
 if (!email || !password) {
-  console.error(
-    "[bootstrap-admin] Set ADMIN_EMAIL and ADMIN_PASSWORD (never commit them).",
+  logger.error(
+    "bootstrap-admin",
+    "Set ADMIN_EMAIL and ADMIN_PASSWORD (never commit them).",
   );
   process.exit(1);
 }
 
 if (password.length < 8) {
-  console.error("[bootstrap-admin] Password must be at least 8 characters.");
+  logger.error("bootstrap-admin", "Password must be at least 8 characters.");
   process.exit(1);
 }
 
@@ -68,10 +70,9 @@ async function main() {
     .limit(1);
 
   if (userCount.length > 0 && process.env.BOOTSTRAP_FORCE !== "1") {
-    console.error(
-      "[bootstrap-admin] Refusing to bootstrap: the database already has users. " +
-        "The first-owner bootstrap is only allowed on an empty database. " +
-        "Set BOOTSTRAP_FORCE=1 only if you know what you are doing.",
+    logger.error(
+      "bootstrap-admin",
+      "Refusing to bootstrap: the database already has users. The first-owner bootstrap is only allowed on an empty database. Set BOOTSTRAP_FORCE=1 only if you know what you are doing.",
     );
     process.exit(1);
   }
@@ -83,7 +84,7 @@ async function main() {
     .limit(1);
 
   if (existing.length > 0) {
-    console.log("[bootstrap-admin] An account with this email already exists.");
+    logger.info("bootstrap-admin", "An account with this email already exists.");
     process.exit(0);
   }
 
@@ -122,11 +123,13 @@ async function main() {
     email: response.user.email,
   });
 
-  console.log(`[bootstrap-admin] Admin created: ${response.user.id}`);
+  logger.info("bootstrap-admin", "admin created", { userId: response.user.id });
   process.exit(0);
 }
 
 main().catch((error) => {
-  console.error("[bootstrap-admin] Failed:", error);
+  logger.error("bootstrap-admin", "failed", {
+    message: error instanceof Error ? error.message : error,
+  });
   process.exit(1);
 });

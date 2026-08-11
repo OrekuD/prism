@@ -11,6 +11,7 @@
  */
 import type { BetterAuthOptions } from "better-auth";
 import { jwt } from "better-auth/plugins";
+import { logger } from "../utils/logger";
 import { github, google } from "better-auth/social-providers";
 import { provisionUserResources } from "./provision.js";
 import { scheduleEmail } from "./mail.js";
@@ -156,10 +157,9 @@ export function buildAuthOptions(
               if (typeof process !== "undefined" && process.env.VITEST === "true") {
                 throw error;
               }
-              console.warn(
-                "[prism-auth] profile/team provisioning failed:",
-                error instanceof Error ? error.message : error,
-              );
+              logger.warn("auth", "profile/team provisioning failed", {
+                message: error instanceof Error ? error.message : error,
+              });
             }
           },
         },

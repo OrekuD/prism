@@ -7,6 +7,7 @@ import {
 import NeonDatabaseManager from "./NeonDatabaseManager.js";
 import { JwtVerifier } from "../services/JwtVerifier.js";
 import { config } from "dotenv";
+import { logger } from "../utils/logger.js";
 
 config();
 
@@ -153,8 +154,9 @@ class WebSocketManager {
 
     const authBaseUrl = process.env.AUTH_BASE_URL;
     if (!authBaseUrl) {
-      console.warn(
-        "[analytics] AUTH_BASE_URL is not configured; WebSocket authentication disabled.",
+      logger.warn(
+        "analytics",
+        "AUTH_BASE_URL is not configured; WebSocket authentication disabled.",
       );
       return null;
     }

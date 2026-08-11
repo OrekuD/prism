@@ -8,10 +8,11 @@
  * run against a database that already contains analytics data.
  */
 import { createClient } from "@libsql/client";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "dotenv";
+import { logger } from "../utils/logger.js";
 
 config();
 
@@ -21,19 +22,32 @@ function main() {
   const missing = REQUIRED.filter((key) => !process.env[key]);
 
   if (missing.length > 0) {
-    console.error(
-      [
-        "[prism-analytics-api] Cannot set up the analytics database:",
-        ...missing.map((key) => `  - ${key}`),
-        "",
-        "Copy apps/analytics-api/.env.example to apps/analytics-api/.env and fill in the values.",
-      ].join("\n"),
+    logger.error(
+      "analytics:setup",
+      "cannot set up the analytics database — copy apps/analytics-api/.env.example to apps/analytics-api/.env and fill in the values",
+      { missing },
     );
     process.exit(1);
   }
 
+  // The relative depth differs between source (src/database/../.. = app
+  // root) and the built image (dist/src/database/../.. = dist/) — walk up
+  // to the nearest db/schema.sql instead of hardcoding a depth.
   const here = dirname(fileURLToPath(import.meta.url));
-  const schemaPath = resolve(here, "../../db/schema.sql");
+  let dir = here;
+  let schemaPath = "";
+  for (let depth = 0; depth < 5; depth += 1) {
+    const candidate = resolve(dir, "db/schema.sql");
+    if (existsSync(candidate)) {
+      schemaPath = candidate;
+      break;
+    }
+    dir = resolve(dir, "..");
+  }
+  if (!schemaPath) {
+    logger.error("analytics:setup", "db/schema.sql not found (is the package built?)");
+    process.exit(1);
+  }
   const schema = readFileSync(schemaPath, "utf8");
 
   // libSQL supports executing multiple statements in one call.
@@ -45,15 +59,15 @@ function main() {
   client
     .executeMultiple(schema)
     .then(() => {
-      console.log(
-        "[prism-analytics-api] Analytics schema is up to date (sessions/events tables + indexes).",
+      logger.info(
+        "analytics:setup",
+        "Analytics schema is up to date (sessions/events tables + indexes).",
       );
     })
     .catch((error) => {
-      console.error(
-        "[prism-analytics-api] Analytics schema setup failed:",
-        error,
-      );
+      logger.error("analytics:setup", "analytics schema setup failed", {
+        message: error instanceof Error ? error.message : error,
+      });
       process.exit(1);
     })
     .finally(() => {

@@ -14,6 +14,7 @@
 import { Resend } from "resend";
 import nodemailer from "nodemailer";
 import { resolveEnvironment } from "../config";
+import { logger } from "../utils/logger";
 import {
   generateConfirmEmailTemplate,
   generateResetPasswordTemplate,
@@ -67,10 +68,9 @@ export function scheduleEmail(
   message: MailMessage,
 ) {
   const promise = dispatchEmail(env, message).catch((error) => {
-    console.warn(
-      "[prism-auth][mail] delivery failed:",
-      error instanceof Error ? error.message : error,
-    );
+    logger.warn("auth:mail", "delivery failed", {
+      message: error instanceof Error ? error.message : error,
+    });
   });
   if (executor) {
     executor(promise);
@@ -116,9 +116,9 @@ export async function dispatchEmail(
 
   if (!apiKey) {
     if (resolveEnvironment(env) !== "development") {
-      console.warn(
-        "[prism-auth][mail] delivery skipped: no production mail provider is configured. " +
-          "Set MAIL_SMTP_HOST (SMTP) or RESEND_API_KEY (Resend).",
+      logger.warn(
+        "auth:mail",
+        "delivery skipped: no production mail provider is configured. Set MAIL_SMTP_HOST (SMTP) or RESEND_API_KEY (Resend).",
       );
       return;
     }
@@ -128,9 +128,11 @@ export async function dispatchEmail(
       message.template === "confirm-email"
         ? message.props.confirmEmailLink
         : message.props.resetLink;
-    console.log(
-      `[prism-auth][mail:${message.template}] To: ${message.to} — ${link}`,
-    );
+    logger.info("auth:mail", "log-only delivery (no mail provider configured)", {
+      template: message.template,
+      to: message.to,
+      link,
+    });
     return;
   }
 
@@ -143,8 +145,9 @@ export async function dispatchEmail(
   });
 
   if (error) {
-    console.warn(
-      `[prism-auth][mail:${message.template}] delivery failed: ${error.message}`,
-    );
+    logger.warn("auth:mail", "delivery failed", {
+      template: message.template,
+      message: error.message,
+    });
   }
 }

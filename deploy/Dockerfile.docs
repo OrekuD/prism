@@ -8,6 +8,13 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 COPY package.json yarn.lock ./
+# Workspace manifests so yarn links the monorepo workspaces.
+COPY packages/config-typescript/package.json packages/config-typescript/package.json
+COPY packages/types/package.json packages/types/package.json
+COPY packages/core/package.json packages/core/package.json
+COPY packages/email-templates/package.json packages/email-templates/package.json
+COPY packages/prism-react/package.json packages/prism-react/package.json
+COPY apps/docs/package.json apps/docs/package.json
 RUN yarn install --frozen-lockfile
 COPY . .
 # Self-hosted builds override the canonical site so canonical/sitemap URLs

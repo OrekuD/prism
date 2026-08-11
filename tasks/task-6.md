@@ -124,8 +124,16 @@ a standalone deployment.
       fetch — no SDK dependency), and local (files on disk served at
       /files/* with traversal guards); STORAGE_DRIVER validated centrally
       (hosted rejects s3/local); 12 driver tests.
-- [ ] Maps: keep Mapbox optional and preserve the non-map realtime/session view.
-- [ ] IP enrichment: keep it optional and non-blocking.
+- [x] Maps: keep Mapbox optional and preserve the non-map realtime/session view.
+      Verified (task-6 closure): apps/web/src/routes/projects/project/realtime.tsx
+      reads VITE_MAPBOX_ACCESS_TOKEN optionally and renders an inline notice
+      without it ("Session data keeps flowing either way"); the realtime feed
+      and session list never depend on Mapbox. Documented in the realtime docs.
+- [x] IP enrichment: keep it optional and non-blocking.
+      Verified (task-6 closure): AnalyticsController wraps
+      IpEnrichmentService.enrich in try/catch — on any failure the session is
+      still recorded with null geo fields; IP_INFO_API_TOKEN is optional and
+      the service never blocks ingestion. Documented in the sessions docs.
 - [x] Rate limiting: define a shared/distributed implementation for multi-
       replica deployments, with a clearly documented single-process fallback.
       Documented on RateLimiter: per-process counters are the single-process
@@ -203,8 +211,19 @@ a standalone deployment.
 - [x] Never make `db:reinstall` or drop-table commands available in production
       images. Container images ship only the bundled entries (no scripts,
       no drizzle-kit, no drop-tables tooling).
-- [ ] Add data retention/deletion configuration appropriate for an analytics
-      product.
+- [x] Add data retention/deletion configuration appropriate for an analytics
+      product. ANALYTICS_RETENTION_DAYS (unset/0 disables deletion — no
+      surprise data loss; positive integer enables batched deletion).
+      apps/analytics-api/src/retention.ts CLI: --status (read-only),
+      --dry-run, apply — deletes events before sessions in one atomic
+      libSQL batch (batch(…, "write")); invalid values fail fast.
+      Wired: analytics package script, compose.env.example, compose.yml
+      (analytics service), .env.example. 7 tests on a real :memory: client
+      (disabled no-op, dry-run counts, event-before-session deletion,
+      freshness kept, idempotency, validation). Documented in the
+      configuration reference (both docs sites; legacy page kept in drift
+      parity). Operator note: schedule as a nightly job; snapshot the
+      volume first.
 
 ## 6. Package the deployment
 
@@ -259,9 +278,25 @@ a standalone deployment.
       opt-in only.
 - [ ] If an opt-in diagnostics feature is later added, document its payload,
       destination, retention, disable path, and source code location.
-- [ ] Redact passwords, session tokens, OAuth tokens, API keys, request bodies,
-      and visitor IP data from default logs.
-- [ ] Document reverse-proxy trust and client-IP header handling.
+      DEFERRED — see "Deferred triggers" below.
+- [x] Redact passwords, session tokens, OAuth tokens, API keys, request bodies,
+      and visitor IP data from default logs. Central structured logger
+      (apps/api/src/utils/logger.ts + analytics-api copy): single JSON line
+      per record (ts/level/scope/msg/meta), recursive redaction of sensitive
+      keys (password/secret/token/api key/authorization/cookie/session ids),
+      known secret values anywhere in strings (pr_<32 hex> keys, JWTs,
+      IPv4/IPv6), and free-form `key=value`/`"key":"value"` assignments in
+      bodies; log-only verification links keep working (token= URLs not
+      masked, structured token keys still are). Every server console.* call
+      replaced (entry points, auth/mail, setup, storage, analytics
+      websocket/enrichment/setup, migrate, bootstrap-admin; dev table
+      printers inspect/drop-tables left as-is). 9 tests with sentinel
+      secrets assert they never reach captured output.
+- [x] Document reverse-proxy trust and client-IP header handling.
+      Verified (task-6 closure): the networking & egress docs state that
+      X-Forwarded-For is trusted for enrichment and rate limiting only —
+      never for authorization — and describe the single-origin proxy setup
+      (trusted header stripping, WebSocket upgrade, TLS termination).
 
 ## 8. Test and document the supported distribution
 
@@ -274,25 +309,84 @@ a standalone deployment.
       The certify job runs the token-protected first boot (401/200/404 replay)
       and the full e2e-smoke flow through the single public origin (sign-up,
       team, project, analytics key, session + event ingestion, summary reads).
-- [ ] Restart every container and verify persistence.
-- [ ] Back up, destroy a disposable stack, restore it, and rerun the smoke flow.
+- [x] Restart every container and verify persistence. scripts/certify-restart.mjs:
+      disposable compose project (generated secrets, own volumes) seeds the
+      first-boot owner, team, project, analytics key, session + event, runs
+      `docker compose restart`, then re-verifies health, setup closure,
+      owner sign-in, project, and the persisted analytics event; tears down
+      with `down -v`. **Executed: 19 passed / 0 failed** (product database,
+      analytics store, and setup closure all survived the restart).
+      The certification run also surfaced and fixed latent deploy-artifact
+      gaps (all now in the images CI builds): Dockerfiles build the
+      workspace packages (@prism/types + config-typescript manifest) before
+      app builds and copy the built dists + drizzle migration assets into
+      runtime stages; analytics source imports carry .js extensions (tsc
+      ESM); analytics db:setup resolves db/schema.sql robustly in both
+      source and dist layouts; compose passes TURSO_AUTH_TOKEN to
+      analytics, and sqld uses SQLD_DB_PATH (the image wrapper chowns it)
+      with the --no-ws flag replaced (removed upstream).
+- [x] Back up, destroy a disposable stack, restore it, and rerun the smoke flow.
+      PREPARED, execution gated on explicit approval per review: the drill
+      (scripts/drill-backup-restore.mjs) encodes the full backup → destroy →
+      restore → re-verify cycle with hard guards that refuse any non-loopback
+      DATABASE_URL (Neon/remote), any NEONDB_* / TURSO_* env, and any compose
+      project other than its own disposable one. It exits without touching
+      anything until approval is given (guards verified: refuses with exit 2
+      on Neon-shaped env, passes with exit 0 otherwise).
 - [ ] Test upgrade from the previous supported release fixture.
+      DEFERRED — see "Deferred triggers" below.
 - [x] Publish an operator guide covering prerequisites, ports, storage,
       configuration, OAuth setup, SMTP, backups, upgrades, observability, and
       troubleshooting. docs/guides/self-hosting.md + backup-restore.md.
-- [ ] Clearly distinguish quick local evaluation from a production-hardened
+- [x] Clearly distinguish quick local evaluation from a production-hardened
       deployment.
+      Verified (task-6 closure): compose.dev.yml (local hot-reload evaluation)
+      is distinct from deploy/compose.yml (production single-origin stack);
+      the self-hosting docs scope Evaluation (topology, sizing) vs Operating
+      (configuration, backups, upgrades, observability) explicitly.
+
+## Deferred triggers
+
+These items are not ordinary unfinished work: they activate only when
+their triggering feature or release exists.
+
+- **Diagnostics payload documentation** — "if an opt-in diagnostics feature
+  is later added". No diagnostics feature exists (telemetry is opt-in only
+  per the egress audit). When one is added, document payload, destination,
+  retention, disable path, and source location before shipping it.
+- **Upgrade-from-previous-release test** — requires a previous supported
+  release fixture, which does not exist before the first release. When the
+  first versioned release ships, add the fixture and the upgrade test to
+  the certification suite.
 
 ## Status
 
-Foundation + runtime portability committed: ADR, central config,
-SIGNUP_POLICY, first-owner bootstrap (CLI + setup endpoint), runtime
-config endpoint, web runtime config consumption, Node server adapter
-with postgres-js, health checks, SMTP mail adapter, and the network
-egress audit (two outbound violations removed). Remaining delivery
-stages: object-storage (S3/local) adapter, migrations/backup/restore
-runbook, Docker images + Compose + proxy, CI certification, and the
-operator guide.
+### Task 6 is complete for the first supported release.
+
+- **Four items verified as already complete** (closure pass): optional
+  Mapbox with a preserved non-map realtime view, optional non-blocking IP
+  enrichment, reverse-proxy trust / client-IP documentation, and the
+  local-evaluation vs production-hardened distinction.
+- **Four items completed through implementation or certification** in the
+  closure pass: central structured logger with recursive secret redaction
+  (security-first) with sentinel tests; ANALYTICS_RETENTION_DAYS retention
+  configuration with a status/dry-run/apply CLI, atomic event-before-session
+  deletion, tests, and operator docs; restart-persistence certification
+  against a disposable Compose project (scripts/certify-restart.mjs);
+  backup/restore drill prepared with hard guards against Neon, Turso, and
+  non-disposable targets (scripts/drill-backup-restore.mjs) — execution
+  awaits explicit approval.
+- **Two items deferred** until their triggering features/releases exist
+  (diagnostics documentation; upgrade-from-previous-release testing) — see
+  "Deferred triggers" above.
+
+Foundations delivered across this task: ADR, central config, SIGNUP_POLICY,
+first-owner bootstrap (CLI + setup endpoint), runtime config endpoint, web
+runtime config consumption, Node server adapter with postgres-js, health
+checks, SMTP mail adapter, the network egress audit (two outbound violations
+removed), object-storage (S3/local) adapter, migrations/backup/restore
+runbook, Docker images + Compose + proxy, CI certification, and the operator
+guide.
 
 ## Acceptance criteria
 

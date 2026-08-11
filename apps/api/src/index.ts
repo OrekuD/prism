@@ -1,4 +1,5 @@
 import Server from "./Server";
+import { logger } from "./utils/logger";
 import type { Bindings } from "hono/types";
 import type { Event } from "@cloudflare/workers-types";
 import { Resend } from "resend";
@@ -47,7 +48,7 @@ export default {
   scheduled: (event: Event, env: Bindings, ctx: ExecutionContext) => {
     ctx.waitUntil(
       (async () => {
-        console.log("Test", new Date().toISOString());
+        logger.info("worker", "scheduled event", { type: event.type });
       })(),
     );
   },

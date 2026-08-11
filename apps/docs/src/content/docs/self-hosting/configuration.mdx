@@ -73,10 +73,16 @@ Callbacks: `{BASE_URL}/api/auth/callback/{github|google}`.
 | Variable | Requirement | Default |
 | --- | --- | --- |
 | `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` | Optional | — |
+| `ANALYTICS_RETENTION_DAYS` | Non-negative integer; unset/0 disables retention deletion | `0` (disabled) |
 
 Without the store, analytics reads return empty and the rest of the instance
 works (one-time warning at boot). Self-hosted defaults to the bundled sqld
 container; set these only when using Turso.
+
+`ANALYTICS_RETENTION_DAYS` enables batched deletion of expired sessions and
+events (events first, in one atomic batch). Unset or `0` disables deletion.
+Run `yarn workspace prism-analytics-api retention --status|--dry-run` to
+inspect before applying (see the self-hosting docs).
 
 ## Object storage
 

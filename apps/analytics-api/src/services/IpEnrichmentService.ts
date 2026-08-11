@@ -1,4 +1,5 @@
 import type { IpInfoResponse } from "@prism/types";
+import { logger } from "../utils/logger.js";
 
 export type IpEnrichment = {
   country_code: string | null;
@@ -80,6 +81,6 @@ export class IpEnrichmentService {
 
   private static warn(reason: string) {
     // Concise server-side warning only: never log the client IP or the token.
-    console.warn(`[analytics] IP enrichment skipped (${reason})`);
+    logger.warn("analytics", "IP enrichment skipped", { reason });
   }
 }

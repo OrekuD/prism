@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome lint ./src",
     "db:setup": "tsx src/database/setup.ts",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "retention": "tsx src/retention.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.11",

@@ -94,7 +94,11 @@ services:
   sqld:
     image: ghcr.io/tursodatabase/libsql-server:latest
     restart: unless-stopped
-    command: ["sqld", "--db-path", "/data/analytics.db", "--http-listen-addr", "0.0.0.0:5001", "--no-ws"]
+    # The image wrapper (docker-wrapper.sh) mkdirs + chowns SQLD_DB_PATH
+    # before dropping to the sqld user; --db-path is the db file inside it.
+    environment:
+      SQLD_DB_PATH: /data
+    command: ["sqld", "--db-path", "/data/analytics.db", "--http-listen-addr", "0.0.0.0:5001", "--no-welcome"]
     volumes:
       - sqlddata:/data
     networks: [prism]
@@ -108,6 +112,7 @@ services:
       AUTH_BASE_URL: ${PUBLIC_URL:?}
       TURSO_DATABASE_URL: http://sqld:5001
       TURSO_AUTH_TOKEN: ${TURSO_AUTH_TOKEN:-}
+      ANALYTICS_RETENTION_DAYS: ${ANALYTICS_RETENTION_DAYS:-0}
       # Product database (plain PostgreSQL via the portable adapter).
       DATABASE_URL: postgres://${POSTGRES_USER:-prism}:${POSTGRES_PASSWORD:?}@db:5432/${POSTGRES_DB:-prism}
       IP_INFO_API_TOKEN: ${IP_INFO_API_TOKEN:-}
