@@ -157,8 +157,16 @@ const authenticatedRouter = createBrowserRouter(
         <Route path="authentication" element={<AccountAuthentication />} />
         <Route path="teams" element={<AccountTeams />} />
       </Route>
-        <Route path="*" element={<NotFound />} />
       </Route>
+      {/* Signed-in users land on the full public 404 experience. */}
+      <Route
+        path="*"
+        element={
+          <PublicLayout>
+            <NotFound />
+          </PublicLayout>
+        }
+      />
     </>,
   ),
 );
