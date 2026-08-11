@@ -166,9 +166,7 @@ async function signedRequest(
   const canonicalRequest = `${method}\n${canonicalUri}\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
 
   const scope = `${dateStamp}/${cfg.region}/s3/aws4_request`;
-  const stringToSign =
-    `AWS4-HMAC-SHA256\n${amzDate}\n${scope}\n` +
-    (await sha256Hex(canonicalRequest));
+  const stringToSign = `AWS4-HMAC-SHA256\n${amzDate}\n${scope}\n${await sha256Hex(canonicalRequest)}`;
 
   const signingKey = await signatureKey(cfg.secretKey, dateStamp, cfg.region);
   const signature = Array.from(await hmac(signingKey, stringToSign))

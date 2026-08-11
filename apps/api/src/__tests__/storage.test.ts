@@ -56,16 +56,18 @@ describe("local driver", () => {
 
     expect(result).not.toBeNull();
     expect(result?.url).toMatch(/^http:\/\/localhost:8787\/files\//);
-    const onDisk = await readFile(join(tempDir, result!.fileId));
+    const fileId = result?.fileId ?? "";
+    const onDisk = await readFile(join(tempDir, fileId));
     expect(onDisk[0]).toBe(0x89);
-    expect((await stat(join(tempDir, result!.fileId))).size).toBe(4);
+    expect((await stat(join(tempDir, fileId))).size).toBe(4);
   });
 
   it("deletes the file by key", async () => {
     const ctx = makeCtx({ STORAGE_DRIVER: "local", STORAGE_LOCAL_DIR: tempDir });
     const result = await StorageManager.uploadSingle(ctx, makeImageFile(), "/x");
-    await StorageManager.deleteFile(ctx, result!.fileId);
-    await expect(stat(join(tempDir, result!.fileId))).rejects.toThrow();
+    const fileId = result?.fileId ?? "";
+    await StorageManager.deleteFile(ctx, fileId);
+    await expect(stat(join(tempDir, fileId))).rejects.toThrow();
   });
 
   it("refuses paths outside the store (traversal guard)", async () => {
@@ -96,7 +98,7 @@ function s3Env() {
 
 describe("s3 driver", () => {
   it("PUTs the object with a SigV4 authorization header", async () => {
-    const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => new Response(null, { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await StorageManager.uploadSingle(
@@ -117,7 +119,7 @@ describe("s3 driver", () => {
   });
 
   it("DELETEs the object by key", async () => {
-    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetchMock);
 
     await StorageManager.deleteFile(makeCtx(s3Env()), "users/a/avatar-1.png");
@@ -130,7 +132,7 @@ describe("s3 driver", () => {
   it("returns null when the endpoint rejects the upload", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => new Response("AccessDenied", { status: 403 })),
+      vi.fn(async (_url: string, _init?: RequestInit) => new Response("AccessDenied", { status: 403 })),
     );
     const result = await StorageManager.uploadSingle(
       makeCtx(s3Env()),
@@ -143,16 +145,17 @@ describe("s3 driver", () => {
 
 describe("imagekit driver", () => {
   it("uploads through the ImageKit API with basic auth", async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response(
-        JSON.stringify({
-          fileId: "ik-1",
-          name: "avatar.png",
-          url: "https://ik.imagekit.io/prism/avatar.png",
-          size: 4,
-        }),
-        { status: 200 },
-      ),
+    const fetchMock = vi.fn(
+      async (_url: string, _init?: RequestInit) =>
+        new Response(
+          JSON.stringify({
+            fileId: "ik-1",
+            name: "avatar.png",
+            url: "https://ik.imagekit.io/prism/avatar.png",
+            size: 4,
+          }),
+          { status: 200 },
+        ),
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -171,7 +174,7 @@ describe("imagekit driver", () => {
   });
 
   it("deletes through the ImageKit API", async () => {
-    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetchMock);
     await StorageManager.deleteFile(makeCtx({ STORAGE_DRIVER: "imagekit" }), "ik-1");
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe("https://api.imagekit.io/v1/files/ik-1");
@@ -184,7 +187,7 @@ describe("driver selection", () => {
     // imagekit driver performs network I/O on upload; selection is proven
     // by the absence of the local/s3 code paths — the upload goes to
     // imagekit's endpoint.
-    const fetchMock = vi.fn(async () => new Response(null, { status: 500 }));
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => new Response(null, { status: 500 }));
     vi.stubGlobal("fetch", fetchMock);
     await StorageManager.uploadSingle(ctx, makeImageFile(), "/x");
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("imagekit.io");

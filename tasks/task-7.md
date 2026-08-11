@@ -2,8 +2,9 @@
 
 ## Goal
 
-Turn the selected split-triangle concept into a simple, production-ready Prism
-logo system and replace every temporary brand marker across the monorepo.
+Turn the selected two-piece folded-prism concept into a simple,
+production-ready Prism logo system and replace every temporary brand marker
+across the monorepo.
 
 The primary mark must live on a **perfectly square canvas** so it can be used
 predictably in navigation, favicons, application icons, documentation, email,
@@ -11,10 +12,13 @@ social metadata, and future desktop or CLI surfaces. The square mark and the
 horizontal `PRISM` lockup are separate assets: the mark must never be padded
 into a wide image merely to include the wordmark.
 
-The selected concept is the `S1 - Split triangle` study from the project
-conversation on 2026-08-11: one signal enters a centered triangular prism and
-leaves at a changed angle. The generated raster is a direction reference only,
-not a production asset.
+The selected concept is the two-piece folded-prism/shard study confirmed by the
+project owner on 2026-08-11: an off-white upper facet and violet lower facet are
+separated by one narrow diagonal channel. The final generated direction
+reference lives at
+`packages/brand/references/prism-mark-final-reference.png`; its accompanying
+README records what is authoritative and what is generation residue. The
+raster is a direction reference only, not a production asset.
 
 ## Status
 
@@ -24,12 +28,12 @@ work.
 
 ## Product and brand intent
 
-- The logo should communicate a signal passing through a prism and becoming
-  easier to read.
+- The logo should communicate a prism or folded signal surface becoming
+  separated into two legible facets.
 - Prefer immediate recognition over hidden monograms or technical detail.
-- Use no more than three visible elements: input beam, prism, output beam.
+- Use exactly two visible solid facets plus the diagonal negative-space gap.
 - Use flat geometry and solid colors. No gradients, shadows, glow, glass,
-  texture, outlines, registration marks, circuitry, or extra rays.
+  texture, outlines, registration marks, circuitry, beams, or extra rays.
 - Do not turn the mark into a play button, analytics bar chart, or generic
   navigation icon.
 - The mark must remain useful in one color; violet is an enhancement, not a
@@ -44,14 +48,17 @@ work.
 - [ ] Use a square master artboard and square SVG view box, recommended
       `viewBox="0 0 24 24"`.
 - [ ] Keep the visible artwork inside an equal optical safe area on all four
-      sides; no beam or triangle point may overflow the square view box.
-- [ ] Center the triangle optically rather than only mathematically.
-- [ ] Keep the input beam horizontal and short enough to remain inside the
-      square canvas.
-- [ ] Let the output beam leave at a restrained upward angle. It should read as
-      refraction without making the complete silhouette resemble a play icon.
-- [ ] Use deliberate joins where the beams meet the prism: no accidental gaps,
-      hairlines, overlaps, or raster seams at common display sizes.
+      sides; no facet point may overflow the square view box.
+- [ ] Center the combined two-facet silhouette optically rather than only
+      mathematically.
+- [ ] Preserve the upper facet's long rising top edge, pointed lower-left
+      origin, and clipped upper-right return from the approved reference.
+- [ ] Preserve the lower facet's pointed upper-right rise and wider lower fold
+      without making the complete silhouette resemble a play icon or paper
+      airplane.
+- [ ] Make the diagonal gap one deliberate channel with consistent optical
+      weight. It must not collapse, flare excessively, or read as an accidental
+      raster seam at common display sizes.
 - [ ] Test at `16`, `20`, `24`, `32`, `48`, and `64` CSS pixels before approving
       the master geometry.
 - [ ] Create an optical-correction note for any coordinates that intentionally
@@ -62,8 +69,8 @@ work.
 ## 2. Define the logo variants
 
 - [ ] Create the primary dark-surface mark:
-      - input beam and prism: `#F2F2F4`;
-      - output beam: Prism violet `#6547E8`;
+      - upper facet: `#F2F2F4`;
+      - lower facet: Prism violet `#6547E8`;
       - transparent background.
 - [ ] Create the primary light-surface mark using the approved light-theme
       foreground and the same Prism violet.
@@ -80,11 +87,12 @@ work.
       - standalone mark: 16px digital minimum;
       - mark in navigation: 20-24px;
       - horizontal lockup: minimum size determined after legibility testing.
-- [ ] Define clear space around the mark using one internal beam thickness as
-      the minimum unit.
+- [ ] Define clear space around the mark using the diagonal channel's optical
+      thickness as the minimum unit.
 - [ ] Document prohibited treatments: stretching, rotating, recoloring with
-      semantic status colors, adding a container, changing beam angles, adding
-      more spectrum rays, and applying gradients or effects.
+      semantic status colors, adding a container, changing facet angles,
+      closing/removing the diagonal gap, adding beams or spectrum rays, and
+      applying gradients or effects.
 
 ## 3. Establish one canonical asset source
 
