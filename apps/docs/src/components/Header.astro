@@ -2,7 +2,6 @@
 import { Icon } from '@astrojs/starlight/components';
 import Search from '@astrojs/starlight/components/Search.astro';
 import SkipLink from '@astrojs/starlight/components/SkipLink.astro';
-import ThemeSelect from '@astrojs/starlight/components/ThemeSelect.astro';
 import prismMark from '../assets/prism-mark.svg?raw';
 
 // Contextual product action. Self-hosted deployments serve the dashboard on
@@ -36,7 +35,6 @@ const Tag = banner ? 'header' : 'div';
 			>
 				<Icon name="github" size="1.1em" />
 			</a>
-			<ThemeSelect />
 			<a class="prism-header__action" href={dashboardHref}>
 				Open dashboard
 				<svg aria-hidden="true" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -70,9 +68,9 @@ const Tag = banner ? 'header' : 'div';
 			height: calc(var(--sl-nav-height) - 2px);
 			padding-inline: var(--sl-sidebar-pad-x, 1.25rem);
 			/* The header shares the frame width with content and footer on
-			   every page, left-aligned like the article layout. */
+			   every page; the frame is centered on wide screens. */
 			max-width: var(--prism-frame-width);
-			margin-inline: 0;
+			margin-inline: auto;
 		}
 		.prism-brand {
 			display: inline-flex;

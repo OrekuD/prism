@@ -66,12 +66,19 @@ describe("shell", () => {
     expect(pages.home).toContain('viewBox="0 0 24 24"');
   });
 
-  it("header contains Docs identity, search, GitHub, theme, and dashboard action", () => {
+  it("header contains Docs identity, search, GitHub, and dashboard action", () => {
     expect(pages.home).toContain(">Docs</span>");
     expect(pages.home).toContain("site-search");
     expect(pages.home).toContain("Prism on GitHub");
     expect(pages.home).toContain("Open dashboard");
-    expect(pages.home).toContain("theme-select");
+    // Theme select was removed for now (review pass): the header itself
+    // carries no theme control (the mobile drawer's copy is hidden by CSS).
+    const headerRegion = pages.home.slice(
+      pages.home.indexOf('class="site-header'),
+      pages.home.indexOf('class="prism-home__hero'),
+    );
+    expect(headerRegion).not.toContain("theme-select");
+    expect(headerRegion).not.toContain("starlight-theme-select");
   });
 
   it("article pages render the sidebar with all eight groups", () => {

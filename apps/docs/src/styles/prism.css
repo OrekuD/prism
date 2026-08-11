@@ -265,12 +265,30 @@ body {
 }
 
 /* Bounded content rail with hairline vertical edges on wide screens */
-/* The docs frame stays bounded on ultra-wide screens. Header, content,
-   and footer all use the same --prism-frame-width so their edges align on
-   every page (homepage, article pages, 404). */
+/* The docs frame stays bounded and CENTERED on ultra-wide screens.
+   Header, content, and footer all use the same --prism-frame-width so
+   their edges align on every page (homepage, article pages, 404). */
 .main-frame,
 .site-footer .footer-inner {
 	max-width: var(--prism-frame-width);
+	margin-inline: auto;
+}
+
+/* The main-frame is a flex item (column flex); with auto margins it would
+   content-size instead of honoring max-width, so pin the width explicitly
+   to min(100%, frame). */
+.main-frame {
+	width: min(100%, var(--prism-frame-width));
+}
+
+/* The left sidebar is position:fixed at the viewport edge; move it to the
+   centered frame's left edge once the viewport is wider than the frame
+   (below that, max(0px, …) keeps it at the edge). */
+html[data-has-sidebar] .sidebar-pane {
+	inset-inline-start: max(
+		0px,
+		calc((100vw - var(--prism-frame-width)) / 2)
+	);
 }
 
 /* Starlight renders the footer inside the centered .sl-container; break it
@@ -489,6 +507,12 @@ starlight-toc a[aria-current='true'] {
 	color: var(--prism-focus);
 }
 
+/* Theme/language preferences in the mobile drawer: hidden with the
+   theme select for now. */
+.mobile-preferences {
+	display: none;
+}
+
 /* ---- Mobile navigation drawer ---- */
 @media (max-width: 50rem) {
 	.mobile-nav {
@@ -545,26 +569,7 @@ starlight-toc a[aria-current='true'] {
 	padding: 0.0625rem 0.3125rem;
 }
 
-starlight-theme-select {
-	display: inline-flex;
-	align-items: center;
-	white-space: nowrap;
-	flex-shrink: 0;
-}
-
-.prism-header .theme-select select,
-.prism-home .theme-select select {
-	font-family: var(--prism-font-mono);
-	font-size: 0.6875rem;
-	letter-spacing: 0.04em;
-	color: var(--prism-text-muted);
-	border: 1px solid var(--sl-color-hairline);
-	border-radius: var(--prism-radius);
-	background: var(--prism-surface);
-	height: 36px;
-	cursor: pointer;
-	white-space: nowrap;
-}
+/* Theme select removed from the docs for now (review pass). */
 
 /* ---- Pagefind search modal: Prism command surface ---- */
 .pagefind-ui__modal {

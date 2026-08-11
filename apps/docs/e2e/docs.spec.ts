@@ -101,16 +101,17 @@ test.describe("docs shell", () => {
     await expect(button).toBeFocused(); // focus never moved
   });
 
-  test("theme toggle switches dark and light completely", async ({ page }) => {
+  test("theme follows the system preference (select removed for now)", async ({
+    page,
+  }) => {
+    // The theme toggle was removed from the docs (review pass); the theme
+    // still comes from the system preference via the ThemeProvider.
+    await expect(page.locator("select")).toHaveCount(0);
+    await page.emulateMedia({ colorScheme: "light" });
     await page.goto("/start/overview/");
-    const select = page.locator("select").filter({ has: page.locator("option[value='light']") }).first();
-    await select.selectOption("light");
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-    const bg = await page.evaluate(() =>
-      getComputedStyle(document.body).backgroundColor,
-    );
-    expect(bg).toBe("rgb(246, 246, 248)"); // light canvas #F6F6F8
-    await select.selectOption("dark");
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.goto("/start/overview/");
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   });
 
@@ -167,14 +168,8 @@ test.describe("accessibility", () => {
   });
 
   test("homepage has no serious/critical violations (light)", async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "light" });
     await page.goto("/");
-    await page.evaluate(() => {
-      const select = [...document.querySelectorAll("select")].find((s) =>
-        [...s.options].some((o) => o.value === "light"),
-      );
-      select?.dispatchEvent(new Event("change"));
-      document.documentElement.dataset.theme = "light";
-    });
     await axeOn(page, "homepage-light");
   });
 
