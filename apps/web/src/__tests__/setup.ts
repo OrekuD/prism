@@ -30,6 +30,12 @@ if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => undefined;
 }
 
+// jsdom does not implement document.elementFromPoint (input-otp uses it to
+// compute the caret position); a null result is the safe fallback.
+if (!document.elementFromPoint) {
+  document.elementFromPoint = () => null;
+}
+
 afterEach(() => {
   cleanup();
 });

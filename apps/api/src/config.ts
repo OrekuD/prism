@@ -49,7 +49,82 @@ export function resolveDeploymentMode(
 export function resolveEnvironment(
   env: Record<string, string | undefined>,
 ): Environment {
-  return env.ENVIRONMENT === "production" ? "production" : "development";
+  const raw = env.ENVIRONMENT?.trim().toLowerCase();
+  if (raw === undefined || raw === "") {
+    // Missing: development default (local defaults). This is only safe
+    // because production deployments are expected to set it explicitly;
+    // invalid values fail fast below instead of silently degrading
+    // security (secure cookies, trusted origins, mail-link logging).
+    return "development";
+  }
+  if (raw === "production" || raw === "development") {
+    return raw;
+  }
+  throw new Error(
+    "ENVIRONMENT must be 'development' or 'production' (got an unrecognized value; 'prod' is not accepted). Fix ENVIRONMENT.",
+  );
+}
+
+/**
+ * Origin allowlist validation. Entries are handed to Better Auth, whose
+ * matcher treats `*` and `?` as wildcards, so malformed, pathful, or
+ * overly broad entries are rejected at configuration time.
+ *
+ * Allowed shape: `https://app.example.com` or `https://*.example.com`
+ * (single leading subdomain wildcard). No paths, queries, fragments,
+ * credentials, bare `*`, `?` wildcards, or non-http(s) schemes.
+ */
+export function validateAllowedOrigins(
+  env: Record<string, string | undefined>,
+): string[] {
+  const problems: string[] = [];
+  const entries = (env.CORS_ALLOWED_ORIGINS ?? "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  for (const entry of entries) {
+    if (entry.includes("?")) {
+      problems.push(
+        `CORS_ALLOWED_ORIGINS entry "${entry}" contains a wildcard '?', which is not allowed. Use exact origins or a leading *. subdomain wildcard.`,
+      );
+      continue;
+    }
+    try {
+      const url = new URL(entry);
+      const scheme = url.protocol;
+      if (scheme !== "http:" && scheme !== "https:") {
+        problems.push(
+          `CORS_ALLOWED_ORIGINS entry "${entry}" must use http or https.`,
+        );
+        continue;
+      }
+      if (url.pathname !== "/" || url.search || url.hash || url.username || url.password) {
+        problems.push(
+          `CORS_ALLOWED_ORIGINS entry "${entry}" must be an origin without a path, query, fragment, or credentials.`,
+        );
+        continue;
+      }
+      const host = url.hostname;
+      if (!host || host === "*") {
+        problems.push(
+          `CORS_ALLOWED_ORIGINS entry "${entry}" must name a host; bare wildcards are not allowed.`,
+        );
+        continue;
+      }
+      if (host.includes("*") && !host.startsWith("*.")) {
+        problems.push(
+          `CORS_ALLOWED_ORIGINS entry "${entry}" may only use a leading *. subdomain wildcard (e.g. https://*.example.com).`,
+        );
+      }
+    } catch {
+      problems.push(
+        `CORS_ALLOWED_ORIGINS entry "${entry}" is not a valid origin. Use the form https://app.example.com.`,
+      );
+    }
+  }
+
+  return problems;
 }
 
 /**
@@ -117,9 +192,29 @@ export function validatePrismConfig(
   }
 
   try {
+    resolveEnvironment(env);
+  } catch (error) {
+    problems.push(error instanceof Error ? error.message : "Invalid ENVIRONMENT.");
+  }
+
+  try {
     resolveSignupPolicy(env);
   } catch (error) {
     problems.push(error instanceof Error ? error.message : "Invalid SIGNUP_POLICY.");
+  }
+
+  problems.push(...validateAllowedOrigins(env));
+
+  // First-owner setup must be token-protected in production: an
+  // unprotected public endpoint would let anyone claim a fresh instance.
+  if (
+    resolveDeploymentMode(env) === "self-hosted" &&
+    resolveEnvironment(env) === "production" &&
+    !env.SETUP_TOKEN
+  ) {
+    problems.push(
+      "SETUP_TOKEN is required in production self-hosted deployments (the public first-owner setup endpoint must be token-protected). Generate one with: openssl rand -hex 24. Set SETUP_TOKEN.",
+    );
   }
 
   return problems;

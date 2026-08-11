@@ -24,9 +24,7 @@ npm install @prism/core
 ```ts
 import { PrismClient } from "@prism/core";
 
-const prism = new PrismClient({
-  key: "YOUR_PROJECT_KEY",
-});
+const prism = new PrismClient("YOUR_PROJECT_KEY");
 ```
 
 The constructor starts a session automatically using the current page as

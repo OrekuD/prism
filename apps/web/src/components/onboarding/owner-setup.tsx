@@ -28,6 +28,7 @@ export function OwnerSetup({
   const [name, setName] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
+  const [setupToken, setSetupToken] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [isPending, setIsPending] = React.useState(false);
 
@@ -44,14 +45,23 @@ export function OwnerSetup({
       const response = await fetch(`${API_URL}/api/v1/setup/owner`, {
         method: "POST",
         credentials: "include",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          ...(config?.setupTokenRequired ? { "x-setup-token": setupToken } : {}),
+        },
         body: JSON.stringify({ name, email, password }),
       });
       if (!response.ok) {
         setError(
           response.status === 404
             ? "Setup is no longer available on this instance."
-            : "Could not create the owner account. Check the instance configuration.",
+            : response.status === 401
+              ? "The setup token is incorrect. Ask the instance operator for the token set in SETUP_TOKEN."
+              : response.status === 503
+                ? "First-owner setup is not enabled on this instance (the operator must set SETUP_TOKEN)."
+                : response.status === 409
+                  ? "Setup is already in progress. Wait a moment and reload."
+                  : "Could not create the owner account. Check the instance configuration.",
         );
         return;
       }
@@ -120,6 +130,24 @@ export function OwnerSetup({
                 onChange={setPassword}
                 hint="At least 8 characters."
               />
+              {config?.setupTokenRequired ? (
+                <div className="grid gap-2">
+                  <Label htmlFor="owner-setup-token">Setup token</Label>
+                  <Input
+                    id="owner-setup-token"
+                    type="password"
+                    autoComplete="off"
+                    required
+                    value={setupToken}
+                    onChange={(event) => setSetupToken(event.target.value)}
+                    placeholder="SETUP_TOKEN from the instance environment"
+                    className="h-10"
+                  />
+                  <p className="text-[12px] leading-relaxed text-text-subtle">
+                    The operator sets this when the instance is deployed.
+                  </p>
+                </div>
+              ) : null}
               {error ? <AuthAlert>{error}</AuthAlert> : null}
               <button
                 type="submit"

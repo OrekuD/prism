@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   resolveDeploymentMode,
+  resolveEnvironment,
   resolvePrismConfig,
   resolveSignupPolicy,
+  validateAllowedOrigins,
   validatePrismConfig,
 } from "./config";
 
@@ -99,5 +101,102 @@ describe("resolvePrismConfig", () => {
     expect(resolvePrismConfig({ ...base, INSTANCE_NAME: "Acme Analytics" }).instanceName).toBe(
       "Acme Analytics",
     );
+  });
+});
+
+describe("resolveEnvironment", () => {
+  it("defaults to development when missing", () => {
+    expect(resolveEnvironment({})).toBe("development");
+  });
+
+  it("accepts production", () => {
+    expect(resolveEnvironment({ ENVIRONMENT: "production" })).toBe("production");
+  });
+
+  it("normalizes case and whitespace", () => {
+    expect(resolveEnvironment({ ENVIRONMENT: "  Production " })).toBe("production");
+  });
+
+  it("rejects misspellings and shorthand", () => {
+    expect(() => resolveEnvironment({ ENVIRONMENT: "prod" })).toThrow(
+      /ENVIRONMENT/,
+    );
+    expect(() => resolveEnvironment({ ENVIRONMENT: "staging" })).toThrow(
+      /ENVIRONMENT/,
+    );
+  });
+});
+
+describe("validateAllowedOrigins", () => {
+  it("accepts exact origins and leading subdomain wildcards", () => {
+    expect(
+      validateAllowedOrigins({
+        CORS_ALLOWED_ORIGINS: "https://app.example.com,https://*.sub.example.com",
+      }),
+    ).toEqual([]);
+  });
+
+  it("rejects bare wildcards", () => {
+    const problems = validateAllowedOrigins({ CORS_ALLOWED_ORIGINS: "*" });
+    expect(problems.join("\n")).toMatch(/CORS_ALLOWED_ORIGINS/);
+  });
+
+  it("rejects ? wildcards", () => {
+    const problems = validateAllowedOrigins({
+      CORS_ALLOWED_ORIGINS: "https://app?example.com",
+    });
+    expect(problems.join("\n")).toMatch(/wildcard/);
+  });
+
+  it("rejects paths, queries, and credentials", () => {
+    const problems = validateAllowedOrigins({
+      CORS_ALLOWED_ORIGINS:
+        "https://app.example.com/path,https://app.example.com?q=1,https://user:pass@app.example.com",
+    });
+    expect(problems).toHaveLength(3);
+  });
+
+  it("rejects non-http schemes", () => {
+    const problems = validateAllowedOrigins({
+      CORS_ALLOWED_ORIGINS: "ftp://app.example.com",
+    });
+    expect(problems.join("\n")).toMatch(/http/);
+  });
+
+  it("rejects malformed entries", () => {
+    const problems = validateAllowedOrigins({
+      CORS_ALLOWED_ORIGINS: "not a url",
+    });
+    expect(problems).toHaveLength(1);
+  });
+});
+
+describe("validatePrismConfig", () => {
+  it("requires SETUP_TOKEN for production self-hosted deployments", () => {
+    const problems = validatePrismConfig({
+      ...base,
+      PRISM_DEPLOYMENT_MODE: "self-hosted",
+      ENVIRONMENT: "production",
+    });
+    expect(problems.join("\n")).toMatch(/SETUP_TOKEN/);
+  });
+
+  it("accepts production self-hosted with a token", () => {
+    const problems = validatePrismConfig({
+      ...base,
+      PRISM_DEPLOYMENT_MODE: "self-hosted",
+      ENVIRONMENT: "production",
+      SETUP_TOKEN: "x".repeat(24),
+    });
+    expect(problems).toEqual([]);
+  });
+
+  it("does not require the token for local self-hosted development", () => {
+    const problems = validatePrismConfig({
+      ...base,
+      PRISM_DEPLOYMENT_MODE: "self-hosted",
+      ENVIRONMENT: "development",
+    });
+    expect(problems).toEqual([]);
   });
 });

@@ -4,6 +4,7 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import { Frame, SectionLabel } from "@/components/public/frame";
 import { CodeCopyRow } from "@/components/public/code-copy-row";
 import { authClient } from "@/lib/authClient";
+import { waitForSession } from "@/lib/session";
 import { loadRuntimeConfig, type RuntimeConfig } from "@/lib/runtimeConfig";
 import { OwnerSetup } from "@/components/onboarding/owner-setup";
 import {
@@ -204,8 +205,9 @@ export function Onboarding() {
         <div className="mt-8">
           <OwnerSetup
             onComplete={() => {
-              // The owner is signed in; proceed into the normal flow.
-              window.location.reload();
+              // The owner is signed in; enter the product shell once the
+              // router sees the session (same race as post-signup).
+              waitForSession().then(() => navigate("/onboarding"));
             }}
           />
         </div>
@@ -214,6 +216,17 @@ export function Onboarding() {
   }
 
   if (!sessionData?.session) {
+    // Anonymous visitors only reach this page through /setup (first
+    // boot). Wait for the runtime config before redirecting: the
+    // OwnerSetup branch above depends on it, and a premature redirect
+    // would make the first-boot UI unreachable.
+    if (!config) {
+      return (
+        <div className="mx-auto grid w-full max-w-[1500px] place-items-center px-4 py-24">
+          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+        </div>
+      );
+    }
     return <Navigate to="/auth/log-in" />;
   }
   if (

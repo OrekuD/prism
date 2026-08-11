@@ -14,12 +14,14 @@ import { jwt } from "better-auth/plugins";
 import { github, google } from "better-auth/social-providers";
 import { provisionUserResources } from "./provision.js";
 import { scheduleEmail } from "./mail.js";
-import { resolveSignupPolicy } from "../config";
+import { resolveEnvironment, resolveSignupPolicy } from "../config";
 
 export type AuthEnv = Record<string, string | undefined>;
 
 export function isProduction(env: AuthEnv) {
-  return env.ENVIRONMENT === "production";
+  // Strict: invalid ENVIRONMENT values fail fast instead of silently
+  // degrading to development (secure cookies, trusted origins).
+  return resolveEnvironment(env) === "production";
 }
 
 export function buildAuthOptions(

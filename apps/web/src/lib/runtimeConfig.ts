@@ -12,6 +12,8 @@ export type RuntimeConfig = {
   baseUrl: string;
   /** Self-hosted instance with no users yet: the first-owner setup is open. */
   setupRequired: boolean;
+  /** The first-owner setup endpoint demands the operator's setup token. */
+  setupTokenRequired: boolean;
   providers: { github: boolean; google: boolean };
   mailConfigured: boolean;
 };
@@ -22,6 +24,7 @@ const FALLBACK: RuntimeConfig = {
   signupPolicy: "open",
   baseUrl: import.meta.env.VITE_API_URL ?? "http://localhost:8787",
   setupRequired: false,
+  setupTokenRequired: false,
   providers: { github: false, google: false },
   mailConfigured: false,
 };

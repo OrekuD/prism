@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { resolvePrismConfig } from "../config";
+import { isMailConfigured } from "../auth/mail";
 import { SetupController } from "../controllers/SetupController";
 import { DatabaseManager } from "../managers/DatabaseManager";
 import type { Bindings, HonoConfig } from "../types/types";
@@ -39,7 +40,10 @@ router.get("/config", async (ctx) => {
       github: Boolean(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET),
       google: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
     },
-    mailConfigured: Boolean(env.RESEND_API_KEY),
+    mailConfigured: isMailConfigured(env),
+    // Whether the first-owner setup endpoint demands the setup token
+    // (production self-hosted instances always do; local dev may not).
+    setupTokenRequired: Boolean(env.SETUP_TOKEN),
   });
 });
 

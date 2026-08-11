@@ -1,4 +1,5 @@
 import type { Bindings } from "../types/types";
+import { resolveEnvironment } from "../config";
 
 /**
  * Origins allowed to make credentialed requests to the API.
@@ -29,6 +30,6 @@ export function isOriginAllowed(origin: string, env: Bindings): boolean {
     return true;
   }
   return (
-    env.ENVIRONMENT === "development" && DEV_LOCALHOST_ORIGIN.test(origin)
+    resolveEnvironment(env) === "development" && DEV_LOCALHOST_ORIGIN.test(origin)
   );
 }

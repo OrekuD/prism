@@ -10,6 +10,8 @@ export type Bindings = {
   /** Deployment URL of this API (used for Better Auth base URL and cookies). */
   BASE_URL?: string;
   ENVIRONMENT?: string;
+  /** First-owner setup token (required in production self-hosted). */
+  SETUP_TOKEN?: string;
   GITHUB_CLIENT_ID?: string;
   GITHUB_CLIENT_SECRET?: string;
   GOOGLE_CLIENT_ID?: string;

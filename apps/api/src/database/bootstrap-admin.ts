@@ -2,30 +2,43 @@
  * First-owner bootstrap for a self-hosted instance (task-6 section 4).
  *
  * Creates the initial owner account (email/password), promotes it to ADMIN,
- * and provisions the profile + personal team. The bootstrap path is
- * permanently closed once ANY user exists: on a non-empty database the
- * script refuses to run unless BOOTSTRAP_FORCE=1 is set explicitly.
+ * marks the email verified (the verified-email product guards would
+ * otherwise block the first project), and provisions the profile + personal
+ * team. The bootstrap path is permanently closed once ANY user exists: on a
+ * non-empty database the script refuses to run unless BOOTSTRAP_FORCE=1 is
+ * set explicitly.
+ *
+ * Running the command with database access IS the operator proof — no
+ * network endpoint is involved.
  *
  * Usage (from apps/api, on an EMPTY database):
  *   ADMIN_EMAIL=owner@example.com ADMIN_PASSWORD='<long-random-password>' \
  *     yarn tsx src/database/bootstrap-admin.ts
+ *
+ * The script loads .env (Node self-hosted) then .dev.vars (local wrangler
+ * dev); shell variables take precedence. The registration policy is
+ * bypassed for the bootstrap request (the default self-hosted
+ * SIGNUP_POLICY=disabled would otherwise reject the signup).
  *
  * After the owner exists, close registration with SIGNUP_POLICY=disabled
  * (or the legacy ALLOW_PUBLIC_SIGNUP=false).
  */
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { drizzle } from "drizzle-orm/postgres-js";
 import { eq } from "drizzle-orm";
-import postgres from "postgres";
-import { config } from "dotenv";
+import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
+import { config as loadDotenv } from "dotenv";
 import * as authSchema from "../database/schema/auth";
 import { user as userTable } from "../database/schema/auth";
 import { buildAuthOptions } from "../auth/options";
 import { provisionUserResources } from "../auth/provision";
+import { createPostgresProductDb } from "../database/db";
 import { Roles } from "@prism/types";
 
-config({ path: ".dev.vars" });
+// .env first (self-hosted Node operators), then .dev.vars (local wrangler
+// dev). Shell variables are never overridden.
+loadDotenv();
+loadDotenv({ path: ".dev.vars", override: false });
 
 const email = process.env.ADMIN_EMAIL;
 const password = process.env.ADMIN_PASSWORD;
@@ -42,9 +55,10 @@ if (password.length < 8) {
   process.exit(1);
 }
 
-const url = `${process.env.DATABASE_URL}?options=project%3D${process.env.PROJECT_NAME ?? "prism"}`;
-const sql = postgres(url, { ssl: "require", max: 1 });
-const db = drizzle(sql);
+// The shared Node adapter owns connection settings (no forced SSL, no
+// Neon-only query options); recover the concrete drizzle type here.
+const { drizzle } = createPostgresProductDb(process.env);
+const db = drizzle as unknown as PostgresJsDatabase;
 
 async function main() {
   const adminEmail = (email ?? "").toLowerCase().trim();
@@ -73,8 +87,19 @@ async function main() {
     process.exit(0);
   }
 
+  const options = buildAuthOptions(
+    process.env as Record<string, string>,
+    db as never,
+  );
   const auth = betterAuth({
-    ...buildAuthOptions(process.env as Record<string, string>, db as never),
+    ...options,
+    // The bootstrap bypasses the registration policy: the default
+    // self-hosted SIGNUP_POLICY=disabled must not block the first owner.
+    emailAndPassword: {
+      ...options.emailAndPassword,
+      enabled: true,
+      disableSignUp: false,
+    },
     database: drizzleAdapter(db, { provider: "pg", schema: authSchema }),
   });
 
@@ -88,9 +113,6 @@ async function main() {
 
   await db
     .update(userTable)
-    // Running the local bootstrap command with instance/database access is the
-    // ownership proof. Without this, the verified-email product guards would
-    // prevent the first self-hosted administrator from creating a project.
     .set({ role: Roles.ADMIN, emailVerified: true })
     .where(eq(userTable.id, response.user.id));
 

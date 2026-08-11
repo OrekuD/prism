@@ -112,6 +112,10 @@ const router = createBrowserRouter(
       <Route path="/" element={<PublicLayout />}>
         <Route path="" element={<Index />} />
         <Route path="join" element={<JoinTeam />} />
+        {/* Anonymous first boot (self-hosted): renders the OwnerSetup
+            branch of the onboarding page. Signed-in visitors are
+            redirected to the product shell by the page itself. */}
+        <Route path="setup" element={<Onboarding />} />
         <Route path="auth">
           <Route path="log-in" element={<LogIn />} />
           <Route path="create-account" element={<CreateAccount />} />

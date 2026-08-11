@@ -19,11 +19,23 @@ export type ProductDrizzle = {
   execute: (query: unknown) => Promise<unknown>;
 };
 
-/** Minimal query surface used by controllers (tagged-template SQL). */
-export type ProductQuery = (
-  strings: TemplateStringsArray,
-  ...values: unknown[]
-) => Promise<Array<Record<string, unknown>>>;
+/**
+ * Minimal query surface used by controllers. Both runtime drivers expose
+ * the same two shapes:
+ * - tagged-template SQL: `db`\`SELECT ...`` (all call sites)
+ * - `db.query(sql, params)` with $n placeholders (teams invite bulk
+ *   insert) — native on neon-http, provided via postgres-js `unsafe`.
+ */
+export type ProductQuery = {
+  (
+    strings: TemplateStringsArray,
+    ...values: unknown[]
+  ): Promise<Array<Record<string, unknown>>>;
+  query: (
+    query: string,
+    params?: Array<unknown>,
+  ) => Promise<Array<Record<string, unknown>>>;
+};
 
 export type ProductDb = {
   query: ProductQuery;
@@ -56,6 +68,7 @@ export function createNeonProductDb(
 export function createPostgresProductDb(
   env: Record<string, string | undefined>,
 ): ProductDb {
+  // SSL is only forced for Neon-style URLs; local PostgreSQL needs none.
   const ssl = env.DATABASE_URL?.includes("neon.tech")
     ? { ssl: "require" }
     : undefined;
@@ -63,8 +76,23 @@ export function createPostgresProductDb(
     max: 10,
     ...(ssl ? { ssl } : {}),
   });
+
+  // postgres-js has no `.query(sql, params)` method; expose one over
+  // `unsafe` (parameters stay bound) so the shared ProductQuery surface
+  // behaves identically on both drivers.
+  const rawSql = sql as unknown as {
+    (strings: TemplateStringsArray, ...values: unknown[]): Promise<unknown>;
+    unsafe: (text: string, params: Array<unknown>) => Promise<unknown>;
+  };
+  const query = ((
+    strings: TemplateStringsArray,
+    ...values: unknown[]
+  ) => rawSql(strings, ...values)) as unknown as ProductQuery;
+  query.query = (async (sqlText: string, params?: Array<unknown>) =>
+    rawSql.unsafe(sqlText, params ?? [])) as ProductQuery["query"];
+
   return {
-    query: sql as unknown as ProductQuery,
+    query,
     drizzle: drizzlePostgres(sql) as unknown as ProductDrizzle,
   };
 }

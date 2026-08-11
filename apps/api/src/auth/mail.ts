@@ -13,6 +13,7 @@
  */
 import { Resend } from "resend";
 import nodemailer from "nodemailer";
+import { resolveEnvironment } from "../config";
 import {
   generateConfirmEmailTemplate,
   generateResetPasswordTemplate,
@@ -43,6 +44,17 @@ let executor: EmailExecutor | null = null;
  */
 export function setEmailExecutor(fn: EmailExecutor | null) {
   executor = fn;
+}
+
+/**
+ * Whether any real mail provider is configured (SMTP first, Resend
+ * second). Used by the public /api/v1/config endpoint so the dashboard
+ * reports mail capability truthfully.
+ */
+export function isMailConfigured(
+  env: Record<string, string | undefined>,
+): boolean {
+  return Boolean(env.MAIL_SMTP_HOST || env.RESEND_API_KEY);
 }
 
 /**
@@ -103,7 +115,7 @@ export async function dispatchEmail(
   const apiKey = env.RESEND_API_KEY;
 
   if (!apiKey) {
-    if (env.ENVIRONMENT !== "development") {
+    if (resolveEnvironment(env) !== "development") {
       console.warn(
         "[prism-auth][mail] delivery skipped: no production mail provider is configured. " +
           "Set MAIL_SMTP_HOST (SMTP) or RESEND_API_KEY (Resend).",
