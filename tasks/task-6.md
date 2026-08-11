@@ -326,13 +326,19 @@ a standalone deployment.
       analytics, and sqld uses SQLD_DB_PATH (the image wrapper chowns it)
       with the --no-ws flag replaced (removed upstream).
 - [x] Back up, destroy a disposable stack, restore it, and rerun the smoke flow.
-      PREPARED, execution gated on explicit approval per review: the drill
-      (scripts/drill-backup-restore.mjs) encodes the full backup → destroy →
-      restore → re-verify cycle with hard guards that refuse any non-loopback
-      DATABASE_URL (Neon/remote), any NEONDB_* / TURSO_* env, and any compose
-      project other than its own disposable one. It exits without touching
-      anything until approval is given (guards verified: refuses with exit 2
-      on Neon-shaped env, passes with exit 0 otherwise).
+      EXECUTED after explicit approval (21 passed / 0 failed): the drill
+      (scripts/drill-backup-restore.mjs) boots a disposable compose project
+      with generated secrets, seeds owner/team/project/key/session/event,
+      runs scripts/backup.sh (product DB dump + sqld volume snapshot),
+      `down -v` (volumes destroyed), boots fresh volumes, restores via
+      scripts/restore.sh (pg_restore) + the sqld snapshot, and re-verifies
+      config, owner sign-in, project, and the persisted analytics event.
+      Hard guards refuse any non-loopback DATABASE_URL (Neon/remote), any
+      NEONDB/TURSO env, and any project other than its own disposable one
+      (guards verified: exit 2 on Neon-shaped env). Local OrbStack quirk:
+      host port mappings do not activate, so the drill falls back to
+      in-container pg_dump/pg_restore with the same flags (CI/real hosts
+      use the operator scripts directly).
 - [ ] Test upgrade from the previous supported release fixture.
       DEFERRED — see "Deferred triggers" below.
 - [x] Publish an operator guide covering prerequisites, ports, storage,
