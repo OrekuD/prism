@@ -1,4 +1,5 @@
 import { getPageImageUrl, getPageMarkdownUrl, source } from '@/lib/source';
+import { PrismFooter } from '@/components/footer';
 import {
   DocsBody,
   DocsDescription,
@@ -82,6 +83,7 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
           })}
         />
       </DocsBody>
+      <PrismFooter fullBleed />
     </DocsPage>
   );
 }

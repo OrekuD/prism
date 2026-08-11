@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { SectionLabel } from '@/components/prism/section-label';
+import { PrismFooter } from '@/components/footer';
 import {
   ArrowRight,
   Braces,
@@ -57,7 +58,8 @@ const PANELS = [
 
 export default function HomePage() {
   return (
-    <main className="mx-auto w-full max-w-[1120px] flex-1 px-4 pb-24 pt-16 md:px-6">
+    <>
+    <main className="mx-auto w-full max-w-(--fd-layout-width) flex-1 px-4 pb-24 pt-16 md:px-6">
       {/* Hero */}
       <section className="mb-16">
         <SectionLabel label="Prism Docs" />
@@ -79,10 +81,10 @@ export default function HomePage() {
             <ArrowRight className="size-4" aria-hidden />
           </Link>
           <Link
-            href="/docs/self-hosting/evaluation/overview"
+            href="/docs/start/overview"
             className="inline-flex h-11 items-center rounded-[2px] border border-fd-border px-5 font-medium text-fd-foreground transition-colors hover:border-fd-primary/60 hover:bg-fd-accent"
           >
-            Self-host Prism
+            Docs overview
           </Link>
         </div>
       </section>
@@ -204,6 +206,8 @@ export default function HomePage() {
         </div>
       </section>
     </main>
+    <PrismFooter />
+    </>
   );
 }
 

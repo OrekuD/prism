@@ -290,3 +290,52 @@ figure[data-rehype-pretty-code-figure],
   backdrop-filter: none;
   box-shadow: none;
 }
+
+/* ============================================================
+   Home layout: header aligns with the content
+   ============================================================ */
+
+/* The home nav content max-width comes from --fd-layout-width (1400px
+   default) while the homepage content is the design-system rail; make
+   them one value so the header edges match the content. */
+.nd-home-layout {
+  --fd-layout-width: 1120px;
+}
+
+/* Flatten the home header: solid canvas, no backdrop blur (the design
+   bans glassmorphism), 2px radius controls. */
+#nd-nav > div {
+  backdrop-filter: none;
+  background: var(--color-fd-background);
+}
+
+#nd-nav button,
+#nd-nav a {
+  border-radius: 2px;
+}
+
+/* The Docs overview CTA renders as a secondary-styled nav button; make
+   it the primary violet action. */
+#nd-nav a[href='/docs/start/overview'] {
+  background: var(--color-fd-primary);
+  color: var(--color-fd-primary-foreground);
+}
+
+#nd-nav a[href='/docs/start/overview']:hover {
+  background: color-mix(in srgb, var(--color-fd-primary) 90%, black);
+  color: var(--color-fd-primary-foreground);
+}
+
+/* The home layout root (main#nd-home-layout) sets --fd-layout-width to
+   1400px via a utility class; align it with the design-system rail so the
+   nav content matches the page content. */
+#nd-home-layout {
+  --fd-layout-width: 1120px;
+}
+
+/* The glass DocsPage renders its own pagination footer after the page
+   content; the site footer (PrismFooter) is rendered inside the page, so
+   the built-in pagination is hidden to avoid a footer below the footer. */
+.fd-glass-layout [data-fd-full] > div:last-child {
+  display: none;
+}
