@@ -6,6 +6,14 @@ vi.mock("../managers/DatabaseManager", () => ({
   DatabaseManager: { getInstance: vi.fn() },
 }));
 
+const mocks = vi.hoisted(() => ({
+  uploadSingle: vi.fn(),
+  deleteFile: vi.fn(),
+}));
+vi.mock("../managers/StorageManager", () => ({
+  StorageManager: mocks,
+}));
+
 import { DatabaseManager } from "../managers/DatabaseManager";
 
 const getInstance = vi.mocked(DatabaseManager.getInstance);
@@ -36,21 +44,22 @@ describe("UserController.updateProfilePicture (upload validation)", () => {
     vi.clearAllMocks();
   });
 
-  function mockImageKit(ok = true) {
-    const fetchMock = vi.fn(async () => ({
-      ok,
-      json: vi.fn(async () => ({ url: "https://ik.imagekit.io/prism/avatar.png", fileId: "f1" })),
-    }));
-    vi.stubGlobal("fetch", fetchMock);
-    return fetchMock;
+  function mockStorage(ok = true) {
+    mocks.uploadSingle.mockResolvedValue(
+      ok
+        ? {
+            fileId: "f1",
+            name: "avatar.png",
+            url: "https://ik.imagekit.io/prism/avatar.png",
+            size: 1234,
+          }
+        : null,
+    );
+    mocks.deleteFile.mockResolvedValue(undefined);
   }
 
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it("accepts a valid image and forwards it to ImageKit", async () => {
-    const fetchMock = mockImageKit();
+  it("accepts a valid image and forwards it to storage", async () => {
+    mockStorage();
     const query = makeMockDb((sql) => {
       if (sql.includes("SELECT profile_picture_id")) return [];
       if (sql.includes("INSERT INTO profile_pictures")) return [];
@@ -62,55 +71,55 @@ describe("UserController.updateProfilePicture (upload validation)", () => {
       ctxWithFile(makeImageFile(PNG_BYTES, "image/png")),
     );
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(mocks.uploadSingle).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({
       __json: { profilePictureUrl: "https://ik.imagekit.io/prism/avatar.png" },
     });
   });
 
-  it("rejects an oversized file before any ImageKit request", async () => {
-    const fetchMock = mockImageKit();
+  it("rejects an oversized file before any storage request", async () => {
+    mockStorage();
     const big = new Uint8Array(5_000_001);
 
     const result = await UserController.updateProfilePicture(
       ctxWithFile(makeImageFile(big, "image/png")),
     );
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mocks.uploadSingle).not.toHaveBeenCalled();
     expect(result).toMatchObject({ __json: { errors: expect.arrayContaining(["file_too_large"]) } });
   });
 
   it("rejects an unsupported MIME type", async () => {
-    const fetchMock = mockImageKit();
+    mockStorage();
 
     const result = await UserController.updateProfilePicture(
       ctxWithFile(makeImageFile(JPEG_BYTES, "text/plain")),
     );
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mocks.uploadSingle).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       __json: { errors: expect.arrayContaining(["file_type_not_supported"]) },
     });
   });
 
   it("rejects a missing file", async () => {
-    const fetchMock = mockImageKit();
+    mockStorage();
 
     const result = await UserController.updateProfilePicture(ctxWithFile(undefined));
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mocks.uploadSingle).not.toHaveBeenCalled();
     expect(result).toMatchObject({ __json: { errors: expect.arrayContaining(["file_not_found"]) } });
   });
 
   it("rejects content whose signature does not match its declared MIME type", async () => {
-    const fetchMock = mockImageKit();
+    mockStorage();
 
     // Declared PNG, actual JPEG bytes.
     const result = await UserController.updateProfilePicture(
       ctxWithFile(makeImageFile(JPEG_BYTES, "image/png")),
     );
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mocks.uploadSingle).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       __json: { errors: expect.arrayContaining(["file_signature_mismatch"]) },
     });

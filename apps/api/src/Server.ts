@@ -7,6 +7,7 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { getAuth } from "./auth/auth";
 import { isOriginAllowed } from "./utils/cors";
 import { DatabaseManager } from "./managers/DatabaseManager";
+import { StorageManager } from "./managers/StorageManager";
 import { setEmailExecutor } from "./auth/mail";
 import { ErrorResponse } from "./network/responses/ErrorResponse";
 import { RateLimiter, clientIpFrom } from "./utils/RateLimiter";
@@ -60,6 +61,44 @@ class Server {
         return ctx.json({ status: "ready" });
       } catch {
         return ctx.json({ status: "not_ready" }, 503);
+      }
+    });
+
+    /**
+     * Local storage driver: serve uploaded files (avatars) from disk.
+     * Registered on every runtime; only active when STORAGE_DRIVER=local
+     * (path traversal is blocked regardless).
+     */
+    this.instance.get("/files/*", async (ctx) => {
+      const key = ctx.req.path.replace(/^\/files\//, "");
+      if (!key || key.includes("\\")) {
+        return ctx.json({ errors: ["not_found"] }, 404);
+      }
+      const full = await StorageManager.localFilePath(ctx, key);
+      if (!full) {
+        return ctx.json({ errors: ["not_found"] }, 404);
+      }
+      const { readFile } = await import("node:fs/promises");
+      const { extname } = await import("node:path");
+      const contentTypes: Record<string, string> = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+        ".gif": "image/gif",
+        ".svg": "image/svg+xml",
+        ".avif": "image/avif",
+      };
+      try {
+        const data = await readFile(full);
+        return new Response(data, {
+          headers: {
+            "content-type": contentTypes[extname(key).toLowerCase()] ?? "application/octet-stream",
+            "cache-control": "public, max-age=31536000, immutable",
+          },
+        });
+      } catch {
+        return ctx.json({ errors: ["not_found"] }, 404);
       }
     });
 

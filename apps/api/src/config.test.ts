@@ -13,6 +13,7 @@ const base = {
   JWT_SECRET_KEY: "x".repeat(48),
   CLIENT_URL: "http://localhost:3001",
   BASE_URL: "http://localhost:8787",
+  IMAGE_KIT_API_KEY: "test-imagekit-key",
 };
 
 describe("resolveDeploymentMode", () => {

@@ -11,7 +11,7 @@ import { validateImageFile } from "../utils/validateImageFile";
 import { OkResponse } from "../network/responses/OkResponse";
 import type { Profile } from "../models/Profile";
 import { UserResponse } from "../network/responses/UserResponse";
-import { UploadController } from "./UploadController";
+import { StorageManager } from "../managers/StorageManager";
 import type { ProfilePicture } from "../models/ProfilePicture";
 import { ProfilePictureResponse } from "../network/responses/ProfilePictureResponse";
 
@@ -56,7 +56,7 @@ export class UserController {
       return ctx.json(new ErrorResponse(validationErrors).toJSON(), 400);
     }
 
-    const uploadResult = await UploadController.uploadSingle(
+    const uploadResult = await StorageManager.uploadSingle(
       ctx,
       file,
       "/users/profile-pictures",
@@ -73,7 +73,7 @@ export class UserController {
       (await db`SELECT profile_picture_id, user_id FROM profile_pictures WHERE user_id = ${user.id}`) as Array<ProfilePicture>;
 
     if (profilePicture.length > 0) {
-      await UploadController.deleteFile(
+      await StorageManager.deleteFile(
         ctx,
         profilePicture[0].profile_picture_id,
       );

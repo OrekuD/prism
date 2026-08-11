@@ -106,8 +106,13 @@ a standalone deployment.
 - [x] Email: support SMTP and a no-delivery development adapter in addition to
       optional Resend. nodemailer SMTP via MAIL_SMTP_HOST/PORT/SECURE/USER/
       PASS/FROM (precedence: SMTP > Resend > dev console adapter).
-- [ ] Object storage: support an S3-compatible provider such as MinIO and/or a
+- [x] Object storage: support an S3-compatible provider such as MinIO and/or a
       documented local-filesystem adapter in addition to optional ImageKit.
+      StorageManager (src/managers/StorageManager.ts): driver seam with
+      imagekit (hosted default), s3 (any S3-compatible endpoint, SigV4 over
+      fetch — no SDK dependency), and local (files on disk served at
+      /files/* with traversal guards); STORAGE_DRIVER validated centrally
+      (hosted rejects s3/local); 12 driver tests.
 - [ ] Maps: keep Mapbox optional and preserve the non-map realtime/session view.
 - [ ] IP enrichment: keep it optional and non-blocking.
 - [x] Rate limiting: define a shared/distributed implementation for multi-

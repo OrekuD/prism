@@ -44,6 +44,7 @@ const baseEnv = {
   JWT_SECRET_KEY: "x".repeat(48),
   CLIENT_URL: "http://localhost:3001",
   BASE_URL: "http://localhost:8787",
+  IMAGE_KIT_API_KEY: "test-imagekit-key",
   PRISM_DEPLOYMENT_MODE: "self-hosted",
   ENVIRONMENT: "development",
   SETUP_TOKEN: "test-setup-token-123456",

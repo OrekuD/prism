@@ -13,6 +13,7 @@
 export type DeploymentMode = "hosted" | "self-hosted";
 export type SignupPolicy = "open" | "invite-only" | "disabled";
 export type Environment = "development" | "production";
+export type StorageDriverName = "imagekit" | "s3" | "local";
 
 export type PrismConfig = {
   deploymentMode: DeploymentMode;
@@ -124,6 +125,26 @@ export function validateAllowedOrigins(
  * Secure default: hosted instances default to open registration, self-hosted
  * instances to disabled until the operator opens them.
  */
+/**
+ * Object storage driver. Hosted defaults to imagekit (the Worker has no
+ * filesystem and S3 signing is a self-hosted concern); self-hosted
+ * defaults to `local` (files on disk, served by the API) and supports
+ * `s3` (any S3-compatible endpoint) and `imagekit`.
+ */
+export function resolveStorageDriver(
+  env: Record<string, string | undefined>,
+): StorageDriverName {
+  const raw = env.STORAGE_DRIVER?.trim().toLowerCase() as
+    | StorageDriverName
+    | undefined;
+  if (raw && !["imagekit", "s3", "local"].includes(raw)) {
+    throw new Error(
+      "STORAGE_DRIVER must be 'imagekit', 's3', or 'local'. Fix STORAGE_DRIVER.",
+    );
+  }
+  return raw ?? (resolveDeploymentMode(env) === "hosted" ? "imagekit" : "local");
+}
+
 export function resolveSignupPolicy(
   env: Record<string, string | undefined>,
 ): SignupPolicy {
@@ -230,6 +251,54 @@ export function validatePrismConfig(
     resolveSignupPolicy(env);
   } catch (error) {
     problems.push(error instanceof Error ? error.message : "Invalid SIGNUP_POLICY.");
+  }
+
+  try {
+    const driver = resolveStorageDriver(env);
+    if (driver !== "imagekit" && resolveDeploymentMode(env) === "hosted") {
+      problems.push(
+        "Hosted deployments use STORAGE_DRIVER=imagekit (the Worker has no filesystem and S3 signing is a self-hosted concern). Fix STORAGE_DRIVER.",
+      );
+    }
+    if (driver === "s3") {
+      for (const variable of [
+        "STORAGE_S3_ENDPOINT",
+        "STORAGE_S3_BUCKET",
+        "STORAGE_S3_ACCESS_KEY_ID",
+        "STORAGE_S3_SECRET_ACCESS_KEY",
+        "STORAGE_PUBLIC_URL",
+      ]) {
+        if (!env[variable]) {
+          problems.push(
+            `${variable} is required when STORAGE_DRIVER=s3. Set ${variable}.`,
+          );
+        }
+      }
+      // The public object URL may carry a bucket prefix path (e.g.
+      // https://minio.example.com/prism), so it is URL-validated, not
+      // origin-validated.
+      if (env.STORAGE_PUBLIC_URL) {
+        try {
+          const url = new URL(env.STORAGE_PUBLIC_URL);
+          if (url.protocol !== "http:" && url.protocol !== "https:") {
+            problems.push(
+              "STORAGE_PUBLIC_URL must use http or https. Fix STORAGE_PUBLIC_URL.",
+            );
+          }
+        } catch {
+          problems.push(
+            "STORAGE_PUBLIC_URL is not a valid URL (e.g. https://minio.example.com/prism). Fix STORAGE_PUBLIC_URL.",
+          );
+        }
+      }
+    }
+    if (driver === "imagekit" && !env.IMAGE_KIT_API_KEY) {
+      problems.push(
+        "IMAGE_KIT_API_KEY is required when STORAGE_DRIVER=imagekit. Set IMAGE_KIT_API_KEY.",
+      );
+    }
+  } catch (error) {
+    problems.push(error instanceof Error ? error.message : "Invalid STORAGE_DRIVER.");
   }
 
   problems.push(...validateAllowedOrigins(env));
