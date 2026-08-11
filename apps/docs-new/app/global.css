@@ -265,3 +265,28 @@ figure[data-rehype-pretty-code-figure],
 [data-radix-dropdown-menu-item] {
   border-radius: 2px;
 }
+
+/* ============================================================
+   Glass header: align with the content column
+   ============================================================ */
+
+/* The glass layout header spans left-margin -> right (viewport edge),
+   while the article renders in the centered "main" column. Pin the
+   header to the main grid area so its width matches the content
+   (same fix as the Astro docs). Mobile keeps the full-width bottom bar. */
+@media (min-width: 768px) {
+  #fd-glass-layout > div.sticky.flex-row {
+    grid-area: main;
+  }
+}
+
+/* Header controls: solid surface + 2px radius per the design system.
+   The glass layout styles them as translucent rounded-full pills with
+   backdrop blur — glassmorphism is banned. */
+#fd-glass-layout > div.sticky.flex-row button,
+#fd-glass-layout > div.sticky.flex-row a {
+  border-radius: 2px;
+  background: var(--color-fd-popover);
+  backdrop-filter: none;
+  box-shadow: none;
+}
