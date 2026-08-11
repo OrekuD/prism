@@ -23,7 +23,9 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="mx-auto w-full max-w-[1040px] px-4 py-14 md:px-6 md:py-16">
       <Frame className="min-h-[600px]">
-        <div className="grid md:grid-cols-[42fr_58fr]">
+        {/* Rows fill the frame: mobile = identity line auto + form 1fr;
+            desktop = one stretched row so both panels reach full height. */}
+        <div className="grid min-h-[600px] grid-rows-[auto_1fr] md:grid-cols-[42fr_58fr] md:grid-rows-1">
           <aside className="hidden flex-col border-r border-border bg-canvas-subtle p-10 md:flex">
             <SectionLabel>{instanceName}</SectionLabel>
             <p className="mt-8 max-w-[24ch] text-[22px] font-semibold leading-snug tracking-[-0.015em] text-text">
@@ -53,7 +55,7 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
             </p>
           </div>
 
-          <div className="px-5 py-10 sm:px-14 sm:py-12">
+          <div className="flex items-center px-5 py-10 sm:px-14 sm:py-12">
             <div className="mx-auto w-full max-w-[420px]">{children}</div>
           </div>
         </div>
