@@ -16,7 +16,7 @@ const { banner = false } = Astro.props;
 const Tag = banner ? 'header' : 'div';
 ---
 
-<Tag class="site-header">
+<Tag class="site-header" data-banner={banner ? "" : undefined}>
 		<SkipLink />
 		<div class="header prism-header">
 		<a href="/" class="prism-brand" aria-label="Prism Docs home">
@@ -49,14 +49,18 @@ const Tag = banner ? 'header' : 'div';
 </Tag>
 
 <style>
-	@layer prism.docs {
 		.site-header {
-			border-top: 2px solid var(--prism-accent);
-			border-bottom: 1px solid var(--sl-color-hairline);
+			/* No violet rail in the docs; the separator is a hairline. On
+			   article pages Starlight's frame header draws it; custom pages
+			   (banner) draw their own below. */
+			border-bottom: 0;
 			background: var(--sl-color-bg-nav);
 			position: sticky;
 			top: 0;
 			z-index: 40;
+		}
+		.site-header[data-banner] {
+			border-bottom: 1px solid var(--sl-color-hairline);
 		}
 		.prism-header {
 			display: flex;
@@ -65,8 +69,10 @@ const Tag = banner ? 'header' : 'div';
 			gap: 1rem;
 			height: calc(var(--sl-nav-height) - 2px);
 			padding-inline: var(--sl-sidebar-pad-x, 1.25rem);
-			max-width: var(--sl-content-width);
-			margin-inline: auto;
+			/* The header shares the frame width with content and footer on
+			   every page, left-aligned like the article layout. */
+			max-width: var(--prism-frame-width);
+			margin-inline: 0;
 		}
 		.prism-brand {
 			display: inline-flex;
@@ -104,6 +110,10 @@ const Tag = banner ? 'header' : 'div';
 			display: flex;
 			align-items: center;
 			gap: 0.375rem;
+			flex-shrink: 0;
+		}
+		.prism-header__actions :global(> *) {
+			flex-shrink: 0;
 		}
 		.prism-header__link {
 			display: inline-flex;
@@ -133,8 +143,10 @@ const Tag = banner ? 'header' : 'div';
 			text-transform: uppercase;
 			color: #f7f7f9; /* light text-inverse: 5.4:1 on accent */
 			background: var(--prism-accent);
+			border: 0;
 			border-radius: var(--prism-radius);
 			text-decoration: none;
+			white-space: nowrap;
 		}
 		.prism-header__action:hover {
 			background: var(--prism-accent-hover);
@@ -151,5 +163,4 @@ const Tag = banner ? 'header' : 'div';
 				display: none;
 			}
 		}
-	}
 </style>

@@ -87,6 +87,8 @@
 	--prism-radius: 2px;
 	--prism-space: 4px;
 	--prism-content-width: 54rem;
+	/* One frame width for header, content, and footer on every page. */
+	--prism-frame-width: 86rem;
 
 	/* Typography scale (docs-specific) */
 	--prism-font-display: 600 1.75rem / 1.25 var(--prism-font-sans);
@@ -248,18 +250,43 @@ body {
 	line-height: 1.7;
 }
 
-/* 2px solid violet viewport rail (public experience, task-8 section 4) */
-.site-header,
-.site-footer {
-	border-top: 2px solid var(--prism-accent);
+/* Header + footer use hairline separators only (review pass: the 2px
+   violet viewport rail belongs to the public landing experience, not the
+   docs). */
+
+/* Starlight's frame header pads 24px on both sides; at desktop the
+   site-header override owns spacing so its edges align exactly with the
+   docs content frame (main-frame). Mobile keeps the native padding so the
+   fixed menu button never overlaps the header controls. */
+@media (min-width: 50rem) {
+	.page > .header {
+		padding: 0;
+	}
 }
 
 /* Bounded content rail with hairline vertical edges on wide screens */
-@media (min-width: 88rem) {
-	.main-frame,
-	.site-header .header,
-	.site-footer .footer-inner {
-		max-width: 86rem;
+/* The docs frame stays bounded on ultra-wide screens. Header, content,
+   and footer all use the same --prism-frame-width so their edges align on
+   every page (homepage, article pages, 404). */
+.main-frame,
+.site-footer .footer-inner {
+	max-width: var(--prism-frame-width);
+}
+
+/* Starlight renders the footer inside the centered .sl-container; break it
+   out so it spans the full frame (sidebar + content + toc) like the header.
+   The container is inset from the frame by (--sl-content-inline-start +
+   --sl-content-pad-x) on both sides, so symmetric negative margins + width
+   restore the frame span. Only when the right sidebar is actually visible
+   (>= 72rem, Starlight's lg breakpoint) and the page has a TOC. */
+@media (min-width: 72rem) {
+	html[data-has-toc] .sl-container > .site-footer {
+		margin-inline: calc(
+			-1 * (var(--sl-content-inline-start) + var(--sl-content-pad-x))
+		);
+		width: calc(
+			100% + 2 * (var(--sl-content-inline-start) + var(--sl-content-pad-x))
+		);
 	}
 }
 
@@ -482,7 +509,8 @@ starlight-toc a[aria-current='true'] {
 	align-items: center;
 	gap: 0.5rem;
 	height: 36px;
-	padding: 0 0.75rem;
+	width: 240px;
+	padding: 0 0.625rem 0 0.75rem;
 	font-family: var(--prism-font-mono);
 	font-size: 0.6875rem;
 	letter-spacing: 0.04em;
@@ -491,6 +519,7 @@ starlight-toc a[aria-current='true'] {
 	border: 1px solid var(--sl-color-hairline);
 	border-radius: var(--prism-radius);
 	cursor: pointer;
+	white-space: nowrap;
 }
 
 .prism-header site-search button:hover,
@@ -498,6 +527,12 @@ starlight-toc a[aria-current='true'] {
 	border-color: var(--prism-border-strong);
 	color: var(--sl-color-text);
 	background: var(--prism-surface-hover);
+}
+
+.prism-header site-search button > span,
+.prism-home site-search button > span {
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .prism-header site-search kbd,
@@ -510,9 +545,11 @@ starlight-toc a[aria-current='true'] {
 	padding: 0.0625rem 0.3125rem;
 }
 
-.prism-header .theme-select,
-.prism-home .theme-select {
-	border-radius: var(--prism-radius);
+starlight-theme-select {
+	display: inline-flex;
+	align-items: center;
+	white-space: nowrap;
+	flex-shrink: 0;
 }
 
 .prism-header .theme-select select,
@@ -526,6 +563,7 @@ starlight-toc a[aria-current='true'] {
 	background: var(--prism-surface);
 	height: 36px;
 	cursor: pointer;
+	white-space: nowrap;
 }
 
 /* ---- Pagefind search modal: Prism command surface ---- */
@@ -538,6 +576,24 @@ starlight-toc a[aria-current='true'] {
 	--pagefind-ui-border-radius: var(--prism-radius);
 	--pagefind-ui-font: var(--prism-font-sans);
 	--pagefind-ui-font-mono: var(--prism-font-mono);
+}
+
+/* Dev-mode empty state (Starlight renders a warning instead of the
+   Pagefind UI until the site is built). Framed to match the design
+   system instead of floating text. */
+dialog .dialog-frame > div[dir='ltr'] {
+	margin: auto !important;
+	padding: 1.5rem;
+	border: 1px solid var(--sl-color-hairline);
+	border-radius: var(--prism-radius);
+	background: var(--prism-canvas-subtle);
+	font-family: var(--prism-font-mono);
+	font-size: 0.75rem;
+	line-height: 1.6;
+	color: var(--prism-text-muted);
+	max-width: 26rem;
+	text-align: left !important;
+	white-space: normal !important;
 }
 
 .pagefind-ui__modal .pagefind-ui__search-input {
@@ -725,20 +781,8 @@ starlight-tabs [role='tab'][aria-selected='true'] {
 	border-radius: var(--prism-radius);
 }
 
-/* ---- Wide-screen vertical rail hairlines (public rail language) ---- */
-@media (min-width: 88rem) {
-	.site-header .header,
-	.main-frame,
-	.site-footer .footer-inner,
-	.prism-home,
-	.prism-404 {
-		border-inline: 1px solid var(--sl-color-hairline);
-	}
-	.site-header .header,
-	.site-footer .footer-inner {
-		padding-inline: 1.5rem;
-	}
-}
+/* ---- Wide screens: no artificial rail hairlines; the header spans the
+   full width so it aligns with the sidebar + content columns. ---- */
 
 /* ---- External links: distinguishable without icon spam ---- */
 .sl-markdown-content a[href^="http"]::after {

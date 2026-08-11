@@ -33,16 +33,14 @@ const year = new Date().getFullYear();
 </footer>
 
 <style>
-	@layer prism.docs {
 		.site-footer {
 			border-top: 1px solid var(--sl-color-hairline);
-			border-bottom: 2px solid var(--prism-accent);
 			background: var(--sl-color-bg-nav);
 			margin-top: 3rem;
 		}
 		.prism-footer {
-			max-width: var(--sl-content-width);
-			margin-inline: auto;
+			/* No own max-width: the frame width comes from .footer-inner so
+			   the footer aligns with the header and content on every page. */
 			padding: 1.5rem var(--sl-sidebar-pad-x, 1.25rem) 2rem;
 			display: grid;
 			gap: 1rem;
@@ -120,5 +118,4 @@ const year = new Date().getFullYear();
 				justify-content: flex-start;
 			}
 		}
-	}
 </style>

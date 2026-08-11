@@ -4,8 +4,6 @@ import Footer from '../components/Footer.astro';
 import SectionLabel from '../components/docs/SectionLabel.astro';
 import Command from '../components/docs/Command.astro';
 import ChoicePanel from '../components/docs/ChoicePanel.astro';
-import ArchitectureFlow from '../components/docs/ArchitectureFlow.astro';
-import Search from '@astrojs/starlight/components/Search.astro';
 import ThemeProvider from '@astrojs/starlight/components/ThemeProvider.astro';
 import '../styles/prism.css';
 
@@ -62,20 +60,11 @@ const { title = 'Prism Docs' } = Astro.props;
 						Self-host Prism
 					</a>
 				</div>
-				<div class="prism-home__search">
-					<p class="prism-home__search-hint">
-						Search the documentation with the search field in the header
-						(⌘K) — it covers every guide and reference page.
-					</p>
-				</div>
 			</section>
 
 			<section class="prism-home__frame" aria-labelledby="quickstart-heading">
 				<div class="prism-home__frame-head">
 					<h2 id="quickstart-heading">First event in five minutes</h2>
-					<p class="prism-home__frame-note">
-						Verified against the published package and the ingestion API.
-					</p>
 				</div>
 				<div class="prism-home__frame-body">
 					<div class="prism-home__code">
@@ -83,8 +72,8 @@ const { title = 'Prism Docs' } = Astro.props;
 							npm install @prism/core
 						</Command>
 						<Command label="ts" caption="Initialize">
-							import &#123; PrismClient &#125; from "@prism/core";
-							const prism = new PrismClient("YOUR_PROJECT_KEY");
+							import &#123; PrismClient &#125; from "@prism/core";<br />
+							const prism = new PrismClient("pr_xxx");
 						</Command>
 						<Command label="ts" caption="Track">
 							await prism.logEvent("button-click", &#123; label: "signup" &#125;);
@@ -94,17 +83,17 @@ const { title = 'Prism Docs' } = Astro.props;
 						<div class="prism-home__quickfact">
 							<span class="prism-home__quickfact-label">Sessions</span>
 							<span class="prism-home__quickfact-value">Real-time</span>
-							<span class="prism-home__quickfact-detail">WebSocket delivery to the dashboard</span>
+							<span class="prism-home__quickfact-detail">New sessions appear live on the dashboard</span>
 						</div>
 						<div class="prism-home__quickfact">
 							<span class="prism-home__quickfact-label">Events</span>
 							<span class="prism-home__quickfact-value">Named + structured</span>
-							<span class="prism-home__quickfact-detail">1–128 chars, optional JSON data</span>
+							<span class="prism-home__quickfact-detail">Any event name, with optional JSON data</span>
 						</div>
 						<div class="prism-home__quickfact">
 							<span class="prism-home__quickfact-label">Keys</span>
 							<span class="prism-home__quickfact-value">Public write-only</span>
-							<span class="prism-home__quickfact-detail">Scoped to one project server-side</span>
+							<span class="prism-home__quickfact-detail">Safe to expose in your site's JavaScript</span>
 						</div>
 					</div>
 				</div>
@@ -120,9 +109,9 @@ const { title = 'Prism Docs' } = Astro.props;
 							href: '/hosted/quickstart/',
 							summary: 'Prism operates everything. Create an account, connect a project, ship.',
 							points: [
-								'Sign in with email, GitHub, or Google',
+								'Managed stores and infrastructure',
 								'Verified email unlocks project creation',
-								'No infrastructure to operate',
+								'No first boot, no setup token',
 							],
 							action: 'Start hosted',
 						},
@@ -131,29 +120,12 @@ const { title = 'Prism Docs' } = Astro.props;
 							href: '/self-hosting/overview/',
 							summary: 'Run the whole stack on your own infrastructure with no outbound access.',
 							points: [
-								'Docker Compose stack, one public origin',
+								'Single-origin Docker Compose stack',
 								'Setup-token first boot, no hosted account',
-								'Blocked egress, no telemetry',
+								'Egress blocked, no telemetry',
 							],
 							action: 'Self-host',
 						},
-					]}
-				/>
-			</section>
-
-			<section class="prism-home__section" aria-labelledby="architecture-heading">
-				<SectionLabel label="Architecture" />
-				<h2 id="architecture-heading">How the pieces fit</h2>
-				<ArchitectureFlow
-					label="Prism runtime topology"
-					description="The browser SDK writes sessions and events to the analytics API, which stores them in the analytics store and pushes new sessions to the dashboard over WebSocket. The dashboard reads summaries through the product API, backed by the product database. In self-hosting every box runs in one Compose stack behind a single origin; the analytics store is the only optional component."
-					items={[
-						'Browser SDK (@prism/core)',
-						'Analytics API — ingestion + WebSocket',
-						'Analytics store — sessions & events',
-						'Product API — auth, teams, projects, dashboard reads',
-						'Product database — PostgreSQL',
-						'Dashboard — React web app',
 					]}
 				/>
 			</section>
@@ -212,23 +184,24 @@ const { title = 'Prism Docs' } = Astro.props;
 </html>
 
 <style>
-	@layer prism.docs {
 		html {
 			background: var(--sl-color-bg);
 		}
 		.prism-home {
-			max-width: var(--sl-content-width);
-			margin-inline: auto;
+			max-width: var(--prism-frame-width);
+			margin-inline: 0;
 			padding: 2.5rem var(--sl-sidebar-pad-x, 1.25rem) 0;
 			display: grid;
 			gap: 3.5rem;
+			width: 100%;
 		}
 		.prism-home__hero h1 {
 			margin: 0.5rem 0 0.75rem;
 			font-size: clamp(1.75rem, 4vw, 2.5rem);
 			line-height: 1.15;
 			letter-spacing: -0.02em;
-			max-width: 22ch;
+			max-width: 26ch;
+			text-wrap: balance;
 		}
 		.prism-home__muted {
 			color: var(--prism-text-muted);
@@ -268,7 +241,7 @@ const { title = 'Prism Docs' } = Astro.props;
 		}
 		.prism-home__action--primary {
 			background: var(--prism-accent);
-			border-color: var(--prism-accent);
+			border: 0;
 			color: #f7f7f9; /* light text-inverse: 5.4:1 on accent */
 			font-weight: 600;
 		}
@@ -420,5 +393,4 @@ const { title = 'Prism Docs' } = Astro.props;
 				border-bottom: 0;
 			}
 		}
-	}
 </style>

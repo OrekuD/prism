@@ -130,15 +130,9 @@ describe("homepage (task-8 section 5)", () => {
     expect(pages.home).toContain("Self-host Prism");
   });
 
-  it("search is inside the first viewport", () => {
-    const hero = pages.home.indexOf('class="prism-home__hero"');
-    const search = pages.home.indexOf("site-search", hero);
-    expect(search).toBeGreaterThan(hero);
-  });
-
   it("quickstart frame uses verified SDK calls", () => {
     expect(pages.home).toContain("npm install @prism/core");
-    expect(pages.home).toContain('new PrismClient("YOUR_PROJECT_KEY")');
+    expect(pages.home).toContain('new PrismClient("pr_xxx")');
     expect(pages.home).toContain('await prism.logEvent("button-click"');
   });
 
@@ -149,10 +143,13 @@ describe("homepage (task-8 section 5)", () => {
     expect(pages.home).toContain("/self-hosting/overview/");
   });
 
-  it("architecture strip distinguishes required and optional services", () => {
-    expect(pages.home).toContain("prism-flow");
-    expect(pages.home).toContain("Browser SDK (@prism/core)");
-    expect(pages.home).toContain("Product database — PostgreSQL");
+  it("search is available in the first viewport via the sticky header", () => {
+    // The header is sticky at the top, so its search trigger is always in
+    // the first viewport; the hero no longer duplicates it.
+    const headerSearch = pages.home.indexOf("site-search");
+    const hero = pages.home.indexOf('class="prism-home__hero');
+    expect(headerSearch).toBeGreaterThan(-1);
+    expect(headerSearch).toBeLessThan(hero);
   });
 
   it("entry panels link to SDK, API, operations, auth, runbook, contributing", () => {

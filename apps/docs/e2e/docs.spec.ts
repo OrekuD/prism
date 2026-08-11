@@ -27,9 +27,10 @@ test.describe("docs shell", () => {
   }) => {
     await page.goto("/");
     await expect(page.locator("h1")).toContainText("Understand your product");
+    // Review pass: no violet rail in the docs — hairline separator only.
     await expect(page.locator(".site-header")).toHaveCSS(
       "border-top-width",
-      "2px",
+      "0px",
     );
     await expect(page.locator(".prism-brand__mark svg")).toHaveAttribute(
       "viewBox",
@@ -91,7 +92,12 @@ test.describe("docs shell", () => {
     await button.focus();
     await expect(button).toBeFocused();
     await button.click();
-    await expect(button).toContainText("Copied");
+    // The label stays "Copy" (no width shift); the icon swaps to a check
+    // and the button takes the success color.
+    await expect(button).toContainText("Copy");
+    await expect(button).toHaveClass(/prism-command__copy--copied/);
+    await expect(button.locator(".prism-command__icon--check")).toBeVisible();
+    await expect(button.locator(".prism-command__icon--copy")).toBeHidden();
     await expect(button).toBeFocused(); // focus never moved
   });
 

@@ -22,9 +22,12 @@ const { label = 'sh', caption } = Astro.props;
 			data-copy
 			aria-label="Copy command"
 		>
-			<svg aria-hidden="true" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5">
+			<svg class="prism-command__icon prism-command__icon--copy" aria-hidden="true" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5">
 				<rect x="5.5" y="5.5" width="8" height="8" />
 				<path d="M10.5 5.5v-2h-8v8h2" />
+			</svg>
+			<svg class="prism-command__icon prism-command__icon--check" aria-hidden="true" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5">
+				<path d="M3 8.5 6.5 12 13 4.5" />
 			</svg>
 			<span data-copy-state>Copy</span>
 		</button>
@@ -59,20 +62,19 @@ const { label = 'sh', caption } = Astro.props;
 			// Focus never moves: the fallback textarea is removed without
 			// stealing focus, and we restore it explicitly for safety.
 			button.focus({ preventScroll: true });
-			const state = button.querySelector('[data-copy-state]');
-			if (state) state.textContent = 'Copied';
-			announcer.textContent = 'Command copied';
+			// The label stays "Copy" — only the icon swaps to a check, so the
+			// button width never changes.
 			button.classList.add('prism-command__copy--done');
+			button.classList.toggle('prism-command__copy--copied');
+			announcer.textContent = 'Command copied';
 			window.setTimeout(() => {
-				if (state) state.textContent = 'Copy';
-				button.classList.remove('prism-command__copy--done');
+				button.classList.remove('prism-command__copy--copied');
 			}, 2000);
 		});
 	}
 </script>
 
 <style>
-	@layer prism.docs {
 		.prism-command {
 			margin: 1.25rem 0;
 			display: grid;
@@ -141,13 +143,24 @@ const { label = 'sh', caption } = Astro.props;
 			color: var(--sl-color-text);
 			background: var(--prism-surface-hover);
 		}
-		.prism-command__copy--done {
+		.prism-command__icon--check {
+			display: none;
+		}
+		.prism-command__copy--copied .prism-command__icon--copy {
+			display: none;
+		}
+		.prism-command__copy--copied .prism-command__icon--check {
+			display: block;
+		}
+		.prism-command__copy--copied {
 			color: var(--prism-success);
+		}
+		.prism-command__icon {
+			flex-shrink: 0;
 		}
 		@media (prefers-reduced-motion: reduce) {
 			.prism-command__copy {
 				transition: none;
 			}
 		}
-	}
 </style>
