@@ -1,0 +1,69 @@
+---
+
+title: Upgrades
+description: Upgrade procedure, forward-only migrations, and rollback boundaries.
+audience: Operator
+scope: Self-hosted
+lastReviewed: "2026-08-11"
+---
+
+import Callout from '../../../components/docs/Callout.astro';
+
+import SectionLabel from '../../../components/docs/SectionLabel.astro';
+
+
+<SectionLabel label="OPERATIONS" />
+
+## Upgrade procedure
+
+1. **Back up first** — all three stores + the env file (see
+   [Backup & restore](/self-hosting/backup-restore/)).
+2. Review release notes for breaking changes and migration notes.
+3. Pull or rebuild images:
+
+   ```sh
+   docker compose --env-file deploy/compose.env -f deploy/compose.yml pull
+   # or for local images:
+   docker compose --env-file deploy/compose.env -f deploy/compose.yml up -d --build
+   ```
+
+4. Apply:
+
+   ```sh
+   docker compose --env-file deploy/compose.env -f deploy/compose.yml up -d
+   ```
+
+   The `migrate` service runs **forward-only** migrations before the API
+   starts; migrations never drop data.
+
+5. Verify: `/health/live`, `/health/ready`, then a signed-in dashboard pass.
+
+## Rollback boundaries
+
+<Callout variant="danger" title="Danger">
+Migrations are forward-only. The only supported rollback for a migrated
+database is restoring the backup taken before the upgrade.
+</Callout>
+
+
+- **Migrations are forward-only.** If a migration cannot be reverted, the
+  rollback path is: re-run the previous image tag **and** restore the backup
+  taken in step 1.
+- The analytics store (sqld) and object storage have no schema migrations;
+  they roll back by restoring volumes.
+- Keep the previous image tag until the new version has passed a full smoke
+  (sign-in, project, realtime, events).
+
+## Downtime expectations
+
+- The `migrate` step is the only service that blocks the API; the web
+  container serves the dashboard throughout (showing API errors only if a
+  request lands mid-migration).
+- Multi-replica deployments should drain replicas one at a time after the
+  migration completes.
+
+## What is not supported
+
+- Downgrading a migrated database without restoring a backup.
+- Running two schema versions against one database (staggered `migrate`).
+- Hot-swapping the analytics store driver without re-pointing the volumes.

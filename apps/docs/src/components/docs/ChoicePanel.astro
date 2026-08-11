@@ -1,0 +1,128 @@
+---
+interface Option {
+	title: string;
+	href: string;
+	/** One-line pitch. */
+	summary: string;
+	/** Bullet list of concrete facts. */
+	points: string[];
+	action: string;
+}
+
+interface Props {
+	options: Option[];
+}
+
+const { options } = Astro.props;
+---
+
+<div class="prism-choice" role="group" aria-label="Choose your deployment path">
+	{options.map((option) => (
+		<section class="prism-choice__option">
+			<h3 class="prism-choice__title">{option.title}</h3>
+			<p class="prism-choice__summary">{option.summary}</p>
+			<ul class="prism-choice__points">
+				{option.points.map((point) => (
+					<li>{point}</li>
+				))}
+			</ul>
+			<a class="prism-choice__action" href={option.href}>
+				{option.action}
+				<svg aria-hidden="true" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5">
+					<path d="M3 8h9" />
+					<path d="M9 4.5 12.5 8 9 11.5" />
+				</svg>
+			</a>
+		</section>
+	))}
+</div>
+
+<style>
+	@layer prism.docs {
+		.prism-choice {
+			display: grid;
+			grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+			gap: 0;
+			border: 1px solid var(--sl-color-hairline);
+			border-radius: var(--prism-radius);
+			overflow: hidden;
+			margin: 1.25rem 0;
+		}
+		.prism-choice__option {
+			padding: 1.25rem;
+			display: grid;
+			gap: 0.625rem;
+			align-content: start;
+		}
+		.prism-choice__option + .prism-choice__option {
+			border-left: 1px solid var(--sl-color-hairline);
+		}
+		.prism-choice__title {
+			margin: 0;
+			font-size: 1rem;
+			font-weight: 600;
+			color: var(--sl-color-text);
+		}
+		.prism-choice__summary {
+			margin: 0;
+			font-size: 0.875rem;
+			color: var(--prism-text-muted);
+		}
+		.prism-choice__points {
+			margin: 0;
+			padding: 0;
+			list-style: none;
+			display: grid;
+			gap: 0.3125rem;
+		}
+		.prism-choice__points li {
+			position: relative;
+			padding-left: 1rem;
+			font-size: 0.8125rem;
+			color: var(--sl-color-text);
+		}
+		.prism-choice__points li::before {
+			content: '';
+			position: absolute;
+			left: 0;
+			top: 0.55em;
+			width: 0.375rem;
+			height: 0.375rem;
+			background: var(--prism-accent);
+			border-radius: 1px;
+		}
+		.prism-choice__action {
+			display: inline-flex;
+			align-items: center;
+			gap: 0.375rem;
+			justify-self: start;
+			margin-top: 0.25rem;
+			padding: 0.5rem 0.875rem;
+			font-family: var(--prism-font-mono);
+			font-size: 0.6875rem;
+			font-weight: 500;
+			letter-spacing: 0.06em;
+			text-transform: uppercase;
+			color: #f7f7f9; /* light text-inverse: 5.4:1 on accent */
+			background: var(--prism-accent);
+			border-radius: var(--prism-radius);
+			text-decoration: none;
+			min-height: 44px;
+			display: inline-flex;
+			align-items: center;
+		}
+		.prism-choice__action:hover {
+			background: var(--prism-accent-hover);
+			text-decoration: none;
+		}
+		.prism-choice__action:visited {
+			color: #f7f7f9;
+		}
+		@media (max-width: 40rem) {
+			.prism-choice__option + .prism-choice__option {
+				border-left: 0;
+				border-top: 1px solid var(--sl-color-hairline);
+			}
+		}
+	}
+</style>

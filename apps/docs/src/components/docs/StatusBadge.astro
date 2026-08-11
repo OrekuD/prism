@@ -1,0 +1,58 @@
+---
+type Tone = 'stable' | 'experimental' | 'planned';
+
+interface Props {
+	/** Availability status; must come from a documented source. */
+	tone: Tone;
+}
+
+const { tone } = Astro.props;
+
+const LABEL: Record<Tone, string> = {
+	stable: 'Stable',
+	experimental: 'Experimental',
+	planned: 'Planned',
+};
+---
+
+<span class:list={['prism-status', `prism-status--${tone}`]}>
+	<span class="prism-status__dot" aria-hidden="true" />
+	{LABEL[tone]}
+</span>
+
+<style>
+	@layer prism.docs {
+		.prism-status {
+			display: inline-flex;
+			align-items: center;
+			gap: 0.375rem;
+			font-family: var(--prism-font-mono);
+			font-size: 0.625rem;
+			font-weight: 500;
+			letter-spacing: 0.08em;
+			text-transform: uppercase;
+			padding: 0.1875rem 0.5rem;
+			border: 1px solid var(--sl-color-hairline);
+			border-radius: var(--prism-radius);
+			color: var(--prism-text-muted);
+		}
+		.prism-status__dot {
+			width: 0.375rem;
+			height: 0.375rem;
+			border-radius: 50%;
+			background: currentColor;
+		}
+		.prism-status--stable {
+			color: var(--prism-success);
+			border-color: color-mix(in srgb, var(--prism-success) 45%, transparent);
+		}
+		.prism-status--experimental {
+			color: var(--prism-warning);
+			border-color: color-mix(in srgb, var(--prism-warning) 45%, transparent);
+		}
+		.prism-status--planned {
+			color: var(--prism-info);
+			border-color: color-mix(in srgb, var(--prism-info) 45%, transparent);
+		}
+	}
+</style>

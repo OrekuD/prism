@@ -7,6 +7,10 @@
     "start": "astro dev",
     "build": "astro check && astro build",
     "preview": "astro preview",
+    "check:links": "node scripts/check-links.mjs",
+    "check:external-links": "node scripts/check-external-links.mjs",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
     "astro": "astro"
   },
   "dependencies": {
@@ -15,5 +19,10 @@
     "@astrojs/starlight": "^0.41.7",
     "astro": "^7.2.0",
     "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.2",
+    "@playwright/test": "1.63.0-alpha-2026-08-05",
+    "vitest": "^3.2.7"
   }
 }

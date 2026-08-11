@@ -209,10 +209,17 @@ a standalone deployment.
 ## 6. Package the deployment
 
 - [x] Add minimal multi-stage Dockerfiles for the web app, main API, analytics
-      API, and docs only if docs are part of the supported runtime. Three
-      Dockerfiles (apps/{api,web,analytics-api}); docs stay local (not part
-      of the supported runtime). The API bundles with esbuild
-      (build:node) into dist-node.
+      API, and docs only if docs are part of the supported runtime. Four
+      Dockerfiles: apps/{api,web,analytics-api} + deploy/Dockerfile.docs.
+      The API bundles with esbuild (build:node) into dist-node.
+      DECISION (updated by task-8): docs ship as a separately deployable
+      static image (nginx serving the Astro build), opt-in via the `docs`
+      Compose profile (deploy/nginx.docs.conf + compose service, port
+      DOCS_PORT, ASTRO_SITE build arg). Docs are NOT part of the default
+      stack and NOT proxied by `web`: the single-origin product routing
+      stays untouched, and docs may sit behind the same TLS terminator on
+      any path. All docs assets (fonts, logo, search index) are inside the
+      image; nothing is fetched from Prism cloud or any CDN.
 - [x] Run containers as non-root with read-only filesystems where practical,
       explicit writable volumes, health checks, and resource limits.
       USER node everywhere; HEALTHCHECK on the API; mem/cpu limits and

@@ -1,0 +1,47 @@
+---
+title: Teams
+description: Creating teams, invite links, joining, leaving, and deletion rules.
+audience: User
+scope: Both
+lastReviewed: "2026-08-11"
+---
+
+import SectionLabel from '../../../components/docs/SectionLabel.astro';
+
+
+<SectionLabel label="OWNERSHIP & MEMBERSHIP" />
+
+Teams own projects. The creator is the team **owner**; everyone else joins
+as a **member**.
+
+## Creating a team
+
+`POST /api/v1/teams` (requires a verified email). The owner can create
+projects in the team and manage it.
+
+## Invite links
+
+The owner requests an invite link (`GET /api/v1/teams/:teamId/invite-link` —
+permission-checked) and shares it. The link's token is validated publicly
+(`GET /api/v1/teams/invite/:token`), then joining is a signed-in
+`POST /api/v1/teams/:teamId/join`:
+
+- owner joining their own team → `team_owner`;
+- already a member → `already_a_team_member`;
+- members join with **BASIC** permission.
+
+## Leaving
+
+`POST /api/v1/teams/:teamId/leave` — allowed for members. The owner cannot
+leave (`team_owner`); ownership transfer is not available today.
+
+## Deleting a team
+
+`DELETE /api/v1/teams/:teamId` — owner only, and only for **non-personal**
+teams (`is_personal = FALSE`). Deleting a team deletes its projects.
+
+## Personal teams
+
+Each account gets a personal team at signup (provisioned automatically);
+personal teams cannot be deleted. Projects can live in any team you belong
+to.

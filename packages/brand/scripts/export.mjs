@@ -36,6 +36,8 @@ const CONSUMERS = [
   ["icon-512.png", "apps/web/public/icon-512.png"],
   ["og-image.png", "apps/web/public/og-image.png"],
   ["favicon.svg", "apps/docs/public/favicon.svg"],
+  ["favicon.ico", "apps/docs/public/favicon.ico"],
+  ["og-image.png", "apps/docs/public/og-image.png"],
   // Generated email logo modules (same base64 PNG in both consumers).
   ["email-logo.ts", "apps/api/src/auth/email-logo.ts"],
   ["email-logo.ts", "packages/email-templates/emails/logo-png.ts"],

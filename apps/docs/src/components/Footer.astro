@@ -1,0 +1,124 @@
+---
+const dashboardHref = import.meta.env.PUBLIC_DASHBOARD_URL ?? '/';
+const year = new Date().getFullYear();
+---
+
+<footer class="site-footer">
+	<div class="footer-inner prism-footer">
+		<div class="prism-footer__grid">
+			<div class="prism-footer__identity">
+				<p class="prism-footer__brand">
+					<span class="prism-footer__name" translate="no">Prism</span>
+					<span class="prism-footer__docs">Documentation</span>
+				</p>
+				<p class="prism-footer__tagline">
+					Realtime product analytics for teams — hosted or self-hosted.
+				</p>
+			</div>
+			<nav class="prism-footer__nav" aria-label="Footer">
+				<a href="/start/overview/">Docs home</a>
+				<a href="/start/choose/">Hosted or self-hosted</a>
+				<a href="/self-hosting/overview/">Self-hosting</a>
+				<a href="/operations/security/">Security</a>
+				<a href={dashboardHref}>Dashboard</a>
+				<a href="https://github.com/OrekuD/prism" target="_blank" rel="noopener">GitHub</a>
+				<a href="https://github.com/OrekuD/prism/blob/main/LICENSE" target="_blank" rel="noopener">License</a>
+			</nav>
+		</div>
+		<p class="prism-footer__meta">
+			© {year} Prism contributors · Built with Astro Starlight · All assets
+			are served from this origin — no third-party requests.
+		</p>
+	</div>
+</footer>
+
+<style>
+	@layer prism.docs {
+		.site-footer {
+			border-top: 1px solid var(--sl-color-hairline);
+			border-bottom: 2px solid var(--prism-accent);
+			background: var(--sl-color-bg-nav);
+			margin-top: 3rem;
+		}
+		.prism-footer {
+			max-width: var(--sl-content-width);
+			margin-inline: auto;
+			padding: 1.5rem var(--sl-sidebar-pad-x, 1.25rem) 2rem;
+			display: grid;
+			gap: 1rem;
+		}
+		.prism-footer__grid {
+			display: grid;
+			grid-template-columns: 1fr auto;
+			gap: 1.5rem;
+			align-items: start;
+		}
+		.prism-footer__identity {
+			display: grid;
+			gap: 0.375rem;
+		}
+		.prism-footer__brand {
+			display: flex;
+			align-items: baseline;
+			gap: 0.5rem;
+			margin: 0;
+		}
+		.prism-footer__name {
+			font-weight: 600;
+			color: var(--sl-color-text);
+			font-size: 0.9375rem;
+		}
+		.prism-footer__docs {
+			font-family: var(--prism-font-mono);
+			font-size: 0.625rem;
+			letter-spacing: 0.08em;
+			text-transform: uppercase;
+			color: var(--prism-text-subtle);
+		}
+		.prism-footer__tagline {
+			margin: 0;
+			font-size: 0.8125rem;
+			color: var(--prism-text-muted);
+			max-width: 36ch;
+		}
+		.prism-footer__nav {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 0.25rem 1.25rem;
+			justify-content: flex-end;
+		}
+		.prism-footer__nav a {
+			font-family: var(--prism-font-mono);
+			font-size: 0.6875rem;
+			letter-spacing: 0.05em;
+			text-transform: uppercase;
+			color: var(--prism-text-muted);
+			text-decoration: none;
+			padding: 0.375rem 0;
+			min-height: 44px;
+			display: inline-flex;
+			align-items: center;
+		}
+		.prism-footer__nav a:hover {
+			color: var(--sl-color-text);
+			text-decoration: underline;
+			text-underline-offset: 4px;
+		}
+		.prism-footer__meta {
+			margin: 0;
+			font-family: var(--prism-font-mono);
+			font-size: 0.6875rem;
+			color: var(--prism-text-subtle);
+			border-top: 1px solid var(--sl-color-hairline);
+			padding-top: 0.875rem;
+		}
+		@media (max-width: 40rem) {
+			.prism-footer__grid {
+				grid-template-columns: 1fr;
+			}
+			.prism-footer__nav {
+				justify-content: flex-start;
+			}
+		}
+	}
+</style>

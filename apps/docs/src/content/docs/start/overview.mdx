@@ -1,0 +1,68 @@
+---
+title: Overview
+description: What Prism is, what it records, and how the pieces fit together.
+audience: User
+scope: Both
+lastReviewed: "2026-08-11"
+---
+
+import SectionLabel from '../../../components/docs/SectionLabel.astro';
+import ArchitectureFlow from '../../../components/docs/ArchitectureFlow.astro';
+
+<SectionLabel label="Prism" />
+
+
+Prism is realtime product analytics for teams: a lightweight browser SDK, a
+high-throughput ingestion service, a WebSocket delivery channel, and a
+dashboard for sessions, events, and projects.
+
+The same codebase runs in two deployment modes:
+
+- **Hosted** — Prism operates the product API, analytics ingestion, and
+  database; you sign in and create a project.
+- **Self-hosted** — you run the full stack (web, API, analytics, PostgreSQL,
+  analytics store) on your own infrastructure, with no outbound network
+  access at runtime.
+
+Both modes share the SDK, ingestion protocol, and dashboard. Choose a path on
+[Hosted or self-hosted](/start/choose/).
+
+## Product boundary
+
+Prism records **sessions** and **events** for projects you create, and
+delivers new sessions to the dashboard over a WebSocket connection in
+realtime. It does not:
+
+- track users across projects or sites (each project is an isolated silo);
+- sell, export, or share your data with third parties;
+- require a Prism account for self-hosted deployments;
+- send data anywhere outside your instance (self-hosted runtime egress is
+  blocked by the default Compose network).
+
+## Data flow
+
+<ArchitectureFlow
+  label="Prism runtime data flow"
+  description="Browser SDK posts sessions and events to the analytics API; the analytics API stores them in the analytics store, enriches sessions with best-effort geo data, and pushes new sessions to the dashboard over WebSocket; the dashboard reads session/event summaries from the product API, which reads the product database and the analytics store."
+  items={[
+    'Browser SDK (@prism/core)',
+    'Analytics API (ingestion + WebSocket)',
+    'Analytics store (sessions & events)',
+    'Product API (dashboard + auth)',
+    'Product database (PostgreSQL: users, teams, projects, keys)',
+    'Dashboard (web app)',
+  ]}
+/>
+
+The SDK authenticates with the **project analytics key** — a public write-only
+identifier. The dashboard authenticates with an **HTTP-only session cookie**
+against the product API. Realtime subscriptions authenticate with a
+**short-lived service JWT** verified against the product API's JWKS endpoint.
+
+## Maturity
+
+Prism is under active development. The SDK, ingestion, dashboard, auth, and
+self-hosting stack are implemented and covered by tests; anything documented
+as `planned` is not yet available. See [Core concepts](/start/concepts/) for
+the vocabulary, and the [security model](/operations/security/) for current
+boundaries.

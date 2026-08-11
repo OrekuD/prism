@@ -1,0 +1,834 @@
+/* Prism documentation token layer (task-8 section 3).
+ * Maps Starlight's documented CSS variables onto the Prism semantic tokens
+ * from docs/design-system.md. Dark theme is canonical; the light theme is a
+ * complete token-level translation with no stock Starlight colors left.
+ * Fonts are self-hosted via @fontsource-variable (Geist + Geist Mono),
+ * shared with the web app through the hoisted package. */
+
+/* ---- Fonts (self-hosted, subset latin + latin-ext) ---- */
+@font-face {
+	font-family: "Geist Variable";
+	font-style: normal;
+	font-display: swap;
+	font-weight: 100 900;
+	src: url("@fontsource-variable/geist/files/geist-latin-wght-normal.woff2")
+		format("woff2-variations");
+	unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6,
+		U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122,
+		U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+	font-family: "Geist Variable";
+	font-style: normal;
+	font-display: swap;
+	font-weight: 100 900;
+	src: url("@fontsource-variable/geist/files/geist-latin-ext-wght-normal.woff2")
+		format("woff2-variations");
+	unicode-range: U+0100-02AF, U+0304, U+0308, U+0329, U+1E00-1E9F,
+		U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+		U+A720-A7FF;
+}
+@font-face {
+	font-family: "Geist Mono Variable";
+	font-style: normal;
+	font-display: swap;
+	font-weight: 100 900;
+	src: url("@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2")
+		format("woff2-variations");
+	unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6,
+		U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122,
+		U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+	font-family: "Geist Mono Variable";
+	font-style: normal;
+	font-display: swap;
+	font-weight: 100 900;
+	src: url("@fontsource-variable/geist-mono/files/geist-mono-latin-ext-wght-normal.woff2")
+		format("woff2-variations");
+	unicode-range: U+0100-02AF, U+0304, U+0308, U+0329, U+1E00-1E9F,
+		U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+		U+A720-A7FF;
+}
+
+/* ---- Prism semantic tokens (dark = canonical) ---- */
+:root,
+[data-theme="dark"] {
+	--prism-canvas: #050506;
+	--prism-canvas-subtle: #08080a;
+	--prism-surface: #0b0b0e;
+	--prism-surface-raised: #111116;
+	--prism-surface-hover: #17171d;
+	--prism-surface-active: #1d1d25;
+	--prism-border: #25252c;
+	--prism-border-strong: #383842;
+	--prism-text: #f2f2f4;
+	--prism-text-muted: #a3a3ad;
+	/* Docs layer: #7E7E8A keeps 10-12px metadata at AA on canvas; the
+	   product token #6B6B75 stays for larger type. */
+	--prism-text-subtle: #7e7e8a;
+	--prism-text-inverse: #09090b;
+	--prism-accent: #6547e8;
+	--prism-accent-hover: #765af0;
+	--prism-accent-active: #5337cb;
+	--prism-accent-soft: #241a5a;
+	--prism-focus: #9b89ff;
+	--prism-link: #5f7dff;
+	--prism-success: #20d99a;
+	--prism-warning: #f2a51a;
+	--prism-danger: #f05d6c;
+	--prism-info: #4da3ff;
+	--prism-event: #be5be8;
+
+	--prism-font-sans: "Geist Variable", "Helvetica Neue", Arial, sans-serif;
+	--prism-font-mono: "Geist Mono Variable", ui-monospace, SFMono-Regular,
+		Menlo, Consolas, monospace;
+
+	--prism-radius: 2px;
+	--prism-space: 4px;
+	--prism-content-width: 54rem;
+
+	/* Typography scale (docs-specific) */
+	--prism-font-display: 600 1.75rem / 1.25 var(--prism-font-sans);
+	--prism-font-title: 600 1.5rem / 1.3 var(--prism-font-sans);
+	--prism-font-h2: 600 1.25rem / 1.35 var(--prism-font-sans);
+	--prism-font-h3: 600 1.0625rem / 1.45 var(--prism-font-sans);
+	--prism-font-h4: 600 0.9375rem / 1.5 var(--prism-font-sans);
+	--prism-font-body: 400 1rem / 1.7 var(--prism-font-sans);
+	--prism-font-caption: 400 0.8125rem / 1.55 var(--prism-font-sans);
+	--prism-font-eyebrow: 500 0.6875rem / 1.4 var(--prism-font-mono);
+	--prism-font-code: 400 0.84375rem / 1.6 var(--prism-font-mono);
+	--prism-font-meta: 400 0.75rem / 1.5 var(--prism-font-mono);
+
+	/* Starlight variable mapping (documented Starlight surface) */
+	--sl-color-white: var(--prism-text);
+	--sl-color-gray-1: #f2f2f4;
+	--sl-color-gray-2: #d5d5dc;
+	--sl-color-gray-3: var(--prism-text-muted);
+	--sl-color-gray-4: #8a8a95;
+	--sl-color-gray-5: var(--prism-text-subtle);
+	--sl-color-gray-6: #3a3a42;
+	--sl-color-gray-7: var(--prism-surface);
+	--sl-color-black: var(--prism-canvas);
+	--sl-color-bg: var(--prism-canvas);
+	--sl-color-bg-nav: var(--prism-canvas);
+	--sl-color-bg-sidebar: var(--prism-canvas);
+	--sl-color-bg-inline-code: var(--prism-surface);
+	--sl-color-bg-accent: var(--prism-accent-soft);
+	--sl-color-text: var(--prism-text);
+	--sl-color-text-accent: var(--prism-accent);
+	--sl-color-text-invert: var(--prism-text-inverse);
+	--sl-color-accent: var(--prism-accent);
+	--sl-color-accent-high: var(--prism-accent-hover);
+	--sl-color-accent-low: var(--prism-accent-soft);
+	--sl-color-hairline: var(--prism-border);
+	--sl-color-hairline-shade: var(--prism-border-strong);
+	--sl-color-hairline-light: var(--prism-surface-hover);
+	--sl-color-backdrop-overlay: rgb(5 5 6 / 0.72);
+	--sl-color-banner-bg: var(--prism-accent-soft);
+	--sl-color-banner-text: var(--prism-text);
+	--sl-color-asides-border: var(--prism-border);
+	--sl-color-asides-text-accent: var(--prism-text-muted);
+
+	/* Semantic callout colors (dark) */
+	--sl-color-blue: var(--prism-info);
+	--sl-color-blue-high: #6cb5ff;
+	--sl-color-blue-low: #0d2438;
+	--sl-color-green: var(--prism-success);
+	--sl-color-green-high: #3de0ae;
+	--sl-color-green-low: #0c2b21;
+	--sl-color-orange: var(--prism-warning);
+	--sl-color-orange-high: #f5b84d;
+	--sl-color-orange-low: #2e2209;
+	--sl-color-red: var(--prism-danger);
+	--sl-color-red-high: #f57883;
+	--sl-color-red-low: #330d12;
+	--sl-color-purple: var(--prism-event);
+	--sl-color-purple-high: #cd78ef;
+	--sl-color-purple-low: #2b0d38;
+
+	/* Starlight layout vars */
+	--sl-content-width: var(--prism-content-width);
+	--sl-sidebar-width: 16.5rem;
+	--sl-text-5xl: 1.75rem;
+	--sl-text-4xl: 1.5rem;
+	--sl-text-3xl: 1.25rem;
+	--sl-text-2xl: 1.125rem;
+	--sl-text-xl: 1rem;
+	--sl-text-lg: 0.9375rem;
+	--sl-text-base: 0.9375rem;
+	--sl-text-sm: 0.8125rem;
+	--sl-text-xs: 0.75rem;
+}
+
+/* ---- Light theme: complete documented translation ---- */
+[data-theme="light"] {
+	--prism-canvas: #f6f6f8;
+	--prism-canvas-subtle: #f0f0f3;
+	--prism-surface: #ffffff;
+	--prism-surface-raised: #f7f7f9;
+	--prism-surface-hover: #eeedf2;
+	--prism-surface-active: #e6e6ec;
+	--prism-border: #d8d8df;
+	--prism-border-strong: #bcbcc7;
+	--prism-text: #111116;
+	--prism-text-muted: #5d5d68;
+	/* Docs layer: #6E6E7A keeps 10-12px metadata labels at AA (4.5:1 on
+	   canvas) while preserving hierarchy below text-muted. The product
+	   token #7B7B87 stays the design-system value for larger type. */
+	--prism-text-subtle: #676774;
+	--prism-text-inverse: #f7f7f9;
+	--prism-accent: #5637d4;
+	--prism-accent-hover: #482cb8;
+	--prism-accent-active: #3d249f;
+	--prism-accent-soft: #eae5ff;
+	--prism-focus: #5637d4;
+	--prism-link: #3159d8;
+	--prism-success: #087a55;
+	--prism-warning: #9a6100;
+	--prism-danger: #c72f45;
+	--prism-info: #176fc1;
+	--prism-event: #8b32b5;
+
+	--sl-color-white: var(--prism-text);
+	--sl-color-gray-1: #1a1a20;
+	--sl-color-gray-2: #3d3d46;
+	--sl-color-gray-3: var(--prism-text-muted);
+	--sl-color-gray-4: #7b7b87;
+	--sl-color-gray-5: #a8a8b2;
+	--sl-color-gray-6: #d8d8df;
+	--sl-color-gray-7: var(--prism-canvas-subtle);
+	--sl-color-black: var(--prism-canvas);
+	--sl-color-bg: var(--prism-canvas);
+	--sl-color-bg-nav: var(--prism-canvas);
+	--sl-color-bg-sidebar: var(--prism-canvas);
+	--sl-color-bg-inline-code: var(--prism-surface);
+	--sl-color-bg-accent: var(--prism-accent-soft);
+	--sl-color-text: var(--prism-text);
+	--sl-color-text-accent: var(--prism-accent);
+	--sl-color-text-invert: var(--prism-text-inverse);
+	--sl-color-accent: var(--prism-accent);
+	--sl-color-accent-high: var(--prism-accent-hover);
+	--sl-color-accent-low: var(--prism-accent-soft);
+	--sl-color-hairline: var(--prism-border);
+	--sl-color-hairline-shade: var(--prism-border-strong);
+	--sl-color-hairline-light: var(--prism-surface-hover);
+	--sl-color-backdrop-overlay: rgb(17 17 22 / 0.4);
+	--sl-color-banner-bg: var(--prism-accent-soft);
+	--sl-color-banner-text: var(--prism-text);
+	--sl-color-asides-border: var(--prism-border);
+	--sl-color-asides-text-accent: var(--prism-text-muted);
+
+	--sl-color-blue: var(--prism-info);
+	--sl-color-blue-high: #1f7fd6;
+	--sl-color-blue-low: #e6f1fb;
+	--sl-color-green: var(--prism-success);
+	--sl-color-green-high: #096b4b;
+	--sl-color-green-low: #e2f5ee;
+	--sl-color-orange: var(--prism-warning);
+	--sl-color-orange-high: #8a5800;
+	--sl-color-orange-low: #faf0dd;
+	--sl-color-red: var(--prism-danger);
+	--sl-color-red-high: #b32a3e;
+	--sl-color-red-low: #fae9eb;
+	--sl-color-purple: var(--prism-event);
+	--sl-color-purple-high: #7b2ca2;
+	--sl-color-purple-low: #f2e9f7;
+}
+
+/* ---- Base shell ---- */
+html {
+	background: var(--sl-color-bg);
+}
+
+body {
+	font-family: var(--prism-font-sans);
+	color: var(--sl-color-text);
+	background: var(--sl-color-bg);
+	line-height: 1.7;
+}
+
+/* 2px solid violet viewport rail (public experience, task-8 section 4) */
+.site-header,
+.site-footer {
+	border-top: 2px solid var(--prism-accent);
+}
+
+/* Bounded content rail with hairline vertical edges on wide screens */
+@media (min-width: 88rem) {
+	.main-frame,
+	.site-header .header,
+	.site-footer .footer-inner {
+		max-width: 86rem;
+	}
+}
+
+/* ---- Typography ---- */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+	font-family: var(--prism-font-sans);
+	color: var(--sl-color-text);
+	letter-spacing: -0.01em;
+}
+
+/* Eyebrow / section label voice */
+.section-label,
+.meta-label {
+	font-family: var(--prism-font-mono);
+	font-size: 0.6875rem;
+	font-weight: 500;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--prism-text-muted);
+}
+
+/* ---- Article measure: 66-74ch prose lane ---- */
+.sl-markdown-content {
+	max-width: 72ch;
+}
+
+/* Tables and code may break wider deliberately */
+.sl-markdown-content > table,
+.sl-markdown-content .expressive-code {
+	max-width: none;
+}
+
+/* ---- Inline code: compact technical token ---- */
+.sl-markdown-content :not(pre) > code {
+	font-family: var(--prism-font-mono);
+	font-size: 0.84375em;
+	background: var(--sl-color-bg-inline-code);
+	border: 1px solid var(--sl-color-hairline);
+	border-radius: var(--prism-radius);
+	padding: 0.125rem 0.35rem;
+	color: var(--sl-color-text);
+}
+
+/* ---- Links ---- */
+.sl-markdown-content a {
+	color: var(--prism-link);
+	text-decoration: underline;
+	text-decoration-color: color-mix(in srgb, var(--prism-link) 45%, transparent);
+	text-underline-offset: 2px;
+}
+
+.sl-markdown-content a:hover {
+	text-decoration-color: var(--prism-link);
+}
+
+/* ---- Focus: crisp two-layer treatment, visible on every surface ---- */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+	outline: 2px solid var(--prism-focus) !important;
+	outline-offset: 2px !important;
+	border-radius: var(--prism-radius);
+}
+
+/* ---- Heading anchors: scroll margin for sticky header ---- */
+.sl-markdown-content :is(h1, h2, h3, h4, h5, h6) {
+	scroll-margin-top: 6rem;
+}
+
+/* ---- Tables ---- */
+.sl-markdown-content table {
+	border-collapse: collapse;
+	border: 1px solid var(--sl-color-hairline);
+}
+
+.sl-markdown-content th {
+	font-family: var(--prism-font-mono);
+	font-size: 0.6875rem;
+	font-weight: 500;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--prism-text-muted);
+	background: var(--prism-canvas-subtle);
+}
+
+/* ---- Horizontal rules ---- */
+.sl-markdown-content hr {
+	border-color: var(--sl-color-hairline);
+}
+
+/* ---- Reduced motion ---- */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
+}
+
+/* ---- Sidebar: dense navigation instrument (task-8 section 4) ---- */
+.sidebar {
+	--sl-sidebar-pad-x: 1rem;
+}
+
+.sidebar-content {
+	padding-top: 0.75rem;
+}
+
+.sidebar-content ul > li > a {
+	font-size: 0.875rem;
+	line-height: 1.45;
+	padding-block: 0.3125rem;
+	border-radius: var(--prism-radius);
+}
+
+/* Group labels: mono uppercase */
+.sidebar-content details > summary,
+.sidebar-content .sidebar-group-label,
+.sidebar-content > ul > li > details > summary {
+	font-family: var(--prism-font-mono);
+	font-size: 0.6875rem;
+	font-weight: 500;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--prism-text-subtle);
+	padding-block: 0.625rem;
+}
+
+/* Selected page: violet left rule + accent text */
+.sidebar-content a[aria-current='page'],
+.sidebar-content a[aria-current='true'] {
+	background: var(--sl-color-bg-accent);
+	color: var(--prism-accent-hover);
+	box-shadow: inset 2px 0 0 var(--prism-accent);
+	border-radius: 0 var(--prism-radius) var(--prism-radius) 0;
+	font-weight: 500;
+}
+
+/* Dark active link: accent-hover on accent-soft is 3.3:1 — use the focus
+   periwinkle (5.5:1) for the selected item's text. */
+[data-theme='dark'] .sidebar-content a[aria-current='page'],
+[data-theme='dark'] .sidebar-content a[aria-current='true'] {
+	color: var(--prism-focus);
+}
+
+.sidebar-content a:hover {
+	background: var(--prism-surface-hover);
+}
+
+/* Nested items: stable indentation */
+.sidebar-content details details {
+	padding-left: 0.5rem;
+	border-left: 1px solid var(--sl-color-hairline);
+}
+
+/* Sidebar footer (theme/mobile) */
+.sidebar-footer {
+	border-top: 1px solid var(--sl-color-hairline);
+}
+
+/* ---- Right table of contents: quiet marker ---- */
+.right-sidebar-panel {
+	padding-top: 1.5rem;
+}
+
+.right-sidebar-panel :global(h2) {
+	font-family: var(--prism-font-mono);
+	font-size: 0.6875rem;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--prism-text-subtle);
+}
+
+starlight-toc a {
+	font-size: 0.8125rem;
+	line-height: 1.5;
+	color: var(--prism-text-muted);
+	border-inline-start: 1px solid var(--sl-color-hairline);
+	padding-inline-start: 0.875rem;
+}
+
+starlight-toc a:hover {
+	color: var(--sl-color-text);
+}
+
+starlight-toc a[aria-current='true'] {
+	color: var(--prism-accent-hover);
+	border-inline-start-color: var(--prism-accent);
+	font-weight: 500;
+}
+
+/* Dark TOC active is 4.35:1 — use the focus periwinkle (7:1). */
+[data-theme='dark'] starlight-toc a[aria-current='true'] {
+	color: var(--prism-focus);
+}
+
+/* ---- Mobile navigation drawer ---- */
+@media (max-width: 50rem) {
+	.mobile-nav {
+		border-inline-end: 1px solid var(--sl-color-hairline);
+	}
+	.mobile-nav .header {
+		border-bottom: 1px solid var(--sl-color-hairline);
+	}
+	.mobile-nav-toggle {
+		color: var(--sl-color-text);
+	}
+}
+
+/* ---- Header (stock elements inside overridden header) ---- */
+.prism-header site-search button,
+.prism-home site-search button {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	height: 36px;
+	padding: 0 0.75rem;
+	font-family: var(--prism-font-mono);
+	font-size: 0.6875rem;
+	letter-spacing: 0.04em;
+	color: var(--prism-text-muted);
+	background: var(--prism-surface);
+	border: 1px solid var(--sl-color-hairline);
+	border-radius: var(--prism-radius);
+	cursor: pointer;
+}
+
+.prism-header site-search button:hover,
+.prism-home site-search button:hover {
+	border-color: var(--prism-border-strong);
+	color: var(--sl-color-text);
+	background: var(--prism-surface-hover);
+}
+
+.prism-header site-search kbd,
+.prism-home site-search kbd {
+	font-family: var(--prism-font-mono);
+	font-size: 0.625rem;
+	color: var(--prism-text-subtle);
+	border: 1px solid var(--sl-color-hairline);
+	border-radius: var(--prism-radius);
+	padding: 0.0625rem 0.3125rem;
+}
+
+.prism-header .theme-select,
+.prism-home .theme-select {
+	border-radius: var(--prism-radius);
+}
+
+.prism-header .theme-select select,
+.prism-home .theme-select select {
+	font-family: var(--prism-font-mono);
+	font-size: 0.6875rem;
+	letter-spacing: 0.04em;
+	color: var(--prism-text-muted);
+	border: 1px solid var(--sl-color-hairline);
+	border-radius: var(--prism-radius);
+	background: var(--prism-surface);
+	height: 36px;
+	cursor: pointer;
+}
+
+/* ---- Pagefind search modal: Prism command surface ---- */
+.pagefind-ui__modal {
+	--pagefind-ui-scale: 0.9;
+	--pagefind-ui-primary: var(--prism-text);
+	--pagefind-ui-text: var(--prism-text);
+	--pagefind-ui-background: var(--prism-surface-raised);
+	--pagefind-ui-border: var(--prism-border);
+	--pagefind-ui-border-radius: var(--prism-radius);
+	--pagefind-ui-font: var(--prism-font-sans);
+	--pagefind-ui-font-mono: var(--prism-font-mono);
+}
+
+.pagefind-ui__modal .pagefind-ui__search-input {
+	font-family: var(--prism-font-mono);
+	font-size: 0.875rem;
+	border: 1px solid var(--prism-border-strong);
+	border-radius: var(--prism-radius);
+}
+
+.pagefind-ui__modal .pagefind-ui__result {
+	border: 0;
+	border-bottom: 1px solid var(--prism-border);
+	border-radius: 0;
+	padding: 0.75rem;
+}
+
+.pagefind-ui__modal .pagefind-ui__result:hover,
+.pagefind-ui__modal .pagefind-ui__result[aria-selected='true'] {
+	background: var(--prism-surface-hover);
+}
+
+.pagefind-ui__modal .pagefind-ui__result-title {
+	font-family: var(--prism-font-mono);
+	font-size: 0.75rem;
+	letter-spacing: 0.04em;
+	color: var(--prism-text);
+}
+
+.pagefind-ui__modal .pagefind-ui__result-excerpt {
+	font-size: 0.8125rem;
+	color: var(--prism-text-muted);
+}
+
+.pagefind-ui__modal .pagefind-ui__search-clear,
+.pagefind-ui__modal .pagefind-ui__search-clear:hover {
+	border-radius: var(--prism-radius);
+	color: var(--prism-text-muted);
+}
+
+/* ---- Expressive Code: Prism theme mapping ---- */
+.expressive-code {
+	--ec-brdRad: var(--prism-radius);
+	--ec-brdCol: var(--sl-color-hairline);
+	--ec-bg: var(--prism-surface);
+	--ec-frm-edBg: var(--prism-surface);
+	--ec-frm-trmBg: var(--prism-canvas-subtle);
+	--ec-frm-trmTxtBrd: var(--sl-color-hairline);
+	--ec-frm-trmTxtFg: var(--prism-text-muted);
+	--ec-frm-inlBg: var(--prism-surface);
+	--ec-frm-inlBrd: var(--sl-color-hairline);
+	--ec-frm-inlFg: var(--prism-text);
+	--ec-tkn-bg: transparent;
+	--ec-codeFontFml: var(--prism-font-mono);
+	--ec-codeFontSz: 0.8125rem;
+}
+
+.expressive-code .ec-line {
+	padding-inline: 0.875rem;
+}
+
+.expressive-code .ec-header {
+	border-bottom: 1px solid var(--sl-color-hairline);
+	font-family: var(--prism-font-mono);
+	font-size: 0.6875rem;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+.expressive-code .copy {
+	--ec-tooltip-bg: var(--prism-surface-raised);
+	--ec-tooltip-fg: var(--prism-text);
+	border-radius: var(--prism-radius);
+}
+
+/* ---- Native Starlight Aside (used by Tabs/Steps content) ---- */
+.starlight-aside {
+	border: 1px solid var(--sl-color-hairline);
+	border-inline-start-width: 2px;
+	border-radius: var(--prism-radius);
+	background: var(--prism-canvas-subtle);
+}
+
+.starlight-aside__title {
+	font-family: var(--prism-font-mono);
+	font-size: 0.6875rem;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+
+/* ---- Steps: numbered, aligned with onboarding ---- */
+.sl-steps {
+	counter-reset: prism-step;
+}
+
+.sl-steps > li {
+	counter-increment: prism-step;
+	position: relative;
+	padding-inline-start: 2.5rem;
+}
+
+.sl-steps > li::before {
+	content: counter(prism-step, decimal-leading-zero);
+	position: absolute;
+	left: 0;
+	top: 0.125rem;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.5rem;
+	height: 1.5rem;
+	font-family: var(--prism-font-mono);
+	font-size: 0.625rem;
+	color: var(--prism-accent);
+	border: 1px solid var(--prism-border-strong);
+	border-radius: var(--prism-radius);
+	background: var(--prism-surface);
+}
+
+/* ---- Tabs ---- */
+starlight-tabs {
+	border: 1px solid var(--sl-color-hairline);
+	border-radius: var(--prism-radius);
+	overflow: hidden;
+}
+
+starlight-tabs [role='tablist'] {
+	border-bottom: 1px solid var(--sl-color-hairline);
+	background: var(--prism-canvas-subtle);
+}
+
+starlight-tabs [role='tab'] {
+	font-family: var(--prism-font-mono);
+	font-size: 0.6875rem;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--prism-text-muted);
+	border-radius: 0;
+}
+
+starlight-tabs [role='tab'][aria-selected='true'] {
+	color: var(--prism-accent-hover);
+	box-shadow: inset 0 -2px 0 var(--prism-accent);
+}
+
+/* ---- Pagination ---- */
+.pagination {
+	border-top: 1px solid var(--sl-color-hairline);
+	margin-top: 2.5rem;
+}
+
+.pagination a {
+	border: 1px solid var(--sl-color-hairline);
+	border-radius: var(--prism-radius);
+	background: var(--prism-canvas-subtle);
+	padding: 0.875rem 1rem;
+}
+
+.pagination a:hover {
+	border-color: var(--prism-border-strong);
+	background: var(--prism-surface-hover);
+}
+
+.pagination .meta {
+	font-family: var(--prism-font-mono);
+	font-size: 0.625rem;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--prism-text-subtle);
+}
+
+/* ---- Edit link + last updated ---- */
+.edit-link a,
+.last-updated {
+	font-family: var(--prism-font-mono);
+	font-size: 0.6875rem;
+	color: var(--prism-text-subtle);
+}
+
+.edit-link a:hover {
+	color: var(--prism-link);
+}
+
+/* ---- Skip link ---- */
+.skip-link {
+	border-radius: var(--prism-radius);
+}
+
+/* ---- Wide-screen vertical rail hairlines (public rail language) ---- */
+@media (min-width: 88rem) {
+	.site-header .header,
+	.main-frame,
+	.site-footer .footer-inner,
+	.prism-home,
+	.prism-404 {
+		border-inline: 1px solid var(--sl-color-hairline);
+	}
+	.site-header .header,
+	.site-footer .footer-inner {
+		padding-inline: 1.5rem;
+	}
+}
+
+/* ---- External links: distinguishable without icon spam ---- */
+.sl-markdown-content a[href^="http"]::after {
+	content: ' ↗';
+	font-size: 0.8125em;
+	color: var(--prism-text-subtle);
+	text-decoration: none;
+}
+
+/* ---- Forced colors: keep focus and link affordances ---- */
+@media (forced-colors: active) {
+	:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+		outline: 2px solid CanvasText !important;
+		outline-offset: 2px;
+	}
+	.sl-markdown-content a,
+	.prism-footer__nav a,
+	.prism-home__panel,
+	.prism-choice__action,
+	.prism-header__action {
+		text-decoration: underline;
+	}
+	.prism-callout,
+	.prism-endpoint,
+	.prism-command__row,
+	.prism-config-table__scroll,
+	.prism-flow {
+		border: 1px solid CanvasText;
+	}
+}
+
+/* ---- Print: preserve identity, drop navigation ---- */
+@media print {
+	.site-header,
+	.site-footer,
+	.sidebar,
+	.right-sidebar-panel,
+	.mobile-nav,
+	.mobile-nav-toggle,
+	.skip-link,
+	.pagination,
+	.edit-link,
+	.starlight-toc,
+	sl-sidebar-restore {
+		display: none !important;
+	}
+	html,
+	body {
+		background: #ffffff !important;
+		color: #111116 !important;
+	}
+	.sl-markdown-content a {
+		color: #3159d8 !important;
+		text-decoration: underline;
+	}
+	.sl-markdown-content a::after {
+		content: ' (' attr(href) ')';
+		font-size: 0.8em;
+		color: #5d5d68;
+	}
+	.sl-markdown-content pre,
+	.sl-markdown-content code {
+		color: #111116 !important;
+		background: #f6f6f8 !important;
+		border-color: #d8d8df !important;
+	}
+	.sl-markdown-content h1,
+	.sl-markdown-content h2,
+	.sl-markdown-content h3 {
+		color: #111116 !important;
+		break-after: avoid-page;
+	}
+	.sl-markdown-content pre {
+		break-inside: avoid-page;
+	}
+	.sl-markdown-content table {
+		break-inside: auto;
+	}
+	.main-frame {
+		max-width: none !important;
+	}
+	@page {
+		margin: 1.25cm 1.5cm;
+	}
+}
+
+/* Dark theme: accent text on surface/accent-soft backgrounds falls below
+   AA at small sizes; use the focus periwinkle for these decorative indexes
+   and mode badges (both keep hierarchy, both pass 4.5:1). */
+[data-theme='dark'] .prism-flow__index,
+[data-theme='dark'] .prism-config-table__mode--both {
+	color: var(--prism-focus);
+}

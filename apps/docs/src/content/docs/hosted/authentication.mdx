@@ -1,0 +1,60 @@
+---
+title: Authentication
+description: How accounts, sessions, verification, social sign-in, and service JWTs work.
+audience: User
+scope: Hosted
+lastReviewed: "2026-08-11"
+---
+
+
+Hosted Prism uses Better Auth for authentication. The product API serves
+every auth route under `/api/auth/*` (rate-limited to 20 requests per minute
+per client IP).
+
+## Email & password
+
+- Sign-up: `POST /api/auth/sign-up/email` with `name`, `email`, `password`.
+  Password minimum length is **8 characters** (`weak_password` otherwise).
+- A **verification email** is sent immediately on sign-up
+  (`sendOnSignUp`). Product creation is guarded by email verification, so
+  accounts are effectively read-only until verified.
+- Opening the verification link signs you in automatically
+  (`autoSignInAfterVerification`).
+- Password reset: `POST /api/auth/forget-password`, then the emailed link
+  completes `POST /api/auth/reset-password`. The reset email includes the
+  instance name.
+
+## Social providers
+
+GitHub and Google sign-in are enabled only when both the client id and
+client secret are configured (the public `GET /api/auth/providers` endpoint
+reports which are available, so the UI hides buttons for unconfigured
+providers). Callbacks live at `{BASE_URL}/api/auth/callback/{github|google}`.
+
+## Sessions
+
+- The dashboard session is an **HTTP-only, SameSite=Lax cookie** with the
+  `prism` prefix (`prism.session_token`). In production it is also `Secure`.
+- Trusted origins are locked to `CLIENT_URL` plus `CORS_ALLOWED_ORIGINS`;
+  development additionally trusts any localhost/127.0.0.1 port. Credentialed
+  CORS is only ever answered for allowlisted origins.
+
+## Service JWTs for realtime
+
+The realtime WebSocket does not use the cookie. The dashboard requests a
+**short-lived service JWT** from the product API's Better Auth JWT plugin
+(`RS256`, issuer `prism`, audience `prism-analytics`) and presents it in the
+`connect-project` WebSocket message. The analytics API verifies the JWT
+against `{BASE_URL}/api/auth/jwks`, checks the subject is an active user, and
+checks that user's team membership before subscribing.
+
+- Keys rotate every 30 days with a 7-day grace overlap, so clients re-fetch
+  JWKS transparently.
+- The subject must be an active user — client-supplied user ids are never
+  trusted.
+
+## Account controls
+
+From **Profile**: change your name and username, update your avatar, change
+your password, view the email address you signed up with, and see which
+social providers are linked.

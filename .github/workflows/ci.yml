@@ -118,3 +118,38 @@ jobs:
       - name: Tear down
         if: always()
         run: docker compose --env-file deploy/compose.env -f deploy/compose.yml down -v
+
+  # Documentation certification (task-8): build, link/anchor/redirect check,
+  # component-output tests, and the browser suite with axe. Runs on every
+  # push to main; the browser job needs the Playwright browser cache.
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build docs
+        run: yarn workspace prism-docs build
+
+      - name: Internal link / anchor / redirect / sitemap / asset check
+        run: yarn workspace prism-docs check:links
+
+      - name: Component-output tests (preview server)
+        run: yarn workspace prism-docs test
+
+      - name: Install Playwright browsers (chromium)
+        run: npx playwright install --with-deps chromium
+        working-directory: ./apps/docs
+
+      - name: Browser tests + axe (homepage, article, search, mobile, theme, 404)
+        run: yarn workspace prism-docs test:e2e
+
+      - name: Brand drift check
+        run: yarn workspace @prism/brand run check

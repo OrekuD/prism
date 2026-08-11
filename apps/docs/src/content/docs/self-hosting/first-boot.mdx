@@ -1,0 +1,72 @@
+---
+
+title: First boot
+description: Setup token, /setup owner creation, and recovery from stale claims.
+audience: Operator
+scope: Self-hosted
+lastReviewed: "2026-08-11"
+---
+
+import Callout from '../../../components/docs/Callout.astro';
+
+import SectionLabel from '../../../components/docs/SectionLabel.astro';
+import { Steps } from '@astrojs/starlight/components';
+
+
+<SectionLabel label="OWNER SETUP" />
+
+## The setup token
+
+<Callout variant="danger" title="Treat the token as a secret">
+The setup token grants ownership of a fresh instance. Store it in your
+secret manager, rotate it if it leaks, and remove it from the environment
+after the owner exists (the endpoint closes permanently).
+</Callout>
+
+
+Every self-hosted instance **must** configure `SETUP_TOKEN` (minimum 16
+characters; the API refuses to boot without it). The token gates the public
+first-owner endpoint:
+
+- Compare is constant-time (SHA-256 digest).
+- The endpoint is rate-limited (5 requests / 15 minutes / client IP).
+- The token is **never logged or returned**; after the owner exists the
+  endpoint closes permanently and the variable can be removed.
+
+## Creating the owner
+
+<Steps>
+
+1. **Start the stack** — see [Installation](/self-hosting/installation/).
+2. **Open `/setup`** — the first-boot screen asks for the setup token, then
+   the owner's name, email, and password.
+3. **Done** — the owner is created with a **verified email** (no mail
+   needed) and becomes the instance administrator with the personal team.
+
+</Steps>
+
+## Concurrency and recovery
+
+The setup endpoint claims the empty instance atomically:
+
+- Two simultaneous setup requests → one succeeds, the other gets
+  `setup_in_progress` (409). Exactly one owner is created.
+- If a claim dies mid-way (crash, dropped request), the claim is recovered
+  after a short time-to-live and the endpoint accepts a fresh attempt.
+- Partial owners created before a failure are rolled back.
+
+## When the endpoint is closed
+
+- After the first owner exists → `setup_not_enabled` (503) forever.
+- In hosted mode → `setup_not_enabled` (503).
+- The dashboard hides `/setup` behind the config check
+  (`setupRequired` + `setupTokenRequired` from `GET /api/v1/config`).
+
+## Troubleshooting
+
+| Symptom | Cause / check |
+| --- | --- |
+| `/setup` shows "configuration loading" forever | API unreachable or `/api/v1/config` failing — check `web` proxy + API logs |
+| `setup_token_required` (401) | Wrong token; paste it exactly (it is compared byte-wise) |
+| `setup_in_progress` (409) | Another request holds the claim; retry after the TTL |
+| Missing table errors (503) | Migrations not applied — run `docker compose … up migrate` |

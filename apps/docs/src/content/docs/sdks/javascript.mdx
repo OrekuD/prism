@@ -1,0 +1,104 @@
+---
+
+title: JavaScript SDK (@prism/core)
+description: PrismClient constructor, session lifecycle, events, and error behavior — verified from source.
+audience: Developer
+scope: Both
+lastReviewed: "2026-08-11"
+---
+
+import Callout from '../../../components/docs/Callout.astro';
+
+import SectionLabel from '../../../components/docs/SectionLabel.astro';
+
+
+<SectionLabel label="PACKAGE: @prism/core" />
+
+The browser SDK ships a single class, `PrismClient`. It is built as CJS +
+ESM with TypeScript declarations (`tsup`). `import { PrismClient } from
+"@prism/core"`.
+
+## `new PrismClient(key)`
+
+| Argument | Type | Description |
+| --- | --- | --- |
+| `key` | `string` | Project analytics key (public, write-only) |
+
+- Throws `Prism Api key not provided` when `key` is empty.
+- Starts a session automatically (best-effort — failures are swallowed, never
+  unhandled rejections).
+- Registers global `error` / `unhandledrejection` listeners that are
+  currently no-ops (they exist so the SDK can grow crash capture without
+  changing the contract).
+
+## Where the SDK sends data
+
+<Callout variant="self-hosted" title="Self-hosted">
+The published package points at Prism's hosted analytics origin. A
+self-hosted instance must rebuild the SDK with its own `API_URL` — a
+stale origin would post your sessions to the wrong place.
+</Callout>
+
+
+The ingestion base URL is **baked in at build time**:
+
+```ts
+this.apiUrl = process.env.API_URL + "/api/v1/analytics";
+```
+
+The published package is built with Prism's hosted analytics origin. A
+self-hosted deployment must build the package against its own origin:
+
+```sh
+# from the repository root
+API_URL=https://analytics.example.com yarn workspace @prism/core build
+```
+
+and serve/install that build (workspace copy, private registry, or a bundler
+alias). The endpoint path suffix `/api/v1/analytics` is always appended by
+the SDK.
+
+## `startSession()`
+
+Sends the current page path, `document.referrer`, and `navigator.userAgent`:
+
+```json
+{ "userAgent": "…", "referrer": "https://…", "location": "/path" }
+```
+
+The response supplies the session id used by all later calls. Called
+automatically by the constructor; call it again after client-side navigation
+in a SPA to start a fresh session.
+
+## `logEvent(name, data?)`
+
+Logs a named event against the current session. `name` is 1–128 characters;
+`data` is optional structured JSON. **No-op (resolves immediately) when no
+session is active** — the SDK never crashes the host app.
+
+## `logCustomEvent(name, data?)`
+
+Alias of `logEvent` for product events.
+
+## `endSession()`
+
+Marks the session offline with a `fetch(..., { keepalive: true })` — it
+preserves the `Authorization` header and survives page close. If `fetch`
+itself throws, the SDK falls back to `navigator.sendBeacon`, which cannot
+carry the header (the endpoint is scoped server-side to the project key).
+Safe to call multiple times; the second call is a no-op. Sessions that never
+end are also marked stale server-side.
+
+## Errors
+
+- **Network failures never throw** into the host app: `sendPostRequest`
+  resolves `undefined` and logs to the console.
+- The constructor's automatic `startSession()` failure is caught and
+  discarded.
+- SDK methods are not a data source for analytics reads; ingestion is
+  fire-and-forget from the page's perspective.
+
+## Browser support
+
+Any browser with `fetch`, `navigator.sendBeacon`, and `crypto` basics. The
+package has no runtime dependencies.

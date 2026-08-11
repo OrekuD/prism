@@ -1,0 +1,113 @@
+---
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import SectionLabel from '../components/docs/SectionLabel.astro';
+import Search from '@astrojs/starlight/components/Search.astro';
+import ThemeProvider from '@astrojs/starlight/components/ThemeProvider.astro';
+import '../styles/prism.css';
+---
+
+<!doctype html>
+<html lang="en" data-theme="dark">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<link rel="icon" type="image/x-icon" href="/favicon.ico" />
+		<meta name="robots" content="noindex" />
+		<title>Page not found — Prism Docs</title>
+			<ThemeProvider />
+	</head>
+	<body>
+		<Header banner />
+		<main id="main-content" class="prism-404">
+			<p class="prism-404__code" aria-hidden="true">404</p>
+			<SectionLabel label="Page not found" />
+			<h1>This page does not exist</h1>
+			<p class="prism-404__lede">
+				The URL may have moved, or the page may have been removed. Try
+				searching, or start from one of these:
+			</p>
+			<div class="prism-404__actions">
+				<a class="prism-404__action prism-404__action--primary" href="/">Docs home</a>
+				<a class="prism-404__action" href="/start/overview/">Start here</a>
+				<a class="prism-404__action" href="/self-hosting/troubleshooting/">Troubleshooting</a>
+				<a class="prism-404__action" href="https://github.com/OrekuD/prism/issues" target="_blank" rel="noopener">Report a broken link</a>
+			</div>
+			<div class="prism-404__search">
+				<Search />
+			</div>
+		</main>
+		<Footer />
+	</body>
+</html>
+
+<style>
+	@layer prism.docs {
+		.prism-404 {
+			max-width: var(--sl-content-width);
+			margin-inline: auto;
+			padding: 4rem var(--sl-sidebar-pad-x, 1.25rem);
+			display: grid;
+			gap: 0.75rem;
+			justify-items: start;
+		}
+		.prism-404__code {
+			margin: 0;
+			font-family: var(--prism-font-mono);
+			font-size: 4rem;
+			font-weight: 600;
+			line-height: 1;
+			color: var(--prism-accent);
+			letter-spacing: -0.03em;
+		}
+		.prism-404 h1 {
+			margin: 0;
+			font-size: 1.5rem;
+		}
+		.prism-404__lede {
+			margin: 0 0 0.5rem;
+			max-width: 52ch;
+			color: var(--prism-text-muted);
+		}
+		.prism-404__actions {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 0.75rem;
+		}
+		.prism-404__action {
+			display: inline-flex;
+			align-items: center;
+			height: 44px;
+			padding: 0 1rem;
+			font-family: var(--prism-font-mono);
+			font-size: 0.6875rem;
+			font-weight: 500;
+			letter-spacing: 0.06em;
+			text-transform: uppercase;
+			border: 1px solid var(--sl-color-hairline);
+			border-radius: var(--prism-radius);
+			color: var(--sl-color-text);
+			text-decoration: none;
+		}
+		.prism-404__action:hover {
+			border-color: var(--prism-border-strong);
+			background: var(--prism-surface-hover);
+			text-decoration: none;
+		}
+		.prism-404__action--primary {
+			background: var(--prism-accent);
+			border-color: var(--prism-accent);
+			color: #f7f7f9; /* light text-inverse: 5.4:1 on accent */
+			font-weight: 600;
+		}
+		.prism-404__action--primary:hover {
+			background: var(--prism-accent-hover);
+			border-color: var(--prism-accent-hover);
+		}
+		.prism-404__search {
+			margin-top: 1rem;
+			max-width: 28rem;
+		}
+	}
+</style>
