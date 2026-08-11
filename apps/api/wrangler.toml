@@ -1,6 +1,7 @@
 name = "prism-api"
 main = "src/index.ts"
-compatibility_date = "2024-05-12"
+# nodejs_compat v2 (stream/crypto for nodemailer) requires >= 2024-09-23
+compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
 # [vars]
