@@ -146,6 +146,24 @@ a standalone deployment.
 - [x] Provide a CLI status/config check that redacts secrets. The config
       validator reports variable names + remediation only; resolvePrismConfig
       throws a redacted problem list (tested: secret values never appear).
+- [x] Token-protect the first-owner endpoint on EVERY self-hosted instance.
+      SETUP_TOKEN is required by config validation (minimum 16 chars),
+      demanded via the X-Setup-Token header with constant-time digest
+      comparison, and the endpoint is rate limited per client IP.
+- [x] Make owner creation atomic with crash recovery. Single-row
+      setup_claim table (migration 0002, PK CHECK id = 1) makes concurrent
+      first-boot requests race on the INSERT (losers get 409); claims
+      older than the 5-minute TTL with zero users are stale and recovered;
+      any failure after user creation rolls the account back so a partial
+      owner can never close setup. Migration-owned, no request-time DDL.
+- [x] Validate token strength, BASE_URL, CLIENT_URL, and CORS origins
+      centrally. Origins must be exact (no wildcards, paths, or
+      credentials); ENVIRONMENT is strict (prod/misspellings fail fast).
+- [x] Automated coverage for first boot: setup tokens, concurrency,
+      rollback, stale claims, replay closure, hosted-mode refusal, rate
+      limiting (api setupController.test.ts, 11 tests), and the /setup
+      first-boot UI (web onboarding.test.tsx, 3 tests). Test harness
+      fails loudly on provisioning errors under vitest.
 
 ## 5. Add migrations, backup, restore, and upgrades
 

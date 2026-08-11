@@ -151,6 +151,11 @@ export function buildAuthOptions(
             try {
               await provisionUserResources(db as never, user as never);
             } catch (error) {
+              // Provisioning is part of the signup contract: under vitest
+              // a failure must fail the test, not be swallowed.
+              if (typeof process !== "undefined" && process.env.VITEST === "true") {
+                throw error;
+              }
               console.warn(
                 "[prism-auth] profile/team provisioning failed:",
                 error instanceof Error ? error.message : error,

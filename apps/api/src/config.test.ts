@@ -128,12 +128,19 @@ describe("resolveEnvironment", () => {
 });
 
 describe("validateAllowedOrigins", () => {
-  it("accepts exact origins and leading subdomain wildcards", () => {
+  it("accepts exact origins", () => {
     expect(
       validateAllowedOrigins({
-        CORS_ALLOWED_ORIGINS: "https://app.example.com,https://*.sub.example.com",
+        CORS_ALLOWED_ORIGINS: "https://app.example.com,http://localhost:3001",
       }),
     ).toEqual([]);
+  });
+
+  it("rejects subdomain wildcards too (exact origins only)", () => {
+    const problems = validateAllowedOrigins({
+      CORS_ALLOWED_ORIGINS: "https://*.sub.example.com",
+    });
+    expect(problems.join("\n")).toMatch(/wildcard/);
   });
 
   it("rejects bare wildcards", () => {
@@ -172,30 +179,59 @@ describe("validateAllowedOrigins", () => {
 });
 
 describe("validatePrismConfig", () => {
-  it("requires SETUP_TOKEN for production self-hosted deployments", () => {
-    const problems = validatePrismConfig({
-      ...base,
-      PRISM_DEPLOYMENT_MODE: "self-hosted",
-      ENVIRONMENT: "production",
-    });
-    expect(problems.join("\n")).toMatch(/SETUP_TOKEN/);
+  it("requires SETUP_TOKEN for every self-hosted deployment (dev too)", () => {
+    for (const environment of ["development", "production"]) {
+      const problems = validatePrismConfig({
+        ...base,
+        PRISM_DEPLOYMENT_MODE: "self-hosted",
+        ENVIRONMENT: environment,
+      });
+      expect(problems.join("\n")).toMatch(/SETUP_TOKEN/);
+    }
   });
 
-  it("accepts production self-hosted with a token", () => {
+  it("accepts self-hosted with a token", () => {
     const problems = validatePrismConfig({
       ...base,
       PRISM_DEPLOYMENT_MODE: "self-hosted",
-      ENVIRONMENT: "production",
+      ENVIRONMENT: "development",
       SETUP_TOKEN: "x".repeat(24),
     });
     expect(problems).toEqual([]);
   });
 
-  it("does not require the token for local self-hosted development", () => {
+  it("rejects short SETUP_TOKEN values", () => {
     const problems = validatePrismConfig({
       ...base,
       PRISM_DEPLOYMENT_MODE: "self-hosted",
-      ENVIRONMENT: "development",
+      SETUP_TOKEN: "short",
+    });
+    expect(problems.join("\n")).toMatch(/SETUP_TOKEN is too short/);
+  });
+
+  it("does not require the token in hosted mode", () => {
+    const problems = validatePrismConfig({
+      ...base,
+      PRISM_DEPLOYMENT_MODE: "hosted",
+    });
+    expect(problems).toEqual([]);
+  });
+
+  it("rejects malformed BASE_URL and CLIENT_URL", () => {
+    const problems = validatePrismConfig({
+      ...base,
+      BASE_URL: "ftp://analytics.example.com",
+      CLIENT_URL: "https://app.example.com/path",
+    });
+    expect(problems.join("\n")).toMatch(/BASE_URL/);
+    expect(problems.join("\n")).toMatch(/CLIENT_URL/);
+  });
+
+  it("accepts origin-shaped BASE_URL and CLIENT_URL", () => {
+    const problems = validatePrismConfig({
+      ...base,
+      BASE_URL: "https://analytics.example.com",
+      CLIENT_URL: "https://app.example.com",
     });
     expect(problems).toEqual([]);
   });

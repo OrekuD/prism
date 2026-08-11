@@ -67,12 +67,9 @@ export function resolveEnvironment(
 
 /**
  * Origin allowlist validation. Entries are handed to Better Auth, whose
- * matcher treats `*` and `?` as wildcards, so malformed, pathful, or
- * overly broad entries are rejected at configuration time.
- *
- * Allowed shape: `https://app.example.com` or `https://*.example.com`
- * (single leading subdomain wildcard). No paths, queries, fragments,
- * credentials, bare `*`, `?` wildcards, or non-http(s) schemes.
+ * matcher treats `*` and `?` as wildcards, so origins must be EXACT:
+ * `https://app.example.com`. No wildcards of any kind, no paths,
+ * queries, fragments, credentials, or non-http(s) schemes.
  */
 export function validateAllowedOrigins(
   env: Record<string, string | undefined>,
@@ -84,9 +81,9 @@ export function validateAllowedOrigins(
     .filter(Boolean);
 
   for (const entry of entries) {
-    if (entry.includes("?")) {
+    if (entry.includes("?") || entry.includes("*")) {
       problems.push(
-        `CORS_ALLOWED_ORIGINS entry "${entry}" contains a wildcard '?', which is not allowed. Use exact origins or a leading *. subdomain wildcard.`,
+        `CORS_ALLOWED_ORIGINS entry "${entry}" contains a wildcard, which is not allowed. Use exact origins (e.g. https://app.example.com).`,
       );
       continue;
     }
@@ -106,15 +103,9 @@ export function validateAllowedOrigins(
         continue;
       }
       const host = url.hostname;
-      if (!host || host === "*") {
+      if (!host) {
         problems.push(
-          `CORS_ALLOWED_ORIGINS entry "${entry}" must name a host; bare wildcards are not allowed.`,
-        );
-        continue;
-      }
-      if (host.includes("*") && !host.startsWith("*.")) {
-        problems.push(
-          `CORS_ALLOWED_ORIGINS entry "${entry}" may only use a leading *. subdomain wildcard (e.g. https://*.example.com).`,
+          `CORS_ALLOWED_ORIGINS entry "${entry}" must name a host.`,
         );
       }
     } catch {
@@ -155,6 +146,42 @@ export function resolveSignupPolicy(
 }
 
 /**
+ * Origin-shaped URL validation for BASE_URL / CLIENT_URL: absolute
+ * http(s), no path, query, fragment, or credentials.
+ */
+function validateOriginUrl(
+  variable: string,
+  value: string | undefined,
+): string[] {
+  if (!value) return [];
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return [
+        `${variable} must use http or https. Fix ${variable}.`,
+      ];
+    }
+    if (
+      url.pathname !== "/" ||
+      url.search ||
+      url.hash ||
+      url.username ||
+      url.password ||
+      !url.hostname
+    ) {
+      return [
+        `${variable} must be an origin without a path, query, fragment, or credentials (e.g. https://analytics.example.com). Fix ${variable}.`,
+      ];
+    }
+  } catch {
+    return [
+      `${variable} is not a valid URL. Use the form https://analytics.example.com. Fix ${variable}.`,
+    ];
+  }
+  return [];
+}
+
+/**
  * Returns a list of configuration problems (variable names + remediation,
  * never values). An empty list means the configuration is usable.
  */
@@ -184,6 +211,8 @@ export function validatePrismConfig(
       "BASE_URL is required (the public URL of this API; used for auth cookies, callbacks, and JWKS). Set BASE_URL.",
     );
   }
+  problems.push(...validateOriginUrl("BASE_URL", env.BASE_URL));
+  problems.push(...validateOriginUrl("CLIENT_URL", env.CLIENT_URL));
 
   try {
     resolveDeploymentMode(env);
@@ -205,16 +234,20 @@ export function validatePrismConfig(
 
   problems.push(...validateAllowedOrigins(env));
 
-  // First-owner setup must be token-protected in production: an
-  // unprotected public endpoint would let anyone claim a fresh instance.
-  if (
-    resolveDeploymentMode(env) === "self-hosted" &&
-    resolveEnvironment(env) === "production" &&
-    !env.SETUP_TOKEN
-  ) {
-    problems.push(
-      "SETUP_TOKEN is required in production self-hosted deployments (the public first-owner setup endpoint must be token-protected). Generate one with: openssl rand -hex 24. Set SETUP_TOKEN.",
-    );
+  // First-owner setup must be token-protected on EVERY self-hosted
+  // instance: the public endpoint would otherwise let anyone claim a
+  // fresh instance (development included).
+  if (resolveDeploymentMode(env) === "self-hosted") {
+    const token = env.SETUP_TOKEN;
+    if (!token) {
+      problems.push(
+        "SETUP_TOKEN is required for self-hosted deployments (the public first-owner setup endpoint must be token-protected). Generate one with: openssl rand -hex 24. Set SETUP_TOKEN.",
+      );
+    } else if (token.length < 16) {
+      problems.push(
+        "SETUP_TOKEN is too short (minimum 16 characters). Generate one with: openssl rand -hex 24.",
+      );
+    }
   }
 
   return problems;

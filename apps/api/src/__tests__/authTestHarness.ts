@@ -47,6 +47,13 @@ export function createTestAuth(
       sendVerificationEmail: async () => undefined,
       ...options.emailVerification,
     },
+    // The memory adapter has no product tables, so provisioning is stubbed
+    // here; real provisioning paths (setup controller, integration tests)
+    // fail loudly under vitest instead of being swallowed.
+    databaseHooks: {
+      user: { create: { after: async () => undefined } },
+      ...options.databaseHooks,
+    },
     database: memoryAdapter(memoryDb),
   });
 }

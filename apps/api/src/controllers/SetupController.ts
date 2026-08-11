@@ -3,13 +3,17 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import type { Context } from "hono";
 import { buildAuthOptions } from "../auth/options";
 import { provisionUserResources } from "../auth/provision";
-import { resolveEnvironment, resolvePrismConfig } from "../config";
+import { resolvePrismConfig } from "../config";
 import { createProductDb } from "../database/db";
 import { clientIpFrom, RateLimiter } from "../utils/RateLimiter";
 import type { Bindings, HonoConfig } from "../types/types";
 import * as authSchema from "../database/schema/auth";
 import { Roles } from "@prism/types";
 import { ErrorResponse } from "../network/responses/ErrorResponse";
+
+/** Stale-claim threshold: a claim older than this with zero users means
+ * the previous setup request crashed before creating anything. */
+const CLAIM_TTL_MS = 5 * 60 * 1000;
 
 /**
  * One-time first-owner setup (task-6 section 4, task-5 12.2).
@@ -21,21 +25,25 @@ import { ErrorResponse } from "../network/responses/ErrorResponse";
  * after the owner exists goes through the configured policy.
  *
  * Security (fresh instances must not be claimable remotely):
- * - Production requires SETUP_TOKEN (config validation fails fast when a
- *   production self-hosted instance lacks one); the endpoint demands the
- *   token via the X-Setup-Token header and compares digests in constant
- *   time. Development instances without a token remain usable for local
- *   first boot, which is operator-proof by machine access.
+ * - Every self-hosted instance must set SETUP_TOKEN (config validation
+ *   fails fast otherwise); the endpoint demands it via the X-Setup-Token
+ *   header and compares digests in constant time.
  * - Requests are rate limited per client IP.
- * - The claim is atomic: a single-row `setup_claim` table with a PRIMARY
- *   KEY check makes concurrent first-boot requests race on the INSERT,
- *   so only one can proceed.
+ * - The claim is atomic: the single-row `setup_claim` table (migration
+ *   0002) makes concurrent first-boot requests race on the INSERT, so
+ *   only one can proceed. A claim older than the TTL with zero users is
+ *   stale (the previous request crashed) and is recovered before retry.
  * - Any failure after user creation rolls the account back (sessions,
- *   accounts, and the user row are removed), so a partially configured
- *   owner can never close setup permanently.
+ *   accounts, verification, and the user row are removed), so a
+ *   partially configured owner can never close setup permanently.
  */
 export class SetupController {
   private static limiter = new RateLimiter(15 * 60 * 1000, 5);
+
+  /** Test hook: clear the per-IP rate-limit budget between cases. */
+  public static resetRateLimitForTests(): void {
+    SetupController.limiter.reset();
+  }
 
   private static async tokensEqual(
     provided: string,
@@ -67,24 +75,20 @@ export class SetupController {
 
     // Rate limit before any work: the endpoint is public, so the limiter
     // is the first line of defense against brute-forcing the setup token.
-    const attempt = SetupController.limiter.hit(
-      `setup:${clientIpFrom(ctx)}`,
-    );
+    const attempt = SetupController.limiter.hit(`setup:${clientIpFrom(ctx)}`);
     if (!attempt.allowed) {
       return ctx.json(new ErrorResponse("rate_limited").toJSON(), 429);
     }
 
-    // Token gate: when SETUP_TOKEN is set it is always required; in
-    // production it is mandatory (config validation enforces this at
-    // boot, the check below is the defensive second line).
+    // Token gate: SETUP_TOKEN is mandatory on every self-hosted instance
+    // (config validation enforces this at boot; this is the second line).
     const expectedToken = env.SETUP_TOKEN ?? "";
-    if (expectedToken) {
-      const provided = ctx.req.header("x-setup-token") ?? "";
-      if (!provided || !(await SetupController.tokensEqual(provided, expectedToken))) {
-        return ctx.json(new ErrorResponse("setup_token_required").toJSON(), 401);
-      }
-    } else if (resolveEnvironment(env) === "production") {
+    if (!expectedToken) {
       return ctx.json(new ErrorResponse("setup_not_enabled").toJSON(), 503);
+    }
+    const provided = ctx.req.header("x-setup-token") ?? "";
+    if (!provided || !(await SetupController.tokensEqual(provided, expectedToken))) {
+      return ctx.json(new ErrorResponse("setup_token_required").toJSON(), 401);
     }
 
     const productDb = createProductDb(
@@ -105,12 +109,22 @@ export class SetupController {
       return ctx.json(new ErrorResponse("not_found").toJSON(), 404);
     }
 
-    // Atomic claim: only one request can insert the single claim row.
-    // The loser of the race gets a constraint error and a 409.
+    // Atomic claim with stale recovery. The table comes from migration
+    // 0002; a missing table is an operator error, not a claim conflict.
     try {
-      await productDb.query`CREATE TABLE IF NOT EXISTS setup_claim (id INTEGER PRIMARY KEY CHECK (id = 1))`;
-      await productDb.query`INSERT INTO setup_claim (id) VALUES (1)`;
-    } catch {
+      await SetupController.acquireClaim(productDb.query);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        /no such table|does not exist|relation.*does not exist/i.test(
+          error.message,
+        )
+      ) {
+        console.warn(
+          "[prism-setup] setup_claim table is missing — apply migrations (yarn workspace prism-api db:migrate).",
+        );
+        return ctx.json(new ErrorResponse("database_not_ready").toJSON(), 503);
+      }
       return ctx.json(new ErrorResponse("setup_in_progress").toJSON(), 409);
     }
 
@@ -185,6 +199,37 @@ export class SetupController {
     }
 
     return ctx.json({ ok: true });
+  }
+
+  /**
+   * Inserts the single claim row. On conflict it inspects the existing
+   * row: a claim older than the TTL is stale (the previous request
+   * crashed) and is removed before one retry; a fresh claim belongs to a
+   * live request, so the caller reports the conflict.
+   */
+  private static async acquireClaim(
+    query: (
+      strings: TemplateStringsArray,
+      ...values: unknown[]
+    ) => Promise<Array<Record<string, unknown>>>,
+  ): Promise<void> {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        await query`INSERT INTO setup_claim (id, claimed_at) VALUES (1, ${Date.now()})`;
+        return;
+      } catch (error) {
+        if (attempt > 0) {
+          throw error;
+        }
+        const rows = await query`SELECT claimed_at FROM setup_claim WHERE id = 1`;
+        const claimedAt = Number(rows[0]?.claimed_at ?? 0);
+        if (rows.length > 0 && Date.now() - claimedAt > CLAIM_TTL_MS) {
+          await query`DELETE FROM setup_claim WHERE id = 1`;
+          continue; // retry the insert once
+        }
+        throw error;
+      }
+    }
   }
 
   /** Removes the claim row so setup can be retried (failure path). */
