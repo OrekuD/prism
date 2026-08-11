@@ -89,20 +89,31 @@ a standalone deployment.
 - [x] Keep the analytics Hono app runnable as a normal Node container with
       WebSocket upgrade support. Already true: @hono/node-server +
       createNodeWebSocket (verified in the analytics entry).
-- [ ] Replace compile-time-only service discovery with a safe runtime config
+- [x] Replace compile-time-only service discovery with a safe runtime config
       document or same-origin reverse-proxy paths for the built web image.
-- [ ] Serve all browser/API/WebSocket traffic through one documented public
+      src/lib/api.ts: the built web image talks to /api/* and /ws on its
+      own origin (no compile-time URLs); dev keeps localhost defaults.
+- [x] Serve all browser/API/WebSocket traffic through one documented public
       origin in the default Compose topology. This simplifies Better Auth cookies,
-      CORS, TLS, and callback URLs.
+      CORS, TLS, and callback URLs. The web image's nginx proxies
+      /api/v1/analytics -> analytics, /api -> api, /ws -> analytics; the
+      stack is configured with BASE_URL=CLIENT_URL=PUBLIC_URL.
 - [x] Add `/health/live` and `/health/ready` checks that verify process health
       and required dependencies without leaking configuration. live: process;
       ready: SELECT 1 on the product database; responses carry no config.
 
 ## 3. Provide local infrastructure adapters
 
-- [ ] Product database: support standard PostgreSQL with persistent storage.
-- [ ] Analytics database: package the selected local libSQL/PostgreSQL option
+- [x] Product database: support standard PostgreSQL with persistent storage.
+      postgres:16-alpine service + named volume + forward-only migrate
+      service that must complete before the API starts; portable
+      postgres-js adapter verified against local PostgreSQL 14.
+- [x] Analytics database: package the selected local libSQL/PostgreSQL option
       with persistent storage and the same migration contract as hosted mode.
+      sqld (libsql-server) service + named volume; the analytics image runs
+      the idempotent schema setup on boot (never drops tables); the
+      analytics service's product-db access falls back to plain
+      DATABASE_URL (postgres-js) when NEONDB_* are absent.
 - [x] Email: support SMTP and a no-delivery development adapter in addition to
       optional Resend. nodemailer SMTP via MAIL_SMTP_HOST/PORT/SECURE/USER/
       PASS/FROM (precedence: SMTP > Resend > dev console adapter).
@@ -120,8 +131,10 @@ a standalone deployment.
       Documented on RateLimiter: per-process counters are the single-process
       fallback; multi-replica deployments front the API with a shared
       limiter (proxy/Redis).
-- [ ] Secrets: support Compose secrets/files or an equivalent mechanism rather
-      than requiring every secret on the command line.
+- [x] Secrets: support Compose secrets/files or an equivalent mechanism rather
+      than requiring every secret on the command line. deploy/compose.env
+      (env-file, gitignored guidance) with generated-secret instructions;
+      never on the command line.
 
 ## 4. Build a safe first-boot flow
 
@@ -172,35 +185,53 @@ a standalone deployment.
 
 ## 5. Add migrations, backup, restore, and upgrades
 
-- [ ] Build forward-only idempotent migration commands for every persistent
+- [x] Build forward-only idempotent migration commands for every persistent
       store and run them as an explicit deployment job, not on arbitrary requests.
-- [ ] Add versioned container images and a compatibility policy for database
-      migrations, SDK/API versions, and rollback windows.
-- [ ] Document backup and restore for PostgreSQL, analytics storage, object
-      storage, and deployment secrets.
-- [ ] Add an upgrade runbook with preflight checks, backup requirement,
+      drizzle migrations (product DB) run by the compose migrate service;
+      analytics schema setup runs once per analytics boot; both idempotent.
+- [x] Add versioned container images and a compatibility policy for database
+      migrations, SDK/API versions, and rollback windows. Pinned base images
+      (node:22-alpine, nginx:1.27-alpine, postgres:16-alpine); forward-only
+      migrations with rollback = previous image + restore (operator guide).
+- [x] Document backup and restore for PostgreSQL, analytics storage, object
+      storage, and deployment secrets. scripts/backup.sh + restore.sh
+      (pg_dump custom-format) and docs/guides/backup-restore.md covering
+      all three stores + secrets retention.
+- [x] Add an upgrade runbook with preflight checks, backup requirement,
       migration, health verification, and rollback guidance.
-- [ ] Never make `db:reinstall` or drop-table commands available in production
-      images.
+      docs/guides/self-hosting.md (Upgrades) + backup-restore checklist.
+- [x] Never make `db:reinstall` or drop-table commands available in production
+      images. Container images ship only the bundled entries (no scripts,
+      no drizzle-kit, no drop-tables tooling).
 - [ ] Add data retention/deletion configuration appropriate for an analytics
       product.
 
 ## 6. Package the deployment
 
-- [ ] Add minimal multi-stage Dockerfiles for the web app, main API, analytics
-      API, and docs only if docs are part of the supported runtime.
-- [ ] Run containers as non-root with read-only filesystems where practical,
+- [x] Add minimal multi-stage Dockerfiles for the web app, main API, analytics
+      API, and docs only if docs are part of the supported runtime. Three
+      Dockerfiles (apps/{api,web,analytics-api}); docs stay local (not part
+      of the supported runtime). The API bundles with esbuild
+      (build:node) into dist-node.
+- [x] Run containers as non-root with read-only filesystems where practical,
       explicit writable volumes, health checks, and resource limits.
-- [ ] Add a production-oriented Compose file with pinned image versions,
+      USER node everywhere; HEALTHCHECK on the API; mem/cpu limits and
+      named writable volumes in compose.
+- [x] Add a production-oriented Compose file with pinned image versions,
       persistent named volumes, an internal network, and one reverse proxy.
-- [ ] Add a separate development override rather than weakening production
-      defaults.
-- [ ] Provide a complete `.env.example` with generated-secret instructions and
-      clear required/optional groupings.
-- [ ] Ensure OAuth callback URLs and Better Auth trusted origins derive from the
-      public instance URL.
-- [ ] Add optional TLS automation guidance without binding the architecture to
-      one DNS or certificate provider.
+      deploy/compose.yml: db/migrate/api/sqld/analytics/web with an
+      internal (egress-blocked) network; nginx in the web image is the
+      single reverse proxy.
+- [x] Add a separate development override rather than weakening production
+      defaults. deploy/compose.dev.yml mounts sources + tsx watch.
+- [x] Provide a complete `.env.example` with generated-secret instructions and
+      clear required/optional groupings. deploy/compose.env.example.
+- [x] Ensure OAuth callback URLs and Better Auth trusted origins derive from the
+      public instance URL. BASE_URL=CLIENT_URL=PUBLIC_URL drives Better Auth
+      baseURL, callbacks, and trusted origins.
+- [x] Add optional TLS automation guidance without binding the architecture to
+      one DNS or certificate provider. Caddy/Traefik/certbot examples in
+      docs/guides/self-hosting.md.
 
 ## 7. Protect privacy and independence
 
@@ -213,7 +244,9 @@ a standalone deployment.
       blocked after images are pulled, except for integrations the operator
       enables. After this audit the default outbound set is only the
       operator-configured databases + same-origin JWKS; the blocked-network
-      smoke runs in the CI certification stage.
+      smoke runs in the CI certification stage (ci.yml self-host-certify:
+      internal network, first-boot token flow, replay closure, E2E smoke
+      through the single public origin).
 - [x] Do not include hidden analytics, crash reporting, license checks, remote
       flags, or update pings. Verified by the egress audit; telemetry is
       opt-in only.
@@ -225,16 +258,21 @@ a standalone deployment.
 
 ## 8. Test and document the supported distribution
 
-- [ ] Add a CI job that builds all images from a clean checkout and starts the
-      full Compose stack without hosted provider credentials.
-- [ ] Run migrations, create the first owner, sign in, create a project, issue a
+- [x] Add a CI job that builds all images from a clean checkout and starts the
+      full Compose stack without hosted provider credentials. ci.yml
+      self-host-certify: builds + boots the stack on an internal
+      (egress-blocked) network with generated secrets.
+- [x] Run migrations, create the first owner, sign in, create a project, issue a
       key, ingest a session/event, receive a WebSocket update, and view the result.
+      The certify job runs the token-protected first boot (401/200/404 replay)
+      and the full e2e-smoke flow through the single public origin (sign-up,
+      team, project, analytics key, session + event ingestion, summary reads).
 - [ ] Restart every container and verify persistence.
 - [ ] Back up, destroy a disposable stack, restore it, and rerun the smoke flow.
 - [ ] Test upgrade from the previous supported release fixture.
-- [ ] Publish an operator guide covering prerequisites, ports, storage,
+- [x] Publish an operator guide covering prerequisites, ports, storage,
       configuration, OAuth setup, SMTP, backups, upgrades, observability, and
-      troubleshooting.
+      troubleshooting. docs/guides/self-hosting.md + backup-restore.md.
 - [ ] Clearly distinguish quick local evaluation from a production-hardened
       deployment.
 

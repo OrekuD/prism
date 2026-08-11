@@ -10,15 +10,25 @@ const REQUIRED_ENV_VARS = [
   "AUTH_BASE_URL",
   "TURSO_DATABASE_URL",
   "TURSO_AUTH_TOKEN",
-  "NEONDB_PGHOST",
-  "NEONDB_PGDATABASE",
-  "NEONDB_PGUSER",
-  "NEONDB_PGPASSWORD",
-  "NEONDB_ENDPOINT_ID",
 ] as const;
 
 function validateEnvironment() {
+  // Product database: DATABASE_URL (plain PostgreSQL, self-hosted) or the
+  // full NEONDB_* set (hosted).
+  const hasProductDb =
+    Boolean(process.env.DATABASE_URL) ||
+    [
+      "NEONDB_PGHOST",
+      "NEONDB_PGDATABASE",
+      "NEONDB_PGUSER",
+      "NEONDB_PGPASSWORD",
+      "NEONDB_ENDPOINT_ID",
+    ].every((key) => Boolean(process.env[key]));
+
   const missing = REQUIRED_ENV_VARS.filter((key) => !process.env[key]);
+  if (!hasProductDb) {
+    missing.push("PRODUCT_DATABASE" as (typeof REQUIRED_ENV_VARS)[number]);
+  }
 
   if (missing.length === 0) {
     return;

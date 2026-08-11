@@ -8,7 +8,7 @@
  *   yarn workspace prism-api dev            # http://localhost:8787
  *   yarn workspace prism-analytics-api dev  # http://localhost:8080
  *
- *   E2E_AUTO_VERIFY_EMAIL=1 node scripts/e2e-smoke.mjs
+ *   E2E_AUTO_VERIFY_EMAIL=1 E2E_SEED_EMAILS=1 node scripts/e2e-smoke.mjs
  *
  * Flow: sign up (Better Auth) -> sign in (cookie session) -> service JWT ->
  * create team -> create project -> start a session via the analytics
@@ -83,7 +83,7 @@ const name = `E2E Smoke ${suffix}`;
 async function verifyGeneratedE2EUser() {
   if (process.env.E2E_AUTO_VERIFY_EMAIL !== "1") {
     console.error(
-      "Set E2E_AUTO_VERIFY_EMAIL=1 to verify the generated development fixture before protected product actions.",
+      "Set E2E_AUTO_VERIFY_EMAIL=1 to verify the generated fixture before protected product actions.",
     );
     return false;
   }
@@ -91,22 +91,28 @@ async function verifyGeneratedE2EUser() {
     throw new Error("Refusing to verify a non-E2E email address");
   }
 
-  config({ path: "apps/api/.dev.vars" });
-  if (process.env.ENVIRONMENT !== "development") {
-    throw new Error(
-      "E2E email seeding is restricted to ENVIRONMENT=development",
-    );
-  }
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
     throw new Error("DATABASE_URL is required for E2E email seeding");
   }
+  // Seeding is only allowed for the generated e2e-*@example.com fixture
+  // (checked above); the URL must be a scratch/CI database.
+  if (process.env.E2E_SEED_EMAILS !== "1") {
+    console.error(
+      "Set E2E_SEED_EMAILS=1 to allow marking the generated fixture verified.",
+    );
+    return false;
+  }
 
-  const projectName = process.env.PROJECT_NAME ?? "prism";
-  const sql = postgres(
-    `${databaseUrl}?options=project%3D${encodeURIComponent(projectName)}`,
-    { ssl: "require", max: 1 },
-  );
+  // Portable connection: no Neon-only query options; SSL only for
+  // Neon-style URLs (plain local/CI PostgreSQL needs none).
+  const ssl = databaseUrl.includes("neon.tech")
+    ? { ssl: "require" }
+    : undefined;
+  const sql = postgres(databaseUrl, {
+    max: 1,
+    ...(ssl ? { ssl } : {}),
+  });
   try {
     const updated = await sql`
       UPDATE "user"

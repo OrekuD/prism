@@ -33,3 +33,88 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: yarn wrangler deploy
         working-directory: ./apps/api
+
+  # Self-hosting certification (task-6 section 7): build the container
+  # images, boot the Compose stack on an egress-blocked internal network,
+  # and run the first-boot + E2E smoke through the single public origin.
+  # The stack must work with NO outbound network access at runtime.
+  self-host-certify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "yarn"
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Generate stack secrets
+        run: |
+          cat > deploy/compose.env <<EOF
+          PUBLIC_URL=http://localhost:3000
+          PUBLIC_PORT=3000
+          POSTGRES_USER=prism
+          POSTGRES_PASSWORD=$(openssl rand -hex 24)
+          POSTGRES_DB=prism
+          JWT_SECRET_KEY=$(openssl rand -hex 24)
+          SETUP_TOKEN=$(openssl rand -hex 24)
+          ENVIRONMENT=development
+          PRISM_DEPLOYMENT_MODE=self-hosted
+          INSTANCE_NAME=CI Prism
+          SIGNUP_POLICY=open
+          STORAGE_DRIVER=local
+          EOF
+
+      - name: Build and start the stack (internal/egress-blocked network)
+        run: docker compose --env-file deploy/compose.env -f deploy/compose.yml up -d --build
+
+      - name: Wait for readiness through the public origin
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:3000/health/live && curl -sf http://localhost:3000/health/ready; then
+              echo "ready after ${i}x5s"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "stack did not become ready" >&2
+          docker compose -f deploy/compose.yml logs --tail=50 || true
+          exit 1
+
+      - name: Assert the runtime config (self-hosted, local storage, no secrets)
+        run: |
+          curl -sf http://localhost:3000/api/v1/config | node -e '
+            const c = JSON.parse(require("fs").readFileSync(0, "utf8"));
+            if (c.deploymentMode !== "self-hosted") throw new Error("deploymentMode");
+            if (!c.setupRequired) throw new Error("setupRequired");
+            if (!c.setupTokenRequired) throw new Error("setupTokenRequired");
+            console.log("config ok:", JSON.stringify(c));
+          '
+
+      - name: First boot with the setup token (then replay must close)
+        run: |
+          TOKEN=$(grep '^SETUP_TOKEN=' deploy/compose.env | cut -d= -f2)
+          BODY='{"name":"CI Owner","email":"ci-owner@prism.test","password":"ci-owner-password-123"}'
+          echo "no token -> $(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:3000/api/v1/setup/owner -H 'content-type: application/json' -d "$BODY") (expect 401)"
+          echo "owner create -> $(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:3000/api/v1/setup/owner -H 'content-type: application/json' -H "x-setup-token: $TOKEN" -d "$BODY") (expect 200)"
+          REPLAY=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:3000/api/v1/setup/owner -H 'content-type: application/json' -H "x-setup-token: $TOKEN" -d "$BODY")
+          echo "replay -> $REPLAY (expect 404)"
+          [ "$REPLAY" = "404" ]
+
+      - name: E2E smoke through the single public origin (egress blocked)
+        run: |
+          source deploy/compose.env
+          DATABASE_URL="postgres://prism:$POSTGRES_PASSWORD@127.0.0.1:5432/prism" \
+          E2E_API_URL=http://localhost:3000 \
+          E2E_AUTH_URL=http://localhost:3000 \
+          E2E_ORIGIN=http://localhost:3000 \
+          E2E_ANALYTICS_URL=http://localhost:3000/api/v1/analytics \
+          E2E_AUTO_VERIFY_EMAIL=1 E2E_SEED_EMAILS=1 \
+          node scripts/e2e-smoke.mjs
+
+      - name: Tear down
+        if: always()
+        run: docker compose --env-file deploy/compose.env -f deploy/compose.yml down -v

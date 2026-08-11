@@ -8,8 +8,8 @@ import { jwtClient } from "better-auth/client/plugins";
  * cross-origin in local development, so credentials must be included and
  * the base URL must be deployment-aware.
  */
-const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8787";
-export const authBaseUrl = apiUrl.replace(/\/api\/v1\/?$/, "");
+import { API_BASE_URL } from "@/lib/api";
+export const authBaseUrl = API_BASE_URL.replace(/\/api\/v1\/?$/, "");
 
 export const authClient = createAuthClient({
   baseURL: authBaseUrl,

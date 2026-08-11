@@ -5,6 +5,8 @@
  * instead of compile-time assumptions.
  */
 
+import { API_BASE_URL } from "@/lib/api";
+
 export type RuntimeConfig = {
   deploymentMode: "hosted" | "self-hosted";
   instanceName: string;
@@ -22,7 +24,7 @@ const FALLBACK: RuntimeConfig = {
   deploymentMode: "hosted",
   instanceName: "Prism",
   signupPolicy: "open",
-  baseUrl: import.meta.env.VITE_API_URL ?? "http://localhost:8787",
+  baseUrl: API_BASE_URL,
   setupRequired: false,
   setupTokenRequired: false,
   providers: { github: false, google: false },
@@ -34,8 +36,7 @@ let cached: RuntimeConfig | null = null;
 export async function loadRuntimeConfig(): Promise<RuntimeConfig> {
   if (cached) return cached;
   try {
-    const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8787";
-    const response = await fetch(`${apiUrl}/api/v1/config`, {
+    const response = await fetch(`${API_BASE_URL}/api/v1/config`, {
       credentials: "include",
     });
     if (!response.ok) return FALLBACK;

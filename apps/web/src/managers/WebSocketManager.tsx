@@ -1,4 +1,5 @@
 import { useActiveSessionsStore } from "@/store/activeSessionsStore";
+import { WS_BASE_URL } from "@/lib/api";
 import { authClient, getServiceToken } from "@/lib/authClient";
 import type { SocketConnectProject, SocketMessageTypes } from "@prism/types";
 import React from "react";
@@ -25,7 +26,7 @@ export function WebSocketManager(props: React.PropsWithChildren<Props>) {
       .then((token) => {
         if (cancelled || !token) return;
 
-        ws = new WebSocket(`${import.meta.env.VITE_WS_API_URL}/ws`);
+        ws = new WebSocket(`${WS_BASE_URL}/ws`);
 
         ws.onopen = () => {
           const message: SocketConnectProject = {

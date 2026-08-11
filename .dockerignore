@@ -1,0 +1,16 @@
+# Secrets and local state must never enter image build contexts.
+**/.env
+**/.env.local
+**/.dev.vars
+**/.dev.vars.local
+node_modules
+**/node_modules
+**/dist
+**/dist-node
+**/.turbo
+.git
+.github
+docs/screenshots
+*.log
+/tmp
+**/.DS_Store

@@ -1,0 +1,25 @@
+# Prism self-hosted development override (task-6 section 6).
+#
+# Adds source-volume mounts and watch/restart commands for api + analytics
+# so the production Compose file never weakens its defaults. Use with:
+#   docker compose --env-file deploy/compose.env -f deploy/compose.yml -f deploy/compose.dev.yml up -d --build
+services:
+  api:
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    command: ["sh", "-c", "cd /repo/apps/api && yarn tsx src/index.node.ts"]
+    environment:
+      ENVIRONMENT: development
+    volumes:
+      - ./apps/api/src:/repo/apps/api/src:ro
+      - ./apps/api/dist-node:/repo/apps/api/dist-node:ro
+      - ./packages:/repo/packages:ro
+
+  analytics:
+    build: { context: ., dockerfile: apps/analytics-api/Dockerfile }
+    command: ["sh", "-c", "cd /repo/apps/analytics-api && node dist/src/database/setup.js && yarn tsx watch src/index.ts"]
+    environment:
+      ENVIRONMENT: development
+    volumes:
+      - ./apps/analytics-api/src:/repo/apps/analytics-api/src:ro
+      - ./apps/analytics-api/db:/repo/apps/analytics-api/db:ro
+      - ./packages:/repo/packages:ro

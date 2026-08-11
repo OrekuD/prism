@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { isNetworkError } from "@/components/auth/auth-errors";
 
-const API_URL: string = import.meta.env.VITE_API_URL ?? "http://localhost:8787";
+import { API_BASE_URL } from "@/lib/api";
 
 /**
  * First-owner setup for self-hosted instances (task-5 12.2, task-6 4).
@@ -42,7 +42,7 @@ export function OwnerSetup({
     setError(null);
     setIsPending(true);
     try {
-      const response = await fetch(`${API_URL}/api/v1/setup/owner`, {
+      const response = await fetch(`${API_BASE_URL}/api/v1/setup/owner`, {
         method: "POST",
         credentials: "include",
         headers: {

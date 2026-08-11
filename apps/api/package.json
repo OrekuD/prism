@@ -18,7 +18,8 @@
     "test:coverage": "vitest run --coverage",
     "db:bootstrap-admin": "tsx src/database/bootstrap-admin.ts",
     "dev:node": "tsx src/index.node.ts",
-    "start:node": "tsx src/index.node.ts"
+    "start:node": "tsx src/index.node.ts",
+    "build:node": "node -e \"require('node:fs').rmSync('dist-node',{recursive:true,force:true})\" && esbuild src/index.node.ts --bundle --platform=node --format=esm --packages=external --target=node22 --outfile=dist-node/index.node.js && esbuild src/database/migrate.ts --bundle --platform=node --format=esm --packages=external --target=node22 --outfile=dist-node/database/migrate.js"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.0",
@@ -48,6 +49,7 @@
     "@types/nodemailer": "^8.0.1",
     "@vitest/coverage-v8": "^3.2.7",
     "drizzle-kit": "^0.31.10",
+    "esbuild": "^0.25.0",
     "tsx": "^4.23.11",
     "typescript": "^5.9.3",
     "vitest": "^3.2.7",

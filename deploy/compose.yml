@@ -1,0 +1,145 @@
+# Prism self-hosted stack (task-6 section 6).
+#
+# One public origin: the web service (nginx) serves the SPA and proxies
+# /api/* and /ws to the backend on an internal network. The product
+# database and the analytics store run as local services with persistent
+# named volumes. No service needs outbound network access at runtime.
+#
+# Usage:
+#   cp deploy/compose.env.example deploy/compose.env
+#   # fill in secrets (openssl rand -hex 24 for each)
+#   docker compose --env-file deploy/compose.env -f deploy/compose.yml up -d --build
+#
+# The first boot is the owner setup: open http://localhost:3000/setup and
+# create the owner account with the SETUP_TOKEN from your env file.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-prism}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-prism}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      # Loopback-only: local psql/backups; never expose publicly.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-prism} -d ${POSTGRES_DB:-prism}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [prism]
+    mem_limit: 512m
+
+  migrate:
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    command: ["node", "dist-node/database/migrate.js"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-prism}:${POSTGRES_PASSWORD:?}@db:5432/${POSTGRES_DB:-prism}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [prism]
+    restart: "no"
+
+  api:
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      PRISM_DEPLOYMENT_MODE: ${PRISM_DEPLOYMENT_MODE:-self-hosted}
+      INSTANCE_NAME: ${INSTANCE_NAME:-Prism}
+      SIGNUP_POLICY: ${SIGNUP_POLICY:-disabled}
+      DATABASE_URL: postgres://${POSTGRES_USER:-prism}:${POSTGRES_PASSWORD:?}@db:5432/${POSTGRES_DB:-prism}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
+      SETUP_TOKEN: ${SETUP_TOKEN:?SETUP_TOKEN is required for self-hosted}
+      # One public origin: browser, API, and WebSocket all use PUBLIC_URL.
+      BASE_URL: ${PUBLIC_URL:?PUBLIC_URL is required (e.g. https://analytics.example.com)}
+      CLIENT_URL: ${PUBLIC_URL}
+      PORT: "8787"
+      # Analytics store (read by the product API for events/sessions).
+      TURSO_DATABASE_URL: http://sqld:5001
+      TURSO_AUTH_TOKEN: ${TURSO_AUTH_TOKEN:-}
+      # Object storage: local filesystem by default (volume-backed).
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      STORAGE_LOCAL_DIR: ${STORAGE_LOCAL_DIR:-/data/uploads}
+      # Email: SMTP takes precedence over Resend; without either, no mail.
+      MAIL_SMTP_HOST: ${MAIL_SMTP_HOST:-}
+      MAIL_SMTP_PORT: ${MAIL_SMTP_PORT:-587}
+      MAIL_SMTP_SECURE: ${MAIL_SMTP_SECURE:-false}
+      MAIL_SMTP_USER: ${MAIL_SMTP_USER:-}
+      MAIL_SMTP_PASS: ${MAIL_SMTP_PASS:-}
+      MAIL_FROM: ${MAIL_FROM:-Prism <no-reply@localhost>}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      # Optional integrations.
+      IP_INFO_API_TOKEN: ${IP_INFO_API_TOKEN:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+    volumes:
+      - uploads:/data/uploads
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+    networks: [prism]
+    mem_limit: 512m
+    cpus: 1.0
+
+  sqld:
+    image: ghcr.io/tursodatabase/libsql-server:latest
+    restart: unless-stopped
+    command: ["sqld", "--db-path", "/data/analytics.db", "--http-listen-addr", "0.0.0.0:5001", "--no-ws"]
+    volumes:
+      - sqlddata:/data
+    networks: [prism]
+    mem_limit: 256m
+
+  analytics:
+    build: { context: ., dockerfile: apps/analytics-api/Dockerfile }
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+      AUTH_BASE_URL: ${PUBLIC_URL:?}
+      TURSO_DATABASE_URL: http://sqld:5001
+      TURSO_AUTH_TOKEN: ${TURSO_AUTH_TOKEN:-}
+      # Product database (plain PostgreSQL via the portable adapter).
+      DATABASE_URL: postgres://${POSTGRES_USER:-prism}:${POSTGRES_PASSWORD:?}@db:5432/${POSTGRES_DB:-prism}
+      IP_INFO_API_TOKEN: ${IP_INFO_API_TOKEN:-}
+    depends_on:
+      db:
+        condition: service_healthy
+      sqld:
+        condition: service_started
+    networks: [prism]
+    mem_limit: 512m
+    cpus: 1.0
+
+  web:
+    build: { context: ., dockerfile: apps/web/Dockerfile }
+    restart: unless-stopped
+    ports:
+      - "${PUBLIC_PORT:-3000}:80"
+    depends_on:
+      api:
+        condition: service_started
+      analytics:
+        condition: service_started
+    networks: [prism]
+    mem_limit: 256m
+
+networks:
+  # Internal: no outbound network access at runtime (images are pulled
+  # before the network attaches). Hosts still reach published ports.
+  prism:
+    internal: true
+
+volumes:
+  pgdata:
+  sqlddata:
+  uploads:
