@@ -1,0 +1,110 @@
+---
+title: Ingestion API
+description: Sessions and events endpoints, authentication, limits, and responses — verified from source.
+audience: Developer
+scope: Both
+lastReviewed: "2026-08-11"
+---
+
+Base URL: `{ANALYTICS_ORIGIN}/api/v1/analytics` — hosted analytics origin,
+or your self-hosted origin. Authentication: `Authorization: Bearer <project
+analytics key>` on every request. No cookies.
+
+CORS: the analytics API answers **any origin** (`app.use("/*", cors())`) —
+the browser SDK posts cross-origin from customer sites; the request is
+authenticated by the project key, and the key is public by design.
+
+## `POST /sessions` — start a session
+
+**Auth:** Bearer project analytics key · **Limits:** 120 requests / minute /
+IP (all ingestion)
+
+```json
+{
+  "userAgent": "Mozilla/5.0 …",
+  "referrer": "https://example.com/",
+  "location": "/pricing"
+}
+```
+
+All fields are required strings. The server derives OS, browser, and mobile
+flag, records best-effort geo enrichment, inserts the session, and pushes a
+`user-connected` realtime message.
+
+**Response `200`:**
+
+```json
+{ "sessionId": "6f1d2e8e-…" }
+```
+
+## `POST /sessions/end` — mark a session offline
+
+**Auth:** Bearer project analytics key (scoped to its project) · **Limits:**
+120 requests / minute / IP
+
+```json
+{ "sessionId": "6f1d2e8e-…" }
+```
+
+The update is scoped to the authenticated project key's project — a key from
+another project cannot end this session.
+
+**Response `200`:** `{ "message": "success" }`
+
+## `POST /events` — log an event
+
+**Auth:** Bearer project analytics key (scoped to its project) · **Limits:**
+120 requests / minute / IP
+
+```json
+{
+  "sessionId": "6f1d2e8e-…",
+  "name": "checkout-started",
+  "data": { "value": 42 }
+}
+```
+
+`name` is 1–128 characters; `data` optional. Stored per session/project.
+
+**Response `200`:** `{ "message": "success" }`
+
+## Validation
+
+<Callout type="info" title="Note">
+Bodies use strict schemas: unknown fields are rejected. The SDK never
+sends extra fields, so this only affects hand-rolled integrations.
+</Callout>
+
+Bodies are validated with strict zod schemas (`z.strictObject`): unknown
+fields are rejected. Failures return `400` with the per-field messages:
+
+```json
+{ "errors": ["name: String must contain at most 128 character(s)"] }
+```
+
+## Rate limits
+
+Per client IP, in-memory, per process:
+
+| Endpoint group | Limit |
+| --- | --- |
+| `POST /api/v1/*` (all ingestion) | 120 requests / minute |
+| `GET /ws` (WebSocket upgrades) | 30 upgrades / minute |
+
+On breach: `429` with `Retry-After` (seconds). Multi-replica deployments
+should enforce a shared limit at the proxy — see
+[Networking & egress](/docs/operations/networking).
+
+## Failure behavior
+
+| Condition | Result |
+| --- | --- |
+| Missing/malformed `Authorization` header | `401 { "errors": ["unauthorized"] }` |
+| Unknown key | `401 unauthorized` |
+| Invalid body | `400` + zod messages |
+| Rate limited | `429` + `Retry-After` |
+| Analytics store down | Session/event writes fail; SDK logs to console, never throws |
+
+## WebSocket
+
+Realtime delivery lives at `GET /ws` — see [Realtime](/docs/product/realtime).

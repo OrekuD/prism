@@ -1,0 +1,62 @@
+---
+title: Development setup
+description: Running the full stack locally, environment files, and commands.
+audience: Contributor
+scope: Both
+lastReviewed: "2026-08-11"
+---
+
+
+
+## Prerequisites
+
+- Node 20+ (the repo declares `engines.node >= 20`; development is verified
+  on Node 20.19.x).
+- Yarn Classic 1.22.19 (`corepack enable && corepack prepare yarn@1.22.19
+  --activate`).
+
+## Install
+
+```sh
+yarn install --frozen-lockfile
+```
+
+## Environment files
+
+Copy the `.example` files — never commit real credentials:
+
+| File | Purpose |
+| --- | --- |
+| `apps/api/.dev.vars` | API bindings: `DATABASE_URL`, `JWT_SECRET_KEY`, `CLIENT_URL`, optional integrations |
+| `apps/analytics-api/.env` | `PORT`, `DATABASE_URL` (product DB for JWKS/membership checks), analytics store URL/token, `AUTH_BASE_URL` |
+| `apps/web/.env.local` | `VITE_API_URL=http://localhost:8787`, `VITE_WS_API_URL=ws://localhost:8080`, `VITE_MAPBOX_ACCESS_TOKEN` |
+
+Both APIs validate required variables at startup and exit listing exactly
+what is missing — fail fast, no secrets printed.
+
+## Running the stack
+
+| Workspace | Command | URL |
+| --- | --- | --- |
+| `prism-api` | `yarn workspace prism-api dev` | http://localhost:8787 |
+| `prism-analytics-api` | `yarn workspace prism-analytics-api dev` | http://localhost:8080 |
+| `prism-web` | `yarn workspace prism-web dev` | http://localhost:3001 |
+| `prism-docs` | `yarn workspace prism-docs dev` | http://localhost:4321 |
+| `prism-docs-new` | `yarn workspace prism-docs-new dev` | http://localhost:3000 |
+
+The API requires a PostgreSQL database (local or managed). The analytics API
+also needs the product database connection for JWT verification, and the
+analytics store (sqld locally, or Turso).
+
+## Common commands
+
+```sh
+yarn build      # all workspaces
+yarn typecheck  # tsc across workspaces
+yarn lint       # biome
+yarn test       # vitest across workspaces
+```
+
+The API's local dev runtime is the Node server (`wrangler` is used for
+Workers deployments and `npm run dev` variants are documented in the
+workspace READMEs).

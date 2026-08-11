@@ -1,0 +1,57 @@
+---
+title: Testing & quality
+description: Test layout, coverage areas, and the CI gates.
+audience: Contributor
+scope: Both
+lastReviewed: "2026-08-11"
+---
+
+
+
+## Test suites
+
+| Workspace | Runner | Covers |
+| --- | --- | --- |
+| `prism-api` | vitest | config validation, auth boundaries, setup controller, storage drivers, projects/teams/users flows, CORS, integration flows |
+| `prism-analytics-api` | vitest | ingestion controllers, middleware, JWKS verification, rate limiting, WebSocket manager, IP enrichment, end-to-end flows |
+| `prism-web` | vitest + jsdom | auth flows, onboarding, brand components, gallery |
+| `prism-docs` | vitest (component tests) | legacy Astro docs |
+| `prism-docs-new` | next build + typecheck | Fumadocs docs (Next.js) |
+
+Run everything with `yarn test`.
+
+## What the gates check
+
+```sh
+yarn build      # every workspace builds (including astro check)
+yarn typecheck  # strict tsc across workspaces
+yarn lint       # biome (recommended rules)
+yarn test       # all vitest suites
+```
+
+CI additionally runs `security.yml` (dependency audit) and the
+`self-host-certify` job: it builds the Compose stack with generated secrets,
+exercises first boot (token-protected setup), and runs the end-to-end smoke
+through the single public origin with outbound blocked.
+
+## Test conventions
+
+- API tests use the memory adapter for the product database and stub
+  provisioning explicitly; configuration errors are expected to **fail
+  tests** rather than be swallowed (fail-fast).
+- Analytics tests use the memory adapter for the analytics store.
+- Web tests polyfill browser APIs (scrollIntoView, elementFromPoint,
+  ResizeObserver) in the shared setup file.
+- Brand tests assert square geometry and accessible naming; the brand
+  package has a drift check that fails when committed consumer copies of
+  logo assets diverge from the canonical export.
+
+## Contribution checklist
+
+1. `yarn build && yarn typecheck && yarn lint && yarn test` all pass.
+2. New env vars are added to `.env.example`/`.dev.vars.example` **and** the
+   config validator (with a test).
+3. New endpoints are documented in the
+   [API reference](/docs/api-reference/management) with error codes.
+4. Docs changes build clean (`yarn workspace prism-docs build`) and pass the
+   link check (`yarn workspace prism-docs check:links`).

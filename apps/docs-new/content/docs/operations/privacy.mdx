@@ -1,0 +1,55 @@
+---
+title: Privacy & data
+description: What Prism records, what leaves your instance, and retention.
+audience: Operator
+scope: Both
+lastReviewed: "2026-08-11"
+---
+
+
+
+## What is recorded
+
+- **Sessions**: page path, referrer, user agent (OS/browser/mobile derived),
+  client IP, best-effort country/coordinates, online status.
+- **Events**: name + the structured `data` you send.
+- **Accounts**: name, email, username, hashed password, avatar, roles.
+- **No cross-site tracking**: each project is an isolated silo; sessions and
+  events are scoped to the project derived from the analytics key.
+
+## What leaves your instance
+
+Nothing by default. Self-hosted runtime egress is blocked by the Compose
+network; the only outbound traffic is from integrations you explicitly
+configure (mail, geo enrichment, S3, social providers) — see
+[Networking & egress](/docs/operations/networking).
+
+The SDK sends ingestion to the **analytics origin baked into the package at
+build time**. A self-hosted deployment must rebuild the SDK against its own
+origin (see the [JavaScript SDK](/docs/sdks/javascript)) — otherwise the SDK
+would post to Prism's hosted analytics API.
+
+## IP addresses
+
+Client IPs are used for best-effort geo enrichment and rate limiting, never
+for authorization. They are stored in the analytics store as part of the
+session record. IP enrichment is optional (`IP_INFO_API_TOKEN`); without it,
+geo fields stay null and sessions still record.
+
+## Retention & deletion
+
+- **Events**: no deletion API today; retention is bounded by your analytics
+  store lifecycle and backups.
+- **Sessions**: the `is_online` flag tracks liveness; stale sessions are
+  marked offline server-side.
+- **Accounts**: no self-service deletion (see
+  [Account & profile](/docs/product/account)); operators can remove accounts
+  directly in the database.
+- **Backups**: see [Backup & restore](/docs/self-hosting/operating/backup-restore) for
+  retention recommendations.
+
+## Cookies
+
+The dashboard sets one `prism.*` session cookie (HTTP-only, SameSite=Lax,
+Secure in production). No third-party cookies, no cross-site beacons, no
+telemetry.

@@ -1,0 +1,11 @@
+{
+  "title": "Product",
+  "pages": [
+    "projects",
+    "api-keys",
+    "events",
+    "realtime",
+    "teams",
+    "account"
+  ]
+}

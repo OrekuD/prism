@@ -3,11 +3,18 @@ import { lucideIconsPlugin } from 'fumadocs-core/source/lucide-icons';
 import { docsContentRoute, docsImageRoute, docsRoute } from './shared';
 import { defineDocs } from 'fumadocs-mdx/macro';
 import { metaSchema, pageSchema } from 'fumadocs-core/source/schema';
+import { z } from 'zod';
 
 const docs = defineDocs({
   dir: 'content/docs',
   docs: {
-    schema: pageSchema,
+    // Prism page metadata: audience/scope/lastReviewed were part of the
+    // old docs' frontmatter; preserved for the upcoming design pass.
+    schema: pageSchema.extend({
+      audience: z.string().optional(),
+      scope: z.string().optional(),
+      lastReviewed: z.string().optional(),
+    }),
     postprocess: {
       includeProcessedMarkdown: true,
     },

@@ -1,0 +1,10 @@
+{
+  "title": "Operating",
+  "pages": [
+    "configuration",
+    "storage",
+    "reverse-proxy",
+    "backup-restore",
+    "upgrades"
+  ]
+}

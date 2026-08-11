@@ -1,0 +1,68 @@
+---
+title: React integration (@prism/react)
+description: PrismProvider and usePrism — verified from source.
+audience: Developer
+scope: Both
+lastReviewed: "2026-08-11"
+---
+
+
+
+Thin React bindings over `@prism/core`. Peer dependencies: React
+`^18 || ^19` and react-dom. Built as CJS + ESM with declarations.
+
+## `PrismProvider`
+
+Wrap your app with a provider that receives an existing client:
+
+```tsx
+import { PrismClient } from "@prism/core";
+import { PrismProvider } from "@prism/react";
+
+const prism = new PrismClient("pr_xxx");
+
+export function App() {
+  return <PrismProvider client={prism}>{/* … */}</PrismProvider>;
+}
+```
+
+Behavior (from source):
+
+- Renders children inside a context provider; the client is never
+  re-created.
+- An error boundary catches render errors so analytics never takes the tree
+  down (the error is logged to the console).
+- Mounts a `popstate` listener and a body `MutationObserver` that log the
+  current pathname — route instrumentation hooks that today only observe,
+  they do not send data.
+
+## `usePrism()`
+
+```tsx
+import { usePrism } from "@prism/react";
+
+function CheckoutButton() {
+  const { logEvent, logCustomEvent } = usePrism();
+
+  return (
+    <button onClick={() => logEvent("checkout-started", { value: 42 })}>
+      Checkout
+    </button>
+  );
+}
+```
+
+- Throws `"usePrism" must be used within a PrismProvider` when used outside
+  the provider.
+- Returns bound `logEvent` and `logCustomEvent` methods (stable identity per
+  client instance).
+
+## What the integration does not do yet
+
+- No automatic `endSession` on unmount (the provider's
+  `componentWillUnmount` hook is commented out in source).
+- No React Server Components support; both components are client-only
+  runtime code.
+
+Install from your package registry, or build from source as described in the
+[JavaScript SDK](/docs/sdks/javascript).

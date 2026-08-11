@@ -1,0 +1,42 @@
+---
+title: API keys
+description: What project analytics keys can and cannot do.
+audience: User
+scope: Both
+lastReviewed: "2026-08-11"
+---
+
+
+
+Every project has exactly one analytics key, created with the project. It
+looks like `pr_<32 hex characters>` and lives in **Project → Settings → API
+keys**.
+
+## Public by design
+
+The key is embedded in your site's JavaScript, so it is **not a secret**.
+Like every browser analytics SDK, the key is visible to anyone who views
+your site's source. The security model therefore restricts what the key can
+do:
+
+- ✅ Start sessions, end sessions, log events for **its own project only**.
+- ❌ Read sessions, events, or analytics.
+- ❌ Create, rename, or delete projects.
+- ❌ Access teams, members, or accounts.
+
+The project id is derived from the key on the server (`project_api_keys`
+lookup) on every request — client-supplied project ids are never trusted.
+The `sessions/end` and `events` endpoints are scoped with that derived
+project id, so one project's key cannot touch another project's data.
+
+## Rotation
+
+There is no key rotation endpoint today. To rotate: create a new project and
+migrate the SDK, then delete the old project — or edit `project_api_keys`
+directly in your database if you self-host.
+
+## Rate limits
+
+Keys share per-IP ingestion limits: 120 requests/minute/IP (in-memory, per
+process; `429` + `Retry-After` on breach). For multi-replica deployments,
+enforce a shared limit at the proxy.

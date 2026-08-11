@@ -1,0 +1,54 @@
+---
+title: Hosted or self-hosted
+description: Which deployment mode fits your team, and what each one requires.
+audience: User
+scope: Both
+lastReviewed: "2026-08-11"
+---
+
+
+
+Prism offers two supported paths. They share the SDK, the ingestion protocol,
+and the dashboard; they differ in who operates what.
+
+## Hosted
+
+| Aspect | Detail |
+| --- | --- |
+| Account | Sign in with email/password or GitHub/Google |
+| Project creation | Requires a **verified email address** |
+| API key | Created in the project settings; write-only, public by design |
+| Analytics store | Operated by Prism |
+| Object storage | ImageKit (avatars) |
+| Best for | Getting a first event in minutes without operating infrastructure |
+
+Start at the [hosted quickstart](/docs/hosted/quickstart).
+
+## Self-hosted
+
+| Aspect | Detail |
+| --- | --- |
+| Account | First owner created through `/setup` with the setup token |
+| Project creation | Same dashboard; no hosted signup required |
+| API key | Created locally; never leaves your instance |
+| Analytics store | sqld/libSQL container, or Turso when configured |
+| Object storage | Local filesystem, S3-compatible, or ImageKit |
+| Egress | Blocked by the default Compose network; no telemetry |
+| Best for | Data sovereignty, custom infrastructure, offline operation |
+
+Start at the [self-hosting evaluation](/docs/self-hosting/evaluation/overview).
+
+## What is identical
+
+- The `@prism/core` SDK and ingestion endpoints behave the same.
+- The dashboard, teams, projects, events, and realtime features are the same
+  code.
+- Public write keys and the session/event data model are identical.
+
+## What differs
+
+- Where accounts live: hosted signup versus local `/setup` first boot.
+- Where data lives: Prism-operated stores versus your volumes.
+- Who operates the stack: us versus you.
+
+There is no migration path between modes today; evaluate ownership first.

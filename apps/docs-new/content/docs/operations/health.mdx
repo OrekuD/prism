@@ -1,0 +1,42 @@
+---
+title: Health checks
+description: Liveness, readiness, and what each one verifies.
+audience: Operator
+scope: Self-hosted
+lastReviewed: "2026-08-11"
+---
+
+
+
+The product API exposes two endpoints:
+
+| Endpoint | Meaning | Failure |
+| --- | --- | --- |
+| `GET /health/live` | Process is up and serving | HTTP 500 if the process is gone |
+| `GET /health/ready` | Product database reachable and queryable | HTTP 503 + `{ "errors": ["database_not_ready"] }` |
+
+`/health/ready` verifies the product database with a real query — it does not
+just check that the process is listening. The Compose stack wires these into
+the `web` container's upstream health checks and Docker healthchecks for
+`api`.
+
+## Wiring in the default stack
+
+```sh
+curl -fsS http://localhost:3000/health/live
+curl -fsS http://localhost:3000/health/ready
+```
+
+In the default Compose topology the web container (nginx) is the single
+public origin, so health checks go through it. A load balancer or
+orchestrator should probe both endpoints and treat `ready` as the
+deployment gate.
+
+## Multi-store readiness
+
+`/health/ready` covers the **product database** only. The analytics store
+and object storage degrade reads/writes independently (empty analytics
+reads, failed avatar uploads). A combined readiness signal is
+**Planned** — monitor the stores separately: analytics
+via the volumes/process checks in [Networking & egress](/docs/operations/networking),
+storage via the [storage guide](/docs/self-hosting/operating/storage).

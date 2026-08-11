@@ -1,0 +1,8 @@
+{
+  "title": "API reference",
+  "pages": [
+    "ingestion",
+    "management",
+    "errors"
+  ]
+}

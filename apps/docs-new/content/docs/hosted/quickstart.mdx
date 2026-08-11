@@ -1,0 +1,74 @@
+---
+title: Hosted quickstart
+description: Create an account, a project, and see your first session in minutes.
+audience: User
+scope: Hosted
+lastReviewed: "2026-08-11"
+---
+
+
+
+
+## 1. Create an account
+
+
+<Callout type="info" title="Hosted">
+This quickstart covers the hosted product. Self-hosting follows the same
+SDK steps but starts from the `/setup` first boot — see
+[Self-hosting](/docs/self-hosting/evaluation/overview).
+</Callout>
+
+
+Open the dashboard, choose **Create account**, and sign up with your email and
+a password (minimum 8 characters). GitHub and Google sign-in appear when the
+hosted deployment has them enabled.
+
+You must **verify your email** before you can create a project: check your
+inbox, open the confirmation link, and return to the dashboard. The
+verification banner in the dashboard shows a **Resend** link if the email
+didn't arrive.
+
+## 2. Create a project
+
+From the projects page, create a team, then a project with a name and slug.
+The project's analytics key is generated automatically.
+
+## 3. Copy the analytics key
+
+Open **Project → Settings → API keys** and copy the key. It is a public,
+write-only identifier — safe to embed in your site's JavaScript.
+
+## 4. Install the SDK
+
+```sh
+npm install @prism/core
+```
+
+## 5. Start tracking
+
+```ts
+import { PrismClient } from "@prism/core";
+
+const prism = new PrismClient("pr_xxx");
+```
+
+The constructor starts a session automatically using the current page path as
+the location and `document.referrer` as the referrer.
+
+## 6. Log an event
+
+```ts
+await prism.logEvent("button-click", { label: "signup" });
+```
+
+## 7. See it live
+
+Open **Project → Realtime** — new sessions appear as map markers the moment
+they start. Logged events appear on the **Events** dashboard.
+
+## Next
+
+- [JavaScript SDK reference](/docs/sdks/javascript) — constructor, session
+  lifecycle, and error behavior.
+- [Core concepts](/docs/start/concepts) — projects, keys, sessions, teams.
+- Self-hosting instead? [Evaluation & topology](/docs/self-hosting/evaluation/overview).

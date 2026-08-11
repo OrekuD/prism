@@ -1,0 +1,85 @@
+---
+title: Reverse proxy & TLS
+description: Exposing the stack on one origin with TLS termination.
+audience: Operator
+scope: Self-hosted
+lastReviewed: "2026-08-11"
+---
+
+
+
+The `web` container (nginx) is the only public entry point and already
+routes `/api`, `/api/v1/analytics`, `/ws`, and `/files/*` to the right
+upstreams. Terminate TLS in front of it — every example below ends at the
+`web` service on port `PUBLIC_PORT`.
+
+## Caddy (recommended for small deployments)
+
+```txt
+analytics.example.com {
+	reverse_proxy web:80
+}
+```
+
+Automatic Let's Encrypt certificates, zero config.
+
+## Traefik
+
+Use the Docker provider with an ACME certificate resolver and route the
+domain to the `web` service's published port.
+
+## Distribution nginx + certbot
+
+A standard `nginx` reverse proxy on the host:
+
+```txt
+server {
+	server_name analytics.example.com;
+	listen 443 ssl;
+	ssl_certificate /etc/letsencrypt/live/analytics.example.com/fullchain.pem;
+	ssl_certificate_key /etc/letsencrypt/live/analytics.example.com/privkey.pem;
+
+	location / {
+		proxy_pass http://127.0.0.1:3000;
+		proxy_set_header Host $host;
+		proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+		proxy_set_header X-Forwarded-Proto $scheme;
+	}
+}
+```
+
+## WebSocket pass-through
+
+The outer proxy must pass the `Upgrade`/`Connection` headers for `/ws`:
+
+```txt
+location /ws {
+	proxy_pass http://127.0.0.1:3000;
+	proxy_http_version 1.1;
+	proxy_set_header Upgrade $http_upgrade;
+	proxy_set_header Connection "upgrade";
+}
+```
+
+(Caddy and Traefik handle WebSocket upgrades automatically.)
+
+## Origin consistency
+
+`PUBLIC_URL` must be the **external** origin (`https://…`), because:
+
+- auth cookies (`Secure`, SameSite) and CSRF origin checks depend on it;
+- verification/reset emails link to it;
+- the JWKS URL and OAuth callbacks derive from it;
+- the dashboard's same-origin routing uses it for `/api` and `/ws`.
+
+A mismatch between `PUBLIC_URL` and the browser's URL breaks logins,
+verification links, and realtime.
+
+## Common mistakes
+
+| Symptom | Cause |
+| --- | --- |
+| Sign-in works but realtime never connects | `/ws` upgrade headers not forwarded by the outer proxy |
+| Verification email links 404 | `PUBLIC_URL`/`BASE_URL` set to an internal host |
+| Cookies dropped | Outer proxy strips `Set-Cookie` or changes the host header |
+| Mixed-content blocked | A resource referenced with `http://` on an `https://` page — keep every origin in `PUBLIC_URL` HTTPS |

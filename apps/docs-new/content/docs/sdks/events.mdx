@@ -1,0 +1,55 @@
+---
+title: Events
+description: Named events, structured data, validation, and delivery guarantees.
+audience: Developer
+scope: Both
+lastReviewed: "2026-08-11"
+---
+
+
+
+## Shape
+
+`POST /api/v1/analytics/events` with a Bearer analytics key:
+
+```json
+{
+  "sessionId": "…",
+  "name": "checkout-started",
+  "data": { "value": 42 }
+}
+```
+
+Validation (`LogEventRequestSchema`, strict object):
+
+| Field | Rule |
+| --- | --- |
+| `sessionId` | Required, non-empty |
+| `name` | Required, 1–128 characters |
+| `data` | Optional record of string keys to any JSON values |
+
+Invalid bodies return `400` with `{ "errors": ["…"] }` — the zod messages,
+one per failed field.
+
+## Storage
+
+Events are stored per session and project (the project id comes from the
+authenticated key, never from the body). Structured `data` is serialized to
+JSON. Events appear on the project's **Events dashboard** once the analytics
+store is reachable.
+
+## Delivery guarantees
+
+- Ingestion is **fire-and-forget** from the SDK's perspective: failures log
+  to the console and never throw into the host app.
+- The server records the event **after** validating it; there is no retry or
+  outbox in the SDK — the page's own retry (e.g. on `navigator.onLine`
+  changes) is up to you.
+- Rate limits: 120 ingestion requests per minute per client IP
+  (`429` + `Retry-After` on breach; in-memory, per-process).
+
+## Events vs. custom events
+
+`logEvent` and `logCustomEvent` are the same wire call; the alias exists so
+product events read distinctly in code. There is no server-side event
+taxonomy or schema registry yet — the name and `data` are stored as sent.

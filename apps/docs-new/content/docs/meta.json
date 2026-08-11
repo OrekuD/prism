@@ -1,0 +1,12 @@
+{
+  "pages": [
+    "start",
+    "hosted",
+    "self-hosting",
+    "sdks",
+    "product",
+    "api-reference",
+    "operations",
+    "contributing"
+  ]
+}

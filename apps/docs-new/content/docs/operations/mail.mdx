@@ -1,0 +1,61 @@
+---
+title: Mail
+description: SMTP and Resend delivery, precedence, and the no-mail fallback.
+audience: Operator
+scope: Self-hosted
+lastReviewed: "2026-08-11"
+---
+
+
+
+Prism sends two kinds of transactional mail: **verification** (on sign-up
+and resend) and **password reset**. The runtime picks a channel:
+
+| Channel | Variables | Precedence |
+| --- | --- | --- |
+| SMTP | `MAIL_SMTP_HOST`, `MAIL_SMTP_PORT`, `MAIL_SMTP_SECURE`, `MAIL_SMTP_USER`, `MAIL_SMTP_PASS`, `MAIL_FROM` | Highest |
+| Resend | `RESEND_API_KEY` | Used when no SMTP is configured |
+| Log-only | — | Development: links are printed to the server log |
+
+`isMailConfigured` drives the public `/api/v1/config` `mailConfigured`
+boolean; the dashboard shows a warning banner when mail is not configured
+and registration is open.
+
+## SMTP example
+
+```
+MAIL_SMTP_HOST=smtp.example.com
+MAIL_SMTP_PORT=587
+MAIL_SMTP_SECURE=false
+MAIL_SMTP_USER=postmaster@example.com
+MAIL_SMTP_PASS=…
+MAIL_FROM=Prism <no-reply@example.com>
+```
+
+`MAIL_SMTP_SECURE=true` is for implicit TLS (typically port 465); port 587
+with STARTTLS uses `false`.
+
+## Email content
+
+Every email includes:
+
+- the canonical Prism mark as an embedded base64 PNG (no remote logo URLs —
+  self-hosted mail never fetches from a third-party host);
+- the configured **instance name** (`INSTANCE_NAME`) beside the mark;
+- the operator's `MAIL_FROM` as the sender.
+
+## No mail configured
+
+Without SMTP or Resend, verification links are printed to the API log and
+never leave the instance. Registration should stay closed until mail works —
+otherwise users sign up and cannot verify. The dashboard shows a warning
+banner when `mailConfigured` is false.
+
+## Delivery troubleshooting
+
+- **Links not arriving**: check the API log for the printed link (log-only
+  mode), then the SMTP credentials and firewall.
+- **SPF/DKIM**: configure SPF/DKIM for `MAIL_FROM`'s domain so
+  verification/reset mail is not classified as spam.
+- **Reset/verification links 404**: `BASE_URL` must be the **external**
+  origin your users reach — see [Reverse proxy & TLS](/docs/self-hosting/operating/reverse-proxy).

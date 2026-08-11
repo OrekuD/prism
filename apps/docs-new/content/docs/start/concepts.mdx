@@ -1,0 +1,60 @@
+---
+title: Core concepts
+description: Projects, analytics keys, sessions, events, teams — the vocabulary.
+audience: User
+scope: Both
+lastReviewed: "2026-08-11"
+---
+
+
+## Projects
+
+A project is the unit of analytics: one analytics key, one set of sessions and
+events, one realtime stream. Projects belong to a team. Creating a project
+requires a verified email address (the product API returns
+`email_not_verified` otherwise).
+
+## Analytics keys
+
+Every project has a **public analytics key** shown under **Project → Settings
+→ API keys**. It is a public identifier: the browser SDK embeds it in your
+site's JavaScript, like any browser analytics key. It can only write sessions
+and events; it cannot read data, create or delete projects, or manage
+accounts.
+
+The key is checked against the `project_api_keys` table on every ingestion
+request. A key from one project can never end a session or log an event for
+another project — the project id is derived from the key on the server.
+
+## Sessions
+
+A session is one visit: started by the SDK with the page path, referrer, and
+user agent. The analytics API derives OS, browser, mobile flag, and
+best-effort country/coordinates from the client IP. A session is `online`
+from start until `sessions/end` marks it offline (the SDK does this with a
+`keepalive` request on page close). Sessions that never end are treated as
+stale server-side.
+
+## Events
+
+Named events with optional structured data, logged against a session:
+
+```ts
+await prism.logEvent("button-click", { label: "signup" });
+```
+
+Events are stored per project and shown on the Events dashboard.
+
+## Teams
+
+Teams own projects. The team creator is the **owner**; members join through
+an invite link (the product API rejects the owner joining or leaving their
+own team, and duplicate memberships). Only the owner can delete a team, and
+only non-personal teams are deletable. Deleting a team deletes its projects.
+
+## Realtime
+
+The dashboard subscribes to a project's live session stream over WebSocket:
+every new session is pushed as a `user-connected` message the moment it
+starts. Subscription requires a short-lived service JWT (see
+[Security model](/docs/operations/security)).
