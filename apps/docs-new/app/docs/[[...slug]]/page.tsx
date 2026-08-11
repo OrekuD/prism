@@ -7,6 +7,7 @@ import {
   MarkdownCopyButton,
   ViewOptionsPopover,
 } from 'fumadocs-ui/layouts/glass/page';
+
 import { notFound } from 'next/navigation';
 import { getMDXComponents } from '@/components/mdx';
 import type { Metadata } from 'next';
@@ -64,6 +65,15 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
       <DocsTitle>{page.data.title}</DocsTitle>
       <DocsDescription className="mb-0">{page.data.description}</DocsDescription>
       <PageMeta page={page} />
+      {/* Copy markdown / view options — restored from the Fumadocs
+          template, styled to the Prism design (2px radius via CSS). */}
+      <div className="prism-page-actions flex flex-row flex-wrap items-center gap-2 border-b border-fd-border pb-6">
+        <MarkdownCopyButton markdownUrl={markdownUrl} />
+        <ViewOptionsPopover
+          markdownUrl={markdownUrl}
+          githubUrl={`https://github.com/${gitConfig.user}/${gitConfig.repo}/blob/${gitConfig.branch}/content/docs/${page.path}`}
+        />
+      </div>
       <DocsBody>
         <MDX
           components={getMDXComponents({

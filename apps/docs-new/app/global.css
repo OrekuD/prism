@@ -244,3 +244,24 @@ figure[data-rehype-pretty-code-figure],
     border-color: CanvasText;
   }
 }
+
+/* Page action buttons (copy markdown / view options): 2px radius per the
+   design system (controls, buttons, menus = 2px). */
+.prism-page-actions button {
+  border-radius: 2px;
+}
+
+/* Radix popovers (view options menu, search) follow the design system:
+   2px radius and a solid surface — the design bans glassmorphism, so the
+   translucent backdrop-blur surface is replaced. */
+[role='dialog'][data-side],
+[data-radix-dropdown-menu-content] {
+  border-radius: 2px;
+  background: var(--color-fd-popover);
+  backdrop-filter: none;
+}
+
+[role='dialog'][data-side] > a,
+[data-radix-dropdown-menu-item] {
+  border-radius: 2px;
+}
