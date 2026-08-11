@@ -1,12 +1,246 @@
 @import 'tailwindcss';
 @import 'fumadocs-ui/css/neutral.css';
 @import 'fumadocs-ui/css/preset.css';
+@import 'fumadocs-ui/css/generated/glass.css';
 
-html {
-  scrollbar-gutter: stable;
+/* ============================================================
+   Prism design tokens (docs/design-system.md §5)
+   Mapped onto Fumadocs' --color-fd-* surface so the whole shell,
+   glass layout, callouts, search, and code blocks inherit the
+   Prism language. Dark is canonical; light is a token-level
+   translation with no stock grays left.
+   ============================================================ */
+@theme {
+  --font-sans: 'Geist Variable', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono:
+    'Geist Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas,
+    monospace;
+
+  /* Light theme */
+  --color-fd-background: #f6f6f8;
+  --color-fd-foreground: #111116;
+  --color-fd-muted: #ffffff;
+  --color-fd-muted-foreground: #5d5d68;
+  --color-fd-popover: #f7f7f9;
+  --color-fd-popover-foreground: #111116;
+  --color-fd-card: #ffffff;
+  --color-fd-card-foreground: #111116;
+  --color-fd-border: #d8d8df;
+  --color-fd-primary: #5637d4;
+  --color-fd-primary-foreground: #f7f7f9;
+  --color-fd-secondary: #f0f0f3;
+  --color-fd-secondary-foreground: #111116;
+  --color-fd-accent: #eeedf2;
+  --color-fd-accent-foreground: #111116;
+  --color-fd-ring: #5637d4;
+  --color-fd-overlay: rgb(17 17 22 / 0.4);
+
+  --color-fd-info: #176fc1;
+  --color-fd-warning: #9a6100;
+  --color-fd-error: #c72f45;
+  --color-fd-success: #087a55;
+  --color-fd-idea: #087a55;
 }
 
-html > body[data-scroll-locked] {
-  margin-right: 0px !important;
-  --removed-body-scroll-bar-size: 0px !important;
+.dark {
+  /* Dark theme (canonical) */
+  --color-fd-background: #050506;
+  --color-fd-foreground: #f2f2f4;
+  --color-fd-muted: #0b0b0e;
+  --color-fd-muted-foreground: #a3a3ad;
+  --color-fd-popover: #111116;
+  --color-fd-popover-foreground: #f2f2f4;
+  --color-fd-card: #0b0b0e;
+  --color-fd-card-foreground: #f2f2f4;
+  --color-fd-border: #25252c;
+  --color-fd-primary: #6547e8;
+  --color-fd-primary-foreground: #f7f7f9;
+  --color-fd-secondary: #0b0b0e;
+  --color-fd-secondary-foreground: #f2f2f4;
+  --color-fd-accent: #17171d;
+  --color-fd-accent-foreground: #f2f2f4;
+  --color-fd-ring: #9b89ff;
+  --color-fd-overlay: rgb(5 5 6 / 0.68);
+
+  --color-fd-info: #4da3ff;
+  --color-fd-warning: #f2a51a;
+  --color-fd-error: #f05d6c;
+  --color-fd-success: #20d99a;
+  --color-fd-idea: #20d99a;
+
+  /* Code (shiki) */
+  --shiki-dark: #f2f2f4;
+  --shiki-light: #111116;
+}
+
+/* Glass layout: public rail width from the design system (§7.2).
+   The layout root is div#fd-glass-layout with an arbitrary-property
+   utility class — an ID rule outranks it. */
+#fd-glass-layout {
+  --fd-main-width: 1120px;
+}
+
+/* ============================================================
+   Typography polish
+   ============================================================ */
+
+/* Article prose: 14-16px body, comfortable operator reading */
+.fd-article {
+  font-size: 0.9375rem;
+  line-height: 1.75;
+}
+
+/* Inline code: compact technical token, not a bright badge */
+.fd-article :not(pre) > code {
+  font-size: 0.84375em;
+  font-family: var(--font-mono);
+  background: var(--color-fd-muted);
+  border: 1px solid var(--color-fd-border);
+  border-radius: 2px;
+  padding: 0.125rem 0.3rem;
+  color: var(--color-fd-foreground);
+}
+
+/* Headings */
+.fd-article h1,
+.fd-article h2,
+.fd-article h3,
+.fd-article h4 {
+  letter-spacing: -0.015em;
+  scroll-margin-top: 6rem;
+}
+
+/* Tables: hairline frame, mono headers */
+.fd-article table {
+  border: 1px solid var(--color-fd-border);
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.875rem;
+}
+
+.fd-article table th {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-fd-muted-foreground);
+  background: color-mix(in srgb, var(--color-fd-background) 60%, transparent);
+}
+
+/* ============================================================
+   Component polish
+   ============================================================ */
+
+/* Callouts: 2px radius, mono uppercase titles */
+.fd-callout {
+  border-radius: 2px;
+}
+
+.fd-callout p:first-child {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Steps: mono counters */
+.fd-steps {
+  counter-reset: fd-step;
+}
+
+.fd-step {
+  counter-increment: fd-step;
+  position: relative;
+  padding-left: 2.5rem;
+}
+
+.fd-step::before {
+  content: counter(fd-step, decimal-leading-zero);
+  position: absolute;
+  left: 0;
+  top: 0.125rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  color: var(--color-fd-primary);
+  border: 1px solid var(--color-fd-border);
+  border-radius: 2px;
+  background: var(--color-fd-muted);
+}
+
+/* Tabs: hairline frame */
+.fd-tabs {
+  border: 1px solid var(--color-fd-border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.fd-tabs [role='tablist'] {
+  border-bottom: 1px solid var(--color-fd-border);
+  background: color-mix(in srgb, var(--color-fd-background) 60%, transparent);
+}
+
+.fd-tabs [role='tab'] {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 0;
+}
+
+/* Focus ring: crisp 2px outline */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-fd-ring);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Code blocks: surface background, mono */
+.codeblock,
+figure[data-rehype-pretty-code-figure],
+.fd-article pre {
+  border-radius: 2px;
+  border: 1px solid var(--color-fd-border);
+  background: var(--color-fd-muted);
+}
+
+.fd-article pre code {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+
+/* Search dialog matches the surface language */
+[data-search-full] {
+  border-radius: 2px;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Forced colors: keep affordances */
+@media (forced-colors: active) {
+  :where(a, button, input, select, textarea, summary):focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+  }
+  .fd-callout,
+  .fd-tabs,
+  .fd-article table,
+  .codeblock {
+    border-color: CanvasText;
+  }
 }

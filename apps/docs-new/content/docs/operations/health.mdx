@@ -6,6 +6,9 @@ scope: Self-hosted
 lastReviewed: "2026-08-11"
 ---
 
+<SectionLabel label="OPERATIONS" />
+
+
 
 
 The product API exposes two endpoints:
@@ -37,6 +40,6 @@ deployment gate.
 `/health/ready` covers the **product database** only. The analytics store
 and object storage degrade reads/writes independently (empty analytics
 reads, failed avatar uploads). A combined readiness signal is
-**Planned** — monitor the stores separately: analytics
+<StatusBadge tone="planned" /> — monitor the stores separately: analytics
 via the volumes/process checks in [Networking & egress](/docs/operations/networking),
 storage via the [storage guide](/docs/self-hosting/operating/storage).

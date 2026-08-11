@@ -1,15 +1,22 @@
 import { RootProvider } from 'fumadocs-ui/provider/next';
+import '@fontsource-variable/geist';
+import '@fontsource-variable/geist-mono';
 import './global.css';
-import { Inter } from 'next/font/google';
+import type { Metadata } from 'next';
 
-const inter = Inter({
-  subsets: ['latin'],
-});
+export const metadata: Metadata = {
+  title: {
+    default: 'Prism Docs',
+    template: '%s — Prism Docs',
+  },
+  description:
+    'Documentation for Prism — realtime product analytics for teams, hosted or self-hosted.',
+};
 
 export default function Layout({ children }: LayoutProps<'/'>) {
   return (
-    <html lang="en" className={inter.className} suppressHydrationWarning>
-      <body className="flex flex-col min-h-screen">
+    <html lang="en" suppressHydrationWarning>
+      <body className="font-sans antialiased">
         <RootProvider>{children}</RootProvider>
       </body>
     </html>
