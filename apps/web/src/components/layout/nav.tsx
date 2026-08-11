@@ -33,7 +33,7 @@ export function Nav() {
 	const { pathname } = useLocation();
 
 	return (
-		<div className="fixed top-0 z-50 flex w-full flex-col gap-2 border-b border-border bg-background px-4 py-3 md:h-14 md:flex-row md:items-center md:justify-between md:gap-6 md:px-8 md:py-0">
+		<div className="sticky top-0 z-50 flex w-full flex-col gap-2 border-b border-border bg-background px-4 py-3 md:h-14 md:flex-row md:items-center md:justify-between md:gap-6 md:px-8 md:py-0">
 			<div className="flex items-center gap-4 lg:gap-6">
 				<Link
 					to="/"

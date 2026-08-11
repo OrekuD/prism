@@ -3,6 +3,7 @@
  * Progress persists in localStorage so a refresh resumes at the last
  * completed step; completion and skip both mark the flow done.
  */
+import axios from "axios";
 import { axiosInstance } from "@/utils/axiosInstance";
 import type {
   EventResource,
@@ -52,10 +53,25 @@ export async function createFirstProject(
   teamId: string,
   name: string,
 ): Promise<ProjectResource> {
-  const response = await axiosInstance.post<{ message: string }>(
-    `/projects/${teamId}`,
-    { teamId, name },
-  );
+  let response: import("axios").AxiosResponse<{ message: string }>;
+  try {
+    response = await axiosInstance.post<{ message: string }>(
+      `/projects/${teamId}`,
+      { teamId, name },
+    );
+  } catch (err) {
+    if (
+      axios.isAxiosError(err) &&
+      (err.response?.data?.errors as Array<string> | undefined)?.includes(
+        "email_not_verified",
+      )
+    ) {
+      throw new Error(
+        "Verify your email to create projects. Check your inbox for the confirmation link, or use the resend button in the banner at the top of the page.",
+      );
+    }
+    throw err;
+  }
   if (response.status !== 200) {
     throw new Error("Could not create the project.");
   }
