@@ -16,6 +16,17 @@ const requestPasswordReset = vi.fn();
 vi.mock("@/lib/authClient", () => ({
   authClient: {
     useSession: () => ({ data: null, isPending: false }),
+    // waitForSession() reads the session atom and falls back to
+    // getSession(); both report a session so post-auth navigation
+    // resolves immediately in tests.
+    $store: {
+      atoms: {
+        session: {
+          get: () => ({ data: { session: { id: "test-session" } }, isPending: false }),
+        },
+      },
+    },
+    getSession: async () => ({ data: { session: { id: "test-session" } }, error: null }),
     signIn: {
       email: (...args: unknown[]) => signInEmail(...args),
       social: (...args: unknown[]) => signInSocial(...args),

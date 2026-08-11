@@ -192,7 +192,7 @@ export function Onboarding() {
 
   if (selfHosted && config?.setupRequired && !sessionData?.session) {
     return (
-      <div className="mx-auto max-w-[1120px] px-4 py-10 md:px-6 md:py-12">
+      <div className="mx-auto w-full max-w-[1500px] px-4 py-10 md:px-6 md:py-12">
         <SectionLabel>First boot</SectionLabel>
         <h1 className="mt-3 font-mono text-[26px] font-semibold tracking-[-0.025em] text-text">
           Set up {config.instanceName}
@@ -228,7 +228,7 @@ export function Onboarding() {
   const personalTeam = teamsQuery.data?.find((entry) => entry.isPersonal);
 
   return (
-    <div className="mx-auto max-w-[1120px] px-4 py-10 md:px-6 md:py-12">
+    <div className="mx-auto w-full max-w-[1500px] px-4 py-10 md:px-6 md:py-12">
       <SectionLabel>Get started</SectionLabel>
       <h1 className="mt-3 font-mono text-[26px] font-semibold tracking-[-0.025em] text-text">
         Connect your first project
@@ -239,7 +239,9 @@ export function Onboarding() {
       </p>
 
       <Frame className="mt-8 min-h-[520px]">
-        <div className="grid md:grid-cols-[58fr_42fr]">
+        {/* Rows fill the frame: mobile = steps auto + aside 1fr; desktop =
+            one stretched row so both columns reach full height. */}
+        <div className="grid min-h-[520px] grid-rows-[auto_1fr] md:grid-cols-[58fr_42fr] md:grid-rows-1">
           <div className="border-b border-border p-6 sm:p-8 md:border-b-0 md:border-r">
             {/* Self-hosted step 1: instance configuration confirmation */}
             {selfHosted && step === 1 && config ? (
@@ -568,7 +570,7 @@ export function Onboarding() {
           </div>
 
           {/* Right status column */}
-          <aside className="bg-canvas-subtle p-6 sm:p-8">
+          <aside className="flex flex-col bg-canvas-subtle p-6 sm:p-8">
             <Checklist current={step} steps={steps} />
             {step < 6 + offset ? (
               <button

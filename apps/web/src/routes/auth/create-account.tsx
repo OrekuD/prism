@@ -1,4 +1,4 @@
-import { Loader2, Mail } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import React from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { authClient, fetchEnabledProviders } from "@/lib/authClient";
@@ -10,20 +10,11 @@ import {
   type EnabledProviders,
   SocialAuthButtons,
 } from "@/components/auth/social-auth-buttons";
-import { useResendVerificationEmail } from "@/hooks/useResendVerificationEmail";
+import { waitForSession } from "@/lib/session";
 import { loadRuntimeConfig, type RuntimeConfig } from "@/lib/runtimeConfig";
 import { TELEMETRY_EVENTS, trackTelemetry } from "@/lib/telemetry";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-
-/** Keep the address mostly hidden while still confirming the destination. */
-function redactEmail(email: string): string {
-  const [local, domain] = email.split("@");
-  if (!domain) return email;
-  return `${local.slice(0, 2)}***@${domain}`;
-}
-
-const RESEND_COOLDOWN_SECONDS = 60;
 
 export function CreateAccount() {
   const navigate = useNavigate();
@@ -37,28 +28,15 @@ export function CreateAccount() {
   const [pendingProvider, setPendingProvider] = React.useState<
     "github" | "google" | null
   >(null);
-  const [sentTo, setSentTo] = React.useState<string | null>(null);
   const [providers, setProviders] = React.useState<EnabledProviders>({
     github: false,
     google: false,
   });
   const [config, setConfig] = React.useState<RuntimeConfig | null>(null);
-  const { resend, isPending: isResendPending } = useResendVerificationEmail();
-  const [cooldown, setCooldown] = React.useState(0);
-
   React.useEffect(() => {
     fetchEnabledProviders().then(setProviders);
     loadRuntimeConfig().then(setConfig);
   }, []);
-
-  React.useEffect(() => {
-    if (cooldown <= 0) return;
-    const timer = window.setTimeout(
-      () => setCooldown((value) => Math.max(0, value - 1)),
-      1000,
-    );
-    return () => window.clearTimeout(timer);
-  }, [cooldown]);
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -75,16 +53,17 @@ export function CreateAccount() {
         );
         return;
       }
-      if (response.data?.user?.emailVerified) {
-        trackTelemetry(TELEMETRY_EVENTS.signupMethod, { method: "email" });
-        // Local development auto-verifies new users: continue directly
-        // into the hosted onboarding flow.
-        navigate("/onboarding");
-        return;
-      }
-      // Hosted flow: wait for the verification click before provisioning.
-      setSentTo(email);
-      setCooldown(RESEND_COOLDOWN_SECONDS);
+      trackTelemetry(TELEMETRY_EVENTS.signupMethod, { method: "email" });
+      // Sign-up creates a session immediately, even with verification
+      // pending, so wait until the router sees it before navigating —
+      // otherwise the signed-out tree 404s the destination. Verified
+      // accounts continue into onboarding; unverified ones land on the
+      // dashboard, where the verification banner offers a resend.
+      await waitForSession();
+      navigate(
+        response.data?.user?.emailVerified ? "/onboarding" : "/projects",
+        { replace: true },
+      );
     } catch (err) {
       setError(
         isNetworkError(err)
@@ -125,13 +104,6 @@ export function CreateAccount() {
     }
   };
 
-  const onResend = () => {
-    if (cooldown > 0) return;
-    if (!sentTo) return;
-    resend(sentTo);
-    setCooldown(RESEND_COOLDOWN_SECONDS);
-  };
-
   const registrationClosed =
     config?.signupPolicy === "disabled" || config?.signupPolicy === "invite-only";
 
@@ -139,49 +111,7 @@ export function CreateAccount() {
 
   return (
     <AuthShell>
-      {sentTo ? (
-        <div className="grid gap-6">
-          <AuthHeading
-            title="Check your email."
-            description="Confirm the address to finish creating your account."
-          />
-          <div className="grid gap-4">
-            <div className="grid size-10 place-items-center rounded-[2px] border border-border bg-surface-raised">
-              <Mail className="size-4 text-text-muted" aria-hidden="true" />
-            </div>
-            <p className="text-[14px] leading-relaxed text-text-muted">
-              We sent a confirmation link to{" "}
-              <span className="font-medium text-text">
-                {redactEmail(sentTo)}
-              </span>
-              . Your team and workspace are created once the address is
-              confirmed.
-            </p>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={onResend}
-                disabled={cooldown > 0 || isResendPending}
-                aria-busy={isResendPending}
-                className="inline-flex h-10 items-center gap-2 rounded-[2px] border border-border-strong px-4 text-[13px] font-medium text-text transition-colors duration-150 hover:border-text-subtle hover:bg-surface-hover disabled:opacity-45"
-              >
-                {isResendPending ? (
-                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                ) : null}
-                {cooldown > 0
-                  ? `Resend in ${cooldown}s`
-                  : "Resend verification email"}
-              </button>
-            </div>
-            <Link
-              to="/auth/log-in"
-              className="w-fit text-[13px] text-text-muted transition-colors duration-150 hover:text-text hover:underline"
-            >
-              Back to sign in
-            </Link>
-          </div>
-        </div>
-      ) : registrationClosed && config ? (
+      {registrationClosed && config ? (
         <div className="grid gap-6">
           <AuthHeading
             title="Registration is closed."

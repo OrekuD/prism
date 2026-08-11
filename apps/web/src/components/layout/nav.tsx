@@ -3,6 +3,9 @@ import { TeamSwitcher } from "./team-switcher";
 import { UserNav } from "./user-nav";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
+
+const VITE_DOCS_URL: string =
+  import.meta.env.VITE_DOCS_URL ?? "http://localhost:4321";
 import {
 	Dialog,
 	DialogClose,
@@ -120,12 +123,12 @@ export function Nav() {
 						/>
 					) : null}
 				</Link>
-				<Link
-					to="#"
+				<a
+					href={VITE_DOCS_URL}
 					className="relative flex h-full items-center text-sm font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground"
 				>
 					Docs
-				</Link>
+				</a>
 				<UserNav />
 			</div>
 		</div>

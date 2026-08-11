@@ -35,13 +35,13 @@ export function Projects() {
 
   const hasSettingsPermission = React.useMemo(
     () => activeTeam?.ownerId === userStore.user?.id,
-    [activeTeam, userStore.user?.id],
+    [activeTeam, userStore.user?.id]
   );
 
   // throw new Error("S");
 
   return (
-    <div className="py-4">
+    <div className="flex flex-1 flex-col py-4">
       <div className="flex flex-col md:flex-row md:items-center gap-3">
         <form className="flex-1">
           <div className="relative">
@@ -60,7 +60,7 @@ export function Projects() {
           {hasSettingsPermission ? <Button>Team Settings</Button> : null}
         </div>
       </div>
-      <div className="py-4">
+      <div className="flex flex-1 flex-col py-4">
         {projectsQuery.isLoading || projectsQuery.isRefetching ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {placeholders.map((_, index) => (

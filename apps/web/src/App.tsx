@@ -103,62 +103,55 @@ import { Skeleton } from "./components/ui/skeleton";
 import { Gallery } from "./routes/gallery";
 import { NotFound } from "./routes/not-found";
 
-const defaultRouter = createBrowserRouter(
-  createRoutesFromElements(
-    <Route path="/" element={<PublicLayout />}>
-      <Route path="" element={<Index />} />
-      <Route path="join" element={<JoinTeam />} />
-      <Route path="auth">
-        <Route path="log-in" element={<LogIn />} />
-        <Route path="create-account" element={<CreateAccount />} />
-        <Route path="forgot-password" element={<ForgotPassword />} />
-        <Route path="reset-password" element={<ResetPassword />} />
-      </Route>
-      {import.meta.env.DEV ? (
-        <Route path="__gallery" element={<Gallery />} />
-      ) : null}
-      <Route path="*" element={<NotFound />} />
-    </Route>,
-  ),
-);
-
-const authenticatedRouter = createBrowserRouter(
+const router = createBrowserRouter(
   createRoutesFromElements(
     <>
-      {/* The landing page always renders with the public layout and nav,
-          even when signed in. Equal-score "/" routes resolve in
-          declaration order, so the landing wins at "/" and the product
-          shell handles every other path. */}
+      {/* Public chrome: landing, auth pages, invite joins, and the dev
+          gallery. The landing stays at "/" even when signed in; the
+          product shell below handles every other path. */}
       <Route path="/" element={<PublicLayout />}>
         <Route path="" element={<Index />} />
-      </Route>
-      <Route path="/" element={<RootLayout />}>
         <Route path="join" element={<JoinTeam />} />
+        <Route path="auth">
+          <Route path="log-in" element={<LogIn />} />
+          <Route path="create-account" element={<CreateAccount />} />
+          <Route path="forgot-password" element={<ForgotPassword />} />
+          <Route path="reset-password" element={<ResetPassword />} />
+        </Route>
+        {import.meta.env.DEV ? (
+          <Route path="__gallery" element={<Gallery />} />
+        ) : null}
+      </Route>
+      {/* Product shell. Signed-in only: RootLayout redirects signed-out
+          visitors to the sign-in page, so protected paths can never
+          404 or flash — the router is swapped never, session changes
+          only re-render. */}
+      <Route path="/" element={<RootLayout />}>
         <Route path="onboarding" element={<Onboarding />} />
         <Route path="overview" element={<Overview />} />
         <Route path="projects">
-        <Route path="" element={<Projects />} />
-        <Route path="new" element={<NewProject />} />
-        <Route path=":slug" element={<ProjectLayout />}>
-          <Route path="" element={<ProjectSummary />} />
-          <Route path="events" element={<ProjectEvents />} />
-          <Route path="realtime" element={<ProjectRealtime />} />
-          <Route path="settings" element={<ProjectSettingsLayout />}>
-            <Route path="" element={<Navigate to="general" />} />
-            <Route path="general" element={<ProjectSettingsGeneral />} />
-            <Route path="api-keys" element={<ProjectSettingsApiKeys />} />
+          <Route path="" element={<Projects />} />
+          <Route path="new" element={<NewProject />} />
+          <Route path=":slug" element={<ProjectLayout />}>
+            <Route path="" element={<ProjectSummary />} />
+            <Route path="events" element={<ProjectEvents />} />
+            <Route path="realtime" element={<ProjectRealtime />} />
+            <Route path="settings" element={<ProjectSettingsLayout />}>
+              <Route path="" element={<Navigate to="general" />} />
+              <Route path="general" element={<ProjectSettingsGeneral />} />
+              <Route path="api-keys" element={<ProjectSettingsApiKeys />} />
+            </Route>
           </Route>
         </Route>
+        <Route path="account" element={<AccountLayout />}>
+          <Route path="" element={<Navigate to="general" />} />
+          <Route path="general" element={<AccountGeneral />} />
+          <Route path="security" element={<AccountSecurity />} />
+          <Route path="authentication" element={<AccountAuthentication />} />
+          <Route path="teams" element={<AccountTeams />} />
+        </Route>
       </Route>
-      <Route path="account" element={<AccountLayout />}>
-        <Route path="" element={<Navigate to="general" />} />
-        <Route path="general" element={<AccountGeneral />} />
-        <Route path="security" element={<AccountSecurity />} />
-        <Route path="authentication" element={<AccountAuthentication />} />
-        <Route path="teams" element={<AccountTeams />} />
-      </Route>
-      </Route>
-      {/* Signed-in users land on the full public 404 experience. */}
+      {/* Everyone gets the full public 404 experience. */}
       <Route
         path="*"
         element={
@@ -189,9 +182,5 @@ export function App() {
     );
   }
 
-  return (
-    <RouterProvider
-      router={sessionData?.session ? authenticatedRouter : defaultRouter}
-    />
-  );
+  return <RouterProvider router={router} />;
 }
