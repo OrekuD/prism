@@ -24,13 +24,13 @@ type MailMessage =
       to: string;
       subject: string;
       template: "confirm-email";
-      props: { name: string; confirmEmailLink: string };
+      props: { name: string; confirmEmailLink: string; instanceName?: string };
     }
   | {
       to: string;
       subject: string;
       template: "reset-password";
-      props: { name: string; resetLink: string };
+      props: { name: string; resetLink: string; instanceName?: string };
     };
 
 type EmailExecutor = (promise: Promise<unknown>) => void;

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 72" role="img" aria-label="Prism">
+  <defs>
+    <style>
+      @font-face {
+        font-family: "Geist";
+        src: url("FONT_DATA_URI") format("woff2");
+        font-weight: 100 900;
+      }
+    </style>
+  </defs>
+  <!-- The square mark, unmodified (task-7 section 2: the mark inside the
+       lockup must remain the unchanged square asset). -->
+  <g transform="translate(16 24)">
+    <path d="M 2.97 14.56 L 18.97 7.06 L 18.97 4.9 L 9.5 9.15 Z" fill="UPPER_FILL"/>
+    <path d="M 3.53 15.74 L 19.53 8.24 L 20.25 6.8 L 4.25 19.9 Z" fill="#6547E8"/>
+  </g>
+  <text x="64" y="48" font-family="Geist, sans-serif" font-size="36" font-weight="600" letter-spacing="9" fill="TEXT_FILL">PRISM</text>
+</svg>

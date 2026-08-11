@@ -2,6 +2,7 @@ import React from "react";
 import { authBaseUrl } from "@/lib/authClient";
 import { loadRuntimeConfig } from "@/lib/runtimeConfig";
 import { Frame, SectionLabel } from "@/components/public/frame";
+import { PrismMark } from "@/components/brand/prism-mark";
 
 /**
  * Shared authentication shell (design-system.md 11.1-11.2).
@@ -27,7 +28,10 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
             desktop = one stretched row so both panels reach full height. */}
         <div className="grid min-h-[600px] grid-rows-[auto_1fr] md:grid-cols-[42fr_58fr] md:grid-rows-1">
           <aside className="hidden flex-col border-r border-border bg-canvas-subtle p-10 md:flex">
-            <SectionLabel>{instanceName}</SectionLabel>
+            <PrismMark size={36} decorative />
+            <div className="mt-6">
+              <SectionLabel>{instanceName}</SectionLabel>
+            </div>
             <p className="mt-8 max-w-[24ch] text-[22px] font-semibold leading-snug tracking-[-0.015em] text-text">
               Realtime product analytics you can run yourself.
             </p>

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="packages/brand/assets/prism-mark-violet.svg" width="96" height="96" alt="Prism" />
+</p>
+
 # Prism
 
 Real-time website analytics for teams: a Cloudflare Worker API, a Node analytics

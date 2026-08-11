@@ -15,11 +15,43 @@
       property="og:description"
       content="Track sessions and product events with a small SDK. Run Prism hosted or self-hosted on your own infrastructure."
     />
+    <!-- Task-7 browser/install/social assets, derived from the canonical
+         square mark (packages/brand). og:image is rewritten to an absolute
+         URL at runtime from the instance origin so self-hosted deployments
+         never reference an external host. -->
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon.ico" sizes="16x16 32x32" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#050506" />
+    <meta property="og:image" content="/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:alt" content="Prism" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="/og-image.png" />
     <title>Prism</title>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Social crawlers need absolute image URLs; derive them from the
+      // instance origin at runtime (self-hosted-safe, no external host).
+      (function () {
+        var origin = window.location.origin;
+        document
+          .querySelectorAll('meta[property="og:image"], meta[name="twitter:image"]')
+          .forEach(function (meta) {
+            var value = meta.getAttribute("content");
+            if (value && value.startsWith("/")) {
+              meta.setAttribute("content", origin + value);
+            }
+          });
+      })();
+    </script>
   </body>
 </html>

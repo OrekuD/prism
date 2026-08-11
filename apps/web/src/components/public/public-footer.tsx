@@ -1,3 +1,5 @@
+import { PrismLogo } from "@/components/brand/prism-logo";
+
 const VITE_DOCS_URL: string = import.meta.env.VITE_DOCS_URL ?? "http://localhost:4321";
 
 const columns = [
@@ -33,9 +35,8 @@ export function PublicFooter() {
     <footer className="border-t border-border">
       <div className="grid gap-10 px-6 py-12 sm:grid-cols-2 lg:grid-cols-4 lg:px-10">
         <div>
-          <p className="flex items-center gap-2 font-mono text-[14px] font-semibold text-text">
-            <span aria-hidden="true" className="size-2 bg-accent" />
-            Prism
+          <p className="flex items-center text-text">
+            <PrismLogo size={18} />
           </p>
           <p className="mt-3 max-w-[28ch] text-[13px] leading-relaxed text-text-muted">
             Realtime product analytics you can run with us or on your own

@@ -105,7 +105,7 @@ export function buildAuthOptions(
           to: user.email,
           subject: "Password Reset Request for Your Prism Account",
           template: "reset-password",
-          props: { name: user.name, resetLink: url },
+          props: { name: user.name, resetLink: url, instanceName: env.INSTANCE_NAME },
         });
       },
     },
@@ -118,7 +118,7 @@ export function buildAuthOptions(
           to: user.email,
           subject: "Confirm Email for your Prism Account",
           template: "confirm-email",
-          props: { name: user.name, confirmEmailLink: url },
+          props: { name: user.name, confirmEmailLink: url, instanceName: env.INSTANCE_NAME },
         });
       },
       autoSignInAfterVerification: true,

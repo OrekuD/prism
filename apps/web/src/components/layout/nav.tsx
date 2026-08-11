@@ -3,6 +3,7 @@ import { TeamSwitcher } from "./team-switcher";
 import { UserNav } from "./user-nav";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { PrismLogo } from "@/components/brand/prism-logo";
 
 const VITE_DOCS_URL: string =
   import.meta.env.VITE_DOCS_URL ?? "http://localhost:4321";
@@ -37,10 +38,10 @@ export function Nav() {
 			<div className="flex items-center gap-4 lg:gap-6">
 				<Link
 					to="/"
-					className="flex items-center gap-2 font-mono text-[14px] font-semibold tracking-tight text-foreground"
+					aria-label="Prism home"
+					className="-m-3 flex items-center p-3"
 				>
-					<span aria-hidden="true" className="size-2 bg-accent" />
-					Prism
+					<PrismLogo size={20} />
 				</Link>
 				<TeamSwitcher />
 			</div>

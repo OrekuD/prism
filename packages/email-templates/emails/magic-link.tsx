@@ -10,13 +10,16 @@ import {
   Text,
 } from "@react-email/components";
 import * as React from "react";
+import { EmailHeader } from "./email-header";
 
 interface MagicLinkProps {
+  /** Deployment identity shown next to the mark. */
+  instanceName?: string;
   name: string;
   signInLink: string;
 }
 
-export const MagicLink = ({
+export const MagicLink = ({ instanceName,
   name,
   signInLink: resetPasswordLink,
 }: MagicLinkProps) => {
@@ -25,11 +28,8 @@ export const MagicLink = ({
       <Head />
       <Body style={main}>
         <Container style={container}>
-          <Img
-            src={`data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='14' viewBox='0 0 60 14'%3E%3Crect width='6' height='6' fill='%236547e8'/%3E%3Ctext x='10' y='11' font-family='monospace' font-size='11' font-weight='600' fill='%23111116'%3EPrism%3C/text%3E%3C/svg%3E`}
-            height="26"
-            alt="Prism logo"
-          />
+          <EmailHeader instanceName={instanceName} />
+          
           <Section>
             <Text style={text}>
               Click the link below to securely sign in to your Prism account:

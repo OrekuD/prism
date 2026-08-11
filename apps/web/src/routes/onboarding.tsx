@@ -2,6 +2,7 @@ import { AlertCircle, Check, Copy, Loader2, PartyPopper } from "lucide-react";
 import React from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { Frame, SectionLabel } from "@/components/public/frame";
+import { PrismMark } from "@/components/brand/prism-mark";
 import { CodeCopyRow } from "@/components/public/code-copy-row";
 import { authClient } from "@/lib/authClient";
 import { waitForSession } from "@/lib/session";
@@ -194,7 +195,10 @@ export function Onboarding() {
   if (selfHosted && config?.setupRequired && !sessionData?.session) {
     return (
       <div className="mx-auto w-full max-w-[1500px] px-4 py-10 md:px-6 md:py-12">
-        <SectionLabel>First boot</SectionLabel>
+        <PrismMark size={36} decorative />
+        <div className="mt-6">
+          <SectionLabel>First boot</SectionLabel>
+        </div>
         <h1 className="mt-3 font-mono text-[26px] font-semibold tracking-[-0.025em] text-text">
           Set up {config.instanceName}
         </h1>

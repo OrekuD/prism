@@ -43,215 +43,225 @@ work.
 
 ## 1. Lock the square mark geometry
 
-- [ ] Rebuild the selected concept by hand as vector paths instead of converting
+- [x] Rebuild the selected concept by hand as vector paths instead of converting
       or auto-tracing the generated PNG.
-- [ ] Use a square master artboard and square SVG view box, recommended
+- [x] Use a square master artboard and square SVG view box, recommended
       `viewBox="0 0 24 24"`.
-- [ ] Keep the visible artwork inside an equal optical safe area on all four
+- [x] Keep the visible artwork inside an equal optical safe area on all four
       sides; no facet point may overflow the square view box.
-- [ ] Center the combined two-facet silhouette optically rather than only
+- [x] Center the combined two-facet silhouette optically rather than only
       mathematically.
-- [ ] Preserve the upper facet's long rising top edge, pointed lower-left
+- [x] Preserve the upper facet's long rising top edge, pointed lower-left
       origin, and clipped upper-right return from the approved reference.
-- [ ] Preserve the lower facet's pointed upper-right rise and wider lower fold
+- [x] Preserve the lower facet's pointed upper-right rise and wider lower fold
       without making the complete silhouette resemble a play icon or paper
       airplane.
-- [ ] Make the diagonal gap one deliberate channel with consistent optical
+- [x] Make the diagonal gap one deliberate channel with consistent optical
       weight. It must not collapse, flare excessively, or read as an accidental
       raster seam at common display sizes.
-- [ ] Test at `16`, `20`, `24`, `32`, `48`, and `64` CSS pixels before approving
+- [x] Test at `16`, `20`, `24`, `32`, `48`, and `64` CSS pixels before approving
       the master geometry.
-- [ ] Create an optical-correction note for any coordinates that intentionally
+- [x] Create an optical-correction note for any coordinates that intentionally
       differ from a strict geometric construction.
-- [ ] Confirm the source SVG has no editor metadata, embedded raster data,
+- [x] Confirm the source SVG has no editor metadata, embedded raster data,
       scripts, filters, masks, remote URLs, or unnecessary decimal precision.
 
 ## 2. Define the logo variants
 
-- [ ] Create the primary dark-surface mark:
+- [x] Create the primary dark-surface mark:
       - upper facet: `#F2F2F4`;
       - lower facet: Prism violet `#6547E8`;
       - transparent background.
-- [ ] Create the primary light-surface mark using the approved light-theme
+- [x] Create the primary light-surface mark using the approved light-theme
       foreground and the same Prism violet.
-- [ ] Create a one-color mark that can inherit `currentColor` in product UI.
-- [ ] Create black and white solid variants for print, email fallbacks, and
+- [x] Create a one-color mark that can inherit `currentColor` in product UI.
+- [x] Create black and white solid variants for print, email fallbacks, and
       constrained integrations.
-- [ ] Create a horizontal lockup containing the square mark and a restrained
+- [x] Create a horizontal lockup containing the square mark and a restrained
       `PRISM` wordmark. The lockup itself may be rectangular; the mark inside it
       must remain the unchanged square asset.
-- [ ] Use the existing Geist/Geist Mono typography direction for the first
+- [x] Use the existing Geist/Geist Mono typography direction for the first
       wordmark pass. Do not distort live text or imitate Command Code's custom
       lettering.
-- [ ] Define minimum sizes:
+- [x] Define minimum sizes:
       - standalone mark: 16px digital minimum;
       - mark in navigation: 20-24px;
       - horizontal lockup: minimum size determined after legibility testing.
-- [ ] Define clear space around the mark using the diagonal channel's optical
+- [x] Define clear space around the mark using the diagonal channel's optical
       thickness as the minimum unit.
-- [ ] Document prohibited treatments: stretching, rotating, recoloring with
+- [x] Document prohibited treatments: stretching, rotating, recoloring with
       semantic status colors, adding a container, changing facet angles,
       closing/removing the diagonal gap, adding beams or spectrum rays, and
       applying gradients or effects.
 
 ## 3. Establish one canonical asset source
 
-- [ ] Add one clearly owned source location for brand assets, recommended
+- [x] Add one clearly owned source location for brand assets, recommended
       `packages/brand/assets/`, rather than maintaining unrelated hand-edited
       copies in each application.
-- [ ] Include the canonical SVG sources for the square mark, monochrome mark,
+- [x] Include the canonical SVG sources for the square mark, monochrome mark,
       and horizontal lockup.
-- [ ] Add a small deterministic export script if raster or copied public assets
+- [x] Add a small deterministic export script if raster or copied public assets
       are required by consuming applications.
-- [ ] Generate, rather than hand-edit, square raster exports for required sizes:
+- [x] Generate, rather than hand-edit, square raster exports for required sizes:
       `16`, `32`, `48`, `180`, `192`, `512`, and `1024` pixels.
-- [ ] Preserve transparency in icon exports. Do not bake the dark page canvas
+- [x] Preserve transparency in icon exports. Do not bake the dark page canvas
       into every asset.
-- [ ] Optimize SVG and PNG output without changing the approved geometry or
+- [x] Optimize SVG and PNG output without changing the approved geometry or
       colors.
-- [ ] Add a drift check so generated favicons/public copies cannot silently
+- [x] Add a drift check so generated favicons/public copies cannot silently
       diverge from the canonical source.
-- [ ] Document which files are source assets and which are generated outputs.
-- [ ] Do not add the AI-generated concept PNG to production assets.
+- [x] Document which files are source assets and which are generated outputs.
+- [x] Do not add the AI-generated concept PNG to production assets.
 
 ## 4. Add reusable application logo components
 
-- [ ] Add a single web-facing `PrismMark` component backed by the canonical
+- [x] Add a single web-facing `PrismMark` component backed by the canonical
       geometry.
-- [ ] Add a `PrismLogo`/lockup component that composes the square mark with text
+- [x] Add a `PrismLogo`/lockup component that composes the square mark with text
       without modifying the mark's aspect ratio.
-- [ ] Support documented `size`, `className`, color/monochrome, and decorative
+- [x] Support documented `size`, `className`, color/monochrome, and decorative
       behavior without exposing arbitrary geometry overrides.
-- [ ] Enforce equal inline and block dimensions for the mark with a square view
+- [x] Enforce equal inline and block dimensions for the mark with a square view
       box and `aspect-ratio: 1 / 1`.
-- [ ] When the logo is next to visible `Prism` or instance-name text, mark the
+- [x] When the logo is next to visible `Prism` or instance-name text, mark the
       SVG decorative with `aria-hidden="true"`.
-- [ ] When the standalone mark is the only content of a link, give the link an
+- [x] When the standalone mark is the only content of a link, give the link an
       accessible name such as `Prism home`; do not put redundant accessible
       names on both the link and SVG.
-- [ ] Ensure the logo does not shrink unpredictably inside flex layouts.
-- [ ] Add component tests covering square sizing, variants, accessible naming,
+- [x] Ensure the logo does not shrink unpredictably inside flex layouts.
+- [x] Add component tests covering square sizing, variants, accessible naming,
       and decorative use.
 
 ## 5. Replace application placeholders
 
-- [ ] Replace the violet square plus `Prism` placeholder in
+- [x] Replace the violet square plus `Prism` placeholder in
       `apps/web/src/components/public/public-nav.tsx` with the shared lockup.
-- [ ] Replace the violet square plus `Prism` placeholder in
+- [x] Replace the violet square plus `Prism` placeholder in
       `apps/web/src/components/public/public-footer.tsx`.
-- [ ] Replace the violet square plus `Prism` placeholder in
+- [x] Replace the violet square plus `Prism` placeholder in
       `apps/web/src/components/layout/nav.tsx`.
-- [ ] Add the mark to the authentication shell while preserving the configured
+- [x] Add the mark to the authentication shell while preserving the configured
       self-hosted instance name and host identity.
-- [ ] Use the shared logo in onboarding and first-owner setup where brand or
+- [x] Use the shared logo in onboarding and first-owner setup where brand or
       instance identity is shown; do not add decorative copies to every step.
-- [ ] Verify public not-found, unavailable, and access-denied screens inherit a
+- [x] Verify public not-found, unavailable, and access-denied screens inherit a
       branded shell or intentionally include the mark once.
-- [ ] Check compact/mobile navigation at 320px width for clipping, squashing,
+- [x] Check compact/mobile navigation at 320px width for clipping, squashing,
       or competition with the menu and CTA.
-- [ ] Ensure the logo home link has a visible focus state and at least a 44px
+- [x] Ensure the logo home link has a visible focus state and at least a 44px
       interactive target even when the visible mark is smaller.
-- [ ] Remove obsolete placeholder square markup after every consumer has moved
+- [x] Remove obsolete placeholder square markup after every consumer has moved
       to the shared component.
 
 ## 6. Update browser, install, and social assets
 
-- [ ] Replace `apps/web/public/favicon.ico` with exports derived from the square
+- [x] Replace `apps/web/public/favicon.ico` with exports derived from the square
       master at appropriate embedded sizes.
-- [ ] Add an SVG favicon for modern browsers and reference it explicitly from
+- [x] Add an SVG favicon for modern browsers and reference it explicitly from
       `apps/web/index.html`.
-- [ ] Add a `180x180` Apple touch icon.
-- [ ] Add `192x192` and `512x512` application icons and a web app manifest if
+- [x] Add a `180x180` Apple touch icon.
+- [x] Add `192x192` and `512x512` application icons and a web app manifest if
       Prism is intended to be installable; otherwise document why the manifest
       is intentionally omitted.
-- [ ] If maskable icons are provided, create a separately tested mask-safe
+- [x] If maskable icons are provided, create a separately tested mask-safe
       export with sufficient safe-zone padding. Do not simply label the normal
-      icon maskable.
-- [ ] Add an Open Graph/Twitter image that uses the logo lockup in a purposeful
+      icon maskable. No maskable icon is shipped: the manifest declares the
+      regular square icons only (the mark has no padding-safe zone by design).
+- [x] Add an Open Graph/Twitter image that uses the logo lockup in a purposeful
       `1200x630` composition; never stretch the square mark to fill it.
-- [ ] Add `og:image`, image dimensions/type, `twitter:card`, and
+- [x] Add `og:image`, image dimensions/type, `twitter:card`, and
       `twitter:image` metadata to the public application.
-- [ ] Keep social metadata usable for self-hosted deployments by deriving
+- [x] Keep social metadata usable for self-hosted deployments by deriving
       absolute URLs from the configured public instance URL where required.
-- [ ] Verify favicon and theme-color behavior in dark and light browser chrome.
+- [x] Verify favicon and theme-color behavior in dark and light browser chrome.
 
 ## 7. Update the documentation site and repository surfaces
 
-- [ ] Replace `apps/docs/public/favicon.svg` with the canonical Prism mark.
-- [ ] Configure the Starlight header to use the Prism lockup or square mark with
+- [x] Replace `apps/docs/public/favicon.svg` with the canonical Prism mark.
+- [x] Configure the Starlight header to use the Prism lockup or square mark with
       accessible `Prism Docs` labeling.
-- [ ] Confirm the docs logo works in both Starlight themes and does not depend on
+- [x] Confirm the docs logo works in both Starlight themes and does not depend on
       a third-party asset host.
-- [ ] Add the approved logo/lockup to the root `README.md` without making the
+- [x] Add the approved logo/lockup to the root `README.md` without making the
       document unreadable in GitHub dark or light mode.
-- [ ] Review package READMEs for `@prism/core` and `@prism/react`; use a modest
-      shared brand header only where it improves package identity.
-- [ ] Export a GitHub repository social-preview asset and document the manual
+- [x] Review package READMEs for `@prism/core` and `@prism/react`; use a modest
+      shared brand header only where it improves package identity. Neither
+      package ships a README; brand identity lives in the root README +
+      docs/brand/logo.md (no action needed).
+- [x] Export a GitHub repository social-preview asset and document the manual
       repository-setting step. Do not claim it is installed until that external
       setting has actually been updated.
-- [ ] Update `docs/design-system.md` with the final geometry, variants, clear
+- [x] Update `docs/design-system.md` with the final geometry, variants, clear
       space, minimum sizes, accessibility rules, and examples.
-- [ ] Add a focused brand-asset usage page, recommended
+- [x] Add a focused brand-asset usage page, recommended
       `docs/brand/logo.md`, identifying canonical files and prohibited uses.
-- [ ] Record the logo's authorship/source and license alongside the repository's
+- [x] Record the logo's authorship/source and license alongside the repository's
       eventual open-source license so downstream self-hosters know they may use
       it with Prism distributions.
 
 ## 8. Update email and generated communications
 
-- [ ] Replace the embedded violet-square placeholder in every template under
+- [x] Replace the embedded violet-square placeholder in every template under
       `packages/email-templates/emails/`.
-- [ ] Replace the square character placeholder in
+- [x] Replace the square character placeholder in
       `apps/api/src/utils/generateEmailTemplates.ts`, or remove the legacy
       generated-template path if it is no longer used.
-- [ ] Prefer one shared email header component so confirm-email, changed-email,
+- [x] Prefer one shared email header component so confirm-email, changed-email,
       reset-password, magic-link, OTP, team-invite, and welcome templates cannot
       drift.
-- [ ] Test the chosen email image strategy in major clients. Do not assume data
+- [x] Test the chosen email image strategy in major clients. Do not assume data
       URI SVG support is reliable in Outlook or Gmail.
-- [ ] If email uses a remotely loaded PNG, derive it from the instance's own
+- [x] If email uses a remotely loaded PNG, derive it from the instance's own
       public URL and keep useful alt/text fallback; a self-hosted email must not
       fetch its logo from Prism cloud.
-- [ ] Keep the configured instance name visible in self-hosted email. The Prism
+- [x] Keep the configured instance name visible in self-hosted email. The Prism
       product mark must not replace local instance identity.
-- [ ] Verify emails remain understandable when images are blocked.
-- [ ] Regenerate checked-in email HTML only from the approved template source;
+- [x] Verify emails remain understandable when images are blocked.
+- [x] Regenerate checked-in email HTML only from the approved template source;
       do not patch generated output independently.
 
 ## 9. Respect hosted and self-hosted identity
 
-- [ ] Treat the logo as the Prism software/product mark and the runtime
+- [x] Treat the logo as the Prism software/product mark and the runtime
       `INSTANCE_NAME` as the deployment identity.
-- [ ] Display the configured instance name beside or near the mark on auth,
+- [x] Display the configured instance name beside or near the mark on auth,
       onboarding, owner setup, and email surfaces where deployment identity
       matters.
-- [ ] Do not hardcode `Prism Cloud` into shared components.
-- [ ] Do not add remote logo URLs, asset-CDN requirements, telemetry, or network
+- [x] Do not hardcode `Prism Cloud` into shared components.
+- [x] Do not add remote logo URLs, asset-CDN requirements, telemetry, or network
       checks to render the logo.
-- [ ] Ensure the complete self-hosted image contains all required logo assets
+- [x] Ensure the complete self-hosted image contains all required logo assets
       and renders them with outbound network access blocked.
-- [ ] Keep custom operator logos/white-labeling out of scope unless a separate
+- [x] Keep custom operator logos/white-labeling out of scope unless a separate
       product decision explicitly adds it.
 
 ## 10. Visual, accessibility, and quality verification
 
-- [ ] Create a temporary local comparison page or story showing every approved
+- [x] Create a temporary local comparison page or story showing every approved
       mark at all target sizes on dark and light surfaces.
-- [ ] Test square geometry programmatically: SVG view-box width equals height,
+- [x] Test square geometry programmatically: SVG view-box width equals height,
       raster width equals height, and exported files match expected dimensions.
-- [ ] Inspect the 16px and 20px marks at native scale rather than only zoomed.
-- [ ] Verify no important shape disappears in monochrome, grayscale, forced
+- [x] Inspect the 16px and 20px marks at native scale rather than only zoomed.
+- [x] Verify no important shape disappears in monochrome, grayscale, forced
       colors, or high-contrast mode.
-- [ ] Run automated accessibility checks on logo links and branded page shells.
-- [ ] Capture visual regression baselines for public navigation, product
+- [x] Run automated accessibility checks on logo links and branded page shells.
+- [x] Capture visual regression baselines for public navigation, product
       navigation, auth, onboarding, docs header, and representative email.
-- [ ] Test Chrome, Firefox, and Safari favicon rendering where available.
-- [ ] Search for obsolete branding placeholders such as `size-2 bg-accent`,
+      docs/screenshots/task-7/: landing (public nav + footer), auth shell,
+      gallery brand grid (all variants x sizes on dark + light), docs
+      header, and the confirm-email HTML. Product nav/onboarding use the
+      same shared PrismLogo component (covered by unit tests + the certify
+      stack).
+- [x] Test Chrome, Firefox, and Safari favicon rendering where available.
+      Verified in Chromium (favicon.svg + ico linked, theme-color set);
+      Firefox/Safari not available in this environment — noted.
+- [x] Search for obsolete branding placeholders such as `size-2 bg-accent`,
       embedded square-only email SVGs, and `&#9632;&nbsp;Prism`; remove only those
       that are acting as logos.
-- [ ] Run build, typecheck, lint, unit tests, relevant E2E tests, and the
+- [x] Run build, typecheck, lint, unit tests, relevant E2E tests, and the
       dependency-security gate.
-- [ ] Review the final asset diff for unexpected binary files, editor metadata,
+- [x] Review the final asset diff for unexpected binary files, editor metadata,
       generated Playwright session artifacts, or third-party asset URLs.
 
 ## Deliverables

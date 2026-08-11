@@ -67,6 +67,8 @@ export type ConfirmEmailMail = {
   props: {
     name: string;
     confirmEmailLink: string;
+    /** Deployment identity shown beside the mark (INSTANCE_NAME). */
+    instanceName?: string;
   };
 };
 
@@ -75,5 +77,7 @@ export type ResetPasswordMail = {
   props: {
     name: string;
     resetLink: string;
+    /** Deployment identity shown beside the mark (INSTANCE_NAME). */
+    instanceName?: string;
   };
 };

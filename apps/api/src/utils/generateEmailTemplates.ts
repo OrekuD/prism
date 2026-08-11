@@ -1,11 +1,25 @@
 import type { ConfirmEmailMail, ResetPasswordMail } from "../types/types";
+import { PRISM_EMAIL_LOGO_PNG } from "../auth/email-logo";
+
+/** Shared email header: the canonical mark (base64 PNG — no remote fetch)
+ * plus the deployment identity as text, so emails stay understandable with
+ * images blocked. */
+function emailHeader(instanceName?: string) {
+  const label = instanceName?.trim() || "Prism";
+  return `<table align="center" width="100%" border="0" cellPadding="0" cellSpacing="0" role="presentation"><tbody><tr><td style="padding-bottom:24px">
+    <img src="${PRISM_EMAIL_LOGO_PNG}" width="24" height="24" alt="" style="display:inline-block;vertical-align:middle;margin-right:10px" />
+    <span style="font-family:ui-monospace,Menlo,monospace;font-size:14px;font-weight:600;color:#111116;letter-spacing:-0.02em;vertical-align:middle">${label}</span>
+  </td></tr></tbody></table>`;
+}
 
 export function generateConfirmEmailTemplate({
   name,
   confirmEmailLink,
+  instanceName,
 }: {
   name: string;
   confirmEmailLink: string;
+  instanceName?: string;
 }) {
   return `
   <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
@@ -21,7 +35,7 @@ export function generateConfirmEmailTemplate({
       <table align="center" width="100%" border="0" cellPadding="0" cellSpacing="0" role="presentation" style="max-width:37.5em;background-color:#ffffff;border:1px solid #f0f0f0;padding:45px;border-radius:6px">
         <tbody>
           <tr style="width:100%">
-            <td style="font-family:ui-monospace,Menlo,monospace;font-size:15px;font-weight:600;color:#111116;letter-spacing:-0.02em">&#9632;&nbsp;Prism</td>
+            <td>${emailHeader(instanceName)}</td>
               <table align="center" width="100%" border="0" cellPadding="0" cellSpacing="0" role="presentation">
                 <tbody>
                   <tr>
@@ -47,6 +61,7 @@ export function generateConfirmEmailTemplate({
 export function generateResetPasswordTemplate({
   name,
   resetLink,
+  instanceName,
 }: ResetPasswordMail["props"]) {
   return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
     <!DOCTYPE html>
@@ -61,7 +76,7 @@ export function generateResetPasswordTemplate({
         <table align="center" width="100%" border="0" cellPadding="0" cellSpacing="0" role="presentation" style="max-width:37.5em;background-color:#ffffff;border:1px solid #f0f0f0;padding:45px;border-radius:6px">
           <tbody>
             <tr style="width:100%">
-              <td style="font-family:ui-monospace,Menlo,monospace;font-size:15px;font-weight:600;color:#111116;letter-spacing:-0.02em">&#9632;&nbsp;Prism</td>
+              <td>${emailHeader(instanceName)}</td>
                 <table align="center" width="100%" border="0" cellPadding="0" cellSpacing="0" role="presentation">
                   <tbody>
                     <tr>

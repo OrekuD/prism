@@ -8,22 +8,22 @@ import {
   Text,
 } from "@react-email/components";
 import * as React from "react";
+import { EmailHeader } from "./email-header";
 
 interface OTPSignInProps {
+  /** Deployment identity shown next to the mark. */
+  instanceName?: string;
   code: string;
 }
 
-export const OTPSignIn = ({ code }: OTPSignInProps) => {
+export const OTPSignIn = ({ instanceName, code }: OTPSignInProps) => {
   return (
     <Html>
       <Head />
       <Body style={main}>
         <Container style={container}>
-          <Img
-            src={`data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='14' viewBox='0 0 60 14'%3E%3Crect width='6' height='6' fill='%236547e8'/%3E%3Ctext x='10' y='11' font-family='monospace' font-size='11' font-weight='600' fill='%23111116'%3EPrism%3C/text%3E%3C/svg%3E`}
-            height="26"
-            alt="Prism logo"
-          />
+          <EmailHeader instanceName={instanceName} />
+          
           <Section>
             <Text style={text}>Enter the following code to sign in</Text>
             <Section style={codeContainer}>

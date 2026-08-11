@@ -1423,3 +1423,44 @@ For each viewport verify:
 - [ ] Self-hosted auth names the local instance.
 - [ ] No Prism cloud account or outbound service is silently required.
 - [ ] Missing optional integrations degrade gracefully.
+
+## 25. Brand
+
+The Prism mark is a two-piece folded-prism silhouette (task-7):
+
+- Perfect square canvas, `viewBox="0 0 24 24"`, always rendered square
+  (`aspect-ratio: 1 / 1`); never padded into a wide image to hold the
+  wordmark.
+- Upper facet: pointed lower-left origin, long rising top edge, clipped
+  upper-right return.
+- Lower facet: pointed upper-right rise, wider lower fold.
+- One diagonal negative-space channel with constant optical weight
+  (~1.3/24 of the mark height). The gap never collapses or flares.
+- Dark variant: upper `#F2F2F4`, lower `#6547E8`. Light variant: upper
+  `#111116`, lower `#6547E8`. Monochrome variants inherit `currentColor`
+  or use solid black/white/violet.
+- Minimum sizes: 16px standalone, 20–24px in navigation.
+- Clear space: one channel thickness on all sides.
+- Wordmark: PRISM in Geist (semibold, uppercase, ~0.22em tracking) as a
+  horizontal lockup; the mark inside the lockup is the unchanged square
+  asset.
+- Accessibility: decorative SVG next to text or inside labeled links gets
+  `aria-hidden`; standalone marks are `role="img"` with a `Prism` label;
+  logo home links need a visible focus state and a 44px target.
+- Prohibited: stretching, rotation, semantic recolor, containers, facet
+  edits, closing the gap, beams/rays, gradients, or effects.
+- Sources + export pipeline: `packages/brand/` (see `docs/brand/logo.md`).
+
+### 25.1 Email brand
+
+Email headers embed the mark as a base64 PNG (48px render of the light
+variant) next to the instance name as text. No remote logo URLs: a
+self-hosted instance's mail never fetches from Prism cloud, and the
+configured instance name is always visible.
+
+### 25.2 Social and browser assets
+
+Favicons, touch/application icons, manifest icons, and the 1200x630 Open
+Graph image are generated deterministically from the canonical mark
+(`yarn workspace @prism/brand run export`); social metadata derives
+absolute URLs from the instance origin at runtime.

@@ -1,6 +1,7 @@
 import { Menu, X } from "lucide-react";
 import React from "react";
 import { Link } from "react-router-dom";
+import { PrismLogo } from "@/components/brand/prism-logo";
 import { authClient } from "@/lib/authClient";
 import { TELEMETRY_EVENTS, trackTelemetry } from "@/lib/telemetry";
 import { cn } from "@/lib/utils";
@@ -29,11 +30,11 @@ export function PublicNav() {
         <div className="mx-auto flex h-[72px] max-w-[1200px] items-center justify-between px-8">
           <Link
             to="/"
-            className="flex items-center gap-2 font-mono text-[15px] font-semibold tracking-tight text-text"
+            aria-label="Prism home"
+            className="-m-3 flex items-center p-3"
             onClick={() => setOpen(false)}
           >
-            <span aria-hidden="true" className="size-2 bg-accent" />
-            Prism
+            <PrismLogo size={20} />
           </Link>
 
           <div className="hidden items-center gap-6 md:flex">

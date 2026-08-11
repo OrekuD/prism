@@ -94,6 +94,19 @@ const formSchema = z.object({
  * Development-only component gallery (Task 4 verification surface).
  * Guarded at the router level so it can never ship in production builds.
  */
+import { PrismMark, type PrismMarkVariant } from "@/components/brand/prism-mark";
+import { PrismLogo } from "@/components/brand/prism-logo";
+
+const BRAND_SIZES = [16, 20, 24, 32, 48, 64] as const;
+const BRAND_VARIANTS: Array<PrismMarkVariant> = [
+  "dark",
+  "light",
+  "monochrome",
+  "black",
+  "white",
+  "violet",
+];
+
 export function Gallery() {
   const [focused, setFocused] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -116,6 +129,40 @@ export function Gallery() {
           composites. Never exposed in production builds.
         </p>
       </div>
+
+      <Section
+        title="Brand"
+        description="PrismMark and PrismLogo at every target size on dark and light surfaces (task-7 section 10)."
+      >
+        <div className="grid gap-8">
+          <div className="grid gap-3 rounded-[2px] border border-border bg-canvas p-6">
+            <p className="font-mono text-[11px] uppercase tracking-[0.09em] text-text-subtle">
+              Dark surface
+            </p>
+            {BRAND_VARIANTS.map((variant) => (
+              <div key={variant} className="flex flex-wrap items-center gap-6">
+                {BRAND_SIZES.map((size) => (
+                  <PrismMark key={size} size={size} variant={variant} />
+                ))}
+                <PrismLogo size={20} variant={variant} />
+              </div>
+            ))}
+          </div>
+          <div className="grid gap-3 rounded-[2px] border border-border bg-surface p-6">
+            <p className="font-mono text-[11px] uppercase tracking-[0.09em] text-text-subtle">
+              Light surface
+            </p>
+            {BRAND_VARIANTS.map((variant) => (
+              <div key={variant} className="flex flex-wrap items-center gap-6">
+                {BRAND_SIZES.map((size) => (
+                  <PrismMark key={size} size={size} variant={variant} />
+                ))}
+                <PrismLogo size={20} variant={variant} />
+              </div>
+            ))}
+          </div>
+        </div>
+      </Section>
 
       <Section title="Buttons" description="All variants, sizes, disabled and loading states.">
         <div className="flex flex-wrap items-center gap-2">
