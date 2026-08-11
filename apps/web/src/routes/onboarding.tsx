@@ -1,4 +1,4 @@
-import { Check, Copy, Loader2, PartyPopper } from "lucide-react";
+import { AlertCircle, Check, Copy, Loader2, PartyPopper } from "lucide-react";
 import React from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { Frame, SectionLabel } from "@/components/public/frame";
@@ -411,9 +411,16 @@ export function Onboarding() {
                   />
                 </div>
                 {createError ? (
-                  <p className="text-[13px] text-danger" role="alert">
-                    {createError}
-                  </p>
+                  <div
+                    role="alert"
+                    className="flex items-start gap-2.5 rounded-[2px] border border-danger/40 bg-danger/10 px-3.5 py-2.5 text-[13px] leading-relaxed text-text"
+                  >
+                    <AlertCircle
+                      className="mt-0.5 size-4 shrink-0 text-danger"
+                      aria-hidden="true"
+                    />
+                    <span>{createError}</span>
+                  </div>
                 ) : null}
                 <button
                   type="button"

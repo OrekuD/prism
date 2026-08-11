@@ -67,7 +67,7 @@ export async function createFirstProject(
       )
     ) {
       throw new Error(
-        "Verify your email to create projects. Check your inbox for the confirmation link, or use the resend button in the banner at the top of the page.",
+        "Verify your email to create projects — check your inbox for the confirmation link.",
       );
     }
     throw err;

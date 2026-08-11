@@ -1,8 +1,7 @@
 import React from "react";
 import { authClient } from "@/lib/authClient";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Loader2, TriangleAlert } from "lucide-react";
 import { useResendVerificationEmail } from "@/hooks/useResendVerificationEmail";
 import { Nav } from "./nav";
 
@@ -24,28 +23,33 @@ export function RootLayout() {
     <div className="flex min-h-dvh flex-col">
       {!emailVerified ? (
         <div className="border-b border-warning/30 bg-warning/10">
-          <div className="mx-auto flex max-w-[1800px] flex-wrap items-center justify-center gap-x-3 gap-y-1 px-4 py-2 text-sm">
-            <span>
+          <div className="mx-auto flex w-full max-w-[1800px] items-center gap-2.5 px-4 py-2.5 md:px-10">
+            <TriangleAlert
+              className="size-3.5 shrink-0 text-warning"
+              aria-hidden="true"
+            />
+            <p className="min-w-0 flex-1 truncate text-[13px] text-text">
               Verify your email to create teams and projects.
-            </span>
-            <Button
+            </p>
+            <button
               type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 px-2.5"
               disabled={isPending}
+              aria-busy={isPending}
               onClick={() => {
                 if (sessionData?.user?.email) {
                   resend(sessionData.user.email);
                 }
               }}
+              className="shrink-0 text-[13px] font-medium text-warning underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-45"
             >
               {isPending ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                "Resend verification email"
-              )}
-            </Button>
+                <Loader2
+                  className="mr-1 inline size-3.5 animate-spin align-[-2px]"
+                  aria-hidden="true"
+                />
+              ) : null}
+              Resend verification email
+            </button>
           </div>
         </div>
       ) : null}
