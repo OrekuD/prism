@@ -1,8 +1,9 @@
 import "./testEnv.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-// The bundled nginx overwrites X-Forwarded-For with the real peer address,
-// so the analytics service trusts it only with ANALYTICS_TRUSTED_PROXY=1.
-process.env.ANALYTICS_TRUSTED_PROXY = "1";
+// The bundled nginx overwrites X-Forwarded-For with the real peer address
+// and clears CF-Connecting-IP; the analytics service trusts X-Forwarded-For
+// in "nginx" mode (F12 + harden F22).
+process.env.ANALYTICS_TRUSTED_PROXY = "nginx";
 import { app, ingestionLimiter } from "../app.js";
 
 vi.mock("../managers/NeonDatabaseManager.js", () => ({
@@ -94,11 +95,18 @@ describe("analytics API boundary (CORS + rate limits)", () => {
     expect(malformed.status).toBe(401);
     const wrong = await post({ authorization: "Bearer not-a-real-key" });
     expect(wrong.status).toBe(401);
+    // exact-scheme rejection (F23): prefixed/suffixed junk never passes
+    const prefixed = await post({ authorization: "Basic Bearer not-a-real-key" });
+    expect(prefixed.status).toBe(401);
+    const suffixed = await post({ authorization: "Bearer not-a-real-key extra" });
+    expect(suffixed.status).toBe(401);
+    const emptyKey = await post({ authorization: "Bearer " });
+    expect(emptyKey.status).toBe(401);
   });
 
   it("untrusted proxy mode ignores forged forwarding headers (peer identity wins)", async () => {
     instance.mockResolvedValue([]);
-    process.env.ANALYTICS_TRUSTED_PROXY = "0"; // untrusted mode
+    process.env.ANALYTICS_TRUSTED_PROXY = "none"; // untrusted mode
 
     // forged XFF values must NOT rotate the rate-limit key when the peer
     // is not a trusted proxy — the limiter still 401s on key auth for the
@@ -119,7 +127,7 @@ describe("analytics API boundary (CORS + rate limits)", () => {
     // every request shared ONE key (the peer/local bucket) → 429 once the
     // single budget is exhausted, regardless of the forged header values
     expect(responses[responses.length - 1].status).toBe(429);
-    process.env.ANALYTICS_TRUSTED_PROXY = "1";
+    process.env.ANALYTICS_TRUSTED_PROXY = "nginx";
   });
 
   it("does not count different client IPs against each other", async () => {

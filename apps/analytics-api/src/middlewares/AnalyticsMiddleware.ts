@@ -12,17 +12,15 @@ export const AnalyticsMiddleware = createMiddleware(
         return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
       }
 
-      const split = authHeaderValue.split("Bearer ");
+      // Exact Bearer scheme (F23): "Basic Bearer <key>", prefixed, or
+      // suffixed junk must never authenticate.
+      const match = /^Bearer\s+(\S+)$/.exec(authHeaderValue.trim());
 
-      if (split.length !== 2) {
+      if (!match) {
         return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
       }
 
-      const apiKey = split[1] || "";
-
-      if (!apiKey) {
-        return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
-      }
+      const apiKey = match[1] ?? "";
 
       const key =
         await NeonDatabaseManager.instance`SELECT project_id FROM project_api_keys WHERE key = ${apiKey}`;

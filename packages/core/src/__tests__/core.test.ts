@@ -181,10 +181,10 @@ describe("queue and delivery", () => {
     };
     const prism = await ready({ runtime, queue: { maxRetries: 3 } });
     prism.track("retry_me");
-    await expect(prism.flush()).rejects.toThrow(/network down/);
+    await expect(prism.flush()).rejects.toThrow(/batch delivery failed/);
     expect(calls).toBe(1);
     // the batch stays queued; a second flush retries
-    await expect(prism.flush()).rejects.toThrow(/network down/);
+    await expect(prism.flush()).rejects.toThrow(/batch delivery failed/);
     expect(calls).toBe(2);
     await prism.shutdown({ timeoutMs: 50 }); // cancels the pending retry timer
   });
@@ -582,7 +582,9 @@ describe("consent race with an in-flight request (review fix)", () => {
     prism.track("pending_event");
     const flushPromise = prism.flush(); // in flight, hanging
     await prism.setCollectionState("denied");
-    await expect(flushPromise).rejects.toThrow(/aborted/);
+    // the consent recheck short-circuits before the cancelled-error throw:
+    // a consent-cancelled delivery resolves (it is not a delivery failure)
+    await expect(flushPromise).resolves.toBeUndefined();
     expect(calls).toBe(1);
     expect(codes).toContain("delivery_cancelled");
     // nothing can be transmitted after the withdrawal
@@ -632,7 +634,7 @@ describe("bounded shutdown with a hanging transport (review fix)", () => {
     prism.track("survivor");
     const flushPromise = prism.flush(); // hangs on attempt 1
     await prism.shutdown({ timeoutMs: 200 }); // abort -> drain -> fresh final flush
-    await expect(flushPromise).rejects.toThrow(/aborted/);
+    await expect(flushPromise).rejects.toThrow(/batch delivery cancelled/);
     expect(calls).toBe(2); // cancelled attempt + the promised fresh final attempt
     const codes: string[] = [];
     prism.onDiagnostic((d) => codes.push(d.code));
@@ -1081,7 +1083,7 @@ describe("bounded scheduled retries (slice 3 corrections)", () => {
     };
     const prism = await ready({ runtime, queue: { maxRetries: 5, flushIntervalMs: 10_000_000 } });
     prism.track("retry_me");
-    await expect(prism.flush()).rejects.toThrow(/network down/);
+    await expect(prism.flush()).rejects.toThrow(/batch delivery failed/);
     expect(calls).toBe(1);
     // retry 1: ~1 s backoff (±20% deterministic jitter)
     await fire((e) => e.delayMs >= 800 && e.delayMs <= 1200);
@@ -1123,7 +1125,7 @@ describe("bounded scheduled retries (slice 3 corrections)", () => {
     const codes: string[] = [];
     prism.onDiagnostic((d) => codes.push(d.code));
     prism.track("doomed");
-    await expect(prism.flush()).rejects.toThrow(/network down/);
+    await expect(prism.flush()).rejects.toThrow(/batch delivery failed/);
     await fire((e) => e.delayMs >= 800 && e.delayMs <= 1200);
     expect(calls).toBe(2);
     expect(codes).toContain("batch_dropped");
@@ -1252,7 +1254,7 @@ describe("transport authentication (review F1)", () => {
     const codes: Array<{ code: string; message: string }> = [];
     prism.onDiagnostic((d) => codes.push({ code: d.code, message: d.message }));
     prism.track("leak_check");
-    await expect(prism.flush()).rejects.toThrow(/network down/);
+    await expect(prism.flush()).rejects.toThrow(/batch delivery failed/);
 
     const all = JSON.stringify(codes) + JSON.stringify(codes.map((c) => c.message));
     expect(all).not.toContain(base.projectKey);
@@ -1602,7 +1604,7 @@ describe("retry-after minimum (review F9)", () => {
     };
     const prism = await ready({ runtime, queue: { maxRetries: 5, flushIntervalMs: 10_000_000 } });
     prism.track("cancel_me");
-    await expect(prism.flush()).rejects.toThrow(/network down/);
+    await expect(prism.flush()).rejects.toThrow(/batch delivery failed/);
     const pending = scheduled.filter((e) => e.delayMs < 10_000_000);
     expect(pending.length).toBe(1);
     await prism.shutdown({ timeoutMs: 100 });
@@ -1618,5 +1620,156 @@ describe("retry-after minimum (review F9)", () => {
     }
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(calls).toBe(2);
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// Slice-3/4 hardening round (F15 consent race, F16 context allowlist,
+// F18 consent validation, F19 session properties, F20 config validation,
+// F21 retry timer cancellation)
+// ---------------------------------------------------------------------------
+
+describe("consent race with abort-ignoring transports (harden F15)", () => {
+  it("never requeues or delivers again when consent is denied mid-flight", async () => {
+    let calls = 0;
+    let release: (body: string) => void = () => undefined;
+    const gate = new Promise<string>((resolve) => {
+      release = resolve;
+    });
+    const runtime = fakeRuntime();
+    // A transport that IGNORES cancellation: the request completes AFTER
+    // consent is already denied, with a PARTIAL result that would
+    // ordinarily requeue the retained event.
+    runtime.transport.post = async (_url, request) => {
+      calls += 1;
+      const body = await gate;
+      return {
+        status: 200,
+        headers: {},
+        text: async () =>
+          JSON.stringify({
+            results: [{ id: (JSON.parse(body).events[0] as { eventId: string }).eventId, status: "unknown" }],
+          }),
+      };
+    };
+    const prism = await ready({ runtime, queue: { maxBatchEvents: 1, flushIntervalMs: 10_000_000 } });
+    prism.track("race_event");
+    const flushPromise = prism.flush(); // in flight, hanging at the gate
+    await prism.setCollectionState("denied"); // abort IGNORED by the transport
+    release("{}"); // the in-flight request completes AFTER withdrawal
+    await flushPromise;
+    // the completed response must NOT requeue the event or start another
+    // request while denied
+    await prism.flush();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(calls).toBe(1);
+    // events tracked after withdrawal stay dropped
+    expect(prism.track("after").status).toBe("dropped");
+    await prism.shutdown({ timeoutMs: 50 });
+  });
+});
+
+describe("wire context allowlist (harden F16)", () => {
+  it("picks only known fields and redacts credentials in context", async () => {
+    const bodies: string[] = [];
+    const runtime = fakeRuntime();
+    runtime.transport.post = async (_url, request) => {
+      bodies.push(request.body);
+      return { status: 200, headers: {}, text: async () => "" };
+    };
+    const prism = await ready({
+      runtime,
+      collection: { initialState: "granted" },
+      // unreachable through the type: the adapter supplies extra fields
+    });
+    // inject extra fields through the runtime seam
+    const context = (runtime as unknown as { context: Record<string, unknown> }).context;
+    context.unexpectedField = "fixture-adapter-value";
+    context.extra = { nested: { unexpectedNested: "fixture-nested-value" } };
+    prism.track("ctx_check");
+    await prism.flush();
+    const envelope = JSON.parse(bodies[0] ?? "{}") as {
+      events: Array<{ context?: Record<string, unknown> }>;
+    };
+    const sent = envelope.events[0]?.context ?? {};
+    expect(sent.platform).toBe("node");
+    expect("unexpectedField" in sent).toBe(false); // allowlist drops unknown keys
+    expect("extra" in sent).toBe(false);
+    await prism.shutdown({ timeoutMs: 50 });
+  });
+
+  it("rejects a runtime context that is not JSON-safe at factory creation", async () => {
+    const runtime = fakeRuntime();
+    // the allowlist DROPS unknown fields (payload never crosses); a
+    // KNOWN field with an invalid value must fail the factory loudly
+    (runtime as unknown as { context: Record<string, unknown> }).context = {
+      platform: "x".repeat(10_001),
+      kind: "server",
+    };
+    await expect(ready({ runtime })).rejects.toThrow(/runtime context is not JSON-safe/);
+  });
+});
+
+describe("collection state validation (harden F18)", () => {
+  it("rejects unsupported states without changing anything", async () => {
+    const prism = await ready({ collection: { initialState: "granted" } });
+    await expect(prism.setCollectionState("bogus" as never)).rejects.toThrow(
+      /must be pending, granted, or denied/,
+    );
+    expect(prism.collectionState).toBe("granted");
+    // collection still follows the REAL state — never enabled by bogus input
+    expect(prism.track("still_granted").status).toBe("queued");
+    await prism.setCollectionState("denied");
+    expect(prism.track("dropped").status).toBe("dropped");
+    await prism.shutdown({ timeoutMs: 50 });
+  });
+});
+
+describe("session properties validation (harden F19)", () => {
+  it("rejects non-JSON session properties instead of silently converting", async () => {
+    const prism = await ready();
+    const badSession = (value: unknown) => () =>
+      prism.startSession({ properties: value as never });
+    expect(badSession({ when: new Date() })).toThrow(/non-plain-object/);
+    expect(badSession({ score: Number.POSITIVE_INFINITY })).toThrow(/non-finite-number/);
+    // a valid session still works after the rejections
+    const started = prism.startSession({ properties: { plan: "pro" } });
+    expect(started.status).toBe("started");
+    await prism.shutdown({ timeoutMs: 50 });
+  });
+});
+
+describe("queue configuration validation (harden F20)", () => {
+  it.each([
+    ["maxQueueEvents", 0],
+    ["maxQueueBytes", -1],
+    ["maxBatchEvents", 1.5],
+    ["maxBatchBytes", Number.NaN],
+    ["maxEventBytes", Number.POSITIVE_INFINITY],
+    ["requestTimeoutMs", 0],
+    ["flushIntervalMs", -5],
+    ["maxRetries", 2.5],
+  ])("rejects invalid %s (%s)", async (key, value) => {
+    await expect(ready({ queue: { [key]: value } })).rejects.toThrow(
+      new RegExp(`${key} must be a finite positive integer`),
+    );
+  });
+});
+
+describe("retry timer cancellation (harden F21)", () => {
+  it("invokes the runtime cancellation handle on shutdown", async () => {
+    const { runtime, scheduled } = schedulableRuntime();
+    runtime.transport.post = async () => {
+      throw new Error("network down");
+    };
+    const prism = await ready({ runtime, queue: { maxRetries: 5, flushIntervalMs: 10_000_000 } });
+    prism.track("cancel_me");
+    await expect(prism.flush()).rejects.toThrow(/batch delivery failed/);
+    const retry = scheduled.find((e) => e.delayMs < 10_000_000);
+    expect(retry).toBeDefined();
+    await prism.shutdown({ timeoutMs: 100 });
+    // the runtime scheduler handle was invoked — the entry is marked cancelled
+    expect(retry?.cancelled).toBe(true);
   });
 });

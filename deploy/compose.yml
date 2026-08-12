@@ -114,8 +114,9 @@ services:
       TURSO_AUTH_TOKEN: ${TURSO_AUTH_TOKEN:-}
       ANALYTICS_RETENTION_DAYS: ${ANALYTICS_RETENTION_DAYS:-0}
       # The bundled nginx overwrites X-Forwarded-For with the real peer
-      # address, so the analytics service may trust the header (review F12).
-      ANALYTICS_TRUSTED_PROXY: "1"
+      # address AND clears CF-Connecting-IP, so the analytics service may
+      # trust X-Forwarded-For in "nginx" mode (F12 + harden F22).
+      ANALYTICS_TRUSTED_PROXY: "nginx"
       # Product database (plain PostgreSQL via the portable adapter).
       DATABASE_URL: postgres://${POSTGRES_USER:-prism}:${POSTGRES_PASSWORD:?}@db:5432/${POSTGRES_DB:-prism}
       IP_INFO_API_TOKEN: ${IP_INFO_API_TOKEN:-}

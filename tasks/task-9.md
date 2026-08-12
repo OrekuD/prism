@@ -1139,7 +1139,59 @@ Suite state: core 105 tests green (coverage 94.4% lines / 88.7% functions
 / 98.5% branches); analytics 80 passed + 3 opt-in integration (coverage
 76.9% lines / 81.1% branches / 82.1% functions). Root gates: test 4/4,
 typecheck 7/7, lint 10/10, build 8/8. The mandatory public-origin
-certification passes 21/21 (docker-based, CI-run).
+certification passes 23/23 (docker-based, CI-run).
+
+### Slice 3 + 4 — hardening round (2026-08-12)
+
+Second review pass (hold-before-Slice-5) — all findings closed:
+
+- **F15 (critical)**: an abort-ignoring transport completing after consent
+  withdrawal could requeue reconciled events and start a second request
+  while denied. Fixed with a post-await consent + operation-generation
+  recheck in doFlush() BEFORE any queue mutation; regression test with an
+  abort-ignoring transport and a partial result (exactly one request).
+- **F16**: runtime context is allowlisted (typed WireContext fields only),
+  strictly validated, credential-redacted, and frozen ONCE at
+  initialization — unknown/invalid adapter fields never cross the network,
+  and delivery-time JSON crashes (e.g. BigInt) are impossible.
+- **F17**: transport errors are replaced with coarse SDK-owned errors
+  ("batch delivery failed"/"batch delivery cancelled") — arbitrary adapter
+  error text (which may embed the authorization header) never crosses the
+  public API through rejections or diagnostics.
+- **F18**: setCollectionState validates the transition target; an invalid
+  state throws and changes nothing (collection can never be enabled by
+  bogus input).
+- **F19**: track() and session events share ONE validation + sanitization
+  helper; session properties are validated BEFORE the handle is created so
+  a rejected tree cannot leave a ghost active session.
+- **F20**: every queue option must be a finite positive integer (zero,
+  negative, fractional, NaN, infinite rejected with a specific error).
+- **F21**: retry cancellation retains and invokes the ACTIVE runtime
+  scheduler cancellation handle (including chunked long delays) — pending
+  retries no longer keep Node processes/mobile runtimes alive.
+- **F22**: explicit proxy modes — ANALYTICS_TRUSTED_PROXY = none (peer
+  only) | nginx (X-Forwarded-For only) | cloudflare (CF-Connecting-IP
+  only); the bundled nginx CLEARS CF-Connecting-IP on ingestion locations
+  so a forged Cloudflare header cannot rotate the per-IP key.
+- **F23**: the analytics auth middleware requires an exact
+  `^Bearer\s+(\S+)$` match — "Basic Bearer <key>", prefixed, suffixed,
+  and empty keys all return 401.
+- **F24**: nginx proxies /health/live and /health/ready to the product API
+  — the SPA fallback can no longer fake readiness.
+
+Certification accuracy: the script's checks are recounted honestly
+(23/23); readiness uses the real proxied health routes + /api/v1/config;
+the consent check exercises the IN-FLIGHT race (withdrawal mid-request,
+abort-ignoring transport → exactly one request, nothing after); the
+stored occurredAt is compared against the client value; the stored
+project_id is compared against the seeded project; server-side context
+redaction is exercised through a direct HTTP client with credentials in
+context.
+
+Suite state: core 119 tests green (coverage 95.2% lines / 90.4%
+functions / 98.5% branches); analytics 80 passed + 3 opt-in integration
+(coverage 76.8% lines / 80.9% branches / 82.1% functions). Root gates:
+test 4/4, typecheck 7/7, lint 10/10, build 8/8. Certification: 23/23.
 
 ## Context
 

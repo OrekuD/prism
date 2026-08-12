@@ -136,12 +136,15 @@ const inAnalytics = (script, env = {}) => {
 const waitForReady = async (timeoutMs = 240_000) => {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    // /health/ready alone is NOT sufficient — the SPA fallback answers 200
-    // before the API is up. The /api/v1/config check proves the product
-    // API (through nginx) is truly serving.
+    // nginx proxies /health/ready and /health/live to the product API
+    // (harden F24) — the SPA fallback can no longer fake readiness. The
+    // /api/v1/config check additionally proves the full API proxy path.
     const res = request("/health/ready");
+    const live = request("/health/live");
     const config = request("/api/v1/config");
-    if (res.status === 200 && config.status === 200) return true;
+    if (res.status === 200 && live.status === 200 && config.status === 200) {
+      return true;
+    }
     await new Promise((r) => setTimeout(r, 3000));
   }
   return false;
@@ -262,13 +265,20 @@ const CONSENT_SCRIPT = `
 import { createPrismClient } from "@prism/core";
 
 let posts = 0;
+let release = null;
+const gate = new Promise((resolve) => {
+  release = resolve;
+});
 const runtime = {
   name: "node-fake",
   now: () => Date.now(),
   createId: () => crypto.randomUUID(),
   transport: {
+    // a transport that IGNORES the cancellation signal: the in-flight
+    // request completes only after consent is already withdrawn
     post: async () => {
       posts += 1;
+      await gate;
       return { status: 200, headers: {}, text: async () => "" };
     },
   },
@@ -284,9 +294,13 @@ const prism = await createPrismClient({
   endpoint: process.env.PRISM_ENDPOINT,
   runtime,
   collection: { initialState: "granted", anonymousPersistence: "session" },
+  queue: { maxBatchEvents: 1 },
 });
-prism.track("consent_before");
-await prism.setCollectionState("denied"); // withdrawal BEFORE any flush
+prism.track("consent_in_flight");
+const flushPromise = prism.flush(); // request in flight, hanging at the gate
+await prism.setCollectionState("denied"); // withdrawal WHILE in flight
+release(); // the abort-ignoring transport completes AFTER withdrawal
+await flushPromise;
 await prism.flush();
 console.log("CERT_CONSENT_POSTS=" + String(posts));
 await prism.shutdown({ timeoutMs: 500 });
@@ -364,6 +378,7 @@ async function main() {
 
   const projects = await request(`/api/v1/teams/${teamId}/projects`, { cookie });
   const slug = projects.data?.[0]?.slug;
+  const expectedProjectId = projects.data?.[0]?.id;
   const projectInfo = await request(`/api/v1/projects/${slug}`, { cookie });
   const analyticsKey = projectInfo.data?.apiKey;
   check("analytics key retrieved", !!analyticsKey, "no key in project payload");
@@ -414,6 +429,7 @@ if (rows.rows.length === 1) {
   console.log("CERT_ROW_PROJECT=" + row.project_id);
   console.log("CERT_ROW_NAME=" + row.name);
   console.log("CERT_ROW_ANON=" + String(row.anonymous_id ?? ""));
+  console.log("CERT_ROW_OCCURRED=" + String(row.occurred_at));
   console.log("CERT_ROW_REDACTED=" + String(props.password));
   console.log("CERT_ROW_SDK=" + JSON.stringify(ctx.sdk ?? null));
   console.log("CERT_ROW_COUNT=1");
@@ -425,6 +441,7 @@ client.close();
   const verify = inAnalytics(verifyScript);
   const verifyOut = verify.stdout ?? "";
   const rowProject = verifyOut.match(/CERT_ROW_PROJECT=(\S+)/)?.[1] ?? "";
+  const rowOccurred = verifyOut.match(/CERT_ROW_OCCURRED=(\S+)/)?.[1] ?? "";
   const rowRedacted = verifyOut.match(/CERT_ROW_REDACTED=(\S+)/)?.[1] ?? "";
   const rowSdk = verifyOut.match(/CERT_ROW_SDK=(\{.*\}|null)/)?.[1] ?? "";
   check(
@@ -433,9 +450,19 @@ client.close();
     verifyOut.slice(0, 300),
   );
   check(
-    "occurredAt + anonymousId stored server-side",
-    verifyOut.includes(`CERT_ROW_ANON=${anonId}`) && verifyOut.includes(`CERT_ROW_PROJECT=`),
-    verifyOut.slice(0, 300),
+    "occurredAt stored matches the client occurrence time",
+    rowOccurred === occurredAt,
+    `client=${occurredAt} stored=${rowOccurred}`,
+  );
+  check(
+    "anonymousId stored matches the envelope",
+    verifyOut.includes(`CERT_ROW_ANON=${anonId}`),
+    verifyOut.slice(0, 200),
+  );
+  check(
+    "stored project_id matches the seeded project (key-derived scoping)",
+    !!expectedProjectId && rowProject === expectedProjectId,
+    `expected=${expectedProjectId} got=${rowProject}`,
   );
   check("properties sanitized server-side", rowRedacted === "[REDACTED]", `got "${rowRedacted}"`);
   check(
@@ -458,7 +485,13 @@ client.close();
     PRISM_ENDPOINT: "http://web",
   });
   const consentPosts = consent.stdout?.match(/CERT_CONSENT_POSTS=(\d+)/)?.[1] ?? "?";
-  check("consent withdrawal delivers nothing", consentPosts === "0", `posts=${consentPosts}`);
+  // EXACTLY one request may exist: the one already in flight when consent
+  // was withdrawn. The completed response must not trigger a second one.
+  check(
+    "in-flight consent race: exactly one request, nothing after withdrawal",
+    consentPosts === "1",
+    `posts=${consentPosts}`,
+  );
 
   const oversized = inAnalytics(OVERSIZED_SCRIPT, {
     PRISM_KEY: analyticsKey,
@@ -466,6 +499,54 @@ client.close();
   });
   const oversizedStatus = oversized.stdout?.match(/CERT_OVERSIZED_STATUS=(\d+)/)?.[1] ?? "?";
   check("oversized streamed request → 413 at the ceiling", oversizedStatus === "413", `got ${oversizedStatus}`);
+
+  // Server-side CONTEXT redaction (harden pass): a direct HTTP client
+  // submits credentials nested in event context — the stored context must
+  // carry [REDACTED].
+  const ctxEventId = `cert-ctx-${Date.now()}`;
+  const ctxBody = JSON.stringify({
+    schemaVersion: 2,
+    sentAt: Date.now(),
+    events: [
+      {
+        schemaVersion: 2,
+        eventId: ctxEventId,
+        type: "track",
+        occurredAt: Date.now(),
+        name: "ctx_redaction",
+        context: { platform: "direct-client", auth: { authorization: "fixture-ctx-value" } },
+      },
+    ],
+  });
+  const ctxPost = await request("/api/v2/ingest", {
+    method: "POST",
+    body: ctxBody,
+    headers: [`authorization: Bearer ${analyticsKey}`],
+  });
+  const ctxVerify = inAnalytics(`
+import { createClient } from "@libsql/client";
+const client = createClient({
+  url: process.env.TURSO_DATABASE_URL,
+  authToken: process.env.TURSO_AUTH_TOKEN,
+});
+const rows = await client.execute({
+  sql: "SELECT context FROM events_v2 WHERE id = ?",
+  args: ["${ctxEventId}"],
+});
+if (rows.rows.length === 1) {
+  const ctx = JSON.parse(rows.rows[0].context);
+  console.log("CERT_CTX_REDACTED=" + String(ctx.auth?.authorization));
+} else {
+  console.log("CERT_CTX_REDACTED=missing");
+}
+client.close();
+`);
+  const ctxRedacted = ctxVerify.stdout?.match(/CERT_CTX_REDACTED=(\S+)/)?.[1] ?? "";
+  check(
+    "server-side context redaction applies to direct HTTP clients",
+    ctxPost.status === 200 && ctxRedacted === "[REDACTED]",
+    `post=${ctxPost.status} ctx=${ctxRedacted}`,
+  );
 
   const stillOnce = await request("/api/v2/ingest", {
     method: "POST",

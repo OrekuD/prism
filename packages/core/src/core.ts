@@ -9,6 +9,7 @@ import type {
   PrismDiagnosticHandle,
   PrismQueueOptions,
   PrismRuntimeAdapter,
+  PrismRuntimeContext,
   PrismSessionHandle,
   PrismSignal,
   SessionEndResult,
@@ -163,6 +164,7 @@ class PrismClientImpl implements PrismClient {
   private readonly maxDepth: number;
   private readonly maxStringLength: number;
   private state: CollectionState;
+  private operationGeneration = 0;
   private activeSession: SessionHandleImpl | null = null;
   private closed = false;
   /** Scope-neutral anonymous identity (any persistence mode). */
@@ -176,6 +178,7 @@ class PrismClientImpl implements PrismClient {
   private readonly lifecycleRemovers: Array<() => void> = [];
   private readonly instanceId: string;
   private readonly queueStorageKey: string;
+  private readonly wireContext: WireContext;
   private persistChain: Promise<void> = Promise.resolve();
 
   constructor(options: PrismClientOptions) {
@@ -209,6 +212,11 @@ class PrismClientImpl implements PrismClient {
 
     this.projectKey = options.projectKey;
     this.endpoint = options.endpoint.replace(/\/$/, "");
+    // The wire context is an ALLOWLISTED, validated, sanitized, frozen
+    // snapshot built once at initialization (F16) — runtime context values
+    // never cross the network unvalidated, and a later adapter mutation
+    // cannot change what the SDK sends.
+    this.wireContext = this.allowlistContext(runtime.context);
     // Queue persistence is namespaced per PROJECT (a reload of the same
     // execution context restores its queue). Tradeoff recorded (task-9 §6):
     // two tabs sharing the project key overwrite each other's snapshot —
@@ -265,6 +273,14 @@ class PrismClientImpl implements PrismClient {
   }
 
   async setCollectionState(state: CollectionState): Promise<void> {
+    if (state !== "pending" && state !== "granted" && state !== "denied") {
+      // Invalid caller input throws (contract rule) — nothing changes, so
+      // an unknown state can never enable collection.
+      throw new Error("collection state must be pending, granted, or denied");
+    }
+    // Every transition advances the operation generation: any in-flight
+    // flush observes the change before it can mutate the queue again (F15).
+    this.operationGeneration += 1;
     this.state = state;
     if (state === "denied") {
       // Consent withdrawal: nothing queued before the withdrawal may be
@@ -287,15 +303,7 @@ class PrismClientImpl implements PrismClient {
 
   track(name: string, properties?: JsonObject): CaptureResult {
     assertValidEventName(name);
-    // Strict JSON validation FIRST (iterative, no stringify-as-validator):
-    // rejects non-finite numbers, dates, class instances, accessors,
-    // cycles, dangerous keys, and shared ceilings.
-    assertJsonSerializable(properties);
-    const sanitized = sanitizeProperties(properties ?? {}, {
-      denyList: this.denyList,
-      maxDepth: this.maxDepth,
-      maxStringLength: this.maxStringLength,
-    });
+    const sanitized = this.validateAndSanitize(properties);
 
     if (this.closed) {
       return { status: "dropped", reason: "shutdown" };
@@ -328,6 +336,9 @@ class PrismClientImpl implements PrismClient {
     if (this.activeSession) {
       return { status: "blocked", reason: "already-active" };
     }
+    // Validate BEFORE creating the handle: a rejected property tree must
+    // never leave a ghost active session behind (F19).
+    const properties = this.validateAndSanitize(options?.properties);
     const handle = new SessionHandleImpl(
       this.runtime.createId(),
       this.runtime.now(),
@@ -336,11 +347,6 @@ class PrismClientImpl implements PrismClient {
     this.activeSession = handle;
     // The session-start event carries the session ID; if the queue is full
     // the session still exists locally (delivery is best-effort).
-    const properties = sanitizeProperties(options?.properties ?? {}, {
-      denyList: this.denyList,
-      maxDepth: this.maxDepth,
-      maxStringLength: this.maxStringLength,
-    });
     this.queue.enqueue(this.buildEvent("session_started", properties, handle.sessionId));
     void this.afterEnqueue();
     return { status: "started", session: handle };
@@ -384,6 +390,25 @@ class PrismClientImpl implements PrismClient {
   }
 
   private assertConfigWithinWireLimits(queue: PrismQueueOptions): void {
+    // Every queue value must be a finite positive integer (F20): zero,
+    // negative, fractional, NaN, and infinite values wedge delivery or
+    // break byte accounting.
+    const OPTIONS = [
+      "maxQueueEvents",
+      "maxQueueBytes",
+      "maxBatchEvents",
+      "maxBatchBytes",
+      "maxEventBytes",
+      "requestTimeoutMs",
+      "flushIntervalMs",
+      "maxRetries",
+    ] as const;
+    for (const key of OPTIONS) {
+      const value = queue[key] as number | undefined;
+      if (value !== undefined && (!Number.isInteger(value) || value <= 0)) {
+        throw new Error(`${key} must be a finite positive integer (got ${value})`);
+      }
+    }
     const ceiling = (label: string, value: number | undefined, max: number): void => {
       if (value !== undefined && value > max) {
         throw new Error(`${label} ${value} exceeds the wire ceiling (${max})`);
@@ -409,6 +434,73 @@ class PrismClientImpl implements PrismClient {
         // Failure surfaces via diagnostics and flush rejection.
       });
     }
+  }
+
+  /**
+   * Allowlisted WireContext (F16): picks ONLY the typed runtime-neutral
+   * fields, validates the result as strict JSON, applies the credential
+   * redaction policy, and freezes the snapshot. Invalid adapter input is
+   * a configuration error (specific message), never silent data loss or a
+   * delivery-time JSON crash.
+   */
+  private allowlistContext(context: PrismRuntimeContext): WireContext {
+    const picked: {
+      platform?: string;
+      kind?: "web" | "server" | "mobile";
+      screenSize?: { width: number; height: number };
+      locale?: string;
+      timezone?: string;
+      app?: { name?: string; version?: string; build?: string };
+      device?: { model?: string; manufacturer?: string };
+    } = {};
+    if (typeof context.platform === "string" && context.platform.length > 0) {
+      picked.platform = context.platform;
+    }
+    if (context.kind === "web" || context.kind === "server" || context.kind === "mobile") {
+      picked.kind = context.kind;
+    }
+    if (
+      context.screenSize &&
+      Number.isFinite(context.screenSize.width) &&
+      Number.isFinite(context.screenSize.height)
+    ) {
+      picked.screenSize = { width: context.screenSize.width, height: context.screenSize.height };
+    }
+    if (typeof context.locale === "string" && context.locale.length > 0) {
+      picked.locale = context.locale;
+    }
+    if (typeof context.timezone === "string" && context.timezone.length > 0) {
+      picked.timezone = context.timezone;
+    }
+    if (context.app) {
+      const app: { name?: string; version?: string; build?: string } = {};
+      if (typeof context.app.name === "string") app.name = context.app.name;
+      if (typeof context.app.version === "string") app.version = context.app.version;
+      if (typeof context.app.build === "string") app.build = context.app.build;
+      if (Object.keys(app).length > 0) picked.app = app;
+    }
+    if (context.device) {
+      const device: { model?: string; manufacturer?: string } = {};
+      if (typeof context.device.model === "string") device.model = context.device.model;
+      if (typeof context.device.manufacturer === "string") {
+        device.manufacturer = context.device.manufacturer;
+      }
+      if (Object.keys(device).length > 0) picked.device = device;
+    }
+    const validation = validateJsonValue(picked, {
+      maxDepth: INGEST_LIMITS.maxPropertyDepth,
+      maxStringLength: INGEST_LIMITS.maxStringLength,
+      maxKeys: INGEST_LIMITS.maxPropertyKeys,
+      maxArrayElements: INGEST_LIMITS.maxArrayElements,
+    });
+    if (!validation.ok) {
+      throw new Error(`runtime context is not JSON-safe (${validation.reason})`);
+    }
+    const sanitized = sanitizeProperties(picked as JsonObject, {
+      maxDepth: INGEST_LIMITS.maxPropertyDepth,
+      maxStringLength: INGEST_LIMITS.maxStringLength,
+    }) as WireContext;
+    return Object.freeze(sanitized);
   }
 
   private cancelRetry(): void {
@@ -465,7 +557,15 @@ class PrismClientImpl implements PrismClient {
     // Consent gate: pending/denied never transmit — restored events and
     // explicit, background, retry, and shutdown flushes are all covered.
     if (this.state !== "granted") return;
+    const generation = this.operationGeneration;
     while (!this.queue.isEmpty) {
+      // Recheck before EVERY iteration AND after every awaited delivery:
+      // a transport that ignores cancellation can complete while consent
+      // is already denied — its result must never requeue events or start
+      // another request (F15).
+      if (this.state !== "granted" || generation !== this.operationGeneration) {
+        return;
+      }
       const batch = this.queue.peekBatch(
         this.queueOptions.maxBatchEvents,
         this.queueOptions.maxBatchBytes,
@@ -473,24 +573,32 @@ class PrismClientImpl implements PrismClient {
       if (batch.length === 0) break;
       const signal = createSignal();
       this.inFlightSignal = signal;
+      let outcome: Awaited<ReturnType<PrismClientImpl["deliver"]>>;
       try {
-        const outcome = await this.deliver(batch, signal);
-        if (!outcome.ok) {
-          if (outcome.exhausted) {
-            this.queue.removeFirst(batch.length);
-            void this.persistQueue();
-          }
-          throw outcome.error;
-        }
-        this.queue.removeFirst(batch.length);
-        if (outcome.kind === "reconciled" && outcome.kept.length > 0) {
-          this.queue.requeueAtHead(outcome.kept);
-        }
-        this.attempts.delete(batch[0]?.eventId ?? "");
-        void this.persistQueue();
+        outcome = await this.deliver(batch, signal);
       } finally {
         if (this.inFlightSignal === signal) this.inFlightSignal = null;
       }
+      // Post-await recheck BEFORE any queue mutation: withdrawal cleared
+      // the queue while the request was in flight — removing or
+      // requeueing anything now would resurrect delivered events or start
+      // another request under denial.
+      if (this.state !== "granted" || generation !== this.operationGeneration) {
+        return;
+      }
+      if (!outcome.ok) {
+        if (outcome.exhausted) {
+          this.queue.removeFirst(batch.length);
+          void this.persistQueue();
+        }
+        throw outcome.error;
+      }
+      this.queue.removeFirst(batch.length);
+      if (outcome.kind === "reconciled" && outcome.kept.length > 0) {
+        this.queue.requeueAtHead(outcome.kept);
+      }
+      this.attempts.delete(batch[0]?.eventId ?? "");
+      void this.persistQueue();
     }
   }
 
@@ -501,13 +609,27 @@ class PrismClientImpl implements PrismClient {
    * runtime context. `timestamp`/`sessionId` on the internal QueuedEvent
    * mirror the envelope for queue accounting and session semantics.
    */
+  /**
+   * ONE strict-JSON validation + sanitization path (F19): every property
+   * tree the SDK accepts (track AND session events) passes through this.
+   * Validation is iterative and never uses stringify as a validator.
+   */
+  private validateAndSanitize(properties?: JsonObject): JsonObject {
+    assertJsonSerializable(properties);
+    return sanitizeProperties(properties ?? {}, {
+      denyList: this.denyList,
+      maxDepth: this.maxDepth,
+      maxStringLength: this.maxStringLength,
+    });
+  }
+
   private buildEvent(name: string, properties?: JsonObject, sessionId?: string): QueuedEvent {
     const eventId = this.runtime.createId();
     const resolvedSessionId = sessionId ?? this.activeSession?.sessionId;
     const now = this.runtime.now();
-    // Context is the typed, runtime-neutral context (F4). SDK identity is
-    // batch-level only (F13) — never duplicated per event.
-    const context: WireContext = { ...this.runtime.context };
+    // Context is the allowlisted, validated, sanitized snapshot (F16).
+    // SDK identity is batch-level only (F13) — never duplicated per event.
+    const context = this.wireContext;
     const envelope: WireEnvelope = {
       schemaVersion: WIRE_SCHEMA_VERSION,
       eventId,
@@ -563,10 +685,14 @@ class PrismClientImpl implements PrismClient {
         // counts toward retry exhaustion and never drops the batch — the
         // fresh final attempt delivers it.
         this.emit("warn", "delivery_cancelled", "in-flight delivery cancelled");
-        return { ok: false, error, exhausted: false };
+        return { ok: false, error: new Error("batch delivery cancelled"), exhausted: false };
       }
-      const exhausted = this.handleFailure(batch, error);
-      return { ok: false, error, exhausted };
+      // Coarse SDK-owned error (F17): arbitrary transport error text may
+      // embed the authorization header (the project key) — it must never
+      // cross the public API through rejected flushes or diagnostics.
+      const coarse = new Error("batch delivery failed");
+      const exhausted = this.handleFailure(batch, coarse);
+      return { ok: false, error: coarse, exhausted };
     }
     if (response.status >= 200 && response.status < 300) {
       const reconciled = await this.reconcileResults(batch, response);
@@ -636,7 +762,8 @@ class PrismClientImpl implements PrismClient {
     const key = batch[0]?.eventId ?? "unknown";
     const attempts = (this.attempts.get(key) ?? 0) + 1;
     this.attempts.set(key, attempts);
-    this.emit("warn", "delivery_failed", `batch delivery failed: ${String(error)}`);
+    // Coarse diagnostic only — never String(error) text (F17).
+    this.emit("warn", "delivery_failed", "batch delivery failed");
     if (attempts >= this.queueOptions.maxRetries) {
       this.attempts.delete(key);
       this.emit("error", "batch_dropped", `batch dropped after ${attempts} failed attempts`);
@@ -659,25 +786,37 @@ class PrismClientImpl implements PrismClient {
   private scheduleRetry(attempt: number, retryAfterMs?: number): void {
     if (this.retryCancel || this.closed) return;
     let cancelled = false;
+    let activeCancel: (() => void) | null = null;
+    // The cancel handle retains the ACTIVE scheduler cancellation (F21):
+    // invoking it clears the pending timer so long retries cannot keep a
+    // Node process or mobile runtime alive.
     this.retryCancel = () => {
       cancelled = true;
+      activeCancel?.();
+      activeCancel = null;
     };
     const exponential = Math.min(RETRY_BASE_MS * 2 ** (attempt - 1), RETRY_MAX_MS);
     const jitter = 0.8 + (0.4 * (hashString(String(exponential)) % 1000)) / 1000;
     const delayMs =
       retryAfterMs !== undefined ? retryAfterMs : Math.max(1, Math.round(exponential * jitter));
     const fire = (): void => {
+      activeCancel = null;
       this.retryCancel = null;
       if (cancelled || this.closed) return;
       void this.tick();
     };
     const scheduleChunk = (remaining: number): void => {
       if (cancelled || this.closed) return;
-      if (remaining <= MAX_TIMER_MS) {
-        this.runtime.schedule(remaining, fire);
-      } else {
-        this.runtime.schedule(MAX_TIMER_MS, () => scheduleChunk(remaining - MAX_TIMER_MS));
-      }
+      const chunk = Math.min(remaining, MAX_TIMER_MS);
+      activeCancel = this.runtime.schedule(chunk, () => {
+        activeCancel = null;
+        if (cancelled || this.closed) return;
+        if (remaining - chunk <= 0) {
+          fire();
+        } else {
+          scheduleChunk(remaining - chunk);
+        }
+      });
     };
     scheduleChunk(delayMs);
     this.emit("debug", "retry_scheduled", `retry ${attempt} scheduled in ${delayMs} ms`);

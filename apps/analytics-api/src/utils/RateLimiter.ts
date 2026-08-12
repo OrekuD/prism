@@ -55,14 +55,20 @@ export class RateLimiter {
 }
 
 /**
- * Client identity for per-IP rate limiting (review F12). NEVER used for
- * authorization, identity, or persisted analytics; never logged.
+ * Client identity for per-IP rate limiting (review F12 + harden F22).
+ * NEVER used for authorization, identity, or persisted analytics; never
+ * logged.
  *
- * Forwarding headers are trusted ONLY when the immediate peer is a
- * configured trusted proxy (`ANALYTICS_TRUSTED_PROXY=1` — the bundled
- * nginx overwrites X-Forwarded-For with the real peer address). Direct
- * Node deployments default to the socket peer address. On runtimes
- * without a peer address (e.g. Workers without proxy trust), the key
+ * Explicit proxy modes (`ANALYTICS_TRUSTED_PROXY`):
+ * - unset / "none" (default): only the immediate socket peer address is
+ *   real — forwarding headers are ignored (forged hops cannot rotate the
+ *   per-IP key).
+ * - "nginx": the bundled nginx overwrites X-Forwarded-For with the real
+ *   peer address AND clears CF-Connecting-IP — trust X-Forwarded-For
+ *   ONLY (a client-supplied Cloudflare header cannot spoof the key).
+ * - "cloudflare": the runtime guarantees CF-Connecting-IP is
+ *   platform-owned (Cloudflare overwrites client input) — trust it only.
+ * On runtimes without a peer address and without proxy trust, the key
  * falls back to a shared bucket — the project-key event-weighted quota
  * remains the authoritative boundary.
  */
@@ -73,13 +79,14 @@ export function clientIpFrom(ctx: {
   };
   env?: { incoming?: { socket?: { remoteAddress?: string } } };
 }): string {
-  const trustedProxy = process.env.ANALYTICS_TRUSTED_PROXY === "1";
-  if (trustedProxy) {
+  const mode = process.env.ANALYTICS_TRUSTED_PROXY ?? "none";
+  if (mode === "nginx") {
     return (
-      ctx.req.header("cf-connecting-ip") ||
-      ctx.req.raw.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-      "local"
+      ctx.req.raw.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local"
     );
+  }
+  if (mode === "cloudflare") {
+    return ctx.req.header("cf-connecting-ip") || "local";
   }
   // Untrusted: only the immediate peer address is real.
   return ctx.env?.incoming?.socket?.remoteAddress || "local";

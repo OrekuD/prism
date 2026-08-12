@@ -278,7 +278,7 @@ describe("diagnostics + lifecycle contract", () => {
     const seen2: string[] = [];
     prism2.onDiagnostic((d) => seen2.push(d.code));
     prism2.track("will_fail");
-    await expect(prism2.flush()).rejects.toThrow(/network down/);
+    await expect(prism2.flush()).rejects.toThrow(/batch delivery failed/);
     expect(seen2).toContain("delivery_failed");
     handle.remove();
     handle.remove(); // idempotent
@@ -295,7 +295,7 @@ describe("diagnostics + lifecycle contract", () => {
       collection: { initialState: "granted" },
     });
     prism.track("will_fail");
-    await expect(prism.flush()).rejects.toThrow(/network down/);
+    await expect(prism.flush()).rejects.toThrow(/batch delivery failed/);
   });
 
   it("shutdown is idempotent", async () => {
