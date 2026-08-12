@@ -1,8 +1,8 @@
-import { PrismClient } from "@prism/core";
+import { PrismClientV1 } from "@prism/core";
 import React from "react";
 
 type PrismProviderContextValue = {
-  client: PrismClient;
+  client: PrismClientV1;
 };
 
 export const PrismProviderContext =

@@ -8,6 +8,7 @@ import type {
   PrismDiagnostic,
   PrismDiagnosticHandle,
   PrismQueueOptions,
+  PrismRuntimeAdapter,
   PrismSessionHandle,
   PrismSignal,
   SessionEndResult,
@@ -19,6 +20,7 @@ import {
   assertJsonSerializable,
   assertProjectKey,
   assertValidEventName,
+  sanitizeProperties,
 } from "./validation";
 
 const DEFAULT_QUEUE: Required<PrismQueueOptions> = {
@@ -30,6 +32,8 @@ const DEFAULT_QUEUE: Required<PrismQueueOptions> = {
   flushIntervalMs: 10_000,
   maxRetries: 5,
 };
+
+const ANONYMOUS_ID_KEY = "prism:anonymous_id";
 
 /** Internal abort-capable signal — structurally compatible with AbortSignal. */
 type AbortableSignal = PrismSignal & { abort(): void };
@@ -56,6 +60,27 @@ function createSignal(): AbortableSignal {
   };
 }
 
+/** Bound a promise with the runtime scheduler (no global setTimeout). */
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  runtime: PrismRuntimeAdapter,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const cancel = runtime.schedule(timeoutMs, () => reject(new Error("timed out")));
+    promise.then(
+      (value) => {
+        cancel();
+        resolve(value);
+      },
+      (error) => {
+        cancel();
+        reject(error);
+      },
+    );
+  });
+}
+
 class PrismClientImpl implements PrismClient {
   readonly projectKey: string;
   readonly endpoint: string;
@@ -65,13 +90,18 @@ class PrismClientImpl implements PrismClient {
   private readonly queueOptions: Required<PrismQueueOptions>;
   private readonly diagnostics = new Set<(d: PrismDiagnostic) => void>();
   private readonly persistence: AnonymousPersistence;
+  private readonly denyList: string[];
+  private readonly maxDepth: number;
+  private readonly maxStringLength: number;
   private state: CollectionState;
   private activeSession: SessionHandleImpl | null = null;
   private closed = false;
-  private flushInFlight = false;
-  private readonly abortSignal = createSignal();
+  private sessionAnonymousId: string | null = null;
+  private flushPromise: Promise<void> | null = null;
+  private inFlightSignal: AbortableSignal | null = null;
   private cancelTimer: (() => void) | null = null;
   private attempts = new Map<string, number>();
+  private readonly lifecycleRemovers: Array<() => void> = [];
 
   constructor(options: PrismClientOptions) {
     assertProjectKey(options.projectKey);
@@ -104,22 +134,37 @@ class PrismClientImpl implements PrismClient {
     this.state = options.collection.initialState;
     this.persistence = options.collection.anonymousPersistence ?? "none";
     this.queueOptions = { ...DEFAULT_QUEUE, ...options.queue };
+    this.denyList = options.sanitize?.denyList ?? [];
+    this.maxDepth = options.sanitize?.maxDepth ?? 12;
+    this.maxStringLength = options.sanitize?.maxStringLength ?? 10_000;
     this.queue = new EventQueue({
       maxEvents: this.queueOptions.maxQueueEvents,
       maxBytes: this.queueOptions.maxQueueBytes,
     });
 
-    // Background delivery loop.
-    this.cancelTimer = runtime.schedule(this.queueOptions.flushIntervalMs, () => {
-      void this.tick();
-    });
+    // Background delivery loop — self-rescheduling through the runtime seam.
+    const interval = this.queueOptions.flushIntervalMs;
+    const loop = async (): Promise<void> => {
+      if (this.closed) return;
+      await this.tick();
+      if (this.closed) return;
+      this.cancelTimer = runtime.schedule(interval, loop);
+    };
+    this.cancelTimer = runtime.schedule(interval, loop);
 
-    // Best-effort flush before the host goes away.
-    runtime.lifecycle?.on("before-unload", () => {
-      void this.tick();
-    });
+    // Best-effort flush before the host goes away (adapter-owned lifecycle).
+    if (runtime.lifecycle) {
+      this.lifecycleRemovers.push(
+        runtime.lifecycle.on("before-unload", () => {
+          void this.tick();
+        }),
+      );
+    }
+  }
 
-    void this.ensureAnonymousIdentity();
+  /** Called by the factory before resolving — the client is fully ready. */
+  async ready(): Promise<void> {
+    await this.ensureAnonymousIdentity();
   }
 
   /** Readonly observed collection state. */
@@ -133,12 +178,27 @@ class PrismClientImpl implements PrismClient {
 
   async setCollectionState(state: CollectionState): Promise<void> {
     this.state = state;
-    await this.ensureAnonymousIdentity();
+    if (state === "denied") {
+      // Consent withdrawal: nothing queued before the withdrawal may be
+      // transmitted, the anonymous identity is deleted, the session closes.
+      this.queue.clear();
+      this.sessionAnonymousId = null;
+      this.activeSession = null;
+      await this.runtime.storage?.removeItem(ANONYMOUS_ID_KEY);
+    }
+    if (state === "granted") {
+      await this.ensureAnonymousIdentity();
+    }
   }
 
   track(name: string, properties?: JsonObject): CaptureResult {
     assertValidEventName(name);
     assertJsonSerializable(properties);
+    const sanitized = sanitizeProperties(properties ?? {}, {
+      denyList: this.denyList,
+      maxDepth: this.maxDepth,
+      maxStringLength: this.maxStringLength,
+    });
 
     if (this.closed) {
       return { status: "dropped", reason: "shutdown" };
@@ -150,7 +210,7 @@ class PrismClientImpl implements PrismClient {
       return { status: "dropped", reason: "consent-denied" };
     }
 
-    const event: QueuedEvent = this.buildEvent(name, properties);
+    const event: QueuedEvent = this.buildEvent(name, sanitized);
     if (!this.queue.enqueue(event)) {
       return { status: "dropped", reason: "queue-full" };
     }
@@ -173,34 +233,26 @@ class PrismClientImpl implements PrismClient {
     const handle = new SessionHandleImpl(
       this.runtime.createId(),
       this.runtime.now(),
-      () => this.endSession(),
+      (handleRef) => this.endSession(handleRef),
     );
     this.activeSession = handle;
     // The session-start event carries the session ID; if the queue is full
     // the session still exists locally (delivery is best-effort).
-    this.queue.enqueue(this.buildEvent("session_started", options?.properties, handle.sessionId));
+    const properties = sanitizeProperties(options?.properties ?? {}, {
+      denyList: this.denyList,
+      maxDepth: this.maxDepth,
+      maxStringLength: this.maxStringLength,
+    });
+    this.queue.enqueue(this.buildEvent("session_started", properties, handle.sessionId));
     return { status: "started", session: handle };
   }
 
-  async flush(): Promise<void> {
-    if (this.flushInFlight) return;
-    this.flushInFlight = true;
-    try {
-      while (!this.queue.isEmpty) {
-        const batch = this.queue.peekBatch(
-          this.queueOptions.maxBatchEvents,
-          this.queueOptions.maxBatchBytes,
-        );
-        if (batch.length === 0) break;
-        const outcome = await this.deliver(batch);
-        if (!outcome.ok) {
-          throw outcome.error;
-        }
-        this.queue.removeFirst(batch.length);
-      }
-    } finally {
-      this.flushInFlight = false;
-    }
+  flush(): Promise<void> {
+    if (this.flushPromise) return this.flushPromise;
+    this.flushPromise = this.doFlush().finally(() => {
+      this.flushPromise = null;
+    });
+    return this.flushPromise;
   }
 
   async shutdown(options?: { timeoutMs?: number }): Promise<void> {
@@ -208,18 +260,24 @@ class PrismClientImpl implements PrismClient {
     this.closed = true;
     this.cancelTimer?.();
     this.cancelTimer = null;
-    // Abort any in-flight transport request.
-    this.abortSignal.abort();
+    for (const remove of this.lifecycleRemovers) remove();
+    this.lifecycleRemovers.length = 0;
 
-    const timeoutMs = options?.timeoutMs ?? 10_000;
-    if (!this.queue.isEmpty) {
+    // Abort any in-flight BACKGROUND flush so it fails fast; the final
+    // flush below uses a fresh signal.
+    this.inFlightSignal?.abort();
+    if (this.flushPromise) {
       try {
-        await Promise.race([
-          this.flush(),
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("shutdown flush timed out")), timeoutMs),
-          ),
-        ]);
+        await this.flushPromise;
+      } catch {
+        // Background failure was already surfaced via diagnostics.
+      }
+    }
+
+    if (!this.queue.isEmpty) {
+      const timeoutMs = options?.timeoutMs ?? 10_000;
+      try {
+        await withTimeout(this.flush(), timeoutMs, this.runtime);
       } catch {
         this.emit("warn", "shutdown_flush_failed", "final flush did not complete");
       }
@@ -249,6 +307,27 @@ class PrismClientImpl implements PrismClient {
     }
   }
 
+  private async doFlush(): Promise<void> {
+    while (!this.queue.isEmpty) {
+      const batch = this.queue.peekBatch(
+        this.queueOptions.maxBatchEvents,
+        this.queueOptions.maxBatchBytes,
+      );
+      if (batch.length === 0) break;
+      const signal = createSignal();
+      this.inFlightSignal = signal;
+      try {
+        const outcome = await this.deliver(batch, signal);
+        if (!outcome.ok) {
+          throw outcome.error;
+        }
+        this.queue.removeFirst(batch.length);
+      } finally {
+        if (this.inFlightSignal === signal) this.inFlightSignal = null;
+      }
+    }
+  }
+
   private buildEvent(name: string, properties?: JsonObject, sessionId?: string): QueuedEvent {
     const eventId = this.runtime.createId();
     const resolvedSessionId = sessionId ?? this.activeSession?.sessionId;
@@ -271,11 +350,12 @@ class PrismClientImpl implements PrismClient {
 
   private async deliver(
     batch: QueuedEvent[],
+    signal: AbortableSignal,
   ): Promise<{ ok: true } | { ok: false; error: unknown }> {
     const request = {
       body: JSON.stringify(batch.map((e) => JSON.parse(e.serialized))),
       timeoutMs: this.queueOptions.requestTimeoutMs,
-      signal: this.abortSignal,
+      signal,
     };
     let response;
     try {
@@ -310,11 +390,11 @@ class PrismClientImpl implements PrismClient {
     }
   }
 
-  private endSession(): SessionEndResult {
-    if (!this.activeSession) {
+  /** Ends ONLY the session that owns the calling handle. */
+  private endSession(handle: SessionHandleImpl): SessionEndResult {
+    if (this.activeSession !== handle) {
       return { status: "not-active" };
     }
-    const handle = this.activeSession;
     this.activeSession = null;
     const event = this.buildEvent("session_ended", undefined, handle.sessionId);
     const queued = this.queue.enqueue(event);
@@ -322,21 +402,6 @@ class PrismClientImpl implements PrismClient {
       this.emit("warn", "session_end_dropped", "session-end event was not queued");
     }
     return { status: "ended", eventId: event.eventId };
-  }
-
-  private async ensureAnonymousIdentity(): Promise<void> {
-    // The envelope carries identity in the ingestion slice; here we only
-    // honor the persistence contract (create/store/load the anonymous ID
-    // when the policy requires durable storage).
-    const storage = this.runtime.storage;
-    if (this.persistence !== "none" && this.state === "granted" && storage) {
-      const existing = await storage.getItem("prism:anonymous_id").catch(() => null);
-      if (!existing) {
-        await storage.setItem("prism:anonymous_id", this.runtime.createId()).catch(() => {
-          this.emit("warn", "identity_storage_failed", "could not persist anonymous identity");
-        });
-      }
-    }
   }
 
   private emit(level: PrismDiagnostic["level"], code: string, message: string): void {
@@ -348,28 +413,51 @@ class PrismClientImpl implements PrismClient {
     };
     for (const listener of this.diagnostics) listener(diagnostic);
   }
+
+  private async ensureAnonymousIdentity(): Promise<void> {
+    if (this.persistence === "none" || this.state !== "granted") return;
+    const storage = this.runtime.storage;
+    if (this.persistence === "persistent") {
+      if (!storage) return;
+      const existing = await storage.getItem(ANONYMOUS_ID_KEY).catch(() => null);
+      if (!existing) {
+        await storage.setItem(ANONYMOUS_ID_KEY, this.runtime.createId()).catch(() => {
+          this.emit("warn", "identity_storage_failed", "could not persist anonymous identity");
+        });
+      }
+    } else {
+      // "session" scope: in-memory for the client lifetime.
+      this.sessionAnonymousId ??= this.runtime.createId();
+    }
+  }
 }
 
 class SessionHandleImpl implements PrismSessionHandle {
   readonly sessionId: string;
   readonly startedAt: number;
-  private readonly onEnd: () => SessionEndResult;
+  private readonly onEnd: (handle: SessionHandleImpl) => SessionEndResult;
 
-  constructor(sessionId: string, startedAt: number, onEnd: () => SessionEndResult) {
+  constructor(
+    sessionId: string,
+    startedAt: number,
+    onEnd: (handle: SessionHandleImpl) => SessionEndResult,
+  ) {
     this.sessionId = sessionId;
     this.startedAt = startedAt;
     this.onEnd = onEnd;
   }
 
   end(): SessionEndResult {
-    return this.onEnd();
+    return this.onEnd(this);
   }
 }
 
 /**
- * Async factory (ADR 0002 §7): validates options and resolves to a READY
- * client. Rejects with a specific Error for invalid configuration.
+ * Async factory (ADR 0002 §7): validates options, loads persisted identity
+ * state, and resolves only when the returned client is fully ready.
  */
 export async function createPrismClient(options: PrismClientOptions): Promise<PrismClient> {
-  return new PrismClientImpl(options);
+  const client = new PrismClientImpl(options);
+  await client.ready();
+  return client;
 }

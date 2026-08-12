@@ -177,6 +177,19 @@ export interface PrismClientOptions {
     anonymousPersistence?: AnonymousPersistence;
   };
   queue?: PrismQueueOptions;
+  /**
+   * Event-property sanitization (privacy). Matching keys are replaced with
+   * the stable `[REDACTED]` marker, case-insensitively, at any depth; depth
+   * and string limits are enforced with specific validation errors.
+   */
+  sanitize?: {
+    /** Extra key names treated as credentials (case-insensitive matches). */
+    denyList?: string[];
+    /** Maximum property nesting depth. Default 12. */
+    maxDepth?: number;
+    /** Maximum string length for any property value. Default 10_000. */
+    maxStringLength?: number;
+  };
 }
 
 /** A diagnostic emitted by the client (delivery failures, state transitions). */
@@ -235,8 +248,11 @@ export interface PrismClient {
   readonly session: PrismSessionHandle | null;
 
   /**
-   * Transition the collection state. `granted`/`denied` are terminal until
-   * changed again; `pending` never builds a hidden pre-consent queue.
+   * Transition the collection state. Transitioning to `denied` clears all
+   * queued analytics events, deletes the persistent anonymous identifier
+   * (through the storage adapter), and closes any active session — nothing
+   * queued before the withdrawal can be transmitted afterwards.
+   * Transitioning back to `granted` starts a fresh anonymous context.
    * Resolves after the state change is applied.
    */
   setCollectionState(state: CollectionState): Promise<void>;

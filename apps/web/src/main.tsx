@@ -15,7 +15,7 @@ import { Toaster } from "./components/ui/sonner";
 import { toast } from "sonner";
 import { LocalStorageKeys } from "./constants/LocalStorageKeys";
 import { PrismProvider } from "@prism/react";
-import { PrismClient } from "@prism/core";
+import { PrismClientV1 } from "@prism/core";
 
 const client = new QueryClient({
   queryCache: new QueryCache({
@@ -31,7 +31,7 @@ const client = new QueryClient({
   },
 });
 
-const prism = new PrismClient("pr_fa1b798ee9a540ad8e7eda40d43b321b");
+const prism = new PrismClientV1("pr_fa1b798ee9a540ad8e7eda40d43b321b");
 
 const el = document.getElementById("root");
 if (el) {

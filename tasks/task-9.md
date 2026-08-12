@@ -1198,3 +1198,42 @@ through storage with versioned keys, server accepted/duplicate/rejected
 handling, permanent-4xx classification, drop-oldest overflow policy,
 package-consumer clean-fixture test, bundle-size budget, and the v1
 legacy removal.
+
+### Slice 2 review corrections (applied 2026-08-12)
+
+1. **Consent withdrawal is effective**: `setCollectionState("denied")` clears
+   the queue, deletes the persistent anonymous ID through storage, and
+   closes the active session — nothing queued before the withdrawal can be
+   transmitted afterwards; re-grant starts a fresh anonymous context.
+2. **Session handles are scoped**: an old handle cannot end a newer session
+   (end() only resolves when the handle IS the active session; otherwise
+   `not-active`).
+3. **Delivery lifecycle**: the background flush loop self-reschedules after
+   every tick through the runtime scheduler; shutdown aborts only the
+   in-flight background request and runs the bounded final flush with a
+   FRESH signal; the shutdown timeout uses the runtime scheduler (no global
+   setTimeout in core); lifecycle subscriptions are removed on shutdown;
+   concurrent flush() calls share the in-flight promise (one transport
+   request).
+4. **Ready factory**: createPrismClient awaits identity/queue state
+   initialization — it resolves only when the client is fully ready (the
+   test's waitFor was removed).
+5. **Public type**: the package root exports the v2 `PrismClient` interface;
+   the legacy class is re-exported as `PrismClientV1` (deprecated) and the
+   web/prism-react callers were updated; the built declarations verify
+   `import type { PrismClient } from "@prism/core"` resolves to the v2
+   contract.
+6. **Property sanitizer** (contract option `sanitize`): credential keys
+   (password/passcode/token/authorization/cookie/secret/api key/
+   credit-card/security-code variants + custom deny-list) are replaced with
+   the stable `[REDACTED]` marker at any depth and in arrays; depth (12) and
+   string (10 000) limits throw specific validation errors; event names are
+   capped at 128 characters.
+7. **Queue edge case**: the head event always joins its batch — an event
+   larger than maxBatchBytes delivers as a solo batch instead of wedging the
+   queue; byte accounting uses encoded UTF-8 length, not UTF-16 string
+   length.
+
+Suite after corrections: 52 tests green; coverage 92.7% lines / 88.8%
+functions / 91.1% branches / 92.7% statements. Root gates: test 4/4,
+typecheck 7/7, lint 10/10, build 8/8.

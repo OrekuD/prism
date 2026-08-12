@@ -1,10 +1,10 @@
 import React, { ReactNode } from "react";
-import { PrismClient } from "@prism/core";
+import { PrismClientV1 } from "@prism/core";
 import { PrismProviderContext } from "./prism-context";
 
 type PrismProviderProps = {
   children: ReactNode;
-  client: PrismClient;
+  client: PrismClientV1;
 };
 
 export class PrismProvider extends React.Component<PrismProviderProps> {

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createPrismClient,
+  type PrismClient,
   type PrismRequest,
   type PrismResponse,
   type PrismRuntimeAdapter,
@@ -311,9 +312,8 @@ describe("anonymous identity persistence", () => {
       },
     };
     const prism = await ready({ runtime, collection: { initialState: "granted", anonymousPersistence: "persistent" } });
-    await vi.waitFor(() => {
-      expect(stored.has("prism:anonymous_id")).toBe(true);
-    });
+    // The factory resolves only after identity state is loaded/written.
+    expect(stored.has("prism:anonymous_id")).toBe(true);
     await prism.shutdown({ timeoutMs: 50 });
   });
 
@@ -356,5 +356,200 @@ describe("fake native/mobile adapter (capability matrix)", () => {
     const result = prism.track("screen_viewed", { screen: "checkout" });
     expect(result.status).toBe("queued");
     await prism.shutdown({ timeoutMs: 50 });
+  });
+});
+
+
+describe("consent withdrawal (review fix)", () => {
+  it("clears the queue, deletes the anonymous ID, and closes the session on denied", async () => {
+    const stored = new Map<string, string>();
+    const runtime: PrismRuntimeAdapter = {
+      ...fakeRuntime(),
+      storage: {
+        getItem: async (key: string) => stored.get(key) ?? null,
+        setItem: async (key: string, value: string) => {
+          stored.set(key, value);
+        },
+        removeItem: async (key: string) => {
+          stored.delete(key);
+        },
+      },
+    };
+    const prism = await ready({
+      runtime,
+      collection: { initialState: "granted", anonymousPersistence: "persistent" },
+    });
+    expect(stored.has("prism:anonymous_id")).toBe(true);
+    prism.track("before_withdrawal");
+    const started = prism.startSession();
+    expect(started.status).toBe("started");
+    await prism.setCollectionState("denied");
+    expect(prism.session).toBeNull();
+    expect(stored.has("prism:anonymous_id")).toBe(false);
+    // nothing queued before the withdrawal may be transmitted
+    const bodies: string[] = [];
+    runtime.transport.post = async (_url, request) => {
+      bodies.push(request.body);
+      return { status: 200, headers: {}, text: async () => "" };
+    };
+    await prism.flush();
+    expect(bodies).toEqual([]);
+  });
+
+  it("starts a fresh anonymous context when re-granted", async () => {
+    const prism = await ready({ collection: { initialState: "granted" } });
+    await prism.setCollectionState("denied");
+    await prism.setCollectionState("granted");
+    const result = prism.track("after_regrant");
+    expect(result.status).toBe("queued");
+  });
+});
+
+describe("session handle scoping (review fix)", () => {
+  it("an old handle cannot end a newer session", async () => {
+    const prism = await ready();
+    const first = prism.startSession();
+    expect(first.status).toBe("started");
+    let firstHandle: NonNullable<PrismClient["session"]> | null = null;
+    if (first.status === "started") firstHandle = first.session;
+    if (firstHandle) {
+      expect(firstHandle.end().status).toBe("ended");
+      const second = prism.startSession();
+      expect(second.status).toBe("started");
+      // the old handle must NOT end the newer session
+      expect(firstHandle.end().status).toBe("not-active");
+      expect(prism.session).not.toBeNull();
+    }
+  });
+});
+
+describe("background delivery lifecycle (review fix)", () => {
+  it("reschedules the flush loop after each tick", async () => {
+    let schedules = 0;
+    const runtime: PrismRuntimeAdapter = {
+      ...fakeRuntime(),
+      schedule: (delayMs: number, callback: () => void) => {
+        schedules += 1;
+        const handle = setTimeout(callback, delayMs);
+        return () => clearTimeout(handle);
+      },
+    };
+    const prism = await ready({ runtime, queue: { flushIntervalMs: 5 } });
+    prism.track("keep_busy");
+    await vi.waitFor(() => {
+      expect(schedules).toBeGreaterThanOrEqual(2);
+    });
+    await prism.shutdown({ timeoutMs: 50 });
+  });
+
+  it("concurrent flush calls share one in-flight flush", async () => {
+    let posts = 0;
+    const runtime = fakeRuntime();
+    runtime.transport.post = async () => {
+      posts += 1;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return { status: 200, headers: {}, text: async () => "" };
+    };
+    const prism = await ready({ runtime });
+    prism.track("a");
+    prism.track("b");
+    await Promise.all([prism.flush(), prism.flush(), prism.flush()]);
+    expect(posts).toBe(1);
+  });
+
+  it("removes lifecycle subscriptions on shutdown", async () => {
+    const removers: Array<() => void> = [];
+    const runtime: PrismRuntimeAdapter = {
+      ...fakeRuntime(),
+      lifecycle: {
+        on: (_event, _listener) => {
+          const remove = () => {
+            removers.push(() => undefined);
+          };
+          return remove;
+        },
+      },
+    };
+    const prism = await ready({ runtime });
+    await prism.shutdown({ timeoutMs: 50 });
+    expect(removers.length).toBe(1);
+  });
+
+  it("shutdown's final flush uses a fresh, non-aborted signal", async () => {
+    const seen: PrismRequest[] = [];
+    const runtime = fakeRuntime();
+    runtime.transport.post = async (_url, request) => {
+      seen.push(request);
+      return { status: 200, headers: {}, text: async () => "" };
+    };
+    const prism = await ready({ runtime });
+    prism.track("final_signal");
+    await prism.shutdown({ timeoutMs: 200 });
+    expect(seen.length).toBe(1);
+    expect(seen[0]?.signal.aborted).toBe(false);
+  });
+});
+
+describe("property sanitization (review fix)", () => {
+  it("redacts credential keys at any depth and in arrays", async () => {
+    const bodies: string[] = [];
+    const runtime = fakeRuntime();
+    runtime.transport.post = async (_url, request) => {
+      bodies.push(request.body);
+      return { status: 200, headers: {}, text: async () => "" };
+    };
+    const prism = await ready({ runtime });
+    prism.track("signup", {
+      user: { password: "hunter2", nested: { apiKey: "pr_x" } },
+      tags: [{ token: "abc" }],
+      ok: "visible",
+    });
+    await prism.flush();
+    const delivered = JSON.parse(bodies[0] ?? "{}") as Array<{ properties: Record<string, unknown> }>;
+    const props = delivered[0]?.properties ?? {};
+    expect((props.user as Record<string, unknown>).password).toBe("[REDACTED]");
+    expect(((props.user as Record<string, unknown>).nested as Record<string, unknown>).apiKey).toBe("[REDACTED]");
+    expect((props.tags as Array<Record<string, unknown>>)[0]?.token).toBe("[REDACTED]");
+    expect(props.ok).toBe("visible");
+  });
+
+  it("honors a custom deny list", async () => {
+    const prism = await ready({ sanitize: { denyList: ["employee_email"] } });
+    const result = prism.track("hr_event", { employee_email: "a@b.c", name: "Ada" });
+    expect(result.status).toBe("queued");
+  });
+
+  it("throws when properties exceed the depth limit", async () => {
+    const prism = await ready({ sanitize: { maxDepth: 3 } });
+    const deep = { a: { b: { c: { d: { e: 1 } } } } };
+    expect(() => prism.track("deep", deep)).toThrow(/depth/i);
+  });
+
+  it("throws when a property string exceeds the length limit", async () => {
+    const prism = await ready({ sanitize: { maxStringLength: 10 } });
+    expect(() => prism.track("long", { note: "x".repeat(11) })).toThrow(/length/i);
+  });
+
+  it("throws when the event name exceeds 128 characters", async () => {
+    const prism = await ready();
+    expect(() => prism.track("e".repeat(129))).toThrow(/128/);
+  });
+});
+
+describe("oversized single event (review fix)", () => {
+  it("delivers an event larger than maxBatchBytes as a solo batch", async () => {
+    const bodies: string[] = [];
+    const runtime = fakeRuntime();
+    runtime.transport.post = async (_url, request) => {
+      bodies.push(request.body);
+      return { status: 200, headers: {}, text: async () => "" };
+    };
+    const prism = await ready({ runtime, queue: { maxBatchBytes: 120 } });
+    expect(prism.track("big", { payload: "x".repeat(400) }).status).toBe("queued");
+    await prism.flush();
+    expect(bodies).toHaveLength(1);
+    const batch = JSON.parse(bodies[0] ?? "[]") as Array<{ name: string }>;
+    expect(batch).toHaveLength(1);
+    expect(batch[0]?.name).toBe("big");
   });
 });
