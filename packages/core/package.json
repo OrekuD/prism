@@ -5,7 +5,8 @@
   "scripts": {
     "build": "API_URL=https://prism-analytics-server.onrender.com tsup src/index.ts --format cjs,esm --dts",
     "dev": "API_URL=http://localhost:8080 tsup src/index.ts --format cjs,esm --dts --watch",
-    "lint": "tsc"
+    "lint": "tsc",
+    "test": "vitest run"
   },
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
