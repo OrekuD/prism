@@ -1293,3 +1293,60 @@ lint 10/10, build 8/8.
 Suite: 68 tests green (3 files incl. dist-consumer); coverage 94.8% lines
 / 90.6% functions / 98% branches / 94.8% statements. Root gates: test
 4/4, typecheck 7/7, lint 10/10, build 8/8.
+
+### Slice 3 — correction round (second review, 2026-08-12)
+
+Reviewer findings and fixes:
+
+1. **Double dequeue (critical)**: deliver() removed the batch AND doFlush()
+   removed it again — with maxBatchEvents 1, b was lost between a and c.
+   Fixed: doFlush() is now the SINGLE owner of queue removal (success,
+   reconciliation, permanent rejection, and retry exhaustion all pass
+   through it); deliver() returns an outcome and never mutates the queue.
+   Regression test: maxBatchEvents 1, a/b/c → exactly 3 posts, all events.
+2. **Restore/transmit under denied or pending (critical)**: ready() restored
+   persisted events regardless of consent, and flush() did not enforce
+   consent. Fixed: doFlush() gates on `state === "granted"` (covers
+   explicit, background, retry, and shutdown flushes); restore is
+   consent-aware — granted restores once, pending defers the snapshot
+   (restored on grant), denied purges it with a `queue_state_purged`
+   diagnostic. Tests: denied-created client never transmits a seeded
+   snapshot; pending defers until grant, then delivers.
+3. **Stale persisted queue after shutdown (high)**: persistQueue() bailed
+   when `closed`, so a successful final delivery could not persist the
+   empty queue and the next client replayed events. Fixed: no closed bail;
+   mutation-time snapshots (serialized write chain) plus an explicit
+   close-out snapshot in shutdown. Test: delivered-once event is not
+   replayed by the next client.
+4. **Non-reconciled per-event results (high)**: results were counted, not
+   matched. Fixed: strict reconciliation — only SUBMITTED ids with a
+   terminal status (accepted/duplicate/rejected) leave the queue; missing
+   results, unknown statuses, unrelated ids, and duplicate/unknown entries
+   make the response "malformed" → bounded retry (server-side dedup makes
+   resends safe); non-terminal members are requeued at the head in order.
+   Tests: unrelated ids keep the batch; duplicate ids → malformed; partial
+   reconcile removes only terminal events.
+5. **Retry policy (high)**: no automatic retry loop existed. Fixed:
+   bounded scheduled retries — exponential backoff from 1 s (×2, ±20%
+   deterministic djb2-hash jitter, no platform globals), capped at 60 s;
+   numeric Retry-After honored (capped); HTTP-date form falls back to
+   exponential backoff; at most one pending retry; maxRetries bounds total
+   attempts → `batch_dropped`. Tests with a recorded-scheduler fake:
+   auto-retry without external flush (1 s → 2 s → success), Retry-After 2 s
+   honored, exhaustion stops the loop.
+6. **Corruption test (medium)**: seeded a key the client never reads and
+   subscribed after init diagnostics. Fixed: seeds the real
+   `prism:queue:v1:<projectKey>` key; new `onDiagnostic` factory option
+   subscribes BEFORE ready(), making queue restore/quarantine/purge
+   observable through the public API.
+7. **Consumer test (medium)**: was a workspace-dist import that skipped
+   silently. Fixed: real `npm pack` → clean temp-fixture `npm install`
+   → metadata assertions (name/version/files/exports map/main/module/
+   types) → require() through the exports map → working client from the
+   installed copy. Added `exports` map + `files: ["dist"]` to
+   package.json so the tarball carries the build. Bundle budget kept
+   (dist/index.js < 60 KB baseline).
+
+Suite: 78 tests green (3 files); coverage 96.1% lines / 90.8% functions
+/ 98.2% branches / 96.1% statements. Root gates: test 4/4, typecheck
+7/7, lint 10/10, build 8/8.

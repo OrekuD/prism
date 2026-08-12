@@ -104,6 +104,14 @@ export class EventQueue {
     this.items.splice(0, count);
   }
 
+  /**
+   * Re-insert events at the head — strict per-event reconciliation puts
+   * non-terminal batch members back after the whole batch was removed.
+   */
+  requeueAtHead(events: QueuedEvent[]): void {
+    this.items.unshift(...events);
+  }
+
   clear(): void {
     this.items.length = 0;
   }

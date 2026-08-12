@@ -157,7 +157,15 @@ export interface PrismQueueOptions {
   requestTimeoutMs?: number;
   /** Interval between background batch flushes in ms. Default 10_000. */
   flushIntervalMs?: number;
-  /** Max delivery attempts before a batch is abandoned (diagnostic only). Default 5. */
+  /**
+   * Max delivery attempts per batch before it is abandoned (`batch_dropped`
+   * diagnostic). Retries are automatic: exponential backoff from 1 s (×2
+   * per attempt, ±20% deterministic jitter) capped at 60 s; a numeric
+   * Retry-After header (seconds) is honored, capped at 60 s; HTTP-date
+   * Retry-After falls back to exponential backoff. At most one retry is
+   * pending at a time; the background interval remains the idle flush
+   * driver. Default 5.
+   */
   maxRetries?: number;
 }
 
@@ -190,6 +198,12 @@ export interface PrismClientOptions {
     /** Maximum string length for any property value. Default 10_000. */
     maxStringLength?: number;
   };
+  /**
+   * Optional diagnostic subscription made BEFORE the factory resolves, so
+   * initialization diagnostics (queue restore/quarantine/purge) are
+   * observable through the public API.
+   */
+  onDiagnostic?: (diagnostic: PrismDiagnostic) => void;
 }
 
 /** A diagnostic emitted by the client (delivery failures, state transitions). */

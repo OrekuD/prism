@@ -35,6 +35,40 @@ const DEFAULT_QUEUE: Required<PrismQueueOptions> = {
 
 const ANONYMOUS_ID_KEY = "prism:anonymous_id";
 
+// Retry policy (task-9 §6): exponential backoff, deterministic jitter,
+// numeric Retry-After honored, at most one pending retry, maxRetries bound.
+const RETRY_BASE_MS = 1_000;
+const RETRY_MAX_MS = 60_000;
+
+/** djb2 string hash — deterministic jitter without platform globals. */
+function hashString(value: string): number {
+  let hash = 5381;
+  for (let i = 0; i < value.length; i += 1) hash = (hash * 33) ^ value.charCodeAt(i);
+  return hash >>> 0;
+}
+
+/** Numeric Retry-After (seconds) → ms; HTTP-date form falls back to exponential backoff. */
+function parseRetryAfterSeconds(header: string | undefined): number | undefined {
+  if (!header) return undefined;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds) && seconds > 0) return seconds * 1000;
+  return undefined;
+}
+
+/**
+ * deliver() outcomes. Queue removal is ALWAYS the caller's job — doFlush()
+ * is the single owner of queue mutation.
+ */
+type DeliverOutcome =
+  | { readonly ok: true; readonly kind: "accepted" }
+  | {
+      readonly ok: true;
+      readonly kind: "reconciled";
+      readonly kept: QueuedEvent[];
+      readonly rejected: number;
+    }
+  | { readonly ok: false; readonly error: unknown; readonly exhausted: boolean };
+
 /** Internal abort-capable signal — structurally compatible with AbortSignal. */
 type AbortableSignal = PrismSignal & { abort(): void };
 
@@ -100,7 +134,9 @@ class PrismClientImpl implements PrismClient {
   private flushPromise: Promise<void> | null = null;
   private inFlightSignal: AbortableSignal | null = null;
   private cancelTimer: (() => void) | null = null;
+  private retryCancel: (() => void) | null = null;
   private attempts = new Map<string, number>();
+  private queueRestored = false;
   private readonly lifecycleRemovers: Array<() => void> = [];
   private readonly instanceId: string;
   private readonly queueStorageKey: string;
@@ -198,9 +234,12 @@ class PrismClientImpl implements PrismClient {
       this.sessionAnonymousId = null;
       this.activeSession = null;
       this.inFlightSignal?.abort();
+      this.cancelRetry();
       await this.runtime.storage?.removeItem(ANONYMOUS_ID_KEY);
     }
     if (state === "granted") {
+      // A queue snapshot deferred under pending is restored on grant.
+      await this.restoreQueueState();
       await this.ensureAnonymousIdentity();
     }
   }
@@ -284,15 +323,27 @@ class PrismClientImpl implements PrismClient {
     // operation — a transport that ignores cancellation cannot hang
     // shutdown.
     this.inFlightSignal?.abort();
+    this.cancelRetry();
     const timeoutMs = options?.timeoutMs ?? 10_000;
     try {
       await withTimeout(this.drainQueue(), timeoutMs, this.runtime);
     } catch {
       this.emit("warn", "shutdown_flush_failed", "final flush did not complete");
     }
-    // Deterministic final snapshot: the last persisted state reflects the
-    // queue after the final flush.
+    // The final attempt may have scheduled a retry — cancel it.
+    this.cancelRetry();
+    // Deterministic final snapshot: mutation-time writes plus an explicit
+    // close-out write, so a successful final delivery persists the empty
+    // queue and the next client never replays delivered events.
+    void this.persistQueue();
     await this.persistChain.catch(() => undefined);
+  }
+
+  private cancelRetry(): void {
+    if (this.retryCancel !== null) {
+      this.retryCancel();
+      this.retryCancel = null;
+    }
   }
 
   /** Settle the in-flight flush (if any), then deliver what remains. */
@@ -333,7 +384,15 @@ class PrismClientImpl implements PrismClient {
     }
   }
 
+  /**
+   * THE single owner of queue removal: batches leave the queue here and
+   * only here — on success, on per-event reconciliation, on permanent
+   * rejection, and on retry exhaustion. deliver() never mutates the queue.
+   */
   private async doFlush(): Promise<void> {
+    // Consent gate: pending/denied never transmit — restored events and
+    // explicit, background, retry, and shutdown flushes are all covered.
+    if (this.state !== "granted") return;
     while (!this.queue.isEmpty) {
       const batch = this.queue.peekBatch(
         this.queueOptions.maxBatchEvents,
@@ -345,9 +404,17 @@ class PrismClientImpl implements PrismClient {
       try {
         const outcome = await this.deliver(batch, signal);
         if (!outcome.ok) {
+          if (outcome.exhausted) {
+            this.queue.removeFirst(batch.length);
+            void this.persistQueue();
+          }
           throw outcome.error;
         }
         this.queue.removeFirst(batch.length);
+        if (outcome.kind === "reconciled" && outcome.kept.length > 0) {
+          this.queue.requeueAtHead(outcome.kept);
+        }
+        this.attempts.delete(batch[0]?.eventId ?? "");
         void this.persistQueue();
       } finally {
         if (this.inFlightSignal === signal) this.inFlightSignal = null;
@@ -378,7 +445,7 @@ class PrismClientImpl implements PrismClient {
   private async deliver(
     batch: QueuedEvent[],
     signal: AbortableSignal,
-  ): Promise<{ ok: true } | { ok: false; error: unknown }> {
+  ): Promise<DeliverOutcome> {
     const request = {
       body: JSON.stringify(batch.map((e) => JSON.parse(e.serialized))),
       timeoutMs: this.queueOptions.requestTimeoutMs,
@@ -393,64 +460,103 @@ class PrismClientImpl implements PrismClient {
         // counts toward retry exhaustion and never drops the batch — the
         // fresh final attempt delivers it.
         this.emit("warn", "delivery_cancelled", "in-flight delivery cancelled");
-        return { ok: false, error };
+        return { ok: false, error, exhausted: false };
       }
-      this.recordFailure(batch, error);
-      return { ok: false, error };
+      const exhausted = this.handleFailure(batch, error);
+      return { ok: false, error, exhausted };
     }
     if (response.status >= 200 && response.status < 300) {
-      const results = await this.parseBatchResults(response);
-      // The batch was submitted: accepted/duplicate/rejected events all
-      // leave the queue; never resend rejected poison events.
-      this.queue.removeFirst(batch.length);
-      void this.persistQueue();
-      if (results && results.rejected > 0) {
+      const reconciled = await this.reconcileResults(batch, response);
+      if (reconciled === "malformed") {
+        // Cannot trust the accounting — retry (server-side dedup by
+        // eventId makes a resend safe).
+        const error = new Error("ingest returned malformed batch results");
+        const exhausted = this.handleFailure(batch, error);
+        return { ok: false, error, exhausted };
+      }
+      if (reconciled === null) {
+        // No results body: status-only success — the whole batch is done.
+        return { ok: true, kind: "accepted" };
+      }
+      if (reconciled.rejected > 0) {
         this.emit(
           "warn",
           "event_rejected",
-          `${results.rejected} event(s) rejected by the server`,
+          `${reconciled.rejected} event(s) rejected by the server`,
         );
       }
-      return { ok: true };
+      return {
+        ok: true,
+        kind: "reconciled",
+        kept: reconciled.kept,
+        rejected: reconciled.rejected,
+      };
     }
-    // Permanent client errors are not retried: the batch is dropped with a
-    // remediation diagnostic (never exposing the key or event body).
+    // Permanent client errors are not retried: the batch leaves the queue
+    // with a remediation diagnostic (never exposing the key or event body).
     if (
       response.status === 400 ||
       response.status === 401 ||
       response.status === 403 ||
       response.status === 413
     ) {
-      this.queue.removeFirst(batch.length);
-      void this.persistQueue();
       this.emit(
         "error",
         "batch_rejected",
         `ingest rejected the batch (${response.status}) — fix the event payload; it will not be retried`,
       );
-      return { ok: true };
+      return { ok: true, kind: "accepted" };
     }
     const error = new Error(`ingest responded ${response.status}`);
-    const retryAfter = Number(response.headers["retry-after"] ?? 0);
+    const retryAfterMs = parseRetryAfterSeconds(response.headers["retry-after"]);
     this.emit(
       "warn",
       "rate_limited",
-      `ingest responded ${response.status}${retryAfter > 0 ? ` (retry-after ${retryAfter}s)` : ""}`,
+      `ingest responded ${response.status}${
+        retryAfterMs !== undefined ? ` (retry-after ${Math.round(retryAfterMs / 1000)}s)` : ""
+      }`,
     );
-    this.recordFailure(batch, error);
-    return { ok: false, error };
+    const exhausted = this.handleFailure(batch, error, retryAfterMs);
+    return { ok: false, error, exhausted };
   }
 
-  private recordFailure(batch: QueuedEvent[], error: unknown): void {
+  /**
+   * Counts the attempt, schedules the bounded retry loop, and reports
+   * exhaustion. Removal on exhaustion is doFlush's job (single owner).
+   */
+  private handleFailure(batch: QueuedEvent[], error: unknown, retryAfterMs?: number): boolean {
     const key = batch[0]?.eventId ?? "unknown";
     const attempts = (this.attempts.get(key) ?? 0) + 1;
     this.attempts.set(key, attempts);
     this.emit("warn", "delivery_failed", `batch delivery failed: ${String(error)}`);
     if (attempts >= this.queueOptions.maxRetries) {
       this.attempts.delete(key);
-      this.queue.removeFirst(batch.length);
       this.emit("error", "batch_dropped", `batch dropped after ${attempts} failed attempts`);
+      return true;
     }
+    this.scheduleRetry(attempts, retryAfterMs);
+    return false;
+  }
+
+  /**
+   * Automatic retry loop (task-9 §6): exponential backoff from 1 s
+   * (×2 per attempt, ±20% deterministic jitter), capped at 60 s; a numeric
+   * Retry-After header is honored, also capped at 60 s; at most one retry
+   * is pending at a time. Bounded by maxRetries via handleFailure.
+   */
+  private scheduleRetry(attempt: number, retryAfterMs?: number): void {
+    if (this.retryCancel || this.closed) return;
+    const exponential = Math.min(RETRY_BASE_MS * 2 ** (attempt - 1), RETRY_MAX_MS);
+    const base =
+      retryAfterMs !== undefined ? Math.min(retryAfterMs, RETRY_MAX_MS) : exponential;
+    const jitter = 0.8 + (0.4 * (hashString(String(base)) % 1000)) / 1000;
+    const delayMs = Math.max(1, Math.round(base * jitter));
+    this.retryCancel = this.runtime.schedule(delayMs, () => {
+      this.retryCancel = null;
+      if (this.closed) return;
+      void this.tick();
+    });
+    this.emit("debug", "retry_scheduled", `retry ${attempt} scheduled in ${delayMs} ms`);
   }
 
   /** Ends ONLY the session that owns the calling handle. */
@@ -476,7 +582,7 @@ class PrismClientImpl implements PrismClient {
    */
   private persistQueue(): Promise<void> {
     const storage = this.runtime.storage;
-    if (!storage || this.closed) return Promise.resolve();
+    if (!storage) return Promise.resolve();
     this.persistChain = this.persistChain
       .then(async () => {
         const snapshot = JSON.stringify({
@@ -491,10 +597,29 @@ class PrismClientImpl implements PrismClient {
     return this.persistChain;
   }
 
-  /** Restore the persisted queue on ready; quarantine corrupt/future state. */
+  /**
+   * Restore the persisted queue. Consent-aware: under `granted` the
+   * snapshot is rehydrated (once); under `pending` it is left untouched
+   * and restored when consent is granted; under `denied` it is purged —
+   * nothing collected before a withdrawal may ever transmit. Corrupt or
+   * future-version state is quarantined (cleared + removed) with a
+   * diagnostic.
+   */
   private async restoreQueueState(): Promise<void> {
     const storage = this.runtime.storage;
     if (!storage) return;
+    if (this.state !== "granted") {
+      if (this.state === "denied") {
+        await storage.removeItem(this.queueStorageKey).catch(() => undefined);
+        this.emit(
+          "warn",
+          "queue_state_purged",
+          "persisted queue purged on consent denial",
+        );
+      }
+      return;
+    }
+    if (this.queueRestored) return;
     const raw = await storage.getItem(this.queueStorageKey).catch(() => null);
     if (!raw) return;
     try {
@@ -507,6 +632,7 @@ class PrismClientImpl implements PrismClient {
         const event = JSON.parse(serialized) as Omit<QueuedEvent, "serialized">;
         this.queue.enqueue({ ...event, serialized });
       }
+      this.queueRestored = true;
       if (this.queue.size > 0) {
         this.emit(
           "info",
@@ -515,6 +641,7 @@ class PrismClientImpl implements PrismClient {
         );
       }
     } catch {
+      this.queueRestored = true;
       this.queue.clear();
       await storage.removeItem(this.queueStorageKey).catch(() => undefined);
       this.emit(
@@ -526,30 +653,53 @@ class PrismClientImpl implements PrismClient {
   }
 
   /**
-   * Tolerant per-event results parsing (the v2 ingest contract): when the
-   * response body carries `{ results: [{ id, status }] }`, the batch is
-   * accounted per event; otherwise a plain 2xx accepts the whole batch.
+   * Strict per-event reconciliation (the v2 ingest contract): a 2xx with a
+   * `results` array is trusted only when every entry has a string id and a
+   * known status and no id repeats. Only SUBMITTED ids with a terminal
+   * status (accepted/duplicate/rejected) leave the queue; missing results,
+   * unknown statuses, and unrelated ids keep their events queued
+   * (retried through the bounded retry loop — server-side dedup by
+   * eventId makes resends safe). A body without `results` accepts the
+   * whole batch (status-only success). `"malformed"` rejects the batch
+   * retryably when the accounting cannot be trusted.
    */
-  private async parseBatchResults(response: {
-    text(): Promise<string>;
-  }): Promise<{ accepted: number; duplicate: number; rejected: number } | null> {
+  private async reconcileResults(
+    batch: QueuedEvent[],
+    response: { text(): Promise<string> },
+  ): Promise<{ kept: QueuedEvent[]; rejected: number } | "malformed" | null> {
+    let body: { results?: unknown };
     try {
-      const body = JSON.parse(await response.text()) as {
-        results?: Array<{ id?: string; status?: string }>;
-      };
-      if (!Array.isArray(body.results)) return null;
-      let accepted = 0;
-      let duplicate = 0;
-      let rejected = 0;
-      for (const result of body.results) {
-        if (result.status === "duplicate") duplicate += 1;
-        else if (result.status === "rejected") rejected += 1;
-        else accepted += 1;
-      }
-      return { accepted, duplicate, rejected };
+      body = JSON.parse(await response.text()) as { results?: unknown };
     } catch {
       return null; // non-JSON body: status-only success
     }
+    if (!Array.isArray(body.results)) return null;
+    const terminal = new Set<string>();
+    const seen = new Set<string>();
+    let rejected = 0;
+    for (const entry of body.results) {
+      const result = entry as { id?: unknown; status?: unknown } | null;
+      if (!result || typeof result.id !== "string" || typeof result.status !== "string") {
+        return "malformed";
+      }
+      if (seen.has(result.id)) return "malformed"; // duplicate id: untrustworthy accounting
+      seen.add(result.id);
+      if (result.status === "accepted" || result.status === "duplicate") {
+        terminal.add(result.id);
+      } else if (result.status === "rejected") {
+        terminal.add(result.id);
+        rejected += 1;
+      }
+      // Unknown statuses are ignored — those events stay queued.
+    }
+    const kept = batch.filter((event) => !terminal.has(event.eventId));
+    if (kept.length === batch.length) {
+      // No submitted event had a terminal result (unrelated ids, unknown
+      // statuses, or empty results) — the response cannot be reconciled;
+      // retry (this also prevents an unbounded in-flush loop).
+      return "malformed";
+    }
+    return { kept, rejected };
   }
 
   private emit(level: PrismDiagnostic["level"], code: string, message: string): void {
@@ -606,6 +756,9 @@ class SessionHandleImpl implements PrismSessionHandle {
  */
 export async function createPrismClient(options: PrismClientOptions): Promise<PrismClient> {
   const client = new PrismClientImpl(options);
+  // Subscribe BEFORE ready() so initialization diagnostics (queue restore,
+  // quarantine, purge) are observable through the public API.
+  if (options.onDiagnostic) client.onDiagnostic(options.onDiagnostic);
   await client.ready();
   return client;
 }

@@ -9,9 +9,17 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage"
   },
+  "files": ["dist"],
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
   "devDependencies": {
     "@prism/types": "*",
     "tsup": "^8.5.1",
