@@ -129,7 +129,7 @@ yarn test        # Vitest (unit + security regression tests)
 ```
 
 Coverage is enforced per workspace (`test:coverage`, thresholds in each
-`vitest.config.ts`, policy in `docs/coverage.md`).
+`vitest.config.ts`, policy in `engineering/coverage.md`).
 
 ### Integration tests (opt-in, isolated databases only)
 
@@ -163,7 +163,7 @@ summary (Turso) → end the session → verify a bogus key cannot end sessions.
 `.github/workflows/security.yml` runs the dependency audit weekly and on
 lockfile changes; it fails only when a high/critical advisory is reachable
 from a production workspace and is not documented (see
-`docs/dependency-security.md` and `scripts/audit-check.mjs`).
+`engineering/dependency-security.md` and `scripts/audit-check.mjs`).
 
 Security regression tests live in:
 
@@ -225,7 +225,7 @@ Security regression tests live in:
   batches and verification performed. Zod 4 and Astro 7 (docs) were upgraded
   during Task 3; `yarn audit` reports zero high/critical advisories.
 - `packages/email-templates` preview server advisories are dev-only tooling
-  (see docs/dependency-security.md).
+  (see engineering/dependency-security.md).
 - `apps/api` has no dedicated build output — `wrangler deploy` bundles the
   worker; the `build` script runs the type check.
 - `@prism/email-templates` `build`/`export` renders templates with

@@ -50,7 +50,7 @@ a standalone deployment.
 
 - [x] Add an ADR defining hosted/self-hosted boundaries, supported deployment
       topology, data ownership, telemetry policy, and compatibility promises.
-      docs/adr/0001-deployment-modes.md.
+      engineering/adr/0001-deployment-modes.md.
 - [x] Decide the initial supported operating target: single Linux host with
       Docker Compose is the recommended first profile. Recorded in the ADR;
       packaging follows in the later delivery stages.
@@ -262,7 +262,7 @@ a standalone deployment.
 ## 7. Protect privacy and independence
 
 - [x] Search for every outbound hostname and classify it as essential,
-      optional, development-only, or accidental. docs/network-egress.md.
+      optional, development-only, or accidental. engineering/network-egress.md.
       Removed two violations: the Cloudinary logo fetched by every auth
       email, and the unconditional Mapbox CDN stylesheet in index.html
       (now bundled with the lazy realtime route).

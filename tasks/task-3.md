@@ -55,7 +55,7 @@ and no user migration layer is required.
 
 - [x] Inventory every current auth route, middleware, table, request type,
       frontend mutation, Zustand action, email template, and WebSocket dependency.
-      → docs/auth-migration-inventory.md
+      → engineering/auth-migration-inventory.md
 - [x] Add failing tests for email signup/sign-in, session lookup, sign-out,
       password reset, email verification, Google/GitHub callback handling, account
       linking, revoked sessions, and cross-team authorization.

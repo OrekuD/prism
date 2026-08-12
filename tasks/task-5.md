@@ -10,7 +10,7 @@ usable for both the hosted platform and a standalone self-hosted instance.
 This task follows the Better Auth and React/Tailwind/shadcn migrations. It does
 not expand the unfinished analytics core beyond what these entry flows require.
 
-Implementation source of truth: [`docs/design-system.md`](../docs/design-system.md).
+Implementation source of truth: [`engineering/design-system.md`](../engineering/design-system.md).
 It translates the Command Code references into exact Prism tokens, geometry,
 component anatomy, page wireframes, states, responsive rules, and visual QA
 requirements for an agent that cannot inspect the screenshots directly.
@@ -246,7 +246,7 @@ Self-hosted flow:
 ## 7. Visual, accessibility, and performance QA
 
 - [x] Add route-level visual regression coverage for every new state at desktop,
-      tablet, and mobile widths. docs/screenshots/task-5/: landing at
+      tablet, and mobile widths. engineering/screenshots/task-5/: landing at
       1920/768/390, auth shell, onboarding, overview, project summary,
       events, api keys at 1920 (dark, the brand presentation).
 - [x] Test light and dark modes, with dark as the primary brand presentation.

@@ -8,7 +8,7 @@
  *
  * Findings in build-time-only tooling (prism-docs, @prism/email-templates)
  * are reported but do not fail the build; they are tracked in
- * docs/dependency-security.md.
+ * engineering/dependency-security.md.
  */
 import { readFileSync } from "node:fs";
 
@@ -24,7 +24,7 @@ const PRODUCTION_ROOTS = new Set([
 /**
  * Documented accepted findings: advisory id -> { owner, followUp }.
  * Add an entry here only after recording the rationale in
- * docs/dependency-security.md. Currently empty: no blocking production
+ * engineering/dependency-security.md. Currently empty: no blocking production
  * findings and no accepted high/critical advisories.
  */
 const ALLOWLIST = new Map();
@@ -89,7 +89,7 @@ if (blocking.length > 0) {
     console.error(`  - ${finding}`);
   }
   console.error(
-    "[audit] Fix the finding or document it in docs/dependency-security.md and allowlist it with an owner + follow-up task.",
+    "[audit] Fix the finding or document it in engineering/dependency-security.md and allowlist it with an owner + follow-up task.",
   );
   process.exit(1);
 }

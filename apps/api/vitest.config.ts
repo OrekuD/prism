@@ -13,7 +13,7 @@ export default defineConfig({
         "src/index.ts", // worker bootstrap; covered by the E2E smoke script
       ],
       // Initial enforceable threshold; grows toward the project-wide 80%
-      // goal as integration coverage lands. See docs/coverage.md.
+      // goal as integration coverage lands. See engineering/coverage.md.
       thresholds: {
         lines: 30,
         functions: 25,

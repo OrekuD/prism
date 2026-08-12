@@ -29,7 +29,7 @@ jobs:
 
       # Fails only when a high/critical advisory is reachable from a
       # production workspace and is not documented/allowlisted. See
-      # scripts/audit-check.mjs and docs/dependency-security.md.
+      # scripts/audit-check.mjs and engineering/dependency-security.md.
       - name: Audit production dependencies
         run: |
           yarn audit --groups dependencies --json | node scripts/audit-check.mjs

@@ -188,14 +188,14 @@ work.
 - [x] Review package READMEs for `@prism/core` and `@prism/react`; use a modest
       shared brand header only where it improves package identity. Neither
       package ships a README; brand identity lives in the root README +
-      docs/brand/logo.md (no action needed).
+      engineering/brand/logo.md (no action needed).
 - [x] Export a GitHub repository social-preview asset and document the manual
       repository-setting step. Do not claim it is installed until that external
       setting has actually been updated.
-- [x] Update `docs/design-system.md` with the final geometry, variants, clear
+- [x] Update `engineering/design-system.md` with the final geometry, variants, clear
       space, minimum sizes, accessibility rules, and examples.
 - [x] Add a focused brand-asset usage page, recommended
-      `docs/brand/logo.md`, identifying canonical files and prohibited uses.
+      `engineering/brand/logo.md`, identifying canonical files and prohibited uses.
 - [x] Record the logo's authorship/source and license alongside the repository's
       eventual open-source license so downstream self-hosters know they may use
       it with Prism distributions.
@@ -248,7 +248,7 @@ work.
 - [x] Run automated accessibility checks on logo links and branded page shells.
 - [x] Capture visual regression baselines for public navigation, product
       navigation, auth, onboarding, docs header, and representative email.
-      docs/screenshots/task-7/: landing (public nav + footer), auth shell,
+      engineering/screenshots/task-7/: landing (public nav + footer), auth shell,
       gallery brand grid (all variants x sizes on dark + light), docs
       header, and the confirm-email HTML. Product nav/onboarding use the
       same shared PrismLogo component (covered by unit tests + the certify
@@ -314,7 +314,7 @@ The initial repository scan found these current brand entry points:
   - `apps/docs/astro.config.mjs`
   - `apps/docs/public/favicon.svg`
   - `README.md`
-  - `docs/design-system.md`
+  - `engineering/design-system.md`
 - Email:
   - all templates under `packages/email-templates/emails/`
   - `apps/api/src/utils/generateEmailTemplates.ts`

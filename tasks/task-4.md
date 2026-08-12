@@ -65,7 +65,7 @@ Avoid mixing visual redesign bugs with upgrade regressions.
       by TanStack Charts 0.9.0 per product decision (recharts removed).
 - [x] Capture desktop/mobile screenshots of auth, projects, project summary,
       events, realtime, settings, account, dialogs, popovers, and destructive flows.
-      → 20 files in docs/screenshots/task-4-baseline/: auth (login/create,
+      → 20 files in engineering/screenshots/task-4-baseline/: auth (login/create,
       dark), projects list (desktop + mobile), summary (light + dark),
       dialog open, events, realtime, project settings, account security,
       team dialog, destructive confirmation, gallery (desktop/tablet/mobile).
@@ -249,7 +249,7 @@ Avoid mixing visual redesign bugs with upgrade regressions.
       trap + Escape + focus restore, dropdown ArrowDown/Enter, OTP typing,
       calendar day selection. Web test task added to the turbo pipeline.
 - [x] Add visual regression screenshots at desktop, tablet, and narrow mobile
-      widths. docs/screenshots/task-4-baseline/ (20 files) covers auth,
+      widths. engineering/screenshots/task-4-baseline/ (20 files) covers auth,
       projects list, summary (both themes), events, realtime, settings,
       account, dialogs, destructive confirmations, gallery at 1920/768/390px.
 - [x] Ensure the gallery cannot be exposed accidentally in production, or make

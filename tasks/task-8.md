@@ -17,7 +17,7 @@ The docs must serve two equally legitimate paths:
 2. self-hosted operators who deploy Prism without registering for Prism cloud.
 
 The implementation source of truth is
-[`docs/design-system.md`](../docs/design-system.md). Logo work comes from
+[`engineering/design-system.md`](../engineering/design-system.md). Logo work comes from
 [`tasks/task-7.md`](./task-7.md), and self-hosting/runtime facts come from
 [`tasks/task-6.md`](./task-6.md). Do not duplicate or contradict those sources.
 
@@ -129,7 +129,7 @@ structure, and developer-focused presentation.
       `pagefind-ui__*`, `expressive-code`).
 - [x] Capture baseline screenshots of the homepage, article page, search,
       sidebar, table of contents, code block, mobile menu, 404 page, dark mode,
-      and light mode. `docs/screenshots/task-8/baseline/` (01-home-dark,
+      and light mode. `engineering/screenshots/task-8/baseline/` (01-home-dark,
       02-article-dark, 03-article-light, 04-search-dark, 05-mobile-menu,
       06-404).
 - [x] Run the current docs build, link check, accessibility smoke, and
@@ -216,7 +216,7 @@ structure, and developer-focused presentation.
 - [x] Map Starlight variables to Prism semantic tokens rather than scattering
       raw hex values through component files. Full `--sl-*` mapping in
       `prism.css` (colors, hairlines, semantic callout colors, layout vars).
-- [x] Use the exact dark tokens from `docs/design-system.md`, including:
+- [x] Use the exact dark tokens from `engineering/design-system.md`, including:
       `canvas #050506`, `surface #0B0B0E`, `surface-raised #111116`,
       `border #25252C`, `text #F2F2F4`, `text-muted #A3A3AD`,
       `accent #6547E8`, and `focus #9B89FF`. All present; asserted in the
@@ -687,7 +687,7 @@ structure, and developer-focused presentation.
       navigation, skip link, and 404 treatment.
 - [x] Keep Starlight behavior intact through supported overrides.
 - [x] Capture desktop/mobile screenshots and run axe before continuing.
-      `docs/screenshots/task-8/slice-a/` (home, article, config, light,
+      `engineering/screenshots/task-8/slice-a/` (home, article, config, light,
       search, mobile-320, 404); axe is part of the e2e suite.
 
 ### Slice C — homepage and MDX components
@@ -859,8 +859,8 @@ Follow-ups (may follow later, not blockers): combined readiness signal
 
 ## Verification evidence
 
-- Screenshots: `docs/screenshots/task-8/baseline/` (before) and
-  `docs/screenshots/task-8/slice-a/` (after: home, article, config, light,
+- Screenshots: `engineering/screenshots/task-8/baseline/` (before) and
+  `engineering/screenshots/task-8/slice-a/` (after: home, article, config, light,
   search modal, mobile 320px, 404).
 - Tests: `apps/docs/src/__tests__/built-output.test.ts` (31),
   `apps/docs/src/__tests__/env-drift.test.ts` (2),
