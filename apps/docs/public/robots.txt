@@ -1,8 +1,0 @@
-# Prism Docs — hosted instance: allow indexing.
-# Self-hosted/private instances: replace this file with:
-#   User-agent: *
-#   Disallow: /
-# and build with a private ASTRO_SITE (or none) so canonical/sitemap URLs
-# never point at the public docs origin.
-User-agent: *
-Allow: /

@@ -138,23 +138,21 @@ services:
     networks: [prism]
     mem_limit: 256m
 
-  # Documentation (task-8): separately deployable static image, opt-in via
-  # the `docs` profile — not part of the default stack. Expose on a port of
-  # your choice, or proxy it behind the same TLS terminator:
+  # Documentation (task-8): separately deployable image (Next.js +
+  # Fumadocs, apps/docs), opt-in via the `docs` profile — not part of the
+  # default stack. Expose on a port of your choice, or proxy it behind the
+  # same TLS terminator:
   #   docker compose --profile docs up -d docs
-  # Build with ASTRO_SITE=<your-origin> so canonical/sitemap URLs stay yours.
   docs:
     profiles: ["docs"]
     build:
       context: .
       dockerfile: deploy/Dockerfile.docs
-      args:
-        ASTRO_SITE: ${ASTRO_SITE:-}
     restart: unless-stopped
     ports:
-      - "${DOCS_PORT:-8081}:80"
+      - "${DOCS_PORT:-8081}:3000"
     networks: [prism]
-    mem_limit: 128m
+    mem_limit: 256m
 
 networks:
   # Internal: no outbound network access at runtime (images are pulled

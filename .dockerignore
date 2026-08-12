@@ -8,6 +8,8 @@ node_modules
 **/dist
 **/dist-node
 **/.turbo
+**/.source
+**/.next
 .git
 .github
 docs/screenshots

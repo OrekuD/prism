@@ -6,10 +6,10 @@ scope: Both
 lastReviewed: "2026-08-11"
 ---
 
-import SectionLabel from '../../../components/docs/SectionLabel.astro';
-
-
 <SectionLabel label="CONTRIBUTING" />
+
+
+
 
 ## Workspaces
 
@@ -18,7 +18,7 @@ import SectionLabel from '../../../components/docs/SectionLabel.astro';
 | `apps/web` | React/Vite dashboard (single-router SPA) |
 | `apps/api` | Product API — auth (Better Auth), teams, projects, users, setup, config; Cloudflare Worker + Node runtimes |
 | `apps/analytics-api` | Analytics API — ingestion, WebSocket realtime, IP enrichment; Node/Hono |
-| `apps/docs` | This documentation site (Astro/Starlight) |
+| `apps/docs` | Documentation site (Next.js + Fumadocs) |
 | `packages/core` | `@prism/core` browser SDK |
 | `packages/prism-react` | `@prism/react` React bindings |
 | `packages/types` | `@prism/types` shared request/response schemas |
@@ -60,12 +60,12 @@ self-hosted:
 Better Auth, one shared `buildAuthOptions` used by the Worker runtime, the
 CLI, and tests. UUID ids, text-keyed tables, provisioning hooks (profile +
 personal team created idempotently after user creation), JWT plugin for
-realtime service tokens. See [Authentication](/hosted/authentication/).
+realtime service tokens. See [Authentication](/docs/hosted/authentication).
 
 ## Deployment modes
 
 The same build serves two topologies: hosted (Cloudflare Worker + managed
 stores) and self-hosted (Compose: postgres + migrate + api + sqld +
-analytics + web behind one origin). See the [self-hosting overview](/self-hosting/overview/) and
+analytics + web behind one origin). See the [self-hosting overview](/docs/self-hosting/evaluation/overview) and
 [ADR 0001: deployment modes](https://github.com/OrekuD/prism/blob/main/docs/adr/0001-deployment-modes.md)
 in the repository.

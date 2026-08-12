@@ -6,10 +6,10 @@ scope: Both
 lastReviewed: "2026-08-11"
 ---
 
-import SectionLabel from '../../../components/docs/SectionLabel.astro';
-
-
 <SectionLabel label="CONTRIBUTING" />
+
+
+
 
 ## Test suites
 
@@ -18,7 +18,7 @@ import SectionLabel from '../../../components/docs/SectionLabel.astro';
 | `prism-api` | vitest | config validation, auth boundaries, setup controller, storage drivers, projects/teams/users flows, CORS, integration flows |
 | `prism-analytics-api` | vitest | ingestion controllers, middleware, JWKS verification, rate limiting, WebSocket manager, IP enrichment, end-to-end flows |
 | `prism-web` | vitest + jsdom | auth flows, onboarding, brand components, gallery |
-| `prism-docs` | vitest (component tests) | interactive docs components |
+| `prism-docs` | next build + typecheck + biome lint | Fumadocs docs (Next.js) |
 
 Run everything with `yarn test`.
 
@@ -54,6 +54,6 @@ through the single public origin with outbound blocked.
 2. New env vars are added to `.env.example`/`.dev.vars.example` **and** the
    config validator (with a test).
 3. New endpoints are documented in the
-   [API reference](/api-reference/management/) with error codes.
-4. Docs changes build clean (`yarn workspace prism-docs build`) and pass the
-   link check (`yarn workspace prism-docs check:links`).
+   [API reference](/docs/api-reference/management) with error codes.
+4. Docs changes build clean, typecheck, and lint
+   (`yarn workspace prism-docs build` / `typecheck` / `lint`).

@@ -119,9 +119,10 @@ jobs:
         if: always()
         run: docker compose --env-file deploy/compose.env -f deploy/compose.yml down -v
 
-  # Documentation certification (task-8): build, link/anchor/redirect check,
-  # component-output tests, and the browser suite with axe. Runs on every
-  # push to main; the browser job needs the Playwright browser cache.
+  # Documentation certification (task-8): build, typecheck, and lint the
+  # Fumadocs site (apps/docs, workspace prism-docs). The legacy Astro docs
+  # were retired after the migration; browser/axe suites from the legacy
+  # suite were environment-limited and are not carried over.
   docs:
     runs-on: ubuntu-latest
     steps:
@@ -138,18 +139,11 @@ jobs:
       - name: Build docs
         run: yarn workspace prism-docs build
 
-      - name: Internal link / anchor / redirect / sitemap / asset check
-        run: yarn workspace prism-docs check:links
+      - name: Typecheck docs
+        run: yarn workspace prism-docs typecheck
 
-      - name: Component-output tests (preview server)
-        run: yarn workspace prism-docs test
-
-      - name: Install Playwright browsers (chromium)
-        run: npx playwright install --with-deps chromium
-        working-directory: ./apps/docs
-
-      - name: Browser tests + axe (homepage, article, search, mobile, theme, 404)
-        run: yarn workspace prism-docs test:e2e
+      - name: Lint docs
+        run: yarn workspace prism-docs lint
 
       - name: Brand drift check
         run: yarn workspace @prism/brand run check

@@ -1,12 +1,13 @@
-# Prism docs — separately deployable static image (task-6 decision, task-8).
-# The docs are static HTML built by Astro/Starlight; this image serves them
-# with nginx and can be:
+# Prism docs — separately deployable image (task-6 decision; Fumadocs/Next
+# after the docs migration, task-8 pivot).
+# The docs site is Next.js + Fumadocs (apps/docs). This image builds the
+# static export-equivalent output and serves it with `next start`.
 #   - run standalone:  docker build -f deploy/Dockerfile.docs -t prism-docs .
 #   - run via Compose: docker compose --profile docs up -d docs
-# Docs never call out to a third-party host: fonts, logo, search index, and
+# The site never calls out to a third-party host: fonts, logo, search, and
 # styles are all inside the image.
-FROM node:22-alpine AS build
-WORKDIR /app
+FROM node:22-alpine AS builder
+WORKDIR /repo
 COPY package.json yarn.lock ./
 # Workspace manifests so yarn links the monorepo workspaces.
 COPY packages/config-typescript/package.json packages/config-typescript/package.json
@@ -17,15 +18,18 @@ COPY packages/prism-react/package.json packages/prism-react/package.json
 COPY apps/docs/package.json apps/docs/package.json
 RUN yarn install --frozen-lockfile
 COPY . .
-# Self-hosted builds override the canonical site so canonical/sitemap URLs
-# never point at the public docs origin.
-ARG ASTRO_SITE
-ENV ASTRO_SITE=${ASTRO_SITE:-}
 RUN yarn workspace prism-docs build
 
-FROM nginx:1.27-alpine
-COPY deploy/nginx.docs.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/apps/docs/dist /usr/share/nginx/html
-EXPOSE 80
+FROM node:22-alpine
+ENV NODE_ENV=production
+WORKDIR /repo
+# The Next standalone output bundles its own minimal node_modules —
+# no runtime install needed.
+COPY --from=builder /repo/apps/docs/.next/standalone ./
+COPY --from=builder /repo/apps/docs/.next/static ./apps/docs/.next/static
+COPY --from=builder /repo/apps/docs/public ./apps/docs/public
+EXPOSE 3000
+USER node
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
-  CMD wget -qO- http://127.0.0.1/healthz >/dev/null 2>&1 || exit 1
+  CMD wget -qO- http://127.0.0.1:3000/ >/dev/null 2>&1 || exit 1
+CMD ["node", "apps/docs/server.js"]
