@@ -8,7 +8,10 @@ import {
 export class PrismClient {
   private readonly apiKey: string;
   private sessionId: string = "";
-  private apiUrl: string = process.env.API_URL + "/api/v1/analytics";
+  // Legacy v1 default: same-origin (the web origin proxies /api). The
+  // v2 client requires an explicit runtime endpoint (ADR 0002 §6); the
+  // hosted URL is never baked into the build.
+  private apiUrl: string = "/api/v1/analytics";
 
   constructor(apiKey: string) {
     if (!apiKey) {

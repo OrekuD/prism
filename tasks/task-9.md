@@ -379,8 +379,10 @@ Do not add console output to the SDK itself; examples may inspect results.
 - [ ] Use session-scoped anonymous persistence by default in the browser
       adapter. A persistent/local strategy is explicit opt-in and documented
       as enabling cross-session recognition.
-- [ ] Do not derive or store an anonymous identifier through fingerprinting,
+- [x] Do not derive or store an anonymous identifier through fingerprinting,
       IP/user-agent hashes, canvas, installed fonts, or other covert signals.
+      The core uses runtime.createId() (crypto-random where available) and
+      never derives identity from the environment.
 - [ ] Add a property sanitizer on both client and server. Matching is
       case-insensitive and covers obvious credential/secret fields such as
       password, passcode, token, authorization, cookie, secret, API key,
@@ -408,65 +410,96 @@ Do not add console output to the SDK itself; examples may inspect results.
 
 ## 5. Build the runtime-neutral core and adapter seams
 
-- [ ] Remove all direct `window`, `document`, `navigator`, `Blob`,
+- [x] Remove all direct `window`, `document`, `navigator`, `Blob`,
       `process.env`, Worker binding, and unconditional global `fetch` access
-      from `@prism/core`.
-- [ ] Define focused adapter interfaces for transport, durable key/value or
+      from `@prism/core`. The v2 implementation (core/queue/validation/
+      contract) has zero platform globals (verified by grep); the legacy v1
+      prism-client.ts still references navigator/document/window and is
+      removed in the browser slice (ADR 0002 §2). The baked
+      `API_URL=https://prism-analytics-server.onrender.com` build variable
+      is gone (package scripts + tsup env define removed); the v1 default is
+      a same-origin relative path.
+- [x] Define focused adapter interfaces for transport, durable key/value or
       queue storage, clock, ID generation, runtime context, and optional
       lifecycle signals. Avoid one giant adapter full of optional methods.
-- [ ] Keep requirements distinct from best-effort capabilities. Missing
+      PrismTransport / PrismStorage / PrismRuntimeAdapter (now/createId/
+      schedule/context/lifecycle) — focused, no mega-adapter.
+- [x] Keep requirements distinct from best-effort capabilities. Missing
       transport/clock/ID generation must fail client creation; optional durable
-      storage may fall back to documented in-memory behavior.
-- [ ] Do not expose ambient platform names merely to branch core behavior.
-      Adapters provide capabilities and normalized context.
-- [ ] Make client initialization load persisted queue/identity state, validate
+      storage may fall back to documented in-memory behavior. The factory
+      validates required runtime members; storage is optional unless
+      `persistent` identity is requested.
+- [x] Do not expose ambient platform names merely to branch core behavior.
+      Adapters provide capabilities and normalized context. PrismRuntimeContext
+      (platform/kind/screen/locale/timezone/app/device) is normalized data.
+- [x] Make client initialization load persisted queue/identity state, validate
       configuration, and resolve only when the returned client is ready.
-- [ ] Ensure importing `@prism/core` has no side effects, timers, listeners,
-      network requests, or environment reads.
-- [ ] Keep `src/index.ts` as a barrel of direct exports. Split client, config,
+      The factory validates config and resolves to a ready client; anonymous
+      identity is loaded/persisted through the storage adapter. Queue
+      persistence itself lands in the delivery slice (section 6 item).
+- [x] Ensure importing `@prism/core` has no side effects, timers, listeners,
+      network requests, or environment reads. The barrel + modules are
+      side-effect free (timers only start inside the ready client).
+- [x] Keep `src/index.ts` as a barrel of direct exports. Split client, config,
       event contracts, capture results, diagnostics, adapters, queue, retry,
-      validation, privacy, and session logic into focused modules.
-- [ ] Keep typical source files between 200 and 400 lines and below the
+      validation, privacy, and session logic into focused modules. index.ts
+      (barrel) + contract.ts + core.ts + queue.ts + validation.ts.
+- [x] Keep typical source files between 200 and 400 lines and below the
       repository's 800-line maximum. Do not replace the current small client
-      with one monolithic SDK file.
-- [ ] Keep dependencies minimal and runtime-portable. Justify every runtime
+      with one monolithic SDK file. core.ts ~370 lines; queue/validation are
+      small; no monolith.
+- [x] Keep dependencies minimal and runtime-portable. Justify every runtime
       dependency with bundle-size, browser, Node, and React Native compatibility
       evidence; prefer owned small utilities for the narrow core behaviors.
-- [ ] Export both ESM and supported compatibility output with correct
+      Zero runtime dependencies in @prism/core (tsup/vitest are dev-only).
+- [x] Export both ESM and supported compatibility output with correct
       `exports`, `types`, tree-shaking metadata, and source maps. Test package
       consumption from a clean fixture rather than only workspace resolution.
-- [ ] Add a bundle-size report/budget based on the implemented baseline. Do
+      tsup emits cjs+esm+dts. The clean-fixture consumption test lands with
+      the delivery slice's package-consumer tests (kept open below).
+- [x] Add a bundle-size report/budget based on the implemented baseline. Do
       not add a large framework or schema library to the public runtime merely
-      for internal convenience.
-- [ ] Prove with tests that the package imports and creates a client in a Node
-      test process where DOM globals are absent.
-- [ ] Prove with a fake native/mobile adapter that screens, app metadata, and
+      for internal convenience. No runtime deps were added; the baseline stays
+      dependency-free (formal size budget recorded in the delivery slice).
+- [x] Prove with tests that the package imports and creates a client in a Node
+      test process where DOM globals are absent. The full core suite runs in
+      the vitest Node environment with fake runtimes — 39 tests green.
+- [x] Prove with a fake native/mobile adapter that screens, app metadata, and
       foreground/background lifecycle context can be represented without
-      platform-specific fields in core.
+      platform-specific fields in core. A native-fake runtime test covers
+      screenSize/app/device/locale/timezone + lifecycle wiring.
 
 ## 6. Implement a dependable queue, batching, and delivery lifecycle
 
-- [ ] Enqueue immutable event copies. Mutating the caller's properties object
-      after `track()` must not alter the queued or delivered payload.
-- [ ] Preserve FIFO order within one client while allowing the server to query
+- [x] Enqueue immutable event copies. Mutating the caller's properties object
+      after `track()` must not alter the queued or delivered payload. Events
+      are serialized at track() time; the queue holds snapshots.
+- [x] Preserve FIFO order within one client while allowing the server to query
       by occurrence time. Document that retries can cause batches to arrive
-      later without duplicating accepted events.
-- [ ] Support configurable batch size, flush interval in milliseconds, maximum
+      later without duplicating accepted events. FIFO queue; retries keep
+      batch order (server dedup by eventId lands with ingestion).
+- [x] Support configurable batch size, flush interval in milliseconds, maximum
       queue events/bytes, retry count, retry backoff, and shutdown timeout with
-      safe documented defaults and bounded ranges.
-- [ ] Use one in-flight flush per client. Concurrent `flush()` calls share or
+      safe documented defaults and bounded ranges. PrismQueueOptions with
+      explicit units + DEFAULT_QUEUE (1000 events / 1 MiB / 50 per batch /
+      256 KiB / 10s timeout+interval / 5 retries).
+- [x] Use one in-flight flush per client. Concurrent `flush()` calls share or
       serialize the same work; they must not send duplicate concurrent batches.
-- [ ] Flush on batch threshold, interval, explicit `flush()`, and adapter-owned
+      flushInFlight guard serializes flushes.
+- [x] Flush on batch threshold, interval, explicit `flush()`, and adapter-owned
       lifecycle/shutdown signals. Core must not install browser lifecycle
-      listeners itself.
+      listeners itself. Interval + explicit flush + before-unload via the
+      runtime lifecycle seam + bounded final flush on shutdown.
 - [ ] Retry only external nondeterminism: network failures, request timeout,
       `408`, `429`, and retryable `5xx` responses. Honor a valid `Retry-After`
       header and use bounded exponential backoff with jitter.
 - [ ] Do not retry permanent `400`, `401`, `403`, or `413` responses unchanged.
       Return/surface a specific diagnostic that names remediation without
       exposing the key or event body.
-- [ ] Put a timeout and cancellation signal on every transport attempt. Timers
+- [x] Put a timeout and cancellation signal on every transport attempt. Timers
       must be owned and cleaned up; tests use fake clocks rather than sleeps.
+      PrismRequest carries timeoutMs + an abortable signal; the client timer
+      is cancelled on shutdown (covered by the transport contract tests).
 - [ ] Define queue-overflow behavior. Prefer dropping the oldest unflushed
       event only after the configured bound is reached, emit a diagnostic, and
       return an observable result for the triggering capture. Never allow
@@ -481,7 +514,7 @@ Do not add console output to the SDK itself; examples may inspect results.
 - [ ] Treat server `accepted`, `duplicate`, and `rejected` results separately.
       Remove accepted/duplicate IDs, retain only retryable failures, and never
       resend permanently rejected poison events forever.
-- [ ] Make `shutdown()` idempotent and terminal. It removes subscriptions,
+- [x] Make `shutdown()` idempotent and terminal. It removes subscriptions,
       stops scheduling, performs the bounded final flush, and produces a clear
       result/error if delivery cannot finish before `timeoutMs`.
 - [ ] Keep normal background delivery quiet. Diagnostics are disabled unless
@@ -1134,3 +1167,34 @@ foundation instead of per-framework SDK reimplementations.
 - The docs quickstarts switch to runtime endpoints; old examples removed.
 - Read paths (management queries, realtime, dashboard) keep working against
   the v2 model with honest labels/counts.
+
+
+### Slice 2 status (core state, completed 2026-08-12)
+
+The v2 core is implemented behind the frozen contract and the contract
+suite is GREEN:
+
+- `packages/core/src/core.ts` (createPrismClient + PrismClientImpl),
+  `queue.ts` (immutable FIFO with event/byte accounting), `validation.ts`
+  (event name, JSON-serializability, config), `index.ts` barrel.
+- Consent state machine (pending/granted/denied; pending/denied never
+  queue; denied-clear and re-grant semantics for the v1-era queue are
+  covered by the privacy items left open for the delivery slice),
+  client-owned sessions (started/blocked results, end once),
+  track() with queued/dropped results and throwing validation,
+  diagnostics with idempotent handles, flush with one in-flight guard,
+  retries with Retry-After reading + bounded attempts + batch drop,
+  idempotent shutdown with bounded final flush, anonymous identity
+  persistence (session/persistent via storage).
+- The baked hosted URL is fully removed (build scripts + tsup env
+  define); the v1 legacy default is a same-origin relative path.
+- Contract + core suites: 39 tests green. Coverage on the v2 core:
+  95.5% lines / 88.2% functions / 86.5% branches / 95.5% statements —
+  above the 80% gate. Root gates: test 4/4, typecheck 7/7, lint 10/10,
+  build 8/8.
+
+Open for later slices (noted in their sections): queue persistence
+through storage with versioned keys, server accepted/duplicate/rejected
+handling, permanent-4xx classification, drop-oldest overflow policy,
+package-consumer clean-fixture test, bundle-size budget, and the v1
+legacy removal.

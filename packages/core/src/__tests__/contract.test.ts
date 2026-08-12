@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
-import {
-  createPrismClient,
-  type PrismClient,
-  type PrismRuntimeAdapter,
-  type CaptureResult,
-  type PrismRequest,
-  type PrismResponse,
+// Runtime values come from the package root (the real factory); the frozen
+// type surface comes from the contract declarations.
+import { createPrismClient } from "../index";
+import type {
+  CaptureResult,
+  PrismClient,
+  PrismRequest,
+  PrismResponse,
+  PrismRuntimeAdapter,
 } from "../contract";
 
 /**
@@ -93,10 +95,12 @@ describe("createPrismClient contract", () => {
   });
 
   it("requires durable storage for persistent anonymous identity", async () => {
+    const runtime = fakeRuntime() as PrismRuntimeAdapter & { storage?: PrismRuntimeAdapter["storage"] };
+    delete runtime.storage;
     await expect(
       createPrismClient({
         ...baseOptions,
-        runtime: fakeRuntime(),
+        runtime,
         collection: { initialState: "granted", anonymousPersistence: "persistent" },
       }),
     ).rejects.toThrow(/storage/);
@@ -150,10 +154,10 @@ describe("track contract", () => {
       runtime: fakeRuntime(),
       collection: { initialState: "granted" },
     });
-    expect(() => prism.track("")).toThrow(/event name/);
-    expect(() => prism.track("with_circular", { circular: {} } as never)).toThrow(
-      /JSON/i,
-    );
+    expect(() => prism.track("")).toThrow(/event name/i);
+    const circular: { self?: unknown } = {};
+    circular.self = circular;
+    expect(() => prism.track("with_circular", circular as never)).toThrow(/JSON/i);
   });
 });
 
