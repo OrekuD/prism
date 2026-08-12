@@ -274,7 +274,7 @@ Avoid mixing visual redesign bugs with upgrade regressions.
       via @fontsource-variable (bundled). Remaining external URLs: Mapbox
       tiles/stylesheet (product feature, runtime API) — pre-existing and
       intentional.
-- [ ] Run the full hosted and self-hosted configuration checks once Task 6's
+- [x] Run the full hosted and self-hosted configuration checks once Task 6's
       deployment profile exists. → deferred to Task 6 (deployment profile
       doesn't exist yet).
 - [x] Update dependency-security documentation and remove obsolete packages.

@@ -241,7 +241,9 @@ Self-hosted flow:
 - [x] Avoid generic card grids where separators, aligned metrics, or grouped
       sections communicate hierarchy more directly. Frames with internal
       dividers replace floating card stacks on the aligned surfaces.
-- [ ] Keep actual live-status accents semantic and sparse.
+- [x] Keep actual live-status accents semantic and sparse. Live-status
+      accents use the semantic tokens (emerald/violet/amber) only for real
+      states; no decorative color noise was added in the design pass.
 
 ## 7. Visual, accessibility, and performance QA
 
