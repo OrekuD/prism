@@ -1,5 +1,6 @@
 /**
- * Frozen public contract for `@prism/core` (task-9 slice 1, ADR 0002).
+ * Frozen public contract for `@prism/core` (task-9 slice 1 + review
+ * corrections, ADR 0002).
  *
  * This file is the review surface for the v2 analytics SDK contract. It is
  * NOT yet exported from the package index: slice 2 replaces the internal
@@ -12,9 +13,11 @@
  * - Discriminated unions for event variants and state machines; `readonly`
  *   observed state; explicit commands only.
  * - No DOM/Node/React globals — the runtime adapter is injected and defines
- *   its own minimal transport/storage/ID/time seams.
- * - Invalid configuration throws during setup; background delivery failures
- *   surface through diagnostics and rejected flush/shutdown promises.
+ *   its own minimal transport/storage/ID/time/scheduler/lifecycle seams.
+ * - Invalid CALLER INPUT throws a specific validation error; consent,
+ *   shutdown, and queue-capacity conditions return `dropped` results.
+ * - Background delivery failures surface through diagnostics and rejected
+ *   flush/shutdown promises; successful empty flushes stay quiet.
  */
 
 /** JSON values accepted as event properties. */
@@ -29,44 +32,62 @@ export type CollectionState = "pending" | "granted" | "denied";
  * Where the anonymous identity may persist.
  * - `"session"`: kept for the lifetime of the runtime session (browser tab /
  *   app lifecycle), not across launches.
+ * - `"persistent"`: survives launches; REQUIRES durable storage — the
+ *   runtime adapter must provide `storage` or the factory rejects.
  * - `"none"`: no anonymous identity is stored anywhere.
  */
-export type AnonymousPersistence = "none" | "session";
+export type AnonymousPersistence = "none" | "session" | "persistent";
 
 /** Reasons an event can be dropped without being queued. */
 export type DropReason =
   | "consent-pending"
   | "consent-denied"
-  | "invalid"
   | "queue-full"
   | "shutdown";
 
 /**
  * Discriminated result of every `track()` call. Delivery is never part of
- * the interaction's call stack — `queued` means accepted locally.
+ * the interaction's call stack — `queued` means accepted locally. Invalid
+ * caller input (empty name, unserializable properties) THROWS instead of
+ * returning a result; background delivery failures surface through
+ * diagnostics and rejected flush/shutdown promises, not through track().
  */
 export type CaptureResult =
   | { readonly status: "queued"; readonly eventId: string }
-  | { readonly status: "dropped"; readonly reason: DropReason }
-  | {
-      readonly status: "failed";
-      readonly eventId: string;
-      readonly error: unknown;
-    };
+  | { readonly status: "dropped"; readonly reason: DropReason };
+
+/** Minimal abort signal — structurally compatible with `AbortSignal`. */
+export interface PrismSignal {
+  readonly aborted: boolean;
+  addEventListener(type: "abort", listener: () => void): void;
+  removeEventListener(type: "abort", listener: () => void): void;
+}
+
+/** A single transport request (batch body). */
+export interface PrismRequest {
+  /** JSON-encoded batch body. */
+  readonly body: string;
+  /** Timeout for the request in milliseconds (from the queue options). */
+  readonly timeoutMs: number;
+  /** Cancellation signal — the transport should abort when fired. */
+  readonly signal: PrismSignal;
+}
+
+/** A transport response. */
+export interface PrismResponse {
+  readonly status: number;
+  /** Response headers, keys lower-cased (e.g. `retry-after`). */
+  readonly headers: Readonly<Record<string, string>>;
+  text(): Promise<string>;
+}
 
 /** Minimal transport seam — no DOM types in the core contract. */
 export interface PrismTransport {
-  /**
-   * POST `body` (a JSON string) to `url`. Resolves with the response.
-   * Implementations decide timeouts/abort; network errors should reject.
-   */
-  post(url: string, body: string, headers: Record<string, string>): Promise<{
-    readonly status: number;
-    text(): Promise<string>;
-  }>;
+  /** POST the batch to `url`; resolve with the response or reject on network failure. */
+  post(url: string, request: PrismRequest): Promise<PrismResponse>;
 }
 
-/** Optional durable storage for queue persistence across reloads. */
+/** Optional durable storage for queue persistence and persistent identity. */
 export interface PrismStorage {
   /** Read a serialized value, or `null` when absent. */
   getItem(key: string): Promise<string | null>;
@@ -74,6 +95,29 @@ export interface PrismStorage {
   setItem(key: string, value: string): Promise<void>;
   /** Remove a serialized value. */
   removeItem(key: string): Promise<void>;
+}
+
+/** Normalized runtime context (ADR 0002 §10) — capability-based, no UA parsing. */
+export interface PrismRuntimeContext {
+  /** e.g. `"browser"`, `"node"`, `"react-native"`. */
+  readonly platform: string;
+  /** e.g. `"web"`, `"server"`, `"mobile"`. */
+  readonly kind: "web" | "server" | "mobile";
+  readonly screenSize?: { readonly width: number; readonly height: number };
+  readonly locale?: string;
+  readonly timezone?: string;
+  /** App version/build — required for mobile hosts later; optional in core. */
+  readonly app?: { readonly name?: string; readonly version?: string; readonly build?: string };
+  readonly device?: { readonly model?: string; readonly manufacturer?: string };
+}
+
+/** Lifecycle events a host can surface (browser fg/bg, before-unload, …). */
+export type PrismLifecycleEvent = "foreground" | "background" | "before-unload";
+
+/** Lifecycle subscription seam — the core never imports platform globals. */
+export interface PrismLifecycle {
+  /** Subscribe; returns an idempotent remove function. */
+  on(event: PrismLifecycleEvent, listener: () => void): () => void;
 }
 
 /**
@@ -89,18 +133,30 @@ export interface PrismRuntimeAdapter {
   createId(): string;
   /** Transport for batch delivery. */
   readonly transport: PrismTransport;
-  /** Optional durable queue storage. */
+  /** Optional durable queue/identity storage. */
   readonly storage?: PrismStorage;
+  /** Scheduler/timer seam — schedule a callback after delayMs; returns cancel. */
+  schedule(delayMs: number, callback: () => void): () => void;
+  /** Normalized runtime context. */
+  readonly context: PrismRuntimeContext;
+  /** Lifecycle subscriptions (foreground/background/before-unload). */
+  readonly lifecycle?: PrismLifecycle;
 }
 
-/** Queue/delivery tuning. All values are optional with documented defaults. */
+/** Queue/delivery tuning. All values optional with documented defaults. */
 export interface PrismQueueOptions {
-  /** Max events held before the queue drops new ones (`queue-full`). Default 1000. */
-  maxSize?: number;
+  /** Max queued events before new ones drop (`queue-full`). Default 1000. */
+  maxQueueEvents?: number;
+  /** Max total serialized queue bytes before new events drop. Default 1 MiB. */
+  maxQueueBytes?: number;
+  /** Max events per batch. Default 50. */
+  maxBatchEvents?: number;
+  /** Max serialized bytes per batch. Default 256 KiB. */
+  maxBatchBytes?: number;
+  /** Per-request timeout in ms. Default 10_000. */
+  requestTimeoutMs?: number;
   /** Interval between background batch flushes in ms. Default 10_000. */
   flushIntervalMs?: number;
-  /** Max events per batch. Default 50. */
-  maxBatchSize?: number;
   /** Max delivery attempts before a batch is abandoned (diagnostic only). Default 5. */
   maxRetries?: number;
 }
@@ -111,7 +167,7 @@ export interface PrismClientOptions {
   projectKey: string;
   /** Ingestion origin chosen at runtime (hosted or self-hosted). Never compiled in. */
   endpoint: string;
-  /** Host adapter: transport/storage/ID/time. */
+  /** Host adapter: transport/storage/ID/time/scheduler/lifecycle. */
   runtime: PrismRuntimeAdapter;
   /** Privacy/collection configuration (ADR 0002 §5). */
   collection: {
@@ -144,9 +200,25 @@ export interface PrismSessionHandle {
   readonly sessionId: string;
   /** Epoch milliseconds of `startSession`. */
   readonly startedAt: number;
-  /** End the session; emits the session-end event and returns its capture result. */
-  end(): CaptureResult;
+  /**
+   * End the session: emits the session-end event and returns its result.
+   * The second call on the same handle returns `{ status: "not-active" }`.
+   */
+  end(): SessionEndResult;
 }
+
+/** Discriminated result of `startSession()`. */
+export type SessionStartResult =
+  | { readonly status: "started"; readonly session: PrismSessionHandle }
+  | {
+      readonly status: "blocked";
+      readonly reason: "consent-pending" | "consent-denied" | "shutdown" | "already-active";
+    };
+
+/** Discriminated result of `PrismSessionHandle.end()`. */
+export type SessionEndResult =
+  | { readonly status: "ended"; readonly eventId: string }
+  | { readonly status: "not-active" };
 
 /**
  * The ready analytics client. All observed state is readonly; changes are
@@ -171,20 +243,25 @@ export interface PrismClient {
 
   /**
    * Validate, sanitize, assign a client-generated event ID, and enqueue.
-   * Synchronous; returns a discriminated result. Delivery belongs to
-   * batching/flush, never to this call.
+   * Synchronous. Invalid caller input (empty/non-string name, properties
+   * that are not JSON-serializable) THROWS a specific validation error;
+   * consent/shutdown/queue-capacity conditions return a `dropped` result.
+   * Delivery belongs to batching/flush, never to this call.
    */
   track(name: string, properties?: JsonObject): CaptureResult;
 
   /**
-   * Start a client-owned session and return its handle. Sessionless callers
-   * (servers) may skip this entirely.
+   * Start a client-owned session and return its handle (or a blocked
+   * result when consent is not granted, the client is shut down, or a
+   * session is already active). Sessionless callers (servers) may skip
+   * this entirely.
    */
-  startSession(options?: { properties?: JsonObject }): PrismSessionHandle;
+  startSession(options?: { properties?: JsonObject }): SessionStartResult;
 
   /**
    * Flush the queue: attempt delivery of all queued batches. Rejects when
-   * the caller explicitly waits for delivery and it fails.
+   * the caller explicitly waits for delivery and it fails. A successful
+   * flush of an empty queue is quiet — no diagnostics are emitted.
    */
   flush(): Promise<void>;
 
@@ -200,9 +277,10 @@ export interface PrismClient {
 }
 
 /**
- * Async factory: validates options, applies the initial collection state,
- * and resolves to a READY client. Rejects with a specific `Error` for a
- * missing project key, a malformed endpoint, or a missing runtime adapter.
+ * Async factory: validates options (project key, endpoint, runtime adapter,
+ * and — for `anonymousPersistence: "persistent"` — durable storage), applies
+ * the initial collection state, and resolves to a READY client. Rejects with
+ * a specific `Error` for invalid configuration.
  *
  * Declared ambient on purpose during slice 1: the implementation replaces
  * the v1 internals in slice 2, and the contract tests fail until then.

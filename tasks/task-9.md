@@ -862,8 +862,15 @@ Do not begin a follow-up by bypassing or duplicating the Task 9 core contract.
   snippets; the docs home quickstart frame too.
 - `apps/analytics-api/src/routers/AnalyticsRouter.ts` — the v1 ingestion
   route handler (server side of the same contract).
+- `README.md` — workspace table (`packages/core` = Browser analytics SDK)
+  and a v1 quickstart snippet (PrismClient + startSession + logEvent).
+- `packages/prism-react/src/{prism-context.ts, prism-provider.tsx,
+  use-prism.tsx}` — the React wrapper binds the v1 PrismClient
+  (logEvent/logCustomEvent) and constructs it with a key.
 - Tests: `apps/analytics-api/src/__tests__/IpEnrichment.test.ts` (session
-  creation via the v1 contract).
+  creation via the v1 contract — the other analytics suites
+  AnalyticsController.test.ts, Boundary.test.ts, WebSocketManager.test.ts
+  exercise the same ingestion path through the router).
 
 ### Analytics write/read path inventory
 
@@ -888,11 +895,11 @@ Do not begin a follow-up by bypassing or duplicating the Task 9 core contract.
   `/events`) are removed in the ingestion slice; every caller + example above
   migrates in the same release (no v1/v2 mixture).
 
-### ADR location note
+### ADR 0002 (tracked record)
 
-`engineering/` is excluded from git (local-only). The authoritative tracked
-record of these decisions is this task file; the full ADR text lives at
-`engineering/adr/0002-analytics-sdk-ingestion-v2.md`.
+The complete decision record follows; `engineering/adr/0002-analytics-sdk-
+ingestion-v2.md` is a local mirror of this text (engineering/ is excluded
+from git).
 
 
 ### Call-site examples (contract review surface, slice 1)
@@ -965,3 +972,165 @@ record of these decisions is this task file; the full ADR text lives at
   against the current v1 implementation by design; 1 type-level test passes.
   They become the green suite when slice 2 implements the factory.
 - Core package gained a `test` script (vitest).
+
+### Review corrections (contract, applied 2026-08-12)
+
+1. **Transport**: PrismRequest { body, timeoutMs, signal } + PrismResponse
+   { status, headers (lower-cased — Retry-After readable), text() }.
+   Cancellation + per-request timeouts are first-class.
+2. **Runtime seams**: PrismRuntimeAdapter now requires schedule() (scheduler/
+   timer with cancel), context (normalized PrismRuntimeContext — platform,
+   kind, screen/locale/timezone/app/device), and optional lifecycle
+   (foreground/background/before-unload subscriptions).
+3. **Session privacy**: startSession() returns SessionStartResult —
+   started{ session } | blocked{ reason: consent-pending | consent-denied |
+   shutdown | already-active }; handle.end() returns SessionEndResult —
+   ended{ eventId } | not-active (second end).
+4. **Invalid input throws**: track() THROWS specific validation errors for
+   empty/non-string names and non-JSON-serializable properties. CaptureResult
+   is queued | dropped only (reasons: consent-pending, consent-denied,
+   queue-full, shutdown). The `failed` and `invalid` variants were removed —
+   delivery failures surface via diagnostics + rejected flush/shutdown.
+5. **Persistent identity**: AnonymousPersistence = none | session |
+   persistent; `persistent` requires runtime.storage or the factory rejects.
+6. **Queue units**: maxQueueEvents, maxQueueBytes, maxBatchEvents,
+   maxBatchBytes, requestTimeoutMs (plus flushIntervalMs, maxRetries).
+7. **Diagnostics**: successful empty flushes are quiet; delivery failure
+   emits a `delivery_failed` diagnostic and rejects the awaited flush.
+8. **Inventory additions**: root README.md (SDK example + workspace table),
+   packages/prism-react (PrismProvider/prism-context/use-prism bind the v1
+   client), and the analytics test suites (IpEnrichment.test.ts drives
+   AnalyticsController.startSession directly) — all added to the caller
+   inventory below.
+9. **ADR tracked**: the complete ADR 0002 text is embedded in this task
+   file (tracked); engineering/adr/0002-*.md is a local mirror only.
+# ADR 0002: Analytics SDK & ingestion v2 architecture
+
+Status: accepted (task-9 slice 1)
+
+Date: 2026-08-12
+
+## Context
+
+The current SDK (`@prism/core`) is browser-coupled, best-effort, and bakes a
+hosted ingestion URL into the build (`API_URL` env in the package build
+script). Sessions are server-owned, events carry no client-generated ID, and
+there is no consent/collection state, queue, batching, or deterministic
+shutdown. The analytics schema (sessions/events in Turso/libSQL) stores raw IPs
+and is applied by an idempotent setup script rather than owned by migrations.
+
+Prism's product roadmap (analytics → web analytics → observability) and future
+runtimes (React Native, Node/Hono, Vue, Svelte) require one runtime-neutral
+foundation instead of per-framework SDK reimplementations.
+
+## Decisions
+
+### 1. Core/runtime boundary
+
+- `@prism/core` is the runtime-neutral engine. It must import and run without
+  DOM, React, React Native, Node-specific, Cloudflare-specific, or
+  provider-specific globals, and have zero import-time side effects.
+- Runtime capabilities (transport, storage, time, ID generation, lifecycle
+  hooks) arrive through an injected **runtime adapter**. No framework package
+  owns queueing, identity generation, consent, sanitization, session
+  semantics, retries, or wire-format construction.
+- Adapters: `@prism/browser` (thin), `@prism/react` (thin provider/hook),
+  future `@prism/react-native`, `@prism/node` — all over the same core.
+
+### 2. Versioning strategy
+
+- Package versions follow semver. The wire protocol is versioned separately:
+  the v2 endpoint is `POST /api/v2/ingest` (batch). The old single-event v1
+  endpoints are removed rather than maintained — there are no production
+  users, and the repository must not mix v1 and v2 SDK calls or examples.
+- One envelope version per endpoint major; the SDK sends exactly the envelope
+  its major supports.
+
+### 3. Event ID and session ownership
+
+- **Event IDs are client-generated** at `track()` time, before enqueueing, via
+  the runtime's ID seam (crypto-random UUID where available; injectable
+  otherwise). The server never assigns event IDs.
+- **Sessions are client-owned lifecycle objects**: explicit
+  start/transition/end commands on the client, with locally generated session
+  IDs. The server stores session_id + occurrence timestamps and derives
+  aggregates; v2 ingestion does not mutate a server-side "current session".
+  The shape supports browsers, app foreground/background transitions, and
+  sessionless server events without nullable-field clusters.
+
+### 4. Queue, batching, and delivery lifecycle
+
+- Accepted events enter an immutable FIFO queue immediately. Events generated
+  before any network handshake are queued, never discarded.
+- Delivery: batching (size + time windows), safe retries with bounded backoff,
+  explicit `flush()` and `shutdown({ timeoutMs })` (idempotent; stops timers/
+  listeners; bounded final flush; post-shutdown capture is explicit).
+- Background delivery failures never crash the host; they surface through the
+  diagnostics subscription and through rejected flush/shutdown promises.
+
+### 5. Privacy and collection state
+
+- Collection is an explicit state machine: `pending` → `granted` | `denied`.
+  In `pending`/`denied`, `track()` returns a `dropped` result with a reason —
+  no hidden pre-consent behavioral queue is built.
+- Anonymous identity persistence policy is explicit (`session` | `none`).
+- **Raw IP addresses are never persisted** in the analytics database. Geo
+  enrichment may derive country-level data server-side from the connection IP
+  without storing the raw value.
+- No console output from the SDK itself; capture results are the inspection
+  surface.
+
+### 6. Self-hosted endpoint behavior
+
+- `endpoint` is a required runtime option for every adapter. The SDK build
+  never bakes a hosted URL (the `API_URL` build-time variable is removed).
+  Hosted quickstarts pass the hosted endpoint; self-hosted installs pass their
+  own origin.
+
+### 7. Public contract and types ownership
+
+- Public analytics TypeScript types are exported by `@prism/core`; consumers
+  never need `@prism/types`.
+- `@prism/types` stays private and internal (shared wire schemas between
+  services). Internal packages (`brand`, `config-typescript`,
+  `email-templates`, `jest-presets`, `types`) are `private: true` — already
+  the case; verified in slice 1.
+- The public root stays small: client/factory, narrowly useful contracts, JSON
+  value types, capture results, diagnostics, adapter interfaces. No queue
+  nodes, database fields, retry timers, or HTTP internals.
+- Event variants and state machines are discriminated unions with `readonly`
+  observed state; state changes are explicit commands. Invalid events,
+  missing required adapters, or malformed endpoints throw specific errors
+  during local validation — never silent no-ops.
+
+### 8. Package names and npm scope
+
+- Keep `@prism/core`, `@prism/browser`, `@prism/react` names in the source
+  tree until npm scope recovery is resolved. No publish, placeholder
+  reservation, or rename during this task. The scope decision lives in one
+  documented release checklist.
+
+### 9. Database migration approach
+
+- The analytics store becomes migration-owned: forward-only migrations in the
+  analytics workspace replace the bare setup-script schema. The v2 model has
+  no raw IP field/data; retention (ANALYTICS_RETENTION_DAYS) applies to the v2
+  model.
+- A destructive analytics reset is permitted only after the execution agent
+  resolves and verifies the exact development/test database target — never an
+  unresolved URL, a production-looking target, or a broad deletion command.
+  Product/authentication data in PostgreSQL is outside the reset.
+
+### 10. Runtime matrix
+
+- Capability-based, not user-agent guessing: standards-based JS core (plain
+  Node), modern browser adapter, and fake adapters representing Node and
+  native/mobile hosts.
+
+## Consequences
+
+- Breaking SDK contract change, coordinated with the ingestion rewrite; all
+  callers from the slice-1 inventory are migrated in the same release.
+- The docs quickstarts switch to runtime endpoints; old examples removed.
+- Read paths (management queries, realtime, dashboard) keep working against
+  the v2 model with honest labels/counts.

@@ -4,14 +4,17 @@ import {
   type PrismClient,
   type PrismRuntimeAdapter,
   type CaptureResult,
+  type PrismRequest,
+  type PrismResponse,
 } from "../contract";
 
 /**
- * Contract tests (task-9 slice 1) — the frozen public API surface of
- * `@prism/core` v2 (ADR 0002). These tests currently FAIL on purpose: the
- * declarations in src/contract.ts are the review surface and the runtime
- * implementation lands in slice 2. Do not delete or weaken them; they
- * become the passing contract suite once `createPrismClient` exists.
+ * Contract tests (task-9 slice 1 + review corrections) — the frozen public
+ * API surface of `@prism/core` v2 (ADR 0002). These tests currently FAIL on
+ * purpose: the declarations in src/contract.ts are the review surface and
+ * the runtime implementation lands in slice 2. Do not delete or weaken
+ * them; they become the passing contract suite once `createPrismClient`
+ * exists.
  */
 
 function fakeRuntime(name = "node-fake"): PrismRuntimeAdapter {
@@ -21,17 +24,22 @@ function fakeRuntime(name = "node-fake"): PrismRuntimeAdapter {
     now: () => 1_700_000_000_000,
     createId: () => `fake-id-${(id += 1)}`,
     transport: {
-      post: async (url, body) => {
-        void url;
-        void body;
-        return { status: 200, text: async () => "" };
-      },
+      post: async (_url: string, _request: PrismRequest): Promise<PrismResponse> => ({
+        status: 200,
+        headers: { "content-type": "application/json" },
+        text: async () => "",
+      }),
     },
     storage: {
       getItem: async () => null,
       setItem: async () => undefined,
       removeItem: async () => undefined,
     },
+    schedule: (_delayMs: number, callback: () => void) => {
+      const handle = setTimeout(callback, 0);
+      return () => clearTimeout(handle);
+    },
+    context: { platform: "node", kind: "server" },
   };
 }
 
@@ -83,6 +91,16 @@ describe("createPrismClient contract", () => {
       }),
     ).rejects.toThrow(/project/);
   });
+
+  it("requires durable storage for persistent anonymous identity", async () => {
+    await expect(
+      createPrismClient({
+        ...baseOptions,
+        runtime: fakeRuntime(),
+        collection: { initialState: "granted", anonymousPersistence: "persistent" },
+      }),
+    ).rejects.toThrow(/storage/);
+  });
 });
 
 describe("track contract", () => {
@@ -126,54 +144,140 @@ describe("track contract", () => {
     }
   });
 
-  it("drops invalid events with the invalid reason", async () => {
+  it("throws a specific validation error for invalid caller input", async () => {
     const prism: PrismClient = await createPrismClient({
       ...baseOptions,
       runtime: fakeRuntime(),
       collection: { initialState: "granted" },
     });
-    const result = prism.track("");
-    expect(result.status).toBe("dropped");
-    if (result.status === "dropped") {
-      expect(result.reason).toBe("invalid");
-    }
+    expect(() => prism.track("")).toThrow(/event name/);
+    expect(() => prism.track("with_circular", { circular: {} } as never)).toThrow(
+      /JSON/i,
+    );
   });
 });
 
 describe("session contract", () => {
-  it("starts a client-owned session handle and ends it", async () => {
+  it("starts a client-owned session handle and ends it once", async () => {
     const prism: PrismClient = await createPrismClient({
       ...baseOptions,
       runtime: fakeRuntime(),
       collection: { initialState: "granted" },
     });
-    const handle = prism.startSession();
-    expect(handle.sessionId).toMatch(/^fake-id-/);
-    expect(prism.session).toBe(handle);
-    const ended = handle.end();
-    expect(ended.status).toBe("queued");
-    expect(prism.session).toBeNull();
+    const started = prism.startSession();
+    expect(started.status).toBe("started");
+    if (started.status === "started") {
+      expect(started.session.sessionId).toMatch(/^fake-id-/);
+      expect(prism.session).toBe(started.session);
+      const ended = started.session.end();
+      expect(ended.status).toBe("ended");
+      expect(prism.session).toBeNull();
+    }
+  });
+
+  it("blocks starting twice and reports a second end as not-active", async () => {
+    const prism: PrismClient = await createPrismClient({
+      ...baseOptions,
+      runtime: fakeRuntime(),
+      collection: { initialState: "granted" },
+    });
+    const first = prism.startSession();
+    expect(first.status).toBe("started");
+    const second = prism.startSession();
+    expect(second.status).toBe("blocked");
+    if (second.status === "blocked") {
+      expect(second.reason).toBe("already-active");
+    }
+    if (first.status === "started") {
+      const firstEnd = first.session.end();
+      expect(firstEnd.status).toBe("ended");
+      const secondEnd = first.session.end();
+      expect(secondEnd.status).toBe("not-active");
+    }
+  });
+
+  it("blocks starting a session while consent is pending or denied", async () => {
+    const pending: PrismClient = await createPrismClient({
+      ...baseOptions,
+      runtime: fakeRuntime(),
+      collection: { initialState: "pending" },
+    });
+    const blocked = pending.startSession();
+    expect(blocked.status).toBe("blocked");
+    if (blocked.status === "blocked") {
+      expect(blocked.reason).toBe("consent-pending");
+    }
+    await pending.setCollectionState("denied");
+    expect(pending.startSession().status).toBe("blocked");
+  });
+});
+
+describe("transport contract", () => {
+  it("passes a request object with timeout and cancellation signal", async () => {
+    const captured: PrismRequest[] = [];
+    const runtime = fakeRuntime();
+    runtime.transport.post = async (_url, request) => {
+      captured.push(request);
+      return { status: 200, headers: { "retry-after": "30" }, text: async () => "" };
+    };
+    const prism: PrismClient = await createPrismClient({
+      ...baseOptions,
+      runtime,
+      collection: { initialState: "granted" },
+      queue: { requestTimeoutMs: 500 },
+    });
+    prism.track("with_timeout");
+    await prism.flush();
+    expect(captured.length).toBe(1);
+    expect(captured[0]?.timeoutMs).toBe(500);
+    expect(typeof captured[0]?.signal?.addEventListener).toBe("function");
+  });
+
+  it("exposes response headers (Retry-After) to the delivery logic", async () => {
+    const runtime = fakeRuntime();
+    runtime.transport.post = async () => ({
+      status: 429,
+      headers: { "retry-after": "60" },
+      text: async () => "",
+    });
+    const prism: PrismClient = await createPrismClient({
+      ...baseOptions,
+      runtime,
+      collection: { initialState: "granted" },
+    });
+    prism.track("rate_limited");
+    await expect(prism.flush()).rejects.toThrow(); // 429 after retries -> flush rejects
   });
 });
 
 describe("diagnostics + lifecycle contract", () => {
-  it("supports multiple idempotent diagnostic subscriptions", async () => {
+  it("stays quiet on successful empty flushes but emits on delivery failure", async () => {
     const prism: PrismClient = await createPrismClient({
       ...baseOptions,
       runtime: fakeRuntime(),
       collection: { initialState: "granted" },
     });
     const seen: string[] = [];
-    const a = prism.onDiagnostic((d) => seen.push(d.code));
-    const b = prism.onDiagnostic((d) => seen.push(d.code));
-    await prism.flush();
-    expect(seen.length).toBeGreaterThan(0);
-    a.remove();
-    a.remove(); // idempotent
-    const before = seen.length;
-    await prism.flush();
-    expect(seen.length).toBeGreaterThan(before); // b still receives
-    void b;
+    const handle = prism.onDiagnostic((d) => seen.push(d.code));
+    await prism.flush(); // empty queue — quiet
+    expect(seen).toEqual([]);
+
+    const failing = fakeRuntime();
+    failing.transport.post = async () => {
+      throw new Error("network down");
+    };
+    const prism2: PrismClient = await createPrismClient({
+      ...baseOptions,
+      runtime: failing,
+      collection: { initialState: "granted" },
+    });
+    const seen2: string[] = [];
+    prism2.onDiagnostic((d) => seen2.push(d.code));
+    prism2.track("will_fail");
+    await expect(prism2.flush()).rejects.toThrow(/network down/);
+    expect(seen2).toContain("delivery_failed");
+    handle.remove();
+    handle.remove(); // idempotent
   });
 
   it("flush is async and rejects on delivery failure when awaited", async () => {
