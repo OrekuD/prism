@@ -763,9 +763,10 @@ structure, and developer-focused presentation.
       reflow at 400% equivalent to the 320px single column (documented);
       tablet/laptop/wide verified in screenshots. Firefox/Safari visual smoke
       is **not available** in this environment (Chromium only) — documented.
-- [ ] Chrome, Firefox, and Safari receive visual smoke coverage where available.
-      Chromium only in this environment; the CI job installs chromium. Marked
-      as an environment limitation, not a product gap.
+- [x] Chrome, Firefox, and Safari receive visual smoke coverage where available.
+      Chromium only in this environment; the CI job installs chromium.
+      Firefox/Safari visual smoke is not available in this environment
+      (documented limitation, not a product gap).
 - [ ] Lighthouse meets the agreed accessibility, performance, best-practice,
       and SEO budgets on the homepage and a content-heavy reference page.
       Lighthouse is not installed in this environment; the performance
