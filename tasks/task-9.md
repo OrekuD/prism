@@ -1053,6 +1053,94 @@ Status: accepted (task-9 slice 1)
 
 Date: 2026-08-12
 
+### Slice 3 + 4 — review correction round (2026-08-12, committed as
+### 16e14e0 / 3bec92f / d620d1a / c73ee04 / 5f22a3d)
+
+Review findings (tasks/task-9-slice-4-review.md) — all 14 closed + the
+mandatory end-to-end certification:
+
+1. **Transport authentication (F1)**: `PrismRequest` carries `headers`;
+   the core supplies `authorization: Bearer <projectKey>` +
+   `content-type: application/json`; adapters forward unchanged and never
+   log them; the key never appears in diagnostics/errors; the Node
+   example forwards `request.headers` to fetch. 401 tests for
+   missing/malformed/wrong keys through the real route.
+2. **Persistent identity (F2)**: scope-neutral `anonymousId`; stored ID
+   validated (shape/size) and reused; fresh ID persisted on miss; storage
+   failure keeps ONE stable in-memory ID with a coarse diagnostic;
+   withdrawal clears stored + in-memory; re-grant creates a fresh ID
+   (never restores the pre-withdrawal identity).
+3. **Wire ceilings (F3)**: `INGEST_LIMITS` are hard protocol ceilings —
+   the factory rejects `maxBatchEvents`/`maxBatchBytes`/`maxEventBytes`
+   above them; shared `isValidEventName` (control chars) and an
+   ITERATIVE strict-JSON validator (non-finite numbers, dates, class
+   instances, accessors, cycles, dangerous keys, depth/string/key/
+   element ceilings) are used by BOTH core and server; shared
+   table-driven corpus + parity suite: every core-accepted event is
+   server-accepted.
+4. **Context policy (F4)**: typed `WireContext`; context gets the same
+   strict JSON, dangerous-key, ceiling, and credential-redaction rules as
+   properties; 12 000-deep context yields a controlled rejection, never a
+   RangeError.
+5. **Bounded body reads (F5)**: byte-counted streaming reader cancels at
+   the ceiling (Node + Worker-compatible); the Content-Length precheck is
+   a cheap early rejection, never the enforcement; falsely small lengths
+   cannot bypass; multibyte counted in bytes.
+6. **Atomic persistence (F6)**: `IngestRepository` persists all validated
+   events in ONE Turso write batch — all commit or none; DB failure → 503
+   with no SQL/URLs/content; results stay in submitted order; validation
+   rejects never enter the transaction.
+7. **Self-hosted routing (F7)**: exact `location = /api/v2/ingest` in the
+   bundled nginx BEFORE the general `/api/` rule; the public origin is
+   the single SDK endpoint; certified end-to-end through Compose.
+8. **Threshold flushing (F8)**: enqueue reaching `maxBatchEvents`/
+   `maxBatchBytes` requests a flush, coalesced through the single
+   in-flight promise; never while pending/denied or after shutdown;
+   persistence ordering stays deterministic via the write chain.
+9. **Retry-After minimum (F9)**: a valid server delay is honored verbatim
+   (delta-seconds AND HTTP-date), never capped or jittered below;
+   client-computed backoff keeps its deterministic jitter; delays beyond
+   the timer maximum reschedule in chunks; invalid/past headers fall back
+   to exponential backoff with a coarse diagnostic.
+10. **Persisted-queue validation (F10)**: exact v2 snapshot schema
+    (`{ v: 2, events: [{ eventId, name, occurredAt, serialized }] }`);
+    every entry validated with the shared v2 rules + field agreement;
+    any doubt quarantines the ENTIRE snapshot; the v1/pre-envelope
+    fallback is removed (no production users).
+11. **Weighted quota (F11)**: weights validated as positive integers;
+    a first overweight request is rejected; rejected hits consume no
+    quota; entries are replaced immutably.
+12. **Trusted proxy identity (F12)**: forwarding headers trusted only with
+    `ANALYTICS_TRUSTED_PROXY=1`; the bundled nginx OVERWRITES
+    X-Forwarded-For with the real peer address; direct Node deployments
+    use the socket peer; forged headers cannot rotate the per-IP key; IPs
+    never appear in stored rows or logs.
+13. **Batch-level SDK identity (F13)**: `context.library` removed; SDK
+    identity lives ONLY in the batch envelope; the server derives the
+    stored SDK metadata from the authoritative batch `sdk` — user context
+    cannot override it.
+14. **Hermetic consumer test (F14)**: the clean-install test owns a
+    temporary npm cache passed to every spawned npm command; no dependence
+    on the global npm state.
+15. **Mandatory e2e certification** (`scripts/certify-v2-ingest.mjs`,
+    21/21 PASS): disposable Compose stack (product API + analytics API +
+    sqld + nginx), safety guards (disposable project/volumes, loopback
+    ports, refusal on hosted Neon/Turso envs); a REAL @prism/core client
+    posts through the public nginx origin; routing verified (v2 ingest
+    reaches analytics, never the product API); bearer key derives the
+    project server-side; the event is stored once with event ID,
+    occurredAt, anonymous ID, sanitized properties/context, and
+    batch-derived SDK metadata; replay → `duplicate` with no second row;
+    consent withdrawal blocks delivery; an oversized streamed request
+    returns 413 at the ceiling; invalid keys get the analytics 401
+    through nginx.
+
+Suite state: core 105 tests green (coverage 94.4% lines / 88.7% functions
+/ 98.5% branches); analytics 80 passed + 3 opt-in integration (coverage
+76.9% lines / 81.1% branches / 82.1% functions). Root gates: test 4/4,
+typecheck 7/7, lint 10/10, build 8/8. The mandatory public-origin
+certification passes 21/21 (docker-based, CI-run).
+
 ## Context
 
 The current SDK (`@prism/core`) is browser-coupled, best-effort, and bakes a

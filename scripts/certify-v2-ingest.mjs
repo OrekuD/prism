@@ -136,8 +136,12 @@ const inAnalytics = (script, env = {}) => {
 const waitForReady = async (timeoutMs = 240_000) => {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
+    // /health/ready alone is NOT sufficient — the SPA fallback answers 200
+    // before the API is up. The /api/v1/config check proves the product
+    // API (through nginx) is truly serving.
     const res = request("/health/ready");
-    if (res.status === 200) return true;
+    const config = request("/api/v1/config");
+    if (res.status === 200 && config.status === 200) return true;
     await new Promise((r) => setTimeout(r, 3000));
   }
   return false;
@@ -250,7 +254,8 @@ const event = envelope.events?.[0] ?? {};
 console.log("CERT_EVENT_ID=" + eventId);
 console.log("CERT_ANON_ID=" + String(event.anonymousId ?? ""));
 console.log("CERT_OCURRED_AT=" + String(event.occurredAt ?? ""));
-console.log("CERT_BODY=" + JSON.stringify(bodies[0] ?? ""));
+// raw body (JSON has no newlines) so the replay step can resend it verbatim
+console.log("CERT_BODY=" + (bodies[0] ?? ""));
 `;
 
 const CONSENT_SCRIPT = `
@@ -298,15 +303,21 @@ const stream = new ReadableStream({
     controller.close();
   },
 });
-const response = await fetch(url, {
-  method: "POST",
-  headers: {
-    authorization: "Bearer " + process.env.PRISM_KEY,
-    "content-type": "application/json",
-  },
-  body: stream,
-});
-console.log("CERT_OVERSIZED_STATUS=" + String(response.status));
+try {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      authorization: "Bearer " + process.env.PRISM_KEY,
+      "content-type": "application/json",
+    },
+    body: stream,
+    // undici requires duplex for stream bodies (no content-length → chunked)
+    duplex: "half",
+  });
+  console.log("CERT_OVERSIZED_STATUS=" + String(response.status));
+} catch (error) {
+  console.log("CERT_OVERSIZED_ERROR=" + String(error));
+}
 `;
 
 async function main() {

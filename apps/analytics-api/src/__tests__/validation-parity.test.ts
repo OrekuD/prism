@@ -1,7 +1,7 @@
 import "./testEnv.js";
 import { describe, expect, it } from "vitest";
 import { isValidEventName, validateJsonValue } from "@prism/core";
-import { NAME_CORPUS, PROPERTY_CORPUS, depthCase } from "../../../../packages/core/src/__tests__/validation-corpus.js";
+import { NAME_CORPUS, PROPERTY_CORPUS, depthCase } from "./validation-corpus.js";
 import { validateEvent } from "../utils/ingestValidation.js";
 
 /**
