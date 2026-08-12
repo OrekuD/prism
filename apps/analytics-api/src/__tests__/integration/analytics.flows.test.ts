@@ -152,7 +152,7 @@ run("analytics database integration", () => {
 
     const cleanup = async () => {
       await client.execute({
-        sql: "DELETE FROM events_v2 WHERE project_id = ?",
+        sql: "DELETE FROM events WHERE project_id = ?",
         args: [PROJECT_ID],
       });
       client.close();
@@ -160,7 +160,7 @@ run("analytics database integration", () => {
 
     try {
       await client.execute(`
-        CREATE TABLE IF NOT EXISTS events_v2 (
+        CREATE TABLE IF NOT EXISTS events (
           id TEXT NOT NULL,
           project_id TEXT NOT NULL,
           type TEXT NOT NULL,
@@ -172,6 +172,8 @@ run("analytics database integration", () => {
           anonymous_id TEXT,
           properties TEXT,
           context TEXT,
+          sdk_name TEXT,
+          sdk_version TEXT,
           PRIMARY KEY (project_id, id)
         )`);
 
@@ -179,6 +181,7 @@ run("analytics database integration", () => {
       const body = JSON.stringify({
         schemaVersion: 2,
         sentAt: Date.now(),
+        sdk: { name: "@prism/core", version: "0.0.1" },
         events: [
           {
             schemaVersion: 2,
@@ -190,7 +193,9 @@ run("analytics database integration", () => {
           },
         ],
       });
-      const ctx = {
+      // factory: each ingest consumes the request stream — the replay
+      // must get a FRESH ctx with a fresh body stream
+      const makeCtx = (projectId: string) => ({
         req: {
           header: (name: string) =>
             name.toLowerCase() === "content-type"
@@ -207,8 +212,10 @@ run("analytics database integration", () => {
         },
         header: () => undefined,
         json: (value: unknown, status?: number) => ({ __json: value, status }),
-        get: () => PROJECT_ID,
-      } as never;
+        get: () => projectId,
+      }) as never;
+
+      const ctx = makeCtx(PROJECT_ID);
 
       const first = (await IngestController.ingest(ctx)) as unknown as {
         __json: { results: Array<{ status: string }> };
@@ -218,7 +225,7 @@ run("analytics database integration", () => {
       ]);
 
       // replayed transport retry → duplicate, not a second row
-      const second = (await IngestController.ingest(ctx)) as unknown as {
+      const second = (await IngestController.ingest(makeCtx(PROJECT_ID))) as unknown as {
         __json: { results: Array<{ status: string }> };
       };
       expect(second.__json.results).toEqual([
@@ -226,7 +233,7 @@ run("analytics database integration", () => {
       ]);
 
       const rows = await client.execute({
-        sql: "SELECT id, name, properties, schema_version FROM events_v2 WHERE project_id = ? AND id = ?",
+        sql: "SELECT id, name, properties, schema_version, sdk_name, sdk_version FROM events WHERE project_id = ? AND id = ?",
         args: [PROJECT_ID, eventId],
       });
       expect(rows.rows.length).toBe(1);
@@ -234,9 +241,14 @@ run("analytics database integration", () => {
         name: string;
         properties: string;
         schema_version: number;
+        sdk_name: string | null;
+        sdk_version: string | null;
       };
       expect(row.name).toBe("integration_flow");
       expect(row.schema_version).toBe(2);
+      // SDK identity derived from the batch envelope → explicit columns
+      expect(row.sdk_name).toBe("@prism/core");
+      expect(row.sdk_version).toBe("0.0.1");
       // server-side sanitization applies to direct HTTP clients too
       const stored = JSON.parse(row.properties) as { source: string; password: string };
       expect(stored.source).toBe("itest");
@@ -244,26 +256,7 @@ run("analytics database integration", () => {
 
       // a different project's key cannot see or duplicate this event
       const OTHER = "itest-other-00000000-0000-0000-0000-000000000001";
-      const otherCtx = {
-        req: {
-          header: (name: string) =>
-            name.toLowerCase() === "content-type"
-              ? "application/json"
-              : String(body.length),
-          raw: {
-            body: new ReadableStream({
-              start(controller) {
-                controller.enqueue(new TextEncoder().encode(body));
-                controller.close();
-              },
-            }),
-          },
-        },
-        header: () => undefined,
-        json: (value: unknown, status?: number) => ({ __json: value, status }),
-        get: () => OTHER,
-      } as never;
-      const third = (await IngestController.ingest(otherCtx)) as unknown as {
+      const third = (await IngestController.ingest(makeCtx(OTHER))) as unknown as {
         __json: { results: Array<{ status: string }> };
       };
       // same event ID under another project is NOT a duplicate — scoping holds
@@ -272,7 +265,7 @@ run("analytics database integration", () => {
       ]);
 
       await client.execute({
-        sql: "DELETE FROM events_v2 WHERE project_id = ?",
+        sql: "DELETE FROM events WHERE project_id = ?",
         args: [OTHER],
       });
     } finally {

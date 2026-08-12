@@ -9,7 +9,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "biome lint ./src",
-    "db:setup": "tsx src/database/setup.ts",
+    "db:migrate": "tsx src/database/migrate.ts",
+    "db:reset": "tsx src/database/reset.ts",
     "test:coverage": "vitest run --coverage",
     "retention": "tsx src/retention.ts"
   },

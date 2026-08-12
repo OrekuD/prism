@@ -169,7 +169,7 @@ describe("IngestController.ingest (v2 batch ingestion)", () => {
     expect(dbBatch).toHaveBeenCalledTimes(1);
     const [statements] = dbBatch.mock.calls[0];
     const { sql, args } = statements[0];
-    expect(String(sql)).toContain("INSERT INTO events_v2");
+    expect(String(sql)).toContain("INSERT INTO events");
     expect(String(sql)).toContain("ON CONFLICT (project_id, id) DO NOTHING");
     expect(args).toEqual([
       "evt-0001",
@@ -182,7 +182,9 @@ describe("IngestController.ingest (v2 batch ingestion)", () => {
       null,
       null,
       JSON.stringify({ url: "/home", count: 2 }),
-      "{}", // no context, no batch sdk
+      "{}", // no context
+      null, // no batch sdk name
+      null, // no batch sdk version
     ]);
   });
 

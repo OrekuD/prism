@@ -1193,6 +1193,67 @@ functions / 98.5% branches); analytics 80 passed + 3 opt-in integration
 (coverage 76.8% lines / 80.9% branches / 82.1% functions). Root gates:
 test 4/4, typecheck 7/7, lint 10/10, build 8/8. Certification: 23/23.
 
+### Slice 5 — storage (completed 2026-08-12)
+
+- **Ordered migrations + journal**: `db/migrations/NNN_name.sql` +
+  `schema_migrations` journal replace the idempotent schema.sql setup
+  script. The runner (`src/database/migrations.ts`) applies each migration
+  atomically (all statements + the journal row in ONE write batch — a
+  failing migration rolls back completely), works identically for hosted
+  Turso/libSQL and packaged sqld, and is idempotent (applied versions
+  never re-run). `db:migrate` CLI replaces `db:setup`; the container CMD
+  runs it at boot.
+- **Migration set**: 001 creates the final v2 `events` table (project,
+  id, type, name, schema_version, occurred_at, received_at, session_id,
+  anonymous_id, properties, context, sdk_name, sdk_version; PRIMARY KEY
+  (project_id, id)) + the justified query indexes; 002 creates
+  `sessions_v2` (client-generated IDs, start/end/last-seen, context,
+  online flag) + a legacy-compatible `sessions` table WITHOUT raw IP
+  columns; 003 drops the interim events_v2 table. A legacy v1 `events`
+  table makes migration 001 FAIL LOUDLY (no silent wrong-shape serve);
+  the guarded reset is the escape hatch for disposable stores.
+- **SDK metadata columns (review F13)**: the ingestion repository stores
+  batch-derived sdk_name/sdk_version in explicit columns; context JSON no
+  longer carries an injected sdk — user context cannot override it.
+- **Raw IP removal**: the v1 sessions table and the v1 ingestion
+  controller no longer carry/write ip/lat/long; geo enrichment still
+  informs country_code. The remaining raw-IP removal (WebSocket messages,
+  read queries, docs) completes with the v1 route removal in slice 6.
+- **Retention rework**: operates on v2 timestamps (events by received_at,
+  sessions_v2 by last_seen_at — INTEGER ms) plus the legacy sessions
+  table by created_at (existence-guarded); one atomic write batch,
+  dependents first; --status/--dry-run/apply, idempotency, and redacted
+  output preserved; retentionCutoffMs added.
+- **Guarded reset**: `db:reset` prints the resolved non-secret target
+  identity, refuses anything but file:/loopback targets, requires BOTH
+  ANALYTICS_RESET_ALLOW=1 and --yes, drops every analytics table + the
+  journal in one atomic batch.
+- **JSON strategy decision**: properties/context stored as verbatim JSON
+  TEXT; extracted/generated columns deferred until measured read-query
+  needs (slice 6); the four justified indexes verified with EXPLAIN
+  QUERY PLAN on representative data (USING INDEX confirmed).
+- **Tests (always-run, real libsql :memory:)**: migrations.test.ts (10 —
+  journal, idempotency, pending-only, atomic rollback, legacy-conflict
+  loud failure, EXPLAIN plan verification, reset approval policy +
+  atomic drop + re-migrate); retention.test.ts updated (9 — v2 + legacy
+  timestamps, dry-run, atomic apply, idempotency); IpEnrichment tests
+  assert ip/lat/long are never persisted.
+- **Real-store verification**: against a packaged sqld container —
+  db:migrate applies 3 migrations + re-run is a no-op; guarded reset
+  refuses without ANALYTICS_RESET_ALLOW/--yes and succeeds with them;
+  the opt-in integration suite runs 3/3 against the migrate-created
+  schema (v1 session flow + v2 ingest, replay duplicate, cross-project
+  scoping, SDK columns); the public-origin certification re-ran 23/23
+  against the new schema. (The restart-persistence drill could not be
+  re-run on this machine — the Docker VM disk is full; its v1 flow is
+  covered by the real-store integration run above and remains a CI
+  check.)
+
+Suite state: core 119 tests green; analytics 102 passed (92 unit +
+10 always-run migration/reset) + 3 opt-in integration (executed for real
+against sqld during this slice). Root gates: test 4/4, typecheck 7/7,
+lint 10/10, build 8/8.
+
 ## Context
 
 The current SDK (`@prism/core`) is browser-coupled, best-effort, and bakes a

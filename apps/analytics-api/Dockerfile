@@ -37,5 +37,5 @@ COPY --from=builder /repo/apps/analytics-api/db ./apps/analytics-api/db
 WORKDIR /repo/apps/analytics-api
 USER node
 EXPOSE 8080
-# Idempotent analytics schema setup (never drops tables), then serve.
-CMD ["sh", "-c", "node dist/src/database/setup.js && exec node dist/src/index.js"]
+# Ordered forward migrations with a journal, then serve.
+CMD ["sh", "-c", "node dist/src/database/migrate.js && exec node dist/src/index.js"]

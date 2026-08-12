@@ -51,8 +51,11 @@ export class AnalyticsController {
     const browser = getBrowser(data.userAgent);
     const mobile = isMobile(data.userAgent);
 
+    // Raw IP is never persisted (task-9 §9): the legacy schema no longer
+    // carries ip/lat/long columns; geo enrichment still informs the
+    // country_code stored here.
     const results = await TursoDatabaseManager.instance.execute({
-      sql: "INSERT INTO sessions (project_id, session_id, referrer, country_code, os, browser, location, is_mobile, ip, lat, long, is_online) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *",
+      sql: "INSERT INTO sessions (project_id, session_id, referrer, country_code, os, browser, location, is_mobile, is_online) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *",
       args: [
         projectId,
         v4(),
@@ -62,9 +65,6 @@ export class AnalyticsController {
         browser,
         data.location,
         mobile ? 1 : 0,
-        clientIp,
-        enrichment.lat,
-        enrichment.long,
         1,
       ],
     });

@@ -7,7 +7,10 @@ export default defineConfig({
       include: ["src/**/*.ts"],
       exclude: [
         "src/__tests__/**",
-        "src/database/**", // setup script that requires a live Turso database
+        // CLI entrypoints — thin wrappers over the tested functions; they
+        // spawn subprocesses by design.
+        "src/database/migrate.ts",
+        "src/database/reset.ts",
       ],
       // Initial enforceable threshold; grows toward the project-wide 80%
       // goal as integration coverage lands. See engineering/coverage.md.

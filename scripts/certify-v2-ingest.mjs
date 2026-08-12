@@ -419,7 +419,7 @@ const client = createClient({
   authToken: process.env.TURSO_AUTH_TOKEN,
 });
 const rows = await client.execute({
-  sql: "SELECT id, project_id, name, occurred_at, anonymous_id, properties, context, schema_version FROM events_v2 WHERE id = ?",
+  sql: "SELECT id, project_id, name, occurred_at, anonymous_id, properties, context, schema_version, sdk_name, sdk_version FROM events WHERE id = ?",
   args: ["${eventId}"],
 });
 if (rows.rows.length === 1) {
@@ -431,7 +431,7 @@ if (rows.rows.length === 1) {
   console.log("CERT_ROW_ANON=" + String(row.anonymous_id ?? ""));
   console.log("CERT_ROW_OCCURRED=" + String(row.occurred_at));
   console.log("CERT_ROW_REDACTED=" + String(props.password));
-  console.log("CERT_ROW_SDK=" + JSON.stringify(ctx.sdk ?? null));
+  console.log("CERT_ROW_SDK=" + JSON.stringify({ name: row.sdk_name, version: row.sdk_version }));
   console.log("CERT_ROW_COUNT=1");
 } else {
   console.log("CERT_ROW_COUNT=" + String(rows.rows.length));
@@ -530,7 +530,7 @@ const client = createClient({
   authToken: process.env.TURSO_AUTH_TOKEN,
 });
 const rows = await client.execute({
-  sql: "SELECT context FROM events_v2 WHERE id = ?",
+  sql: "SELECT context FROM events WHERE id = ?",
   args: ["${ctxEventId}"],
 });
 if (rows.rows.length === 1) {

@@ -77,8 +77,10 @@ describe("AnalyticsController.startSession (resilient IP enrichment)", () => {
     expect(result).toMatchObject({ __json: { sessionId: "sess-1" } });
     const insert = lastInsert();
     expect(insert.country_code).toBeNull();
-    expect(insert.lat).toBeNull();
-    expect(insert.long).toBeNull();
+    // raw IP fields are no longer persisted (task-9 §9)
+    expect("ip" in insert).toBe(false);
+    expect("lat" in insert).toBe(false);
+    expect("long" in insert).toBe(false);
   });
 
   it("creates a session when the enrichment request fails (network error)", async () => {
@@ -95,7 +97,8 @@ describe("AnalyticsController.startSession (resilient IP enrichment)", () => {
     expect(result).toMatchObject({ __json: { sessionId: "sess-1" } });
     const insert = lastInsert();
     expect(insert.country_code).toBeNull();
-    expect(insert.lat).toBeNull();
+    expect("lat" in insert).toBe(false);
+    expect("long" in insert).toBe(false);
   });
 
   it("creates a session when enrichment returns a non-2xx response", async () => {
@@ -144,7 +147,8 @@ describe("AnalyticsController.startSession (resilient IP enrichment)", () => {
     expect(result).toMatchObject({ __json: { sessionId: "sess-1" } });
     const insert = lastInsert();
     expect(insert.country_code).toBeNull();
-    expect(insert.lat).toBeNull();
+    expect("lat" in insert).toBe(false);
+    expect("long" in insert).toBe(false);
   });
 
   it("records validated country and coordinates on success", async () => {
@@ -168,20 +172,19 @@ describe("AnalyticsController.startSession (resilient IP enrichment)", () => {
     expect(result).toMatchObject({ __json: { sessionId: "sess-1" } });
     const insert = lastInsert();
     expect(insert.country_code).toBe("GH");
-    expect(insert.lat).toBe("5.6037");
-    expect(insert.long).toBe("-0.1870");
+    // coordinates are no longer persisted — only the country code
+    expect("lat" in insert).toBe(false);
+    expect("long" in insert).toBe(false);
   });
 
-  it("never uses a hardcoded public fallback IP", async () => {
+  it("never persists a hardcoded public fallback IP", async () => {
     vi.stubEnv("IP_INFO_API_TOKEN", "");
     vi.stubGlobal("fetch", vi.fn());
 
     await AnalyticsController.startSession(makeContext());
 
     const insert = lastInsert();
-    // Local/unknown value in development; not a real external IP.
-    expect(["127.0.0.1", "::1", "::ffff:127.0.0.1", ""]).toContain(
-      String(insert.ip),
-    );
+    // Raw IP never reaches the schema — nothing to fall back to.
+    expect("ip" in insert).toBe(false);
   });
 });
