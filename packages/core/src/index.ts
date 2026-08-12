@@ -3,9 +3,23 @@
 // { PrismClient } from "@prism/core"` resolves to the frozen contract.
 export { createPrismClient } from "./core";
 export { INGEST_LIMITS, SDK_NAME, SDK_VERSION, WIRE_SCHEMA_VERSION } from "./limits";
-export type { IngestResponseBody, IngestResult, IngestStatus, WireBatch, WireEnvelope } from "./limits";
-export { MAX_EVENT_NAME_LENGTH, REDACTED, sanitizeProperties } from "./validation";
-export type { SanitizeOptions } from "./validation";
+export type {
+  IngestResponseBody,
+  IngestResult,
+  IngestStatus,
+  WireBatch,
+  WireContext,
+  WireEnvelope,
+} from "./limits";
+export { REDACTED, sanitizeProperties } from "./validation";
+export {
+  assertEndpoint,
+  assertProjectKey,
+  assertValidEventName,
+  isValidEventName,
+  validateJsonValue,
+} from "./validation";
+export type { JsonValidationReason, JsonValidationResult, SanitizeOptions } from "./validation";
 export type {
   AnonymousPersistence,
   CaptureResult,

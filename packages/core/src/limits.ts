@@ -37,11 +37,39 @@ export const INGEST_LIMITS = {
   maxPropertyDepth: 12,
   /** Max string length for any property value (core sanitizer default). */
   maxStringLength: 10_000,
+  /** Max property keys per object (core AND server enforce). */
+  maxPropertyKeys: 100,
+  /** Max array elements (core AND server enforce). */
+  maxArrayElements: 100,
   /** Max future clock skew accepted for occurredAt (5 minutes). */
   maxFutureSkewMs: 5 * 60_000,
   /** Max age accepted for occurredAt — bounded offline delivery (30 days). */
   maxPastAgeMs: 30 * 86_400_000,
 } as const;
+
+/**
+ * Typed v2 context contract (task-9 slice-4 review F4): runtime-neutral
+ * fields only — no browser/React Native/Node imports. The SDK fills this
+ * from its injected runtime context; direct HTTP clients are validated
+ * against the same strict JSON rules, redaction policy, and ceilings as
+ * properties. SDK identity lives at BATCH level (ADR 0002 §2) — it is
+ * never repeated per event, and server-stored SDK metadata is derived
+ * from the validated batch (user context cannot override it).
+ */
+export interface WireContext {
+  /** e.g. `"browser"`, `"node"`, `"react-native"`. */
+  readonly platform?: string;
+  readonly kind?: "web" | "server" | "mobile";
+  readonly screenSize?: { readonly width: number; readonly height: number };
+  readonly locale?: string;
+  readonly timezone?: string;
+  readonly app?: {
+    readonly name?: string;
+    readonly version?: string;
+    readonly build?: string;
+  };
+  readonly device?: { readonly model?: string; readonly manufacturer?: string };
+}
 
 /** The v2 event envelope sent by the SDK (task-9 §3). */
 export interface WireEnvelope {
@@ -60,8 +88,8 @@ export interface WireEnvelope {
   readonly name: string;
   /** JSON-safe properties (sanitized on client and server). */
   readonly properties?: JsonObject;
-  /** Normalized runtime context + library identity. */
-  readonly context?: JsonObject;
+  /** Normalized runtime context (typed, runtime-neutral). */
+  readonly context?: WireContext;
 }
 
 /** The v2 batch envelope for POST /api/v2/ingest. */

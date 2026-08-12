@@ -19,6 +19,9 @@ const ROOT = resolve(__dirname, "../../../..");
 function packAndInstallFixture(): { fixture: string; cleanup(): void } {
   const packDir = mkdtempSync(join(tmpdir(), "prism-core-pack-"));
   const fixture = mkdtempSync(join(tmpdir(), "prism-core-fixture-"));
+  // Hermetic npm cache (review F14): the test owns a temporary cache and
+  // never depends on — or modifies — the operator's global npm state.
+  const cacheDir = join(fixture, ".npm-cache");
   const cleanup = (): void => {
     rmSync(packDir, { recursive: true, force: true });
     rmSync(fixture, { recursive: true, force: true });
@@ -28,19 +31,22 @@ function packAndInstallFixture(): { fixture: string; cleanup(): void } {
     if (!existsSync(join(CORE_DIR, "dist", "index.js"))) {
       execSync("npm run build", { cwd: CORE_DIR, stdio: "pipe" });
     }
-    const packJson = execSync("npm pack --json --pack-destination " + packDir, {
-      cwd: CORE_DIR,
-      encoding: "utf8",
-    });
+    const packJson = execSync(
+      "npm pack --json --cache " + cacheDir + " --pack-destination " + packDir,
+      { cwd: CORE_DIR, encoding: "utf8" },
+    );
     const packed = JSON.parse(packJson) as Array<{ filename: string; name: string; version: string }>;
     if (packed.length === 0) throw new Error("npm pack produced no tarball");
     const tarball = packed[0] as { filename: string; name: string; version: string };
     expect(tarball.name).toBe("@prism/core");
     expect(tarball.version).toBe("0.0.1");
-    execSync("npm install --no-audit --no-fund --ignore-scripts " + join(packDir, tarball.filename), {
-      cwd: fixture,
-      stdio: "pipe",
-    });
+    execSync(
+      "npm install --no-audit --no-fund --ignore-scripts --cache " +
+        cacheDir +
+        " " +
+        join(packDir, tarball.filename),
+      { cwd: fixture, stdio: "pipe" },
+    );
     return { fixture, cleanup };
   } catch (error) {
     cleanup();

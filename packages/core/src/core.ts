@@ -19,15 +19,18 @@ import {
   SDK_NAME,
   SDK_VERSION,
   WIRE_SCHEMA_VERSION,
+  type WireContext,
   type WireEnvelope,
 } from "./limits";
-import { EventQueue, type QueuedEvent } from "./queue";
+import { EventQueue, utf8Length, type QueuedEvent } from "./queue";
 import {
   assertEndpoint,
   assertJsonSerializable,
   assertProjectKey,
   assertValidEventName,
+  isValidEventName,
   sanitizeProperties,
+  validateJsonValue,
 } from "./validation";
 
 const DEFAULT_QUEUE: Required<PrismQueueOptions> = {
@@ -43,10 +46,15 @@ const DEFAULT_QUEUE: Required<PrismQueueOptions> = {
 
 const ANONYMOUS_ID_KEY = "prism:anonymous_id";
 
-// Retry policy (task-9 §6): exponential backoff, deterministic jitter,
-// numeric Retry-After honored, at most one pending retry, maxRetries bound.
+// Retry policy (task-9 §6): exponential backoff with deterministic
+// jitter for client-computed delays; a valid server Retry-After is a
+// MINIMUM — never shortened, never jittered below, honored verbatim
+// (delta-seconds and HTTP-date forms). At most one pending retry; the
+// maxRetries bound closes the loop.
 const RETRY_BASE_MS = 1_000;
 const RETRY_MAX_MS = 60_000;
+/** Largest single timer interval setTimeout can represent (2^31 - 1 ms). */
+const MAX_TIMER_MS = 2_147_483_647;
 
 /** djb2 string hash — deterministic jitter without platform globals. */
 function hashString(value: string): number {
@@ -55,11 +63,30 @@ function hashString(value: string): number {
   return hash >>> 0;
 }
 
-/** Numeric Retry-After (seconds) → ms; HTTP-date form falls back to exponential backoff. */
-function parseRetryAfterSeconds(header: string | undefined): number | undefined {
+/**
+ * Parse a Retry-After header (delta-seconds or HTTP-date) into a minimum
+ * delay in milliseconds. Invalid, zero, or already-past instructions fall
+ * back to client-computed exponential backoff (caller treats undefined as
+ * such and emits a coarse diagnostic).
+ */
+function parseRetryAfterSeconds(
+  header: string | undefined,
+  now: number,
+): number | undefined {
   if (!header) return undefined;
-  const seconds = Number(header);
-  if (Number.isFinite(seconds) && seconds > 0) return seconds * 1000;
+  const trimmed = header.trim();
+  if (trimmed.length === 0) return undefined;
+  const seconds = Number(trimmed);
+  if (Number.isFinite(seconds) && seconds > 0) {
+    return seconds * 1000;
+  }
+  // HTTP-date form (e.g. "Wed, 21 Oct 2015 07:28:00 GMT"). Date.parse is
+  // a standard ECMAScript string parser (no runtime-specific global).
+  const dateMs = Date.parse(trimmed);
+  if (Number.isFinite(dateMs)) {
+    const delay = dateMs - now;
+    if (delay > 0) return delay;
+  }
   return undefined;
 }
 
@@ -138,7 +165,8 @@ class PrismClientImpl implements PrismClient {
   private state: CollectionState;
   private activeSession: SessionHandleImpl | null = null;
   private closed = false;
-  private sessionAnonymousId: string | null = null;
+  /** Scope-neutral anonymous identity (any persistence mode). */
+  private anonymousId: string | null = null;
   private flushPromise: Promise<void> | null = null;
   private inFlightSignal: AbortableSignal | null = null;
   private cancelTimer: (() => void) | null = null;
@@ -174,6 +202,10 @@ class PrismClientImpl implements PrismClient {
     if (!["pending", "granted", "denied"].includes(options.collection.initialState)) {
       throw new Error("collection.initialState must be pending, granted, or denied");
     }
+    // INGEST_LIMITS are hard protocol ceilings (task-9 slice-4 review F3):
+    // a client configured above them could produce batches or events the
+    // ingestion server must reject, causing permanent data loss.
+    this.assertConfigWithinWireLimits(options.queue ?? {});
 
     this.projectKey = options.projectKey;
     this.endpoint = options.endpoint.replace(/\/$/, "");
@@ -183,7 +215,7 @@ class PrismClientImpl implements PrismClient {
     // server-side dedup by eventId covers the overlap, and the browser
     // adapter implements a storage lease in its slice.
     this.instanceId = runtime.createId();
-    this.queueStorageKey = `prism:queue:v1:${this.projectKey}`;
+    this.queueStorageKey = `prism:queue:v2:${this.projectKey}`;
     this.runtime = runtime;
     this.state = options.collection.initialState;
     this.persistence = options.collection.anonymousPersistence ?? "none";
@@ -240,7 +272,7 @@ class PrismClientImpl implements PrismClient {
       // and any in-flight delivery request is cancelled.
       this.queue.clear();
       void this.persistQueue();
-      this.sessionAnonymousId = null;
+      this.anonymousId = null;
       this.activeSession = null;
       this.inFlightSignal?.abort();
       this.cancelRetry();
@@ -255,6 +287,9 @@ class PrismClientImpl implements PrismClient {
 
   track(name: string, properties?: JsonObject): CaptureResult {
     assertValidEventName(name);
+    // Strict JSON validation FIRST (iterative, no stringify-as-validator):
+    // rejects non-finite numbers, dates, class instances, accessors,
+    // cycles, dangerous keys, and shared ceilings.
     assertJsonSerializable(properties);
     const sanitized = sanitizeProperties(properties ?? {}, {
       denyList: this.denyList,
@@ -276,7 +311,7 @@ class PrismClientImpl implements PrismClient {
     if (!this.queue.enqueue(event)) {
       return { status: "dropped", reason: "queue-full" };
     }
-    void this.persistQueue();
+    void this.afterEnqueue();
     return { status: "queued", eventId: event.eventId };
   }
 
@@ -307,7 +342,7 @@ class PrismClientImpl implements PrismClient {
       maxStringLength: this.maxStringLength,
     });
     this.queue.enqueue(this.buildEvent("session_started", properties, handle.sessionId));
-    void this.persistQueue();
+    void this.afterEnqueue();
     return { status: "started", session: handle };
   }
 
@@ -346,6 +381,34 @@ class PrismClientImpl implements PrismClient {
     // queue and the next client never replays delivered events.
     void this.persistQueue();
     await this.persistChain.catch(() => undefined);
+  }
+
+  private assertConfigWithinWireLimits(queue: PrismQueueOptions): void {
+    const ceiling = (label: string, value: number | undefined, max: number): void => {
+      if (value !== undefined && value > max) {
+        throw new Error(`${label} ${value} exceeds the wire ceiling (${max})`);
+      }
+    };
+    ceiling("maxBatchEvents", queue.maxBatchEvents, INGEST_LIMITS.maxBatchEvents);
+    ceiling("maxBatchBytes", queue.maxBatchBytes, INGEST_LIMITS.maxBatchBytes);
+    ceiling("maxEventBytes", queue.maxEventBytes, INGEST_LIMITS.maxEventBytes);
+  }
+
+  /**
+   * Persist the mutation, then request delivery when the batch threshold
+   * is reached. Coalesced through the single in-flight flush promise;
+   * consent/shutdown gating lives in track() and doFlush().
+   */
+  private afterEnqueue(): void {
+    void this.persistQueue();
+    const reached =
+      this.queue.size >= this.queueOptions.maxBatchEvents ||
+      this.queue.bytes >= this.queueOptions.maxBatchBytes;
+    if (reached) {
+      void this.flush().catch(() => {
+        // Failure surfaces via diagnostics and flush rejection.
+      });
+    }
   }
 
   private cancelRetry(): void {
@@ -442,19 +505,19 @@ class PrismClientImpl implements PrismClient {
     const eventId = this.runtime.createId();
     const resolvedSessionId = sessionId ?? this.activeSession?.sessionId;
     const now = this.runtime.now();
+    // Context is the typed, runtime-neutral context (F4). SDK identity is
+    // batch-level only (F13) — never duplicated per event.
+    const context: WireContext = { ...this.runtime.context };
     const envelope: WireEnvelope = {
       schemaVersion: WIRE_SCHEMA_VERSION,
       eventId,
       type: "track",
       occurredAt: now,
       sessionId: resolvedSessionId,
-      anonymousId: this.sessionAnonymousId ?? undefined,
+      anonymousId: this.anonymousId ?? undefined,
       name,
       properties,
-      context: {
-        ...this.runtime.context,
-        library: { name: SDK_NAME, version: SDK_VERSION },
-      },
+      context,
     };
     const serialized = JSON.stringify(envelope);
     return {
@@ -480,6 +543,14 @@ class PrismClientImpl implements PrismClient {
         sdk: { name: SDK_NAME, version: SDK_VERSION },
         events: batch.map((e) => JSON.parse(e.serialized)),
       }),
+      // Authentication is part of the transport contract (F1): the core
+      // owns Prism authentication semantics; adapters forward these
+      // headers unchanged and never log them. The project key never
+      // appears in diagnostics or error messages.
+      headers: {
+        authorization: `Bearer ${this.projectKey}`,
+        "content-type": "application/json",
+      },
       timeoutMs: this.queueOptions.requestTimeoutMs,
       signal,
     };
@@ -540,12 +611,17 @@ class PrismClientImpl implements PrismClient {
       return { ok: true, kind: "accepted" };
     }
     const error = new Error(`ingest responded ${response.status}`);
-    const retryAfterMs = parseRetryAfterSeconds(response.headers["retry-after"]);
+    const retryAfterMs = parseRetryAfterSeconds(
+      response.headers["retry-after"],
+      this.runtime.now(),
+    );
     this.emit(
       "warn",
       "rate_limited",
       `ingest responded ${response.status}${
-        retryAfterMs !== undefined ? ` (retry-after ${Math.round(retryAfterMs / 1000)}s)` : ""
+        retryAfterMs !== undefined
+          ? ` (retry-after ${Math.round(retryAfterMs / 1000)}s)`
+          : " (no valid retry-after; using backoff)"
       }`,
     );
     const exhausted = this.handleFailure(batch, error, retryAfterMs);
@@ -571,23 +647,39 @@ class PrismClientImpl implements PrismClient {
   }
 
   /**
-   * Automatic retry loop (task-9 §6): exponential backoff from 1 s
-   * (×2 per attempt, ±20% deterministic jitter), capped at 60 s; a numeric
-   * Retry-After header is honored, also capped at 60 s; at most one retry
-   * is pending at a time. Bounded by maxRetries via handleFailure.
+   * Automatic retry loop (task-9 §6, slice-4 review F9):
+   * - Client-computed delays: exponential backoff from 1 s (×2 per
+   *   attempt, ±20% deterministic jitter), capped at 60 s.
+   * - Server-provided Retry-After is a MINIMUM: honored verbatim (no
+   *   cap, no jitter below it — jitter is never applied to it).
+   * - Delays beyond the scheduler's maximum timer interval are
+   *   rescheduled in safe chunks so Prism never sends early.
+   * At most one retry is pending at a time; maxRetries bounds the loop.
    */
   private scheduleRetry(attempt: number, retryAfterMs?: number): void {
     if (this.retryCancel || this.closed) return;
+    let cancelled = false;
+    this.retryCancel = () => {
+      cancelled = true;
+    };
     const exponential = Math.min(RETRY_BASE_MS * 2 ** (attempt - 1), RETRY_MAX_MS);
-    const base =
-      retryAfterMs !== undefined ? Math.min(retryAfterMs, RETRY_MAX_MS) : exponential;
-    const jitter = 0.8 + (0.4 * (hashString(String(base)) % 1000)) / 1000;
-    const delayMs = Math.max(1, Math.round(base * jitter));
-    this.retryCancel = this.runtime.schedule(delayMs, () => {
+    const jitter = 0.8 + (0.4 * (hashString(String(exponential)) % 1000)) / 1000;
+    const delayMs =
+      retryAfterMs !== undefined ? retryAfterMs : Math.max(1, Math.round(exponential * jitter));
+    const fire = (): void => {
       this.retryCancel = null;
-      if (this.closed) return;
+      if (cancelled || this.closed) return;
       void this.tick();
-    });
+    };
+    const scheduleChunk = (remaining: number): void => {
+      if (cancelled || this.closed) return;
+      if (remaining <= MAX_TIMER_MS) {
+        this.runtime.schedule(remaining, fire);
+      } else {
+        this.runtime.schedule(MAX_TIMER_MS, () => scheduleChunk(remaining - MAX_TIMER_MS));
+      }
+    };
+    scheduleChunk(delayMs);
     this.emit("debug", "retry_scheduled", `retry ${attempt} scheduled in ${delayMs} ms`);
   }
 
@@ -602,7 +694,7 @@ class PrismClientImpl implements PrismClient {
     if (!queued) {
       this.emit("warn", "session_end_dropped", "session-end event was not queued");
     } else {
-      void this.persistQueue();
+      void this.afterEnqueue();
     }
     return { status: "ended", eventId: event.eventId };
   }
@@ -618,8 +710,13 @@ class PrismClientImpl implements PrismClient {
     this.persistChain = this.persistChain
       .then(async () => {
         const snapshot = JSON.stringify({
-          v: 1,
-          events: this.queue.snapshot().map((event) => event.serialized),
+          v: 2,
+          events: this.queue.snapshot().map((event) => ({
+            eventId: event.eventId,
+            name: event.name,
+            occurredAt: event.timestamp,
+            serialized: event.serialized,
+          })),
         });
         await storage.setItem(this.queueStorageKey, snapshot);
       })
@@ -630,12 +727,19 @@ class PrismClientImpl implements PrismClient {
   }
 
   /**
-   * Restore the persisted queue. Consent-aware: under `granted` the
-   * snapshot is rehydrated (once); under `pending` it is left untouched
-   * and restored when consent is granted; under `denied` it is purged —
-   * nothing collected before a withdrawal may ever transmit. Corrupt or
-   * future-version state is quarantined (cleared + removed) with a
-   * diagnostic.
+   * Restore the persisted queue (slice-4 review F10). The persisted
+   * snapshot has an EXACT schema separate from the wire envelope:
+   *
+   *   { v: 2, events: [{ eventId, name, occurredAt, serialized }] }
+   *
+   * Every entry is validated with the SAME v2 event rules used for newly
+   * captured events (name rules, strict JSON properties, size ceilings,
+   * timestamp window, field agreement) plus unknown-field rejection. Any
+   * doubt about any entry quarantines the ENTIRE snapshot with one coarse
+   * diagnostic — partial restoration is never attempted, and the
+   * pre-v2 format is not supported (no production users; no migration).
+   * Consent-aware: granted restores once; pending defers; denied purges
+   * without parsing.
    */
   private async restoreQueueState(): Promise<void> {
     const storage = this.runtime.storage;
@@ -655,24 +759,28 @@ class PrismClientImpl implements PrismClient {
     const raw = await storage.getItem(this.queueStorageKey).catch(() => null);
     if (!raw) return;
     try {
-      const parsed = JSON.parse(raw) as { v?: number; events?: unknown };
-      if (parsed?.v !== 1 || !Array.isArray(parsed.events)) {
+      const parsed = JSON.parse(raw) as { v?: unknown; events?: unknown };
+      if (parsed?.v !== 2 || !Array.isArray(parsed.events)) {
         throw new Error("unsupported queue state version");
       }
-      for (const serialized of parsed.events as unknown[]) {
-        if (typeof serialized !== "string") throw new Error("corrupt queue entry");
-        const parsedEvent = JSON.parse(serialized) as Omit<QueuedEvent, "serialized"> & {
-          occurredAt?: number;
+      for (const entry of parsed.events as unknown[]) {
+        this.validatePersistedEntry(entry);
+      }
+      for (const entry of parsed.events as unknown[]) {
+        const e = entry as {
+          eventId: string;
+          name: string;
+          occurredAt: number;
+          serialized: string;
         };
+        const envelope = JSON.parse(e.serialized) as WireEnvelope;
         this.queue.enqueue({
-          eventId: parsedEvent.eventId,
-          name: parsedEvent.name,
-          properties: parsedEvent.properties,
-          // New envelopes carry occurredAt; pre-envelope snapshots carry
-          // timestamp (defensive read of older persisted state).
-          timestamp: parsedEvent.occurredAt ?? parsedEvent.timestamp ?? 0,
-          sessionId: parsedEvent.sessionId,
-          serialized,
+          eventId: e.eventId,
+          name: e.name,
+          properties: envelope.properties,
+          timestamp: e.occurredAt,
+          sessionId: envelope.sessionId,
+          serialized: e.serialized,
         });
       }
       this.queueRestored = true;
@@ -692,6 +800,84 @@ class PrismClientImpl implements PrismClient {
         "queue_state_reset",
         "corrupt or future queue state quarantined and cleared",
       );
+    }
+  }
+
+  /**
+   * Validate ONE persisted entry. Throws on ANY suspicion so the whole
+   * snapshot is quarantined by the caller (F10).
+   */
+  private validatePersistedEntry(entry: unknown): void {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      throw new Error("corrupt queue entry");
+    }
+    const record = entry as Record<string, unknown>;
+    const expectedKeys = ["eventId", "name", "occurredAt", "serialized"];
+    if (Object.keys(record).length !== expectedKeys.length) {
+      throw new Error("queue entry has unknown fields");
+    }
+    for (const key of expectedKeys) {
+      if (!(key in record)) throw new Error("queue entry is missing fields");
+    }
+    const { eventId, name, occurredAt, serialized } = record;
+    if (typeof eventId !== "string" || eventId.length === 0 || eventId.length > 128) {
+      throw new Error("queue entry has an invalid event id");
+    }
+    if (!isValidEventName(name)) {
+      throw new Error("queue entry has an invalid event name");
+    }
+    if (typeof occurredAt !== "number" || !Number.isFinite(occurredAt)) {
+      throw new Error("queue entry has an invalid timestamp");
+    }
+    // Events outside the server's accepted window can never be delivered
+    // (the ingestion service rejects them) — purge them at restore instead
+    // of poisoning the retry loop.
+    const now = this.runtime.now();
+    if (
+      occurredAt > now + INGEST_LIMITS.maxFutureSkewMs ||
+      occurredAt < now - INGEST_LIMITS.maxPastAgeMs
+    ) {
+      throw new Error("queue entry is outside the delivery window");
+    }
+    if (typeof serialized !== "string" || utf8Length(serialized) > INGEST_LIMITS.maxEventBytes) {
+      throw new Error("queue entry exceeds the event size ceiling");
+    }
+    let envelope: WireEnvelope;
+    try {
+      envelope = JSON.parse(serialized) as WireEnvelope;
+    } catch {
+      throw new Error("queue entry has an unparsable envelope");
+    }
+    if (
+      envelope.schemaVersion !== WIRE_SCHEMA_VERSION ||
+      envelope.eventId !== eventId ||
+      envelope.name !== name ||
+      envelope.occurredAt !== occurredAt ||
+      envelope.type !== "track"
+    ) {
+      throw new Error("queue entry fields disagree with the envelope");
+    }
+    if (envelope.properties !== undefined) {
+      const result = validateJsonValue(envelope.properties, {
+        maxDepth: INGEST_LIMITS.maxPropertyDepth,
+        maxStringLength: INGEST_LIMITS.maxStringLength,
+        maxKeys: INGEST_LIMITS.maxPropertyKeys,
+        maxArrayElements: INGEST_LIMITS.maxArrayElements,
+      });
+      if (!result.ok) {
+        throw new Error(`queue entry has invalid properties (${result.reason})`);
+      }
+    }
+    if (envelope.context !== undefined) {
+      const result = validateJsonValue(envelope.context, {
+        maxDepth: INGEST_LIMITS.maxPropertyDepth,
+        maxStringLength: INGEST_LIMITS.maxStringLength,
+        maxKeys: INGEST_LIMITS.maxPropertyKeys,
+        maxArrayElements: INGEST_LIMITS.maxArrayElements,
+      });
+      if (!result.ok) {
+        throw new Error(`queue entry has invalid context (${result.reason})`);
+      }
     }
   }
 
@@ -755,21 +941,40 @@ class PrismClientImpl implements PrismClient {
     for (const listener of this.diagnostics) listener(diagnostic);
   }
 
+  /**
+   * Identity state machine (slice-4 review F2): no identity before
+   * consent, ONE stable ID while granted, none after withdrawal, and a
+   * fresh context on re-grant. Persistent mode reads the stored ID,
+   * validates its shape, and reuses it; on any failure the generated
+   * value is kept in memory for this client lifetime with a coarse
+   * diagnostic (never regenerated per event). "none" never touches
+   * storage; "session" keeps the ID in memory only.
+   */
   private async ensureAnonymousIdentity(): Promise<void> {
     if (this.persistence === "none" || this.state !== "granted") return;
+    if (this.anonymousId !== null) return;
     const storage = this.runtime.storage;
     if (this.persistence === "persistent") {
       if (!storage) return;
       const existing = await storage.getItem(ANONYMOUS_ID_KEY).catch(() => null);
-      if (!existing) {
-        await storage.setItem(ANONYMOUS_ID_KEY, this.runtime.createId()).catch(() => {
-          this.emit("warn", "identity_storage_failed", "could not persist anonymous identity");
-        });
+      if (existing && existing.length > 0 && existing.length <= 128) {
+        // Reuse the stored identity — stable across launches.
+        this.anonymousId = existing;
+        return;
       }
-    } else {
-      // "session" scope: in-memory for the client lifetime.
-      this.sessionAnonymousId ??= this.runtime.createId();
+      const fresh = this.runtime.createId();
+      this.anonymousId = fresh;
+      await storage.setItem(ANONYMOUS_ID_KEY, fresh).catch(() => {
+        this.emit(
+          "warn",
+          "identity_storage_failed",
+          "could not persist anonymous identity (kept for this client only)",
+        );
+      });
+      return;
     }
+    // "session" scope: in-memory for the client lifetime.
+    this.anonymousId = this.runtime.createId();
   }
 }
 

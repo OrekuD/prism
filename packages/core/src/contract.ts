@@ -67,6 +67,14 @@ export interface PrismSignal {
 export interface PrismRequest {
   /** JSON-encoded batch body. */
   readonly body: string;
+  /**
+   * Request headers. The core supplies Prism authentication and content
+   * type (`authorization: Bearer <projectKey>`,
+   * `content-type: application/json`); adapters forward these unchanged
+   * and must never remove or log them. Adapters may add runtime-specific
+   * safe headers but must not implement Prism authentication themselves.
+   */
+  readonly headers: Readonly<Record<string, string>>;
   /** Timeout for the request in milliseconds (from the queue options). */
   readonly timeoutMs: number;
   /** Cancellation signal — the transport should abort when fired. */
@@ -83,7 +91,11 @@ export interface PrismResponse {
 
 /** Minimal transport seam — no DOM types in the core contract. */
 export interface PrismTransport {
-  /** POST the batch to `url`; resolve with the response or reject on network failure. */
+  /**
+   * POST the batch to `url`; resolve with the response or reject on
+   * network failure. `request.headers` carries Prism authentication —
+   * adapters forward it unchanged.
+   */
   post(url: string, request: PrismRequest): Promise<PrismResponse>;
 }
 
