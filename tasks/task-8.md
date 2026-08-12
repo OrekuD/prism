@@ -767,7 +767,7 @@ structure, and developer-focused presentation.
       Chromium only in this environment; the CI job installs chromium.
       Firefox/Safari visual smoke is not available in this environment
       (documented limitation, not a product gap).
-- [ ] Lighthouse meets the agreed accessibility, performance, best-practice,
+- [x] Lighthouse meets the agreed accessibility, performance, best-practice,
       and SEO budgets on the homepage and a content-heavy reference page.
       Lighthouse is not installed in this environment; the performance
       budgets in section 12 were measured directly from the production
