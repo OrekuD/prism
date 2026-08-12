@@ -196,7 +196,14 @@ run("analytics database integration", () => {
             name.toLowerCase() === "content-type"
               ? "application/json"
               : String(body.length),
-          text: async () => body,
+          raw: {
+            body: new ReadableStream({
+              start(controller) {
+                controller.enqueue(new TextEncoder().encode(body));
+                controller.close();
+              },
+            }),
+          },
         },
         header: () => undefined,
         json: (value: unknown, status?: number) => ({ __json: value, status }),
@@ -243,7 +250,14 @@ run("analytics database integration", () => {
             name.toLowerCase() === "content-type"
               ? "application/json"
               : String(body.length),
-          text: async () => body,
+          raw: {
+            body: new ReadableStream({
+              start(controller) {
+                controller.enqueue(new TextEncoder().encode(body));
+                controller.close();
+              },
+            }),
+          },
         },
         header: () => undefined,
         json: (value: unknown, status?: number) => ({ __json: value, status }),

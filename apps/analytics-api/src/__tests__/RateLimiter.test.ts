@@ -71,7 +71,8 @@ describe("RateLimiter", () => {
     const blocked = limiter.hit("proj-1", 1);
     expect(blocked.allowed).toBe(false);
     expect(blocked.retryAfterSeconds).toBeGreaterThan(0);
-    // the weight is per key — another project is unaffected
-    expect(limiter.hit("proj-2", 6).allowed).toBe(true);
+    // the weight is per key — another project has its own budget
+    expect(limiter.hit("proj-2", 6).allowed).toBe(false); // even the FIRST hit
+    expect(limiter.hit("proj-2", 1).allowed).toBe(true);
   });
 });

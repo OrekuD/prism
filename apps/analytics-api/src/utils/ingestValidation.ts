@@ -1,16 +1,19 @@
-import { INGEST_LIMITS } from "@prism/core";
+import { INGEST_LIMITS, isValidEventName, validateJsonValue, type WireContext } from "@prism/core";
 import { z } from "zod";
 
 /**
- * Server-owned runtime validation for POST /api/v2/ingest (task-9 §8).
+ * Server-owned runtime validation for POST /api/v2/ingest (task-9 §8,
+ * slice-4 review F3/F4).
  *
  * TypeScript types are NOT a trust boundary: every field is validated at
- * runtime against the SHARED limits from @prism/core, so an official-SDK
- * event can never be rejected as oversized (the SDK enforces the same
- * ceilings) while direct HTTP clients are rejected at these ceilings.
+ * runtime against the SHARED limits and validators from @prism/core (the
+ * same implementation the SDK uses), so an official-SDK event can never be
+ * rejected for name, property, or context rules while direct HTTP clients
+ * are rejected at the same ceilings.
  *
  * Rejection is per event with coarse reason codes; envelope-level failures
- * use the coarse error codes in the ingest response.
+ * use the coarse error codes in the ingest response. Never echo submitted
+ * keys or values.
  */
 
 /** Rejected-event reason codes (never echo properties, keys, or values). */
@@ -31,7 +34,7 @@ export interface ValidatedEvent {
   anonymousId?: string;
   name: string;
   properties: Record<string, unknown>;
-  context?: Record<string, unknown>;
+  context?: WireContext;
 }
 
 export type EventValidationResult =
@@ -59,8 +62,16 @@ const batchSchema = z.object({
   events: z.array(z.unknown()).min(1).max(INGEST_LIMITS.maxBatchEvents),
 });
 
+/** Parsed batch with the authoritative batch-level SDK identity. */
+export interface ParsedBatch {
+  events: unknown[];
+  sdk?: { name: string; version: string };
+}
+
 /** Parse + structural validation of the batch envelope. */
-export function parseBatchBody(body: string): { ok: true; batch: { events: unknown[] } } | { ok: false } {
+export function parseBatchBody(
+  body: string,
+): { ok: true; batch: ParsedBatch } | { ok: false } {
   let parsed: unknown;
   try {
     parsed = JSON.parse(body);
@@ -69,7 +80,7 @@ export function parseBatchBody(body: string): { ok: true; batch: { events: unkno
   }
   const result = batchSchema.safeParse(parsed);
   if (!result.success) return { ok: false };
-  return { ok: true, batch: { events: result.data.events } };
+  return { ok: true, batch: { events: result.data.events, sdk: result.data.sdk } };
 }
 
 /** UTF-8 encoded byte length (no platform globals; mirrors the core). */
@@ -94,51 +105,30 @@ export function utf8Length(value: string): number {
   return bytes;
 }
 
-/** Keys that must never appear in event properties (prototype pollution). */
-const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
-
 /**
- * Depth-limited, iterative-safe validation of a JSON value. JSON.parse
- * cannot produce undefined/functions/symbols/bigints, but it CAN produce
- * non-finite numbers (e.g. `1e400` → Infinity), so those are checked too.
- * Returns null when valid, otherwise the coarse reject reason.
+ * Shared strict-JSON validation for BOTH properties and context (review
+ * F4): iterative traversal (explicit work stack) so hostile nesting depth
+ * yields a controlled rejection, never a native RangeError. Returns null
+ * when valid, otherwise the coarse reject reason.
  */
-function validateJsonValue(value: unknown, depth: number): IngestRejectReason | null {
-  if (typeof value === "string") {
-    if (value.length > INGEST_LIMITS.maxStringLength) return "invalid-properties";
-    return null;
-  }
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) return "invalid-properties";
-    return null;
-  }
-  if (value === null || typeof value === "boolean") return null;
-  if (Array.isArray(value)) {
-    if (depth + 1 > INGEST_LIMITS.maxPropertyDepth) return "invalid-properties";
-    for (const item of value) {
-      const failure = validateJsonValue(item, depth + 1);
-      if (failure) return failure;
-    }
-    return null;
-  }
-  if (typeof value === "object") {
-    if (depth + 1 > INGEST_LIMITS.maxPropertyDepth) return "invalid-properties";
-    for (const [key, entry] of Object.entries(value)) {
-      if (DANGEROUS_KEYS.has(key)) return "invalid-properties";
-      const failure = validateJsonValue(entry, depth + 1);
-      if (failure) return failure;
-    }
-    return null;
-  }
-  return "invalid-properties";
+function validateJsonObject(
+  value: unknown,
+): IngestRejectReason | null {
+  const result = validateJsonValue(value, {
+    maxDepth: INGEST_LIMITS.maxPropertyDepth,
+    maxStringLength: INGEST_LIMITS.maxStringLength,
+    maxKeys: INGEST_LIMITS.maxPropertyKeys,
+    maxArrayElements: INGEST_LIMITS.maxArrayElements,
+  });
+  return result.ok ? null : "invalid-properties";
 }
 
 /**
  * Validate one event. Structural failures → `invalid-event`; variant
  * mismatch → `unsupported-type`; name issues → `invalid-name`; timestamp
- * outside the documented window → `invalid-timestamp`; property-tree
- * failures → `invalid-properties`; serialized size over the shared cap →
- * `too-large`.
+ * outside the documented window → `invalid-timestamp`; property/context
+ * tree failures → `invalid-properties`; serialized size over the shared
+ * cap → `too-large`.
  */
 export function validateEvent(raw: unknown, now: number): EventValidationResult {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
@@ -150,12 +140,19 @@ export function validateEvent(raw: unknown, now: number): EventValidationResult 
   }
   // Validate the property tree on the RAW event: zod's record parse cannot
   // carry an own `__proto__` key faithfully, so prototype-pollution checks
-  // must run before any schema transformation.
-  const rawProperties = (raw as Record<string, unknown>).properties;
-  if (rawProperties !== undefined) {
-    const propertyFailure = validateJsonValue(rawProperties, 0);
+  // must run before any schema transformation. Context gets the same
+  // strict JSON policy as properties (F4).
+  const record = raw as Record<string, unknown>;
+  if (record.properties !== undefined) {
+    const propertyFailure = validateJsonObject(record.properties);
     if (propertyFailure) {
       return { ok: false, reason: propertyFailure };
+    }
+  }
+  if (record.context !== undefined) {
+    const contextFailure = validateJsonObject(record.context);
+    if (contextFailure) {
+      return { ok: false, reason: contextFailure };
     }
   }
   const parsed = eventSchema.safeParse(raw);
@@ -164,16 +161,8 @@ export function validateEvent(raw: unknown, now: number): EventValidationResult 
   }
   const event = parsed.data;
 
-  const name = event.name;
-  // Whitespace-only names and control characters are rejected; leading/
-  // trailing whitespace is accepted (the SDK does not strip it either).
-  const hasControlCharacter = [...name].some(
-    (char) => char.charCodeAt(0) < 0x20 || char.charCodeAt(0) === 0x7f,
-  );
-  if (name.trim().length === 0 || hasControlCharacter) {
-    return { ok: false, reason: "invalid-name" };
-  }
-  if (name.length > INGEST_LIMITS.maxNameLength) {
+  // Shared name rules (the SDK uses the same validator — parity).
+  if (!isValidEventName(event.name)) {
     return { ok: false, reason: "invalid-name" };
   }
 
@@ -185,8 +174,6 @@ export function validateEvent(raw: unknown, now: number): EventValidationResult 
   ) {
     return { ok: false, reason: "invalid-timestamp" };
   }
-
-  const properties = event.properties ?? {};
 
   // Serialized size measured on the canonical round trip (client order).
   if (utf8Length(JSON.stringify(event)) > INGEST_LIMITS.maxEventBytes) {
@@ -202,15 +189,19 @@ export function validateEvent(raw: unknown, now: number): EventValidationResult 
       sessionId: event.sessionId,
       anonymousId: event.anonymousId,
       name: event.name,
-      properties,
-      context: event.context,
+      properties: event.properties ?? {},
+      context: event.context as WireContext | undefined,
     },
   };
 }
 
 /** Event ID for rejected events (may be absent on structurally invalid input). */
 export function eventIdOf(raw: unknown): string {
-  if (typeof raw === "object" && raw !== null && typeof (raw as { eventId?: unknown }).eventId === "string") {
+  if (
+    typeof raw === "object" &&
+    raw !== null &&
+    typeof (raw as { eventId?: unknown }).eventId === "string"
+  ) {
     return (raw as { eventId: string }).eventId;
   }
   return "";

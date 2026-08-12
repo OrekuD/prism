@@ -7,14 +7,15 @@ import {
 } from "@prism/core";
 import type { Context } from "hono";
 import { config } from "dotenv";
-import TursoDatabaseManager from "../managers/TursoDatabaseManager.js";
 import { RateLimiter } from "../utils/RateLimiter.js";
 import { logger } from "../utils/logger.js";
+import { IngestRepository } from "../repositories/IngestRepository.js";
 import {
   eventIdOf,
   parseBatchBody,
   utf8Length,
   validateEvent,
+  type ValidatedEvent,
 } from "../utils/ingestValidation.js";
 
 config();
@@ -34,22 +35,55 @@ interface IngestErrorBody {
   readonly error: { readonly code: string; readonly message: string };
 }
 
-const INSERT_EVENT_SQL = `
-  INSERT INTO events_v2
-    (id, project_id, type, name, schema_version, occurred_at, received_at,
-     session_id, anonymous_id, properties, context)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  ON CONFLICT (project_id, id) DO NOTHING
-`;
+/**
+ * Bounded request-body reader (review F5): counts bytes WHILE reading the
+ * stream and cancels immediately at the ceiling, so no request path
+ * allocates or parses more than the configured ingestion body limit —
+ * regardless of client-supplied Content-Length. Works in Node and
+ * Worker-compatible runtimes (ReadableStream + TextDecoder).
+ */
+async function readBoundedBody(
+  stream: ReadableStream<Uint8Array> | null,
+  limitBytes: number,
+): Promise<{ ok: true; body: string } | { ok: false; reason: "too-large" }> {
+  if (!stream) {
+    return { ok: false, reason: "too-large" };
+  }
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > limitBytes) {
+        await reader.cancel().catch(() => undefined);
+        return { ok: false, reason: "too-large" };
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { ok: true, body: new TextDecoder().decode(merged) };
+}
 
 export class IngestController {
   /**
    * POST /api/v2/ingest — the versioned, idempotent batch ingestion API
    * (ADR 0002 §2, task-9 §8). The project is derived from the authenticated
-   * write key; client-provided ownership fields are ignored.
+   * write key; client-provided ownership fields are ignored. Persistence
+   * is atomic per request (one Turso write batch — review F6).
    */
   public static async ingest(ctx: Context) {
-    // Content type + request byte limits BEFORE parsing/allocating.
+    // Content type + cheap Content-Length precheck BEFORE streaming.
     const contentType = ctx.req.header("content-type") ?? "";
     if (!contentType.toLowerCase().includes("application/json")) {
       return ctx.json(
@@ -62,12 +96,17 @@ export class IngestController {
       return ctx.json(ingestError("too-large", "request exceeds the byte limit"), 413);
     }
 
-    const body = await ctx.req.text().catch(() => "");
-    if (utf8Length(body) > INGEST_LIMITS.maxBatchBytes) {
+    // The REAL enforcement: bounded streaming read (never full buffering).
+    const read = await readBoundedBody(ctx.req.raw.body, INGEST_LIMITS.maxBatchBytes);
+    if (!read.ok) {
+      return ctx.json(ingestError("too-large", "request exceeds the byte limit"), 413);
+    }
+    if (utf8Length(read.body) > INGEST_LIMITS.maxBatchBytes) {
+      // Defensive: decoded length must match the byte accounting.
       return ctx.json(ingestError("too-large", "request exceeds the byte limit"), 413);
     }
 
-    const parsed = parseBatchBody(body);
+    const parsed = parseBatchBody(read.body);
     if (!parsed.ok) {
       return ctx.json(ingestError("invalid-envelope", "batch envelope is invalid"), 400);
     }
@@ -85,70 +124,95 @@ export class IngestController {
       return ctx.json(ingestError("rate-limited", "event quota exceeded"), 429);
     }
 
+    // Validate + sanitize the COMPLETE batch before any write starts (F6):
+    // rejected events never enter the transaction.
     const now = Date.now();
-    const results: IngestResult[] = [];
+    // Positional results keep the response in SUBMITTED ORDER even though
+    // rejected results are decided before the atomic persistence pass.
+    const results: Array<IngestResult | null> = new Array(parsed.batch.events.length).fill(null);
+    const validEvents: Array<{ index: number; event: ValidatedEvent }> = [];
 
     for (let index = 0; index < parsed.batch.events.length; index += 1) {
       const raw = parsed.batch.events[index];
       const validation = validateEvent(raw, now);
       if (!validation.ok) {
-        results.push({
+        results[index] = {
           index,
           id: eventIdOf(raw),
           status: "rejected",
           reason: validation.reason,
-        });
+        };
         continue;
       }
       const event = validation.event;
-
       // The SDK sanitizes; direct HTTP clients do not — sanitize on the
       // server too (defense in depth, same rules and limits as the core).
-      const sanitized = sanitizeProperties(event.properties as JsonObject, {
-        maxDepth: INGEST_LIMITS.maxPropertyDepth,
-        maxStringLength: INGEST_LIMITS.maxStringLength,
-      });
-
-      // Conflict-safe insert: the UNIQUE (project_id, id) constraint makes
-      // transport retries idempotent — a replayed event becomes a
-      // "duplicate", never a second row.
-      const result = await TursoDatabaseManager.instance.execute({
-        sql: INSERT_EVENT_SQL,
-        args: [
-          event.eventId,
-          projectId,
-          event.type,
-          event.name,
-          INGEST_LIMITS.schemaVersion,
-          event.occurredAt,
-          now,
-          event.sessionId ?? null,
-          event.anonymousId ?? null,
-          JSON.stringify(sanitized),
-          event.context ? JSON.stringify(event.context) : null,
-        ],
-      });
-
-      results.push({
-        index,
-        id: event.eventId,
-        status: result.rowsAffected === 0 ? "duplicate" : "accepted",
-      });
+      // Context receives the SAME redaction policy as properties (F4).
+      const sanitized = {
+        ...event,
+        properties: sanitizeProperties(event.properties as JsonObject, {
+          maxDepth: INGEST_LIMITS.maxPropertyDepth,
+          maxStringLength: INGEST_LIMITS.maxStringLength,
+        }),
+        context: event.context
+          ? (sanitizeProperties(event.context as JsonObject, {
+              maxDepth: INGEST_LIMITS.maxPropertyDepth,
+              maxStringLength: INGEST_LIMITS.maxStringLength,
+            }) as ValidatedEvent["context"])
+          : undefined,
+      };
+      validEvents.push({ index, event: sanitized });
     }
 
+    if (validEvents.length > 0) {
+      let persisted: Array<{ eventId: string; duplicate: boolean }>;
+      try {
+        persisted = await new IngestRepository().persistBatch(
+          projectId,
+          validEvents.map((entry) => entry.event),
+          now,
+          parsed.batch.sdk,
+        );
+      } catch (error) {
+        // One database outcome per request: nothing was committed. Coarse
+        // retryable 503 — never SQL, database URLs, event content, or
+        // stack traces; never per-event results for rolled-back rows.
+        logger.error("analytics:ingest", "v2 batch persistence failed", {
+          message: error instanceof Error ? error.message : "unknown",
+          projectId,
+        });
+        return ctx.json(
+          ingestError("unavailable", "storage unavailable — retry later"),
+          503,
+        );
+      }
+      for (const [position, outcome] of persisted.entries()) {
+        const entry = validEvents[position];
+        if (!entry) continue;
+        results[entry.index] = {
+          index: entry.index,
+          id: outcome.eventId,
+          status: outcome.duplicate ? "duplicate" : "accepted",
+        };
+      }
+    }
+    const orderedResults = results.filter(
+      (result): result is IngestResult => result !== null,
+    );
+
     const counts = {
-      accepted: results.filter((r) => r.status === "accepted").length,
-      duplicate: results.filter((r) => r.status === "duplicate").length,
-      rejected: results.filter((r) => r.status === "rejected").length,
+      accepted: orderedResults.filter((r) => r.status === "accepted").length,
+      duplicate: orderedResults.filter((r) => r.status === "duplicate").length,
+      rejected: orderedResults.filter((r) => r.status === "rejected").length,
     };
     // Safe correlation log: counts + ids only, never properties or values.
     logger.info("analytics:ingest", "v2 batch ingested", {
       projectId,
-      batchSize: results.length,
+      batchSize: orderedResults.length,
       ...counts,
     });
 
-    return ctx.json({ ok: true, results } satisfies IngestResponseBody, 200);
+    return ctx.json({ ok: true, results: orderedResults } satisfies IngestResponseBody, 200);
   }
 }
 
