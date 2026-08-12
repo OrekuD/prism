@@ -963,7 +963,17 @@ from git).
      name: "node-fake",
      now: () => Date.now(),
      createId: () => crypto.randomUUID(),
-     transport: { post: (url, body) => fetch(url, { method: "POST", body }) },
+     // The transport forwards the request AS GIVEN — the core supplies
+     // Prism authentication headers; adapters never implement auth.
+     transport: {
+       post: (url, request) =>
+         fetch(url, {
+           method: "POST",
+           headers: { ...request.headers },
+           body: request.body,
+           signal: request.signal as AbortSignal,
+         }),
+     },
    };
 
    const prism = await createPrismClient({
