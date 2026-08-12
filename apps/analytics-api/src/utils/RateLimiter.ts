@@ -13,16 +13,21 @@ export class RateLimiter {
     private readonly max: number,
   ) {}
 
-  hit(key: string): { allowed: boolean; retryAfterSeconds: number } {
+  /**
+   * Register `weight` units against `key` (default 1). Weighted hits let
+   * event-count quotas share the same windowing: a batch of N events costs
+   * N units, so batching cannot multiply the allowance by the batch size.
+   */
+  hit(key: string, weight = 1): { allowed: boolean; retryAfterSeconds: number } {
     const now = Date.now();
     const entry = this.hits.get(key);
 
     if (!entry || entry.resetAt <= now) {
-      this.hits.set(key, { count: 1, resetAt: now + this.windowMs });
+      this.hits.set(key, { count: weight, resetAt: now + this.windowMs });
       return { allowed: true, retryAfterSeconds: 0 };
     }
 
-    entry.count += 1;
+    entry.count += weight;
 
     if (entry.count > this.max) {
       return {

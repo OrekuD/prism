@@ -2,6 +2,10 @@
 // The package-level `PrismClient` name is the v2 interface — `import type
 // { PrismClient } from "@prism/core"` resolves to the frozen contract.
 export { createPrismClient } from "./core";
+export { INGEST_LIMITS, SDK_NAME, SDK_VERSION, WIRE_SCHEMA_VERSION } from "./limits";
+export type { IngestResponseBody, IngestResult, IngestStatus, WireBatch, WireEnvelope } from "./limits";
+export { MAX_EVENT_NAME_LENGTH, REDACTED, sanitizeProperties } from "./validation";
+export type { SanitizeOptions } from "./validation";
 export type {
   AnonymousPersistence,
   CaptureResult,

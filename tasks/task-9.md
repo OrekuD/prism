@@ -1350,3 +1350,64 @@ Reviewer findings and fixes:
 Suite: 78 tests green (3 files); coverage 96.1% lines / 90.8% functions
 / 98.2% branches / 96.1% statements. Root gates: test 4/4, typecheck
 7/7, lint 10/10, build 8/8.
+
+### Slice 4 — ingestion (completed 2026-08-12)
+
+- **Wire envelope (core)**: events serialize as the v2 envelope
+  (schemaVersion 2, eventId, type "track", occurredAt, sessionId?,
+  anonymousId?, name, properties?, context with normalized runtime
+  context + library identity); delivery posts the batch envelope
+  `{ schemaVersion, sentAt, sdk, events }`. The internal QueuedEvent
+  mirrors occurredAt as timestamp; restore maps occurredAt with a
+  defensive fallback for pre-envelope persisted snapshots.
+- **Shared limits** (`packages/core/src/limits.ts`, exported from
+  @prism/core): WIRE_SCHEMA_VERSION, SDK_NAME/SDK_VERSION, INGEST_LIMITS
+  (50 events/batch, 512 KiB/request, 32 KiB/event, 128 name chars, depth
+  12, string 10 000, future skew 5 min, past window 30 days) + wire types
+  (WireEnvelope/WireBatch/IngestResult/IngestResponseBody). New
+  `maxEventBytes` queue option (32 KiB): larger events drop queue-full so
+  the SDK can never produce an event the server rejects as oversized (no
+  poison-retry loop). Recorded deviation: the §3 property-key and
+  array-element ceilings are deferred until the SDK enforces matching
+  caps; the shared constants source prevents drift.
+- **POST /api/v2/ingest** (`IngestController` + `IngestRouter`, behind the
+  existing write-key auth middleware; project derived from the key,
+  client ownership fields ignored): content-type check + content-length
+  pre-check before parsing (413 too-large); zod envelope validation
+  (400 invalid-envelope); per-event validation with a depth-limited
+  walker (invalid-name / invalid-properties / invalid-timestamp /
+  unsupported-type / too-large / invalid-event); prototype-pollution keys
+  are rejected on the RAW event because zod's record parse cannot carry
+  own `__proto__` keys; partial-batch policy: 200 with per-event results
+  `{ index, id, status, reason? }`, never echoing properties/values/keys.
+- **Server-side sanitization**: direct HTTP clients are untrusted — the
+  shared @prism/core sanitizer runs on every accepted event before
+  persistence ([REDACTED] marker, same limits as the SDK).
+- **Idempotency**: `events_v2` table with PRIMARY KEY (project_id, id) +
+  `ON CONFLICT (project_id, id) DO NOTHING` — transport retries become
+  "duplicate", never a second row; cross-project event IDs are not
+  duplicates (scoping tested).
+- **Rate limiting**: RateLimiter.hit(key, weight); the per-IP request
+  limiter now covers /api/v2/*; event-weighted per-project quota
+  (ANALYTICS_EVENT_RATE_LIMIT, default 10 000/min) so batching cannot
+  multiply the allowance by the batch size; 429 + Retry-After (the core
+  SDK honors Retry-After in its retry loop).
+- **Storage (interim)**: events_v2 + query indexes appended to
+  schema.sql; the ordered migration journal, v1 events/sessions removal,
+  and retention rework land in the storage slice.
+- **Security/logging**: coarse error codes only; ingestion logs counts +
+  ids (never properties); responses never echo payloads, keys, write
+  keys, SQL, or provider errors.
+- **Deploy**: analytics-api now depends on @prism/core; the Dockerfile
+  builds and ships packages/core/dist; tsconfig baseUrl/paths removed
+  (TS 6 deprecation surfaced by the cache-cold rebuild).
+- Tests: 17 IngestController unit tests (envelope, per-event, partial
+  batch, idempotency, scoping, sanitization, rate limit, no-echo),
+  RateLimiter weight test, opt-in v2 integration flow (accepted →
+  duplicate replay → cross-project accepted → sanitized read-back), core
+  envelope/cap/restore-fallback tests.
+
+Suite: core 81 tests green (coverage 96%+ lines); analytics-api 74 passed
++ 3 opt-in integration (coverage 75.5% lines / 80.5% branches / 81.3%
+functions, gate 60/60/70/60). Root gates: test 4/4, typecheck 7/7,
+lint 10/10, build 8/8.

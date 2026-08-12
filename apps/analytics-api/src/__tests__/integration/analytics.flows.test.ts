@@ -15,6 +15,7 @@ import { config } from "dotenv";
 import { describe, expect, it } from "vitest";
 import { createClient } from "@libsql/client";
 import { AnalyticsController } from "../../controllers/AnalyticsController.js";
+import { IngestController } from "../../controllers/IngestController.js";
 
 config({ path: ".env" });
 
@@ -139,6 +140,129 @@ run("analytics database integration", () => {
     } finally {
       await client.execute({ sql: "DELETE FROM sessions WHERE session_id = ?", args: [sessionId] });
       client.close();
+    }
+  });
+
+  it("v2 ingest persists events idempotently and scoped to the project", async () => {
+    if (!enabled) return;
+    const client = createClient({
+      url: process.env.TURSO_DATABASE_URL ?? "",
+      authToken: process.env.TURSO_AUTH_TOKEN ?? "",
+    });
+
+    const cleanup = async () => {
+      await client.execute({
+        sql: "DELETE FROM events_v2 WHERE project_id = ?",
+        args: [PROJECT_ID],
+      });
+      client.close();
+    };
+
+    try {
+      await client.execute(`
+        CREATE TABLE IF NOT EXISTS events_v2 (
+          id TEXT NOT NULL,
+          project_id TEXT NOT NULL,
+          type TEXT NOT NULL,
+          name TEXT,
+          schema_version INTEGER NOT NULL,
+          occurred_at INTEGER NOT NULL,
+          received_at INTEGER NOT NULL,
+          session_id TEXT,
+          anonymous_id TEXT,
+          properties TEXT,
+          context TEXT,
+          PRIMARY KEY (project_id, id)
+        )`);
+
+      const eventId = `itest-ev-${Date.now()}`;
+      const body = JSON.stringify({
+        schemaVersion: 2,
+        sentAt: Date.now(),
+        events: [
+          {
+            schemaVersion: 2,
+            eventId,
+            type: "track",
+            occurredAt: Date.now(),
+            name: "integration_flow",
+            properties: { source: "itest", password: "hunter2" },
+          },
+        ],
+      });
+      const ctx = {
+        req: {
+          header: (name: string) =>
+            name.toLowerCase() === "content-type"
+              ? "application/json"
+              : String(body.length),
+          text: async () => body,
+        },
+        header: () => undefined,
+        json: (value: unknown, status?: number) => ({ __json: value, status }),
+        get: () => PROJECT_ID,
+      } as never;
+
+      const first = (await IngestController.ingest(ctx)) as unknown as {
+        __json: { results: Array<{ status: string }> };
+      };
+      expect(first.__json.results).toEqual([
+        { index: 0, id: eventId, status: "accepted" },
+      ]);
+
+      // replayed transport retry → duplicate, not a second row
+      const second = (await IngestController.ingest(ctx)) as unknown as {
+        __json: { results: Array<{ status: string }> };
+      };
+      expect(second.__json.results).toEqual([
+        { index: 0, id: eventId, status: "duplicate" },
+      ]);
+
+      const rows = await client.execute({
+        sql: "SELECT id, name, properties, schema_version FROM events_v2 WHERE project_id = ? AND id = ?",
+        args: [PROJECT_ID, eventId],
+      });
+      expect(rows.rows.length).toBe(1);
+      const row = rows.rows[0] as unknown as {
+        name: string;
+        properties: string;
+        schema_version: number;
+      };
+      expect(row.name).toBe("integration_flow");
+      expect(row.schema_version).toBe(2);
+      // server-side sanitization applies to direct HTTP clients too
+      const stored = JSON.parse(row.properties) as { source: string; password: string };
+      expect(stored.source).toBe("itest");
+      expect(stored.password).toBe("[REDACTED]");
+
+      // a different project's key cannot see or duplicate this event
+      const OTHER = "itest-other-00000000-0000-0000-0000-000000000001";
+      const otherCtx = {
+        req: {
+          header: (name: string) =>
+            name.toLowerCase() === "content-type"
+              ? "application/json"
+              : String(body.length),
+          text: async () => body,
+        },
+        header: () => undefined,
+        json: (value: unknown, status?: number) => ({ __json: value, status }),
+        get: () => OTHER,
+      } as never;
+      const third = (await IngestController.ingest(otherCtx)) as unknown as {
+        __json: { results: Array<{ status: string }> };
+      };
+      // same event ID under another project is NOT a duplicate — scoping holds
+      expect(third.__json.results).toEqual([
+        { index: 0, id: eventId, status: "accepted" },
+      ]);
+
+      await client.execute({
+        sql: "DELETE FROM events_v2 WHERE project_id = ?",
+        args: [OTHER],
+      });
+    } finally {
+      await cleanup();
     }
   });
 });

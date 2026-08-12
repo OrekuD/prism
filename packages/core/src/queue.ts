@@ -43,6 +43,8 @@ export interface QueuedEvent {
 export interface EventQueueOptions {
   readonly maxEvents: number;
   readonly maxBytes: number;
+  /** Max serialized bytes for a SINGLE event (the queue cannot accept more). */
+  readonly maxEventBytes?: number;
 }
 
 export class EventQueue {
@@ -50,9 +52,12 @@ export class EventQueue {
   private readonly maxEvents: number;
   private readonly maxBytes: number;
 
+  private readonly maxEventBytes: number;
+
   constructor(options: EventQueueOptions) {
     this.maxEvents = options.maxEvents;
     this.maxBytes = options.maxBytes;
+    this.maxEventBytes = options.maxEventBytes ?? Number.POSITIVE_INFINITY;
   }
 
   /** Number of queued events. */
@@ -76,6 +81,7 @@ export class EventQueue {
    */
   enqueue(event: QueuedEvent): boolean {
     if (this.items.length + 1 > this.maxEvents) return false;
+    if (utf8Length(event.serialized) > this.maxEventBytes) return false;
     if (this.bytes + utf8Length(event.serialized) > this.maxBytes) return false;
     this.items.push(event);
     return true;

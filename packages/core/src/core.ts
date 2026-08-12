@@ -14,6 +14,13 @@ import type {
   SessionEndResult,
   SessionStartResult,
 } from "./contract";
+import {
+  INGEST_LIMITS,
+  SDK_NAME,
+  SDK_VERSION,
+  WIRE_SCHEMA_VERSION,
+  type WireEnvelope,
+} from "./limits";
 import { EventQueue, type QueuedEvent } from "./queue";
 import {
   assertEndpoint,
@@ -28,6 +35,7 @@ const DEFAULT_QUEUE: Required<PrismQueueOptions> = {
   maxQueueBytes: 1_048_576, // 1 MiB
   maxBatchEvents: 50,
   maxBatchBytes: 262_144, // 256 KiB
+  maxEventBytes: INGEST_LIMITS.maxEventBytes, // 32 KiB — shared with the server
   requestTimeoutMs: 10_000,
   flushIntervalMs: 10_000,
   maxRetries: 5,
@@ -186,6 +194,7 @@ class PrismClientImpl implements PrismClient {
     this.queue = new EventQueue({
       maxEvents: this.queueOptions.maxQueueEvents,
       maxBytes: this.queueOptions.maxQueueBytes,
+      maxEventBytes: this.queueOptions.maxEventBytes,
     });
 
     // Background delivery loop — self-rescheduling through the runtime seam.
@@ -422,21 +431,37 @@ class PrismClientImpl implements PrismClient {
     }
   }
 
+  /**
+   * Build the immutable event. The serialized form IS the v2 wire envelope
+   * (task-9 §3): schemaVersion/eventId/type/occurredAt, optional
+   * sessionId/anonymousId, the track name + properties, and normalized
+   * runtime context. `timestamp`/`sessionId` on the internal QueuedEvent
+   * mirror the envelope for queue accounting and session semantics.
+   */
   private buildEvent(name: string, properties?: JsonObject, sessionId?: string): QueuedEvent {
     const eventId = this.runtime.createId();
     const resolvedSessionId = sessionId ?? this.activeSession?.sessionId;
-    const serialized = JSON.stringify({
+    const now = this.runtime.now();
+    const envelope: WireEnvelope = {
+      schemaVersion: WIRE_SCHEMA_VERSION,
       eventId,
+      type: "track",
+      occurredAt: now,
+      sessionId: resolvedSessionId,
+      anonymousId: this.sessionAnonymousId ?? undefined,
       name,
       properties,
-      timestamp: this.runtime.now(),
-      sessionId: resolvedSessionId,
-    });
+      context: {
+        ...this.runtime.context,
+        library: { name: SDK_NAME, version: SDK_VERSION },
+      },
+    };
+    const serialized = JSON.stringify(envelope);
     return {
       eventId,
       name,
       properties,
-      timestamp: this.runtime.now(),
+      timestamp: now,
       sessionId: resolvedSessionId,
       serialized,
     };
@@ -447,7 +472,14 @@ class PrismClientImpl implements PrismClient {
     signal: AbortableSignal,
   ): Promise<DeliverOutcome> {
     const request = {
-      body: JSON.stringify(batch.map((e) => JSON.parse(e.serialized))),
+      // The v2 batch envelope (task-9 §8): SDK identity at batch level so
+      // identical values are not repeated per event.
+      body: JSON.stringify({
+        schemaVersion: WIRE_SCHEMA_VERSION,
+        sentAt: this.runtime.now(),
+        sdk: { name: SDK_NAME, version: SDK_VERSION },
+        events: batch.map((e) => JSON.parse(e.serialized)),
+      }),
       timeoutMs: this.queueOptions.requestTimeoutMs,
       signal,
     };
@@ -629,8 +661,19 @@ class PrismClientImpl implements PrismClient {
       }
       for (const serialized of parsed.events as unknown[]) {
         if (typeof serialized !== "string") throw new Error("corrupt queue entry");
-        const event = JSON.parse(serialized) as Omit<QueuedEvent, "serialized">;
-        this.queue.enqueue({ ...event, serialized });
+        const parsedEvent = JSON.parse(serialized) as Omit<QueuedEvent, "serialized"> & {
+          occurredAt?: number;
+        };
+        this.queue.enqueue({
+          eventId: parsedEvent.eventId,
+          name: parsedEvent.name,
+          properties: parsedEvent.properties,
+          // New envelopes carry occurredAt; pre-envelope snapshots carry
+          // timestamp (defensive read of older persisted state).
+          timestamp: parsedEvent.occurredAt ?? parsedEvent.timestamp ?? 0,
+          sessionId: parsedEvent.sessionId,
+          serialized,
+        });
       }
       this.queueRestored = true;
       if (this.queue.size > 0) {

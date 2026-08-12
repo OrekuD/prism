@@ -153,6 +153,13 @@ export interface PrismQueueOptions {
   maxBatchEvents?: number;
   /** Max serialized bytes per batch. Default 256 KiB. */
   maxBatchBytes?: number;
+  /**
+   * Max serialized bytes for a SINGLE event; larger events are dropped
+   * (`queue-full`) so the SDK can never produce an event the ingestion
+   * server rejects as oversized. Default 32 KiB (shared with the server
+   * via `INGEST_LIMITS`).
+   */
+  maxEventBytes?: number;
   /** Per-request timeout in ms. Default 10_000. */
   requestTimeoutMs?: number;
   /** Interval between background batch flushes in ms. Default 10_000. */

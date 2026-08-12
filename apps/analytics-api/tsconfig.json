@@ -8,11 +8,7 @@
     "strict": true,
     "skipLibCheck": true,
     "noUnusedLocals": false,
-    "outDir": "./dist/src",
-    "baseUrl": "./",
-    "paths": {
-      "*": ["src/*"]
-    }
+    "outDir": "./dist/src"
   },
   "include": ["./src/**/*.ts"]
 }

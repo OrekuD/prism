@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createPrismClient,
+  INGEST_LIMITS,
   type PrismClient,
   type PrismRequest,
   type PrismResponse,
@@ -37,6 +38,13 @@ function fakeRuntime(name = "node-fake"): PrismRuntimeAdapter {
     },
     context: { platform: "node", kind: "server" },
   };
+}
+
+
+/** Parse the v2 batch envelope's events array from a delivered body. */
+function deliveredEvents(body: string | undefined): Array<Record<string, unknown>> {
+  const parsed = JSON.parse(body ?? "{}") as { events?: Array<Record<string, unknown>> };
+  return parsed.events ?? [];
 }
 
 const base = {
@@ -123,7 +131,7 @@ describe("queue and delivery", () => {
     prism.track("b", { n: 2 });
     await prism.flush();
     expect(bodies).toHaveLength(1);
-    const batch = JSON.parse(bodies[0] ?? "[]") as Array<{ name: string }>;
+    const batch = deliveredEvents(bodies[0]) as Array<{ name: string }>;
     expect(batch.map((e) => e.name)).toEqual(["a", "b"]);
   });
 
@@ -139,9 +147,9 @@ describe("queue and delivery", () => {
   });
 
   it("drops events beyond the queue byte capacity", async () => {
-    // ~280 serialized bytes for the big event; the small one would exceed
-    // a 300-byte cap when combined.
-    const prism = await ready({ queue: { maxQueueBytes: 300 } });
+    // v2 envelope sizes: big event = 419 bytes, small = 207, sum = 626.
+    // A 550-byte cap accepts the first event and drops the second.
+    const prism = await ready({ queue: { maxQueueBytes: 550 } });
     expect(prism.track("a", { payload: "x".repeat(200) }).status).toBe("queued");
     const second = prism.track("b");
     expect(second.status).toBe("dropped");
@@ -213,7 +221,7 @@ describe("sessions", () => {
     expect(started.status).toBe("started");
     prism.track("during_session");
     await prism.flush();
-    const batch = JSON.parse(bodies[0] ?? "[]") as Array<{ sessionId?: string; name: string }>;
+    const batch = deliveredEvents(bodies[0]) as Array<{ sessionId?: string; name: string }>;
     const during = batch.find((e) => e.name === "during_session");
     if (started.status === "started") {
       expect(during?.sessionId).toBe(started.session.sessionId);
@@ -233,8 +241,8 @@ describe("sessions", () => {
       started.session.end();
     }
     await prism.flush();
-    const names = JSON.parse(bodies[0] ?? "[]")
-      .map((e: { name: string }) => e.name)
+    const names = deliveredEvents(bodies[0])
+      .map((e) => String(e.name))
       .sort();
     expect(names).toEqual(["session_ended", "session_started"]);
   });
@@ -507,7 +515,7 @@ describe("property sanitization (review fix)", () => {
       ok: "visible",
     });
     await prism.flush();
-    const delivered = JSON.parse(bodies[0] ?? "{}") as Array<{ properties: Record<string, unknown> }>;
+    const delivered = deliveredEvents(bodies[0]) as Array<{ properties: Record<string, unknown> }>;
     const props = delivered[0]?.properties ?? {};
     expect((props.user as Record<string, unknown>).password).toBe("[REDACTED]");
     expect(((props.user as Record<string, unknown>).nested as Record<string, unknown>).apiKey).toBe("[REDACTED]");
@@ -550,7 +558,7 @@ describe("oversized single event (review fix)", () => {
     expect(prism.track("big", { payload: "x".repeat(400) }).status).toBe("queued");
     await prism.flush();
     expect(bodies).toHaveLength(1);
-    const batch = JSON.parse(bodies[0] ?? "[]") as Array<{ name: string }>;
+    const batch = deliveredEvents(bodies[0]) as Array<{ name: string }>;
     expect(batch).toHaveLength(1);
     expect(batch[0]?.name).toBe("big");
   });
@@ -692,7 +700,7 @@ describe("queue persistence (slice 3)", () => {
     const bodies: string[] = [];
     const prism2 = await ready({ runtime });
     await prism2.flush();
-    expect(JSON.parse(bodies[0] ?? "[]")[0]?.name).toBe("persisted_3");
+    expect(deliveredEvents(bodies[0])[0]?.name).toBe("persisted_3");
   });
 
   it("quarantines corrupt queue state with a diagnostic", async () => {
@@ -871,7 +879,7 @@ describe("single removal owner (slice 3 corrections)", () => {
     const posted: Array<Array<{ name: string }>> = [];
     const runtime = fakeRuntime();
     runtime.transport.post = async (_url, request) => {
-      posted.push(JSON.parse(request.body) as Array<{ name: string }>);
+      posted.push(deliveredEvents(request.body) as Array<{ name: string }>);
       return { status: 200, headers: {}, text: async () => "" };
     };
     const prism = await ready({ runtime, queue: { maxBatchEvents: 1 } });
@@ -971,7 +979,7 @@ describe("consent-gated restore and delivery (slice 3 corrections)", () => {
     await prism.setCollectionState("granted");
     await prism.flush();
     expect(bodies).toHaveLength(1); // the deferred snapshot delivers after grant
-    expect(JSON.parse(bodies[0] ?? "[]")[0]?.name).toBe("seeded");
+    expect(deliveredEvents(bodies[0])[0]?.name).toBe("seeded");
     await prism.shutdown({ timeoutMs: 100 });
   });
 });
@@ -1001,7 +1009,7 @@ describe("strict per-event reconciliation (slice 3 corrections)", () => {
       return { status: 200, headers: {}, text: async () => "" };
     };
     await prism.flush();
-    expect(JSON.parse(bodies[0] ?? "[]")).toHaveLength(3);
+    expect(deliveredEvents(bodies[0])).toHaveLength(3);
     await prism.shutdown({ timeoutMs: 100 });
   });
 
@@ -1049,11 +1057,11 @@ describe("strict per-event reconciliation (slice 3 corrections)", () => {
     const events = [prism.track("p1"), prism.track("p2"), prism.track("p3")];
     const firstId = events[0]?.status === "queued" ? events[0].eventId : "missing";
     await expect(prism.flush()).rejects.toThrow(/malformed/); // 2nd post has no terminal ids
-    expect(JSON.parse(bodies[0] ?? "[]")).toHaveLength(3); // first post: the full batch
-    expect(JSON.parse(bodies[1] ?? "[]")).toHaveLength(2); // p1 removed; p2/p3 requeued
+    expect(deliveredEvents(bodies[0])).toHaveLength(3); // first post: the full batch
+    expect(deliveredEvents(bodies[1])).toHaveLength(2); // p1 removed; p2/p3 requeued
     mode = "good";
     await prism.flush();
-    const last = JSON.parse(bodies[bodies.length - 1] ?? "[]") as Array<{ name: string }>;
+    const last = deliveredEvents(bodies[bodies.length - 1]) as Array<{ name: string }>;
     expect(last.map((e) => e.name)).toEqual(["p2", "p3"]);
     await prism.shutdown({ timeoutMs: 100 });
   });
@@ -1120,5 +1128,88 @@ describe("bounded scheduled retries (slice 3 corrections)", () => {
     const pending = scheduled.filter((e) => e.delayMs < 10_000_000 && !e.cancelled);
     expect(pending).toHaveLength(0);
     await prism.shutdown({ timeoutMs: 100 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Slice 4 — v2 wire envelope + shared limits (ingestion contract prep)
+// ---------------------------------------------------------------------------
+
+describe("v2 wire envelope (slice 4)", () => {
+  it("delivers the v2 batch envelope with per-event envelope fields", async () => {
+    const bodies: string[] = [];
+    const runtime = fakeRuntime();
+    runtime.transport.post = async (_url, request) => {
+      bodies.push(request.body);
+      return { status: 200, headers: {}, text: async () => "" };
+    };
+    const prism = await ready({ runtime });
+    prism.track("page_viewed", { url: "/home" });
+    await prism.flush();
+
+    const envelope = JSON.parse(bodies[0] ?? "{}") as {
+      schemaVersion: number;
+      sentAt: number;
+      sdk: { name: string; version: string };
+      events: Array<Record<string, unknown>>;
+    };
+    expect(envelope.schemaVersion).toBe(2);
+    expect(typeof envelope.sentAt).toBe("number");
+    expect(envelope.sdk).toEqual({ name: "@prism/core", version: "0.0.1" });
+    expect(envelope.events).toHaveLength(1);
+    const event = envelope.events[0] ?? {};
+    expect(event.schemaVersion).toBe(2);
+    expect(event.type).toBe("track");
+    expect(typeof event.eventId).toBe("string");
+    expect(typeof event.occurredAt).toBe("number");
+    expect(event.name).toBe("page_viewed");
+    expect((event.properties as { url: string }).url).toBe("/home");
+    expect((event.context as { library: { name: string } }).library.name).toBe("@prism/core");
+    expect((event.context as { platform: string }).platform).toBe("node");
+  });
+
+  it("rejects events above the shared per-event byte cap (queue-full)", async () => {
+    const prism = await ready({ runtime: fakeRuntime() });
+    // strings cap at 10 000 chars — exceed the 32 KiB event cap with chunks
+    const oversized = prism.track("big", {
+      payload: [
+        "x".repeat(9_900),
+        "x".repeat(9_900),
+        "x".repeat(9_900),
+        "x".repeat(9_900),
+      ],
+    });
+    expect(oversized.status).toBe("dropped");
+    if (oversized.status === "dropped") {
+      expect(oversized.reason).toBe("queue-full");
+    }
+    const normal = prism.track("small", { ok: true });
+    expect(normal.status).toBe("queued");
+    await prism.shutdown({ timeoutMs: 50 });
+  });
+
+  it("restores pre-envelope snapshots defensively (timestamp fallback)", async () => {
+    const stored = new Map<string, string>([
+      [
+        `prism:queue:v1:${base.projectKey}`,
+        JSON.stringify({
+          v: 1,
+          events: [
+            JSON.stringify({
+              eventId: "legacy-1",
+              name: "legacy",
+              properties: {},
+              timestamp: 1234,
+            }),
+          ],
+        }),
+      ],
+    ]);
+    const runtime: PrismRuntimeAdapter = {
+      ...fakeRuntime(),
+      storage: memoryStorage(stored),
+    };
+    const prism = await ready({ runtime });
+    await prism.shutdown({ timeoutMs: 50 }); // restores + flushes without error
   });
 });
