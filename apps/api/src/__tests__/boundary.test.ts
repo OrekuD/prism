@@ -3,7 +3,7 @@ import Server, { authRateLimiter } from "../Server";
 import type { Bindings } from "../types/types";
 
 const ENV = {
-  CLIENT_URL: "http://localhost:3001",
+  CLIENT_URL: "http://localhost:5173",
   CORS_ALLOWED_ORIGINS: "https://dashboard.prism.example",
   DATABASE_URL: "",
   JWT_SECRET_KEY: "test",
@@ -30,10 +30,10 @@ describe("main API boundary (CORS + rate limits)", () => {
 
   it("allows an approved dashboard origin", async () => {
     Server.startServer();
-    const response = await preflight("http://localhost:3001");
+    const response = await preflight("http://localhost:5173");
 
     expect(response.headers.get("access-control-allow-origin")).toBe(
-      "http://localhost:3001",
+      "http://localhost:5173",
     );
   });
 

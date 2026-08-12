@@ -42,7 +42,7 @@ vi.mock("../database/db", () => ({
 const baseEnv = {
   DATABASE_URL: "postgres://test",
   JWT_SECRET_KEY: "x".repeat(48),
-  CLIENT_URL: "http://localhost:3001",
+  CLIENT_URL: "http://localhost:5173",
   BASE_URL: "http://localhost:8787",
   IMAGE_KIT_API_KEY: "test-imagekit-key",
   PRISM_DEPLOYMENT_MODE: "self-hosted",

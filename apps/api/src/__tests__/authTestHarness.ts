@@ -24,7 +24,7 @@ export function createTestAuth(
   const base = buildAuthOptions(
     {
       JWT_SECRET_KEY: "test-secret-key-that-is-long-enough-for-hs256",
-      CLIENT_URL: "http://localhost:3001",
+      CLIENT_URL: "http://localhost:5173",
       ENVIRONMENT: "development",
       ...env,
     },

@@ -35,7 +35,7 @@ export function buildAuthOptions(
   const production = isProduction(env);
   const baseURL = env.BASE_URL ?? "http://localhost:8787";
   const trustedOrigins = [
-    env.CLIENT_URL ?? "http://localhost:3001",
+    env.CLIENT_URL ?? "http://localhost:5173",
     ...(env.CORS_ALLOWED_ORIGINS ?? "")
       .split(",")
       .map((origin) => origin.trim())

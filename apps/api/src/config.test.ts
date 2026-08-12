@@ -11,7 +11,7 @@ import {
 const base = {
   DATABASE_URL: "postgres://db",
   JWT_SECRET_KEY: "x".repeat(48),
-  CLIENT_URL: "http://localhost:3001",
+  CLIENT_URL: "http://localhost:5173",
   BASE_URL: "http://localhost:8787",
   IMAGE_KIT_API_KEY: "test-imagekit-key",
 };
@@ -132,7 +132,7 @@ describe("validateAllowedOrigins", () => {
   it("accepts exact origins", () => {
     expect(
       validateAllowedOrigins({
-        CORS_ALLOWED_ORIGINS: "https://app.example.com,http://localhost:3001",
+        CORS_ALLOWED_ORIGINS: "https://app.example.com,http://localhost:5173",
       }),
     ).toEqual([]);
   });

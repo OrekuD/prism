@@ -11,7 +11,7 @@ API with WebSockets, a React dashboard, and a browser SDK.
 
 | Workspace | What it is | Local URL |
 | --- | --- | --- |
-| `apps/web` (`prism-web`) | React/Vite dashboard | http://localhost:3001 |
+| `apps/web` (`prism-web`) | React/Vite dashboard | http://localhost:5173 |
 | `apps/api` (`prism-api`) | Cloudflare Worker product API (auth, teams, projects) | http://localhost:8787 |
 | `apps/analytics-api` (`prism-analytics-api`) | Node/Hono analytics API + WebSocket server | http://localhost:8080 |
 | `apps/docs` (`prism-docs`) | Astro Starlight docs | http://localhost:4321 |
@@ -95,7 +95,7 @@ Or run workspaces individually:
 ```sh
 yarn workspace prism-api dev          # Worker API on :8787
 yarn workspace prism-analytics-api dev  # analytics API + WS on :8080
-yarn workspace prism-web dev          # dashboard on :3001
+yarn workspace prism-web dev          # dashboard on :5173
 ```
 
 `@prism/core` and `@prism/react` build in watch mode as part of `yarn dev`; the
@@ -103,7 +103,7 @@ SDK's development build targets `http://localhost:8080`.
 
 ### Smoke flow
 
-1. Open http://localhost:3001 and create an account.
+1. Open http://localhost:5173 and create an account.
 2. Create/select a team, create a project, copy its analytics key
    (project → Settings → API keys).
 3. In the browser console, start a session with the SDK:

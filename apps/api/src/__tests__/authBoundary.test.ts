@@ -29,7 +29,7 @@ describe("Better Auth boundary (email/password + sessions)", () => {
     const options = buildAuthOptions(
       {
         JWT_SECRET_KEY: "test-secret-key-that-is-long-enough-for-hs256",
-        CLIENT_URL: "http://localhost:3001",
+        CLIENT_URL: "http://localhost:5173",
         ENVIRONMENT: "development",
       },
       {} as never,
@@ -50,7 +50,7 @@ describe("Better Auth boundary (email/password + sessions)", () => {
     const options = buildAuthOptions(
       {
         JWT_SECRET_KEY: "test-secret-key-that-is-long-enough-for-hs256",
-        CLIENT_URL: "http://localhost:3001",
+        CLIENT_URL: "http://localhost:5173",
         ENVIRONMENT: "development",
       },
       {} as never,
@@ -165,7 +165,7 @@ describe("Better Auth boundary (email/password + sessions)", () => {
     const auth = createTestAuth();
 
     const githubAttempt = await auth.api.signInSocial({
-      body: { provider: "github", callbackURL: "http://localhost:3001" },
+      body: { provider: "github", callbackURL: "http://localhost:5173" },
       asResponse: true,
     });
 
