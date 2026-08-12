@@ -1237,3 +1237,27 @@ legacy removal.
 Suite after corrections: 52 tests green; coverage 92.7% lines / 88.8%
 functions / 91.1% branches / 92.7% statements. Root gates: test 4/4,
 typecheck 7/7, lint 10/10, build 8/8.
+
+### Slice 2 second review round (applied 2026-08-12)
+
+1. **Consent withdrawal cancels in-flight delivery**: `setCollectionState
+   ("denied")` now aborts `inFlightSignal` too — a pending transport request
+   is cancelled, emits `delivery_cancelled`, and transmits nothing after
+   the withdrawal (consent-race test: hanging transport honoring the
+   signal; post-withdrawal flush makes zero calls).
+2. **Shutdown is bounded end-to-end**: one `withTimeout` deadline wraps the
+   whole drain (in-flight settle + final flush); a transport that ignores
+   cancellation cannot hang shutdown (hanging-transport test resolves
+   within the deadline; the test fake runtime honors `delayMs`).
+3. **Cancellation is not retry exhaustion**: an aborted signal skips
+   `recordFailure` — no attempt count, no `batch_dropped`; the batch is
+   preserved and the promised fresh final flush delivers it (maxRetries 1
+   test: cancelled attempt + second successful attempt, no batch_dropped).
+4. **Strict JSON + dangerous keys**: the sanitizer rejects
+   prototype-pollution keys (`__proto__`, `constructor`, `prototype`) and
+   runtime-only values (undefined, functions, symbols, bigints) with
+   specific errors; the JSON error message is unified.
+
+Suite: 57 tests green; coverage 95.3% lines / 89.9% functions / 95.7%
+branches / 95.3% statements. Root gates: test 4/4, typecheck 7/7,
+lint 10/10, build 8/8.

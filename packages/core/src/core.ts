@@ -180,10 +180,12 @@ class PrismClientImpl implements PrismClient {
     this.state = state;
     if (state === "denied") {
       // Consent withdrawal: nothing queued before the withdrawal may be
-      // transmitted, the anonymous identity is deleted, the session closes.
+      // transmitted, the anonymous identity is deleted, the session closes,
+      // and any in-flight delivery request is cancelled.
       this.queue.clear();
       this.sessionAnonymousId = null;
       this.activeSession = null;
+      this.inFlightSignal?.abort();
       await this.runtime.storage?.removeItem(ANONYMOUS_ID_KEY);
     }
     if (state === "granted") {
@@ -264,23 +266,30 @@ class PrismClientImpl implements PrismClient {
     this.lifecycleRemovers.length = 0;
 
     // Abort any in-flight BACKGROUND flush so it fails fast; the final
-    // flush below uses a fresh signal.
+    // flush below uses a fresh signal. One deadline bounds the ENTIRE
+    // operation — a transport that ignores cancellation cannot hang
+    // shutdown.
     this.inFlightSignal?.abort();
+    const timeoutMs = options?.timeoutMs ?? 10_000;
+    try {
+      await withTimeout(this.drainQueue(), timeoutMs, this.runtime);
+    } catch {
+      this.emit("warn", "shutdown_flush_failed", "final flush did not complete");
+    }
+  }
+
+  /** Settle the in-flight flush (if any), then deliver what remains. */
+  private async drainQueue(): Promise<void> {
     if (this.flushPromise) {
       try {
         await this.flushPromise;
       } catch {
-        // Background failure was already surfaced via diagnostics.
+        // The in-flight failure was surfaced via diagnostics; cancellation
+        // never counts toward retry exhaustion, so the batch is preserved.
       }
     }
-
     if (!this.queue.isEmpty) {
-      const timeoutMs = options?.timeoutMs ?? 10_000;
-      try {
-        await withTimeout(this.flush(), timeoutMs, this.runtime);
-      } catch {
-        this.emit("warn", "shutdown_flush_failed", "final flush did not complete");
-      }
+      await this.flush();
     }
   }
 
@@ -361,6 +370,13 @@ class PrismClientImpl implements PrismClient {
     try {
       response = await this.runtime.transport.post(`${this.endpoint}/api/v2/ingest`, request);
     } catch (error) {
+      if (signal.aborted) {
+        // Intentional cancellation (consent withdrawal / shutdown): never
+        // counts toward retry exhaustion and never drops the batch — the
+        // fresh final attempt delivers it.
+        this.emit("warn", "delivery_cancelled", "in-flight delivery cancelled");
+        return { ok: false, error };
+      }
       this.recordFailure(batch, error);
       return { ok: false, error };
     }

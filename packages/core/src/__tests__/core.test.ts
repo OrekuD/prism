@@ -553,3 +553,99 @@ describe("oversized single event (review fix)", () => {
     expect(batch[0]?.name).toBe("big");
   });
 });
+
+describe("consent race with an in-flight request (review fix)", () => {
+  it("aborts the in-flight delivery when consent becomes denied", async () => {
+    let calls = 0;
+    const runtime = fakeRuntime();
+    runtime.transport.post = async (_url, request) => {
+      calls += 1;
+      // Hangs until cancelled — a transport that honors the signal.
+      await new Promise((_, reject) => {
+        request.signal.addEventListener("abort", () => reject(new Error("aborted")));
+      });
+      return { status: 200, headers: {}, text: async () => "" };
+    };
+    const prism = await ready({ runtime });
+    const codes: string[] = [];
+    prism.onDiagnostic((d) => codes.push(d.code));
+    prism.track("pending_event");
+    const flushPromise = prism.flush(); // in flight, hanging
+    await prism.setCollectionState("denied");
+    await expect(flushPromise).rejects.toThrow(/aborted/);
+    expect(calls).toBe(1);
+    expect(codes).toContain("delivery_cancelled");
+    // nothing can be transmitted after the withdrawal
+    await prism.flush();
+    expect(calls).toBe(1);
+  });
+});
+
+describe("bounded shutdown with a hanging transport (review fix)", () => {
+  it("resolves within the deadline even when the transport ignores cancellation", async () => {
+    let calls = 0;
+    const runtime = fakeRuntime();
+    runtime.transport.post = async () => {
+      calls += 1;
+      return new Promise<{ status: number; headers: Record<string, string>; text(): Promise<string> }>(
+        () => {
+          // never settles, ignores the signal entirely
+        },
+      );
+    };
+    const prism = await ready({ runtime, queue: { maxRetries: 1 } });
+    prism.track("stuck");
+    const started = Date.now();
+    await prism.shutdown({ timeoutMs: 20 });
+    const elapsed = Date.now() - started;
+    expect(elapsed).toBeLessThan(500);
+    expect(calls).toBe(1); // the in-flight attempt; no retry-exhaustion drop
+    const codes: string[] = [];
+    prism.onDiagnostic((d) => codes.push(d.code));
+    expect(codes).not.toContain("batch_dropped");
+  });
+
+  it("does not count shutdown cancellation toward retry exhaustion and still delivers", async () => {
+    let calls = 0;
+    const runtime = fakeRuntime();
+    runtime.transport.post = async (_url, request) => {
+      calls += 1;
+      if (calls === 1) {
+        // first attempt hangs until cancelled
+        await new Promise((_, reject) => {
+          request.signal.addEventListener("abort", () => reject(new Error("aborted")));
+        });
+      }
+      return { status: 200, headers: {}, text: async () => "" };
+    };
+    const prism = await ready({ runtime, queue: { maxRetries: 1 } });
+    prism.track("survivor");
+    const flushPromise = prism.flush(); // hangs on attempt 1
+    await prism.shutdown({ timeoutMs: 200 }); // abort -> drain -> fresh final flush
+    await expect(flushPromise).rejects.toThrow(/aborted/);
+    expect(calls).toBe(2); // cancelled attempt + the promised fresh final attempt
+    const codes: string[] = [];
+    prism.onDiagnostic((d) => codes.push(d.code));
+    expect(codes).not.toContain("batch_dropped");
+  });
+});
+
+describe("strict JSON + dangerous keys (review fix)", () => {
+  it("rejects prototype-pollution keys", async () => {
+    const prism = await ready();
+    // JSON.parse creates an own __proto__ property (an object literal would
+    // set the prototype instead).
+    const polluted = JSON.parse('{"__proto__": {"polluted": true}}');
+    expect(() => prism.track("polluted", polluted as never)).toThrow(/dangerous key/);
+    expect(() =>
+      prism.track("polluted2", { nested: { constructor: { x: 1 } } } as never),
+    ).toThrow(/dangerous key/);
+  });
+
+  it("rejects runtime-only non-JSON values", async () => {
+    const prism = await ready();
+    expect(() => prism.track("fn", { cb: () => 1 } as never)).toThrow(/JSON values/);
+    expect(() => prism.track("undef", { missing: undefined } as never)).toThrow(/JSON values/);
+    expect(() => prism.track("big", { n: BigInt("10") } as never)).toThrow(/JSON values/);
+  });
+});

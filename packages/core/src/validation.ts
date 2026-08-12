@@ -26,6 +26,9 @@ const DEFAULT_DENY_PATTERN =
 /** Stable redaction marker for sanitized values. */
 export const REDACTED = "[REDACTED]";
 
+/** Keys that must never appear in event properties (prototype pollution). */
+const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
 export interface SanitizeOptions {
   /** Extra key names treated as credentials (case-insensitive matches). */
   denyList?: string[];
@@ -53,9 +56,13 @@ export function sanitizeProperties(
     return custom.includes(key.toLowerCase());
   };
 
-  const walk = (value: JsonValue, depth: number): JsonValue => {
+  const walk = (value: unknown, depth: number): JsonValue => {
     if (depth > maxDepth) {
       throw new Error(`Event properties exceed maximum depth (${maxDepth})`);
+    }
+    if (value === undefined || typeof value === "function" || typeof value === "symbol" || typeof value === "bigint") {
+      // Runtime-only values are not JSON — reject rather than silently drop.
+      throw new Error("Event properties must contain only JSON values");
     }
     if (typeof value === "string") {
       if (value.length > maxStringLength) {
@@ -69,11 +76,14 @@ export function sanitizeProperties(
     if (value !== null && typeof value === "object") {
       const out: JsonObject = {};
       for (const [key, entry] of Object.entries(value)) {
+        if (DANGEROUS_KEYS.has(key)) {
+          throw new Error(`Event properties contain a dangerous key ("${key}")`);
+        }
         out[key] = isSensitiveKey(key) ? REDACTED : walk(entry, depth + 1);
       }
       return out;
     }
-    return value;
+    return value as JsonValue;
   };
 
   return walk(properties, 0) as JsonObject;
@@ -85,7 +95,7 @@ export function assertJsonSerializable(properties: JsonObject | undefined): void
   try {
     JSON.stringify(properties);
   } catch {
-    throw new Error("Event properties must be JSON-serializable");
+    throw new Error("Event properties must contain only JSON values");
   }
 }
 
