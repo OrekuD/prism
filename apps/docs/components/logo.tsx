@@ -10,13 +10,7 @@
 export function PrismLogo() {
   return (
     <span className="inline-flex items-center gap-2">
-      <img src="/prism-mark.svg" alt="" aria-hidden className="size-6 dark:hidden" />
-      <img
-        src="/prism-mark-light.svg"
-        alt=""
-        aria-hidden
-        className="hidden size-6 dark:block"
-      />
+      <img src="/prism-logo.png" alt="" aria-hidden className="size-6" />
       <span className="font-semibold tracking-tight text-fd-foreground">
         Prism
       </span>

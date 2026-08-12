@@ -12,8 +12,7 @@ export const metadata: Metadata = {
   description:
     'Documentation for Prism — realtime product analytics for teams, hosted or self-hosted.',
   icons: {
-    icon: '/favicon.svg',
-    shortcut: '/favicon.ico',
+    icon: '/favicon.ico',
   },
   openGraph: {
     images: '/og-image.png',

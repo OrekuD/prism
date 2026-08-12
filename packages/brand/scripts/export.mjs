@@ -1,16 +1,17 @@
 #!/usr/bin/env node
 /**
- * Deterministic Prism brand export pipeline (task-7 section 3).
+ * Deterministic Prism brand export pipeline (task-7 section 3; updated for
+ * the canonical prism-logo.png — the new logo asset).
  *
- * Renders the canonical square mark to PNG icons at every required size,
- * builds favicon.ico (16+32), copies favicon.svg, and composes the
- * 1200x630 Open Graph image from the lockup with the Geist font embedded
- * (base64 @font-face), so exports are identical on any machine.
+ * Renders the canonical square PNG logo (packages/brand/assets/prism-logo.png)
+ * to icons at every required size, builds favicon.ico (16+32), and composes
+ * the 1200x630 Open Graph image (logo + PRISM wordmark with the Geist font
+ * embedded as base64 @font-face), so exports are identical on any machine.
  *
  *   yarn workspace @prism/brand export   # regenerate + copy to consumers
  *   yarn workspace @prism/brand check    # fail if committed copies drifted
  *
- * Source assets: packages/brand/assets/*.svg (hand-built, canonical).
+ * Source asset: packages/brand/assets/prism-logo.png (canonical).
  * Generated outputs: packages/brand/generated/ + the consumer copies.
  */
 import { mkdir, readFile, rm, writeFile, copyFile } from "node:fs/promises";
@@ -25,17 +26,15 @@ const ASSETS = join(ROOT, "assets");
 const GENERATED = join(ROOT, "generated");
 const ICONS = join(GENERATED, "icons");
 
-const MARK_SIZES = [16, 32, 48, 180, 192, 512, 1024];
+const MARK_SIZES = [16, 32, 48, 72, 180, 192, 512, 1024];
 
 // Consumer copies that must never drift from the canonical sources.
 const CONSUMERS = [
-  ["favicon.svg", "apps/web/public/favicon.svg"],
   ["favicon.ico", "apps/web/public/favicon.ico"],
   ["apple-touch-icon.png", "apps/web/public/apple-touch-icon.png"],
   ["icon-192.png", "apps/web/public/icon-192.png"],
   ["icon-512.png", "apps/web/public/icon-512.png"],
   ["og-image.png", "apps/web/public/og-image.png"],
-  ["favicon.svg", "apps/docs/public/favicon.svg"],
   ["favicon.ico", "apps/docs/public/favicon.ico"],
   ["og-image.png", "apps/docs/public/og-image.png"],
   // Generated email logo modules (same base64 PNG in both consumers).
@@ -45,8 +44,8 @@ const CONSUMERS = [
 
 const EMAIL_LOGO_MODULE = (pngBase64) => `/**
  * GENERATED FILE — do not edit. Produced by packages/brand/scripts/export.mjs
- * from the canonical square mark (light variant, 48px). The same PNG is
- * embedded in the react-email templates, so email logos cannot drift.
+ * from the canonical prism-logo.png (48px). The same PNG is embedded in
+ * the react-email templates, so email logos cannot drift.
  */
 export const PRISM_EMAIL_LOGO_PNG =
   "data:image/png;base64,${pngBase64}";
@@ -62,39 +61,27 @@ async function fontDataUri() {
   return `data:font/woff2;base64,${buffer.toString("base64")}`;
 }
 
-function markSvg(svgText, { upper = "#F2F2F4", text } = {}) {
-  let out = svgText;
-  if (text !== undefined) {
-    out = out
-      .replace(/FONT_DATA_URI/, () => fontDataUri())
-      .replace("UPPER_FILL", upper)
-      .replace("TEXT_FILL", text);
-  }
-  return out;
-}
-
 async function renderMarkIcons() {
   await mkdir(ICONS, { recursive: true });
-  const svg = await readFile(join(ASSETS, "prism-mark.svg"), "utf8");
+  const logo = await readFile(join(ASSETS, "prism-logo.png"));
   for (const size of MARK_SIZES) {
-    await sharp(Buffer.from(svg))
+    await sharp(logo)
       .resize(size, size)
       .png({ compressionLevel: 9 })
-      .toFile(join(ICONS, `prism-mark-${size}.png`));
+      .toFile(join(ICONS, `prism-logo-${size}.png`));
   }
   const ico = await pngToIco([
-    join(ICONS, "prism-mark-16.png"),
-    join(ICONS, "prism-mark-32.png"),
+    join(ICONS, "prism-logo-16.png"),
+    join(ICONS, "prism-logo-32.png"),
   ]);
   await writeFile(join(GENERATED, "favicon.ico"), ico);
-  await copyFile(join(ASSETS, "prism-mark.svg"), join(GENERATED, "favicon.svg"));
-  await copyFile(join(ICONS, "prism-mark-180.png"), join(GENERATED, "apple-touch-icon.png"));
-  await copyFile(join(ICONS, "prism-mark-192.png"), join(GENERATED, "icon-192.png"));
-  await copyFile(join(ICONS, "prism-mark-512.png"), join(GENERATED, "icon-512.png"));
+  await copyFile(join(ICONS, "prism-logo-180.png"), join(GENERATED, "apple-touch-icon.png"));
+  await copyFile(join(ICONS, "prism-logo-192.png"), join(GENERATED, "icon-192.png"));
+  await copyFile(join(ICONS, "prism-logo-512.png"), join(GENERATED, "icon-512.png"));
 }
 
 async function renderEmailLogo() {
-  const png = await sharp(join(ICONS, "prism-mark-48.png")).png().toBuffer();
+  const png = await sharp(join(ICONS, "prism-logo-48.png")).png().toBuffer();
   await writeFile(
     join(GENERATED, "email-logo.ts"),
     EMAIL_LOGO_MODULE(png.toString("base64")),
@@ -103,20 +90,25 @@ async function renderEmailLogo() {
 
 async function renderOgImage() {
   const font = await fontDataUri();
-  const lockup = await readFile(join(ASSETS, "prism-lockup.svg"), "utf8");
-  const lockupDark = lockup
-    .replace(/FONT_DATA_URI/, font)
-    .replace("UPPER_FILL", "#F2F2F4")
-    .replace("TEXT_FILL", "#F2F2F4");
-  const inner = lockupDark.slice(
-    lockupDark.indexOf(">") + 1,
-    lockupDark.lastIndexOf("</svg>"),
-  );
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  // The old lockup's mark geometry is replaced by the canonical PNG; the
+  // PRISM wordmark keeps the lockup position (baseline y=48, x=64, size
+  // 36, letter-spacing 9 — scaled 3x onto the 1200x630 canvas).
+  const textSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <style>
+      @font-face {
+        font-family: "Geist";
+        src: url("${font}") format("woff2");
+        font-weight: 100 900;
+      }
+    </style>
+  </defs>
   <rect width="1200" height="630" fill="#050506"/>
-  <g transform="translate(240 207) scale(3)">${inner}</g>
+  <text x="432" y="351" font-family="Geist, sans-serif" font-size="108" font-weight="600" letter-spacing="27" fill="#F2F2F4">PRISM</text>
 </svg>`;
-  await sharp(Buffer.from(svg))
+  const logo = await sharp(join(ICONS, "prism-logo-72.png")).png().toBuffer();
+  await sharp(Buffer.from(textSvg))
+    .composite([{ input: logo, left: 288, top: 231 }])
     .png({ compressionLevel: 9 })
     .toFile(join(GENERATED, "og-image.png"));
 }

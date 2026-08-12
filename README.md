@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="packages/brand/assets/prism-mark-violet.svg" width="96" height="96" alt="Prism" />
+  <img src="packages/brand/assets/prism-logo.png" width="96" height="96" alt="Prism" />
 </p>
 
 # Prism
