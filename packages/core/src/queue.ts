@@ -107,4 +107,9 @@ export class EventQueue {
   clear(): void {
     this.items.length = 0;
   }
+
+  /** Read-only copy of the queued events (for persistence snapshots). */
+  snapshot(): readonly QueuedEvent[] {
+    return [...this.items];
+  }
 }

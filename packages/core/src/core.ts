@@ -102,6 +102,9 @@ class PrismClientImpl implements PrismClient {
   private cancelTimer: (() => void) | null = null;
   private attempts = new Map<string, number>();
   private readonly lifecycleRemovers: Array<() => void> = [];
+  private readonly instanceId: string;
+  private readonly queueStorageKey: string;
+  private persistChain: Promise<void> = Promise.resolve();
 
   constructor(options: PrismClientOptions) {
     assertProjectKey(options.projectKey);
@@ -130,6 +133,13 @@ class PrismClientImpl implements PrismClient {
 
     this.projectKey = options.projectKey;
     this.endpoint = options.endpoint.replace(/\/$/, "");
+    // Queue persistence is namespaced per PROJECT (a reload of the same
+    // execution context restores its queue). Tradeoff recorded (task-9 §6):
+    // two tabs sharing the project key overwrite each other's snapshot —
+    // server-side dedup by eventId covers the overlap, and the browser
+    // adapter implements a storage lease in its slice.
+    this.instanceId = runtime.createId();
+    this.queueStorageKey = `prism:queue:v1:${this.projectKey}`;
     this.runtime = runtime;
     this.state = options.collection.initialState;
     this.persistence = options.collection.anonymousPersistence ?? "none";
@@ -164,6 +174,7 @@ class PrismClientImpl implements PrismClient {
 
   /** Called by the factory before resolving — the client is fully ready. */
   async ready(): Promise<void> {
+    await this.restoreQueueState();
     await this.ensureAnonymousIdentity();
   }
 
@@ -183,6 +194,7 @@ class PrismClientImpl implements PrismClient {
       // transmitted, the anonymous identity is deleted, the session closes,
       // and any in-flight delivery request is cancelled.
       this.queue.clear();
+      void this.persistQueue();
       this.sessionAnonymousId = null;
       this.activeSession = null;
       this.inFlightSignal?.abort();
@@ -216,6 +228,7 @@ class PrismClientImpl implements PrismClient {
     if (!this.queue.enqueue(event)) {
       return { status: "dropped", reason: "queue-full" };
     }
+    void this.persistQueue();
     return { status: "queued", eventId: event.eventId };
   }
 
@@ -246,6 +259,7 @@ class PrismClientImpl implements PrismClient {
       maxStringLength: this.maxStringLength,
     });
     this.queue.enqueue(this.buildEvent("session_started", properties, handle.sessionId));
+    void this.persistQueue();
     return { status: "started", session: handle };
   }
 
@@ -276,6 +290,9 @@ class PrismClientImpl implements PrismClient {
     } catch {
       this.emit("warn", "shutdown_flush_failed", "final flush did not complete");
     }
+    // Deterministic final snapshot: the last persisted state reflects the
+    // queue after the final flush.
+    await this.persistChain.catch(() => undefined);
   }
 
   /** Settle the in-flight flush (if any), then deliver what remains. */
@@ -331,6 +348,7 @@ class PrismClientImpl implements PrismClient {
           throw outcome.error;
         }
         this.queue.removeFirst(batch.length);
+        void this.persistQueue();
       } finally {
         if (this.inFlightSignal === signal) this.inFlightSignal = null;
       }
@@ -381,6 +399,35 @@ class PrismClientImpl implements PrismClient {
       return { ok: false, error };
     }
     if (response.status >= 200 && response.status < 300) {
+      const results = await this.parseBatchResults(response);
+      // The batch was submitted: accepted/duplicate/rejected events all
+      // leave the queue; never resend rejected poison events.
+      this.queue.removeFirst(batch.length);
+      void this.persistQueue();
+      if (results && results.rejected > 0) {
+        this.emit(
+          "warn",
+          "event_rejected",
+          `${results.rejected} event(s) rejected by the server`,
+        );
+      }
+      return { ok: true };
+    }
+    // Permanent client errors are not retried: the batch is dropped with a
+    // remediation diagnostic (never exposing the key or event body).
+    if (
+      response.status === 400 ||
+      response.status === 401 ||
+      response.status === 403 ||
+      response.status === 413
+    ) {
+      this.queue.removeFirst(batch.length);
+      void this.persistQueue();
+      this.emit(
+        "error",
+        "batch_rejected",
+        `ingest rejected the batch (${response.status}) — fix the event payload; it will not be retried`,
+      );
       return { ok: true };
     }
     const error = new Error(`ingest responded ${response.status}`);
@@ -416,8 +463,93 @@ class PrismClientImpl implements PrismClient {
     const queued = this.queue.enqueue(event);
     if (!queued) {
       this.emit("warn", "session_end_dropped", "session-end event was not queued");
+    } else {
+      void this.persistQueue();
     }
     return { status: "ended", eventId: event.eventId };
+  }
+
+  /**
+   * Queue snapshot through the injected storage adapter. Writes are
+   * serialized on a chain so the final state is deterministic (the last
+   * write reflects the last queue mutation).
+   */
+  private persistQueue(): Promise<void> {
+    const storage = this.runtime.storage;
+    if (!storage || this.closed) return Promise.resolve();
+    this.persistChain = this.persistChain
+      .then(async () => {
+        const snapshot = JSON.stringify({
+          v: 1,
+          events: this.queue.snapshot().map((event) => event.serialized),
+        });
+        await storage.setItem(this.queueStorageKey, snapshot);
+      })
+      .catch(() => {
+        this.emit("warn", "queue_persist_failed", "could not persist the queue");
+      });
+    return this.persistChain;
+  }
+
+  /** Restore the persisted queue on ready; quarantine corrupt/future state. */
+  private async restoreQueueState(): Promise<void> {
+    const storage = this.runtime.storage;
+    if (!storage) return;
+    const raw = await storage.getItem(this.queueStorageKey).catch(() => null);
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as { v?: number; events?: unknown };
+      if (parsed?.v !== 1 || !Array.isArray(parsed.events)) {
+        throw new Error("unsupported queue state version");
+      }
+      for (const serialized of parsed.events as unknown[]) {
+        if (typeof serialized !== "string") throw new Error("corrupt queue entry");
+        const event = JSON.parse(serialized) as Omit<QueuedEvent, "serialized">;
+        this.queue.enqueue({ ...event, serialized });
+      }
+      if (this.queue.size > 0) {
+        this.emit(
+          "info",
+          "queue_restored",
+          `restored ${this.queue.size} queued event(s)`,
+        );
+      }
+    } catch {
+      this.queue.clear();
+      await storage.removeItem(this.queueStorageKey).catch(() => undefined);
+      this.emit(
+        "warn",
+        "queue_state_reset",
+        "corrupt or future queue state quarantined and cleared",
+      );
+    }
+  }
+
+  /**
+   * Tolerant per-event results parsing (the v2 ingest contract): when the
+   * response body carries `{ results: [{ id, status }] }`, the batch is
+   * accounted per event; otherwise a plain 2xx accepts the whole batch.
+   */
+  private async parseBatchResults(response: {
+    text(): Promise<string>;
+  }): Promise<{ accepted: number; duplicate: number; rejected: number } | null> {
+    try {
+      const body = JSON.parse(await response.text()) as {
+        results?: Array<{ id?: string; status?: string }>;
+      };
+      if (!Array.isArray(body.results)) return null;
+      let accepted = 0;
+      let duplicate = 0;
+      let rejected = 0;
+      for (const result of body.results) {
+        if (result.status === "duplicate") duplicate += 1;
+        else if (result.status === "rejected") rejected += 1;
+        else accepted += 1;
+      }
+      return { accepted, duplicate, rejected };
+    } catch {
+      return null; // non-JSON body: status-only success
+    }
   }
 
   private emit(level: PrismDiagnostic["level"], code: string, message: string): void {

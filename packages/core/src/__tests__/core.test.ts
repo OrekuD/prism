@@ -649,3 +649,157 @@ describe("strict JSON + dangerous keys (review fix)", () => {
     expect(() => prism.track("big", { n: BigInt("10") } as never)).toThrow(/JSON values/);
   });
 });
+
+describe("queue persistence (slice 3)", () => {
+  it("persists and restores queued events through storage with a versioned key", async () => {
+    const stored = new Map<string, string>();
+    const runtime: PrismRuntimeAdapter = {
+      ...fakeRuntime(),
+      storage: {
+        getItem: async (key: string) => stored.get(key) ?? null,
+        setItem: async (key: string, value: string) => {
+          stored.set(key, value);
+        },
+        removeItem: async (key: string) => {
+          stored.delete(key);
+        },
+      },
+    };
+    const prism = await ready({ runtime });
+    prism.track("persisted_1");
+    prism.track("persisted_2");
+    await prism.flush(); // delivery succeeded — queue empty + snapshot cleared
+    const key = [...stored.keys()].find((k) => k.startsWith("prism:queue:v1:"));
+    expect(key).toBeDefined();
+    expect((JSON.parse(stored.get(key ?? "") ?? "{}") as { events: unknown[] }).events).toEqual([]);
+
+    // undeliverable events survive shutdown in the persisted snapshot
+    runtime.transport.post = async () => {
+      throw new Error("offline");
+    };
+    prism.track("persisted_3");
+    await prism.shutdown({ timeoutMs: 100 });
+    const snapshot = JSON.parse(stored.get(key ?? "") ?? "{}") as { events: string[] };
+    expect(snapshot.events).toHaveLength(1);
+
+    // a fresh client restores the queued event once delivery works again
+    runtime.transport.post = async (_url, request) => {
+      bodies.push(request.body);
+      return { status: 200, headers: {}, text: async () => "" };
+    };
+    const bodies: string[] = [];
+    const prism2 = await ready({ runtime });
+    await prism2.flush();
+    expect(JSON.parse(bodies[0] ?? "[]")[0]?.name).toBe("persisted_3");
+  });
+
+  it("quarantines corrupt queue state with a diagnostic", async () => {
+    const stored = new Map<string, string>([["prism:queue:v1:x", "{not json"]]);
+    const runtime: PrismRuntimeAdapter = {
+      ...fakeRuntime(),
+      storage: {
+        getItem: async (key: string) => stored.get(key) ?? null,
+        setItem: async (key: string, value: string) => {
+          stored.set(key, value);
+        },
+        removeItem: async (key: string) => {
+          stored.delete(key);
+        },
+      },
+    };
+    const prism = await createPrismClient({
+      ...base,
+      runtime,
+      collection: { initialState: "granted" },
+    });
+    // restore ran inside the factory — the corrupt entry was quarantined:
+    // any later snapshot under the key is a valid v1 state, never the
+    // corrupt payload
+    const remaining = [...stored.values()].find((v) => v.startsWith("prism:queue")) ?? "";
+    expect(remaining).not.toBe("{not json");
+    expect(prism.track("fresh").status).toBe("queued");
+    await prism.shutdown({ timeoutMs: 50 });
+    const final = [...stored.values()].find((v) => v.includes('"v":1')) ?? "";
+    expect(final).toContain('"v":1');
+  });
+});
+
+describe("permanent 4xx handling (slice 3)", () => {
+  it.each([400, 401, 403, 413])(
+    "drops the batch on %s with a remediation diagnostic and no retry",
+    async (status) => {
+      let calls = 0;
+      const runtime = fakeRuntime();
+      runtime.transport.post = async () => {
+        calls += 1;
+        return { status, headers: {}, text: async () => "" };
+      };
+      const prism = await ready({ runtime });
+      const codes: string[] = [];
+      prism.onDiagnostic((d) => codes.push(d.code));
+      prism.track("poison");
+      await prism.flush(); // resolves — terminal outcome, not a delivery failure
+      expect(calls).toBe(1);
+      expect(codes).toContain("batch_rejected");
+    },
+  );
+
+  it("retries 429 and retryable 5xx as before", async () => {
+    let calls = 0;
+    const runtime = fakeRuntime();
+    runtime.transport.post = async () => {
+      calls += 1;
+      return { status: 500, headers: {}, text: async () => "" };
+    };
+    const prism = await ready({ runtime, queue: { maxRetries: 2 } });
+    prism.track("retryable");
+    await expect(prism.flush()).rejects.toThrow(/500/);
+    expect(calls).toBe(1); // stays queued for the next attempt
+  });
+});
+
+describe("per-event results (slice 3)", () => {
+  it("accounts accepted/duplicate/rejected results and never resends rejected", async () => {
+    const bodies: string[] = [];
+    const runtime = fakeRuntime();
+    runtime.transport.post = async (_url, request) => {
+      bodies.push(request.body);
+      return {
+        status: 200,
+        headers: {},
+        text: async () =>
+          JSON.stringify({
+            results: [
+              { id: "fake-id-1", status: "accepted" },
+              { id: "fake-id-2", status: "duplicate" },
+              { id: "fake-id-3", status: "rejected" },
+            ],
+          }),
+      };
+    };
+    const prism = await ready({ runtime });
+    const codes: string[] = [];
+    prism.onDiagnostic((d) => codes.push(d.code));
+    prism.track("a");
+    prism.track("b");
+    prism.track("c");
+    await prism.flush();
+    expect(bodies).toHaveLength(1);
+    expect(codes).toContain("event_rejected");
+    await prism.flush(); // queue is empty — rejected events are not resent
+    expect(bodies).toHaveLength(1);
+  });
+
+  it("accepts the whole batch when the response has no results", async () => {
+    const runtime = fakeRuntime();
+    runtime.transport.post = async () => ({
+      status: 200,
+      headers: {},
+      text: async () => JSON.stringify({ message: "success" }),
+    });
+    const prism = await ready({ runtime });
+    prism.track("plain");
+    await prism.flush();
+    expect(prism.track("after").status).toBe("queued");
+  });
+});

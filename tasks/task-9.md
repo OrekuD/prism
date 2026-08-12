@@ -1261,3 +1261,35 @@ typecheck 7/7, lint 10/10, build 8/8.
 Suite: 57 tests green; coverage 95.3% lines / 89.9% functions / 95.7%
 branches / 95.3% statements. Root gates: test 4/4, typecheck 7/7,
 lint 10/10, build 8/8.
+
+### Slice 3 — delivery (completed 2026-08-12)
+
+- **Queue persistence**: queued events are snapshotted through the storage
+  adapter under a namespaced, versioned key (`prism:queue:v1:<projectKey>`)
+  on every mutation, with writes serialized on a chain so the final state
+  is deterministic; the factory restores the queue before resolving.
+  Corrupt or future-version state is quarantined (cleared + removed) with
+  a `queue_state_reset` diagnostic. Tradeoff recorded per task §6: two
+  contexts sharing a project key overwrite each other's snapshot —
+  server-side dedup by eventId covers overlap; the browser adapter
+  implements a storage lease in its slice.
+- **Permanent 4xx handling**: 400/401/403/413 drop the batch immediately
+  with a `batch_rejected` remediation diagnostic (no key/body exposure);
+  408/429/5xx and network failures stay on the retry path with
+  Retry-After + bounded attempts.
+- **Per-event results**: tolerant parsing of `{ results: [{ id, status }] }`
+  from the v2 ingest response — accepted/duplicate/rejected all leave the
+  queue, rejected events are never resent, and a plain 2xx body accepts
+  the whole batch (status-only success).
+- **Package-consumer + budget tests**: the built artifact (dist) is
+  consumed in a clean fixture test (createPrismClient + PrismClientV1
+  reachable, smoke client created) and the bundle budget is asserted
+  (dist/index.js 27.5 KB < 60 KB baseline).
+- **Overflow policy**: the frozen contract's `queue-full` result (drop the
+  triggering event with an observable result) is retained over the
+  drop-oldest preference in §6 — recorded as the contract decision;
+  memory growth stays bounded.
+
+Suite: 68 tests green (3 files incl. dist-consumer); coverage 94.8% lines
+/ 90.6% functions / 98% branches / 94.8% statements. Root gates: test
+4/4, typecheck 7/7, lint 10/10, build 8/8.
