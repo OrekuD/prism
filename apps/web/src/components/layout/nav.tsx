@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { PrismLogo } from "@/components/brand/prism-logo";
 
 const VITE_DOCS_URL: string =
-  import.meta.env.VITE_DOCS_URL ?? "http://localhost:4321";
+  import.meta.env.VITE_DOCS_URL ?? "http://localhost:3000";
 import {
 	Dialog,
 	DialogClose,

@@ -12,7 +12,7 @@ import { ErrorState } from "@/components/ui/error-state";
 import { useProjectEventsQuery } from "@/network/queries/useProjectEventsQuery";
 
 const VITE_DOCS_URL: string =
-  import.meta.env.VITE_DOCS_URL ?? "http://localhost:4321";
+  import.meta.env.VITE_DOCS_URL ?? "http://localhost:3000";
 import { useParams } from "react-router-dom";
 
 function formatTime(value: string) {
@@ -96,7 +96,7 @@ export function ProjectEvents() {
             description={'Log events from your site with prism.logEvent("name", data) using the project key, then watch them appear here in realtime.'}
             action={
               <a
-                href={`${VITE_DOCS_URL}/reference/sdk`}
+                href={`${VITE_DOCS_URL}/docs/sdks/javascript`}
                 className="text-[13px] font-medium text-link transition-colors duration-150 hover:underline"
               >
                 Read the SDK reference

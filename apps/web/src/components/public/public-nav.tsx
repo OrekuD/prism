@@ -6,7 +6,7 @@ import { authClient } from "@/lib/authClient";
 import { TELEMETRY_EVENTS, trackTelemetry } from "@/lib/telemetry";
 import { cn } from "@/lib/utils";
 
-const VITE_DOCS_URL: string = import.meta.env.VITE_DOCS_URL ?? "http://localhost:4321";
+const VITE_DOCS_URL: string = import.meta.env.VITE_DOCS_URL ?? "http://localhost:3000";
 
 const docsHref = `${VITE_DOCS_URL}`;
 

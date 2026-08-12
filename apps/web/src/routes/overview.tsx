@@ -93,7 +93,7 @@ export function Overview() {
             {
               label: "Documentation",
               description: "Install and use the Prism SDK.",
-              href: "http://localhost:4321",
+              href: "http://localhost:3000",
             },
           ] as Array<
             { label: string; description: string } & (
