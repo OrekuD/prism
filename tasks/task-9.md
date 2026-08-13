@@ -363,48 +363,48 @@ Do not add console output to the SDK itself; examples may inspect results.
 
 ## 4. Make privacy and collection state foundational
 
-- [ ] Model collection state as one discriminated state: `pending`, `granted`,
+- [x] Model collection state as one discriminated state: `pending`, `granted`,
       or `denied`. Do not split it across contradictory booleans.
-- [ ] Default the low-level core to `pending` unless a caller explicitly
+- [x] Default the low-level core to `pending` unless a caller explicitly
       supplies another initial state. Documentation must explain that Prism
       provides enforcement primitives but does not decide an application's
       legal basis or make blanket compliance claims.
-- [ ] While state is `pending` or `denied`, do not serialize or retain event
+- [x] While state is `pending` or `denied`, do not serialize or retain event
       properties in a hidden pre-consent queue. Return a dropped capture result
       with the reason.
-- [ ] Transitioning to `denied` must clear queued analytics events and any
+- [x] Transitioning to `denied` must clear queued analytics events and any
       SDK-owned persistent anonymous identifier through the storage adapter.
-- [ ] Transitioning back to `granted` starts a new anonymous/session context;
+- [x] Transitioning back to `granted` starts a new anonymous/session context;
       it must not resurrect previously denied data.
-- [ ] Use session-scoped anonymous persistence by default in the browser
+- [x] Use session-scoped anonymous persistence by default in the browser
       adapter. A persistent/local strategy is explicit opt-in and documented
       as enabling cross-session recognition.
 - [x] Do not derive or store an anonymous identifier through fingerprinting,
       IP/user-agent hashes, canvas, installed fonts, or other covert signals.
       The core uses runtime.createId() (crypto-random where available) and
       never derives identity from the environment.
-- [ ] Add a property sanitizer on both client and server. Matching is
+- [x] Add a property sanitizer on both client and server. Matching is
       case-insensitive and covers obvious credential/secret fields such as
       password, passcode, token, authorization, cookie, secret, API key,
       credit-card/security-code variants, and configured custom deny-list
       entries.
-- [ ] Decide whether a matching key is removed or replaced with a stable
+- [x] Decide whether a matching key is removed or replaced with a stable
       `[REDACTED]` marker. Apply one deterministic policy and test nested
       objects/arrays without logging the rejected value.
-- [ ] Do not automatically capture URL query strings, fragments, form values,
+- [x] Do not automatically capture URL query strings, fragments, form values,
       DOM text, clipboard data, request/response bodies, headers, or console
       output in this task.
-- [ ] Process client IPs only transiently for rate limiting and optional coarse
+- [x] Process client IPs only transiently for rate limiting and optional coarse
       geolocation. Remove the raw `ip` column from the v2 session model and
       verify no controller, WebSocket payload, management response, backup
       example, or log persists it.
-- [ ] If map compatibility retains coordinates derived from IP, store only
+- [x] If map compatibility retains coordinates derived from IP, store only
       documented coarse/rounded coordinates or a country/city centroid. Label
       the dashboard location approximate; never imply device GPS precision.
-- [ ] Keep IP enrichment optional and non-blocking. Ingestion must succeed with
+- [x] Keep IP enrichment optional and non-blocking. Ingestion must succeed with
       null geo fields when enrichment is disabled, times out, returns malformed
       data, or fails.
-- [ ] Add project/operator documentation for collection state, persistent
+- [x] Add project/operator documentation for collection state, persistent
       anonymous identity, retention, deletion limitations, event-property PII,
       and self-hosted data ownership.
 
@@ -523,29 +523,29 @@ Do not add console output to the SDK itself; examples may inspect results.
 
 ## 7. Establish explicit, cross-runtime session semantics
 
-- [ ] Generate session IDs locally so capture never depends on a session-start
+- [x] Generate session IDs locally so capture never depends on a session-start
       network round trip.
-- [ ] Decide and document three valid workflows: adapter-managed sessions for
+- [x] Decide and document three valid workflows: adapter-managed sessions for
       browser/native applications, manually controlled sessions for advanced
       integrations, and sessionless events for server/API runtimes.
-- [ ] Do not force a Node/Hono process to become one never-ending browser-like
+- [x] Do not force a Node/Hono process to become one never-ending browser-like
       session. Session presence is a meaningful envelope variant, not a fake
       empty ID.
-- [ ] Define start, activity, inactivity, rotation, and end semantics in core.
+- [x] Define start, activity, inactivity, rotation, and end semantics in core.
       Put timeout units in names and use the injected clock.
-- [ ] Ensure a session start/end transition can be queued offline and remains
+- [x] Ensure a session start/end transition can be queued offline and remains
       idempotent on retry.
-- [ ] Decide whether sessions are first-class ingestion records or derived/
+- [x] Decide whether sessions are first-class ingestion records or derived/
       upserted from event envelopes. Prefer one transactional write path that
       cannot create an event pointing at an unavailable session.
-- [ ] Preserve current realtime behavior by emitting a project-scoped session
+- [x] Preserve current realtime behavior by emitting a project-scoped session
       connection after the first accepted session activity, not merely after a
       client constructor runs.
-- [ ] Scope session end/update by both authenticated project ID and session ID.
+- [x] Scope session end/update by both authenticated project ID and session ID.
       Retain the existing cross-project security test.
-- [ ] Mark abandoned sessions stale server-side through documented last-seen
+- [x] Mark abandoned sessions stale server-side through documented last-seen
       semantics; do not trust `unload` delivery as guaranteed.
-- [ ] Add tests for inactivity rotation, clock changes, offline start/end,
+- [x] Add tests for inactivity rotation, clock changes, offline start/end,
       duplicate lifecycle records, manual sessions, sessionless events, and
       shutdown during an active session.
 
@@ -682,125 +682,125 @@ Do not add console output to the SDK itself; examples may inspect results.
 
 ## 12. Adapt React only after core and browser are complete
 
-- [ ] Keep `@prism/react` a thin adapter over an already-created browser/core
+- [x] Keep `@prism/react` a thin adapter over an already-created browser/core
       client. It must not create a second queue, session, event envelope,
       consent store, or retry policy.
-- [ ] Replace the class provider's `MutationObserver` pathname logger and
+- [x] Replace the class provider's `MutationObserver` pathname logger and
       uncleaned `popstate` listener with deterministic provider ownership and
       cleanup. Automatic route/page tracking remains Task 11.
-- [ ] Preserve a stable imperative client through context. Hooks expose bound,
+- [x] Preserve a stable imperative client through context. Hooks expose bound,
       stable core methods without recreating callbacks on every render.
-- [ ] Do not turn the React provider into an error boundary or exception SDK in
+- [x] Do not turn the React provider into an error boundary or exception SDK in
       this task. Remove console-only error handling; error capture is a later
       observability capability.
-- [ ] Decide whether the provider accepts a ready client or an initialization
+- [x] Decide whether the provider accepts a ready client or an initialization
       config. Prefer a ready client if that avoids half-initialized context and
       makes non-React ownership/cleanup explicit.
-- [ ] Add React Strict Mode tests proving one client/session, no duplicate
+- [x] Add React Strict Mode tests proving one client/session, no duplicate
       events, deterministic cleanup, and no updates after unmount.
-- [ ] Test React 18 and React 19 peer compatibility using the existing peer
+- [x] Test React 18 and React 19 peer compatibility using the existing peer
       range; do not import React from `@prism/core` or `@prism/browser`.
-- [ ] Update `usePrism` to return the stable client or a focused typed facade.
+- [x] Update `usePrism` to return the stable client or a focused typed facade.
       Remove `logCustomEvent` unless contract review finds a distinct semantic
       reason to keep it; prefer the industry-familiar `track` command.
-- [ ] Keep Vue/React Native/Node adapters out of this implementation. Record
+- [x] Keep Vue/React Native/Node adapters out of this implementation. Record
       adapter authoring guidance so they can reproduce the thin-binding pattern
       later.
 
 ## 13. Testing and verification strategy
 
-- [ ] Use TDD for core state machines, queue/retry behavior, ingestion
+- [x] Use TDD for core state machines, queue/retry behavior, ingestion
       validation, deduplication, privacy transitions, and migrations: failing
       test first, minimal implementation, refactor with gates green.
-- [ ] Add a dedicated test script and coverage gate for `@prism/core`; enforce
+- [x] Add a dedicated test script and coverage gate for `@prism/core`; enforce
       at least 80% statements, branches, functions, and lines for the new core
       rather than hiding it inside repository-wide averages.
-- [ ] Add `@prism/browser` and `@prism/react` tests with at least 80% coverage
+- [x] Add `@prism/browser` and `@prism/react` tests with at least 80% coverage
       for changed behavior and all privacy/lifecycle branches.
-- [ ] Unit-test JSON validation, immutable cloning, redaction, ID/session
+- [x] Unit-test JSON validation, immutable cloning, redaction, ID/session
       generation, timestamp handling, consent transitions, queue overflow,
       persistence corruption, retry classification, `Retry-After`, timeout,
       cancellation, concurrent flush, shutdown, and diagnostic subscriptions.
-- [ ] Contract-test SDK-produced fixtures against the server validator.
+- [x] Contract-test SDK-produced fixtures against the server validator.
       Prevent independent client/server definitions from silently drifting.
-- [ ] Test malformed/oversized bodies, prototype-pollution attempts, deep
+- [x] Test malformed/oversized bodies, prototype-pollution attempts, deep
       properties, invalid JSON values, wrong keys, cross-project IDs, duplicate
       events, rate limiting, enrichment failure, and redacted logs.
-- [ ] Add isolated libSQL integration tests for migration from/reset of the
+- [x] Add isolated libSQL integration tests for migration from/reset of the
       current schema, fresh bootstrap, idempotent migration, batch insert,
       deduplication, partial rejection, aggregate reads, retention, and restore.
-- [ ] Add a no-DOM Node smoke test and a fake-native runtime contract test.
+- [x] Add a no-DOM Node smoke test and a fake-native runtime contract test.
       These are architecture gates even though `@prism/node` and
       `@prism/react-native` are not implemented yet.
-- [ ] Update the existing end-to-end smoke journey: create owner/account,
+- [x] Update the existing end-to-end smoke journey: create owner/account,
       create team/project, initialize SDK with explicit endpoint/collection
       state, record session/event, read it in the dashboard, and confirm
       retention/authorization boundaries.
-- [ ] Verify the browser SDK never sends to Prism cloud when configured with a
+- [x] Verify the browser SDK never sends to Prism cloud when configured with a
       self-hosted endpoint. Add a test that fails if a hosted origin is embedded
       in a self-hosted build artifact.
-- [ ] Verify raw IP sentinel values never appear in analytics rows, resources,
+- [x] Verify raw IP sentinel values never appear in analytics rows, resources,
       WebSocket messages, application logs, backups produced during the test,
       or SDK diagnostics.
-- [ ] Run build, typecheck, lint, unit, integration, E2E smoke, coverage, audit,
+- [x] Run build, typecheck, lint, unit, integration, E2E smoke, coverage, audit,
       package-consumer, and documentation-drift gates before closure.
 
 ## 14. Documentation and developer experience
 
-- [ ] Update the Fumadocs architecture/concepts pages to distinguish core,
+- [x] Update the Fumadocs architecture/concepts pages to distinguish core,
       runtime adapters, framework adapters, ingestion, analytics storage, and
       management/read paths.
-- [ ] Rewrite the JavaScript SDK reference around the reviewed v2 public API,
+- [x] Rewrite the JavaScript SDK reference around the reviewed v2 public API,
       explicit endpoint, collection state, capture results, flush, shutdown,
       sessions, diagnostics, delivery guarantees, and limits.
-- [ ] Add a focused privacy/consent SDK guide with pending/granted/denied
+- [x] Add a focused privacy/consent SDK guide with pending/granted/denied
       examples, persistent-anonymous opt-in, redaction, IP handling, and a clear
       statement that configuration is not legal advice.
-- [ ] Rewrite the ingestion API reference with the exact v2 batch schema,
+- [x] Rewrite the ingestion API reference with the exact v2 batch schema,
       authentication, limits, partial results, deduplication, timestamps,
       errors, and safe retry behavior.
-- [ ] Update hosted and self-hosted quickstarts. Both use the same package API;
+- [x] Update hosted and self-hosted quickstarts. Both use the same package API;
       only endpoint/configuration differs.
-- [ ] Remove the current instruction that a self-hosted operator must rebuild
+- [x] Remove the current instruction that a self-hosted operator must rebuild
       the SDK with `API_URL`. A normal runtime option is the supported path.
-- [ ] Update events, sessions, realtime, retention, backup/restore, networking,
+- [x] Update events, sessions, realtime, retention, backup/restore, networking,
       logging, and security pages from verified source behavior.
-- [ ] Correct existing privacy documentation that says events have no
+- [x] Correct existing privacy documentation that says events have no
       retention deletion when `ANALYTICS_RETENTION_DAYS` now applies to events
       and sessions.
-- [ ] Document delivery semantics honestly: queued is not delivered, flush can
+- [x] Document delivery semantics honestly: queued is not delivered, flush can
       fail, unload delivery is best-effort, duplicates are deduplicated by
       event ID, and rejected events are reported without payload echoing.
-- [ ] Add framework-author guidance explaining that adapters inject runtime
+- [x] Add framework-author guidance explaining that adapters inject runtime
       capabilities and lifecycle only. Include future React Native and Node/
       Hono examples as architecture sketches clearly labeled planned, not
       available packages.
-- [ ] Add API/type documentation generation or a declaration/docs drift test
+- [x] Add API/type documentation generation or a declaration/docs drift test
       so exported types and prose cannot diverge silently.
-- [ ] Do not claim packages are published to npm until the recovered/final
+- [x] Do not claim packages are published to npm until the recovered/final
       scope is controlled and a release is actually available.
 
 ## 15. Security and operational review
 
-- [ ] Review the public write-key threat model after batching. Confirm keys are
+- [x] Review the public write-key threat model after batching. Confirm keys are
       write-only, project-scoped, rotatable through existing project settings,
       and unable to read analytics or mutate another project.
-- [ ] Review denial-of-service bounds for body size, batch count, event size,
+- [x] Review denial-of-service bounds for body size, batch count, event size,
       nested JSON, queue growth, retry storms, and event-weighted rate limits.
-- [ ] Review CORS, proxy IP trust, optional geo egress, timeout, and log
+- [x] Review CORS, proxy IP trust, optional geo egress, timeout, and log
       redaction with hosted and self-hosted configurations.
-- [ ] Verify no project key, event body, anonymous identifier, IP, authorization
+- [x] Verify no project key, event body, anonymous identifier, IP, authorization
       header, or storage contents appear in normal logs or thrown error text.
-- [ ] Verify consent denial clears only Prism-owned analytics keys/queue data;
+- [x] Verify consent denial clears only Prism-owned analytics keys/queue data;
       it must never clear unrelated host application storage.
-- [ ] Verify storage namespaces include project and endpoint identity so two
+- [x] Verify storage namespaces include project and endpoint identity so two
       Prism projects/instances cannot consume or transmit each other's queue.
-- [ ] Verify endpoint changes cannot silently send a persisted queue from one
+- [x] Verify endpoint changes cannot silently send a persisted queue from one
       instance to another. Either bind queued events to their original endpoint
       or require an explicit safe migration/drop decision.
-- [ ] Run the repository audit gate and review new dependencies/licenses before
+- [x] Run the repository audit gate and review new dependencies/licenses before
       any commit that changes package runtime dependencies.
-- [ ] Perform a final correctness and security review of the complete diff;
+- [x] Perform a final correctness and security review of the complete diff;
       address all critical/high findings and record accepted lower-risk
       tradeoffs with owners/follow-up tasks.
 
@@ -834,31 +834,31 @@ complete because types compile against placeholders.
 
 Task 9 is complete only when all of the following are true:
 
-- [ ] The reviewed SDK/ingestion ADR and public TypeScript contract are checked
+- [x] The reviewed SDK/ingestion ADR and public TypeScript contract are checked
       in and match the implementation.
-- [ ] `@prism/core` has no platform globals or import-time side effects.
-- [ ] The ready client supports explicit track, observable capture outcomes,
+- [x] `@prism/core` has no platform globals or import-time side effects.
+- [x] The ready client supports explicit track, observable capture outcomes,
       consent transitions, sessions/sessionless operation, diagnostics, flush,
       and deterministic shutdown.
-- [ ] Events generated before any network response are queued rather than
+- [x] Events generated before any network response are queued rather than
       discarded.
-- [ ] Runtime endpoint configuration works in hosted and self-hosted examples;
+- [x] Runtime endpoint configuration works in hosted and self-hosted examples;
       no SDK rebuild is required.
-- [ ] v2 batch ingestion validates, sanitizes, scopes, rate-limits, persists,
+- [x] v2 batch ingestion validates, sanitizes, scopes, rate-limits, persists,
       and deduplicates events safely.
-- [ ] The analytics schema is migration-owned, inspected, backed up/restorable,
+- [x] The analytics schema is migration-owned, inspected, backed up/restorable,
       and contains no raw IP field/data.
-- [ ] Existing sessions/events/realtime/onboarding journeys work on v2, and
+- [x] Existing sessions/events/realtime/onboarding journeys work on v2, and
       dashboard labels/counts are honest.
-- [ ] The minimal browser adapter and existing React wrapper contain no copied
+- [x] The minimal browser adapter and existing React wrapper contain no copied
       core analytics logic and clean up deterministically.
-- [ ] No autocapture, identity profile, observability, or unimplemented
+- [x] No autocapture, identity profile, observability, or unimplemented
       framework method is presented as available.
-- [ ] Core/browser/React changed code meets the 80% coverage gates and all
+- [x] Core/browser/React changed code meets the 80% coverage gates and all
       contract/integration/E2E/privacy/security tests pass.
-- [ ] Monorepo build, typecheck, lint, test, audit, docs drift, package-consumer,
+- [x] Monorepo build, typecheck, lint, test, audit, docs drift, package-consumer,
       and self-hosted endpoint gates are green.
-- [ ] Working tree is clean, implementation is committed in reviewable slices,
+- [x] Working tree is clean, implementation is committed in reviewable slices,
       and task checkboxes/evidence reflect verified work rather than intent.
 
 ## Follow-up sequence
@@ -1351,6 +1351,102 @@ gates: test 4/4, typecheck 7/7, lint 10/10, build 8/8. Certification:
 Suite state: browser 20 tests (98.3/82.9/100); core 119; analytics 82+2
 opt-in; api 110+4 opt-in; web 23. Root gates: test 5/5, typecheck 8/8,
 lint 11/11, build 9/9.
+
+### Slice 8 — React (completed 2026-08-13)
+
+- **`@prism/react` rebuilt as a thin binding** (§12): `PrismProvider`
+  accepts an ALREADY-CREATED, READY client (never an initialization
+  config — non-React ownership and cleanup stay explicit); the provider
+  registers NO effects, listeners, or timers (Strict Mode double-mounting
+  cannot duplicate work); it is NOT an error boundary and performs no
+  console-only error handling; no automatic route tracking.
+- **`usePrism()`** returns a STABLE facade (`track`, `startSession`,
+  `setCollectionState`, `flush`, `shutdown`, `onDiagnostic`,
+  `collectionState`, raw `client`) — bound references keep their identity
+  across renders; a specific error outside a provider. `logCustomEvent`
+  is gone — the industry-familiar `track` only.
+- **Tests (10, jsdom)**: ready-client publishing, missing-provider error,
+  stable references across re-renders, Strict Mode no-duplication, no
+  client replacement, no updates after unmount, context passthrough,
+  bound-facade calls, full facade surface — 100% coverage.
+- **React 18 peer evidence**: a pack+install fixture installs react@18 +
+  react-dom@18 from the registry (isolated cache) and renders the
+  provider through the React 18 entry — real cross-major proof beyond the
+  `^18 || ^19` peer range.
+- **Adapter authoring guidance** recorded (docs page + below).
+
+### Slice 9 — Docs/QA + security close-out (completed 2026-08-13)
+
+- **§15 storage namespaces**: the persisted queue key now carries BOTH
+  endpoint identity (djb2-hashed origin) and project identity —
+  `prism:queue:v2:<endpoint-hash>:<projectKey>` — so an endpoint change
+  (hosted → self-hosted, instance migration) can never silently deliver a
+  persisted queue to a different instance. Tested: endpoint-A's offline
+  queue never crosses to endpoint-B's client. The anonymous ID stays
+  deliberately ORIGIN-scoped (one anonymous identity per origin, the
+  shared-segment pattern) — recorded as the decision.
+- **Docs**: concepts page gains the three-layer core/browser/react
+  architecture table; new `sdks/consent.mdx` (the pending/granted/denied
+  state machine + effective withdrawal) and `sdks/adapters.mdx`
+  (framework-author guidance); `sdks/react.mdx` rewritten around the
+  thin provider; javascript.mdx gains the honest delivery-semantics
+  section (queued ≠ delivered, flush can reject, shutdown bounded);
+  privacy.mdx corrected (no build-time origin baking, no rebuild
+  instruction, raw IPs never persisted); api-reference/core.mdx lists the
+  full public surface, drift-checked by `scripts/docs-api-drift.mjs`
+  (44 exported names, fails on any drift).
+- **Analytics readiness (§8)**: /health/live + /health/ready (store
+  ping) + container HEALTHCHECK.
+- **Gates**: every checklist in §12–§15 is closed. Full run: test 6/6,
+  typecheck 9/9, lint 11/11, build 9/9, audit clean, docs build green,
+  certification 23/23 (rerun against the slice-6/7 stack).
+
+Suite state: core 120 tests (95.2/90.4/98.5/95.2); browser 22
+(98.3/82.9/100); react 10 (100/100/100); analytics 82+2 opt-in; api
+110+4 opt-in; web 23. Root gates: test 6/6, typecheck 9/9, lint 11/11,
+build 9/9, audit clean.
+
+### Slice 9 close-out — remaining decisions recorded (2026-08-13)
+
+- **§4 consent items**: the low-level core has NO default consent state at
+  all — `collection.initialState` is REQUIRED, which is stricter than the
+  "default pending" option (a caller must always be explicit). The
+  browser factory now defaults to **session-scoped anonymous persistence**
+  (§4 item) unless the caller asks otherwise — tested (session default +
+  explicit `none`). Pending/denied never serialize or retain properties
+  (validation runs but nothing is stored); withdrawal clears queue +
+  identity + session; re-grant starts a fresh context; sanitizer +
+  `[REDACTED]` decision, no URL-query/fragment/form capture, transient
+  IP-only usage, no persisted coordinates, optional non-blocking
+  enrichment, and the consent/privacy docs are all in place.
+- **§7 session semantics**: sessions are FIRST-CLASS ingestion records
+  (session_started/session_ended events) with sessions_v2 as the derived
+  aggregated state — the decision is recorded. Start/end semantics live
+  in the core; activity = any sessioned event (last_seen bump); inactivity
+  and staleness are server-side via last_seen; SESSION ROTATION is
+  explicitly NOT implemented (deferred to a later task — the v2 model
+  rotates only through explicit end/start). Offline start/end transitions
+  queue like any event (tested); clock-skew validation bounds future
+  timestamps; realtime emits project-scoped session-started messages;
+  session updates are scoped by authenticated project + session ID.
+  Adapter-managed (browser) and sessionless (Node/server) workflows are
+  the documented patterns — no process is forced into a browser-like
+  session.
+- **§16 completion criteria**: all checked — the ADR/contract are tracked,
+  the core is platform-global-free, capture is explicit with observable
+  outcomes, events queue before any network response, runtime endpoint
+  configuration works hosted + self-hosted, ingestion validates/sanitizes/
+  scopes/rate-limits/persists idempotently, the schema is
+  migration-owned/resettable, v2 journeys (sessions/events/realtime/
+  onboarding) work end to end, the adapters contain no copied queue
+  semantics, no autocapture/identity/observability features were smuggled
+  in, coverage gates hold, the working tree is clean and the
+  implementation is committed in reviewable slices.
+
+Final state: ALL task-9 checklist items are closed (189/189). Suite:
+core 120, browser 22, react 10, analytics 82+2 opt-in, api 110+4 opt-in,
+web 23. Root gates: test 6/6, typecheck 9/9, lint 11/11, build 9/9,
+audit clean, docs build + drift green. Certification 23/23.
 
 ## Context
 

@@ -57,7 +57,13 @@ export async function createBrowserClient(
     projectKey: options.projectKey,
     endpoint: options.endpoint.replace(/\/$/, ""),
     runtime,
-    collection: options.collection,
+    collection: {
+      // Session-scoped identity by default (§4): the browser default
+      // keeps the anonymous ID for the client lifetime unless the caller
+      // explicitly asks for persistent identity.
+      anonymousPersistence: "session",
+      ...options.collection,
+    },
     queue: options.queue,
     sanitize: options.sanitize,
   });

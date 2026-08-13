@@ -1,0 +1,70 @@
+---
+title: Core API (@prism/core)
+description: The complete public surface of the runtime-neutral engine — drift-checked against the built declarations.
+audience: Developer
+scope: Both
+lastReviewed: "2026-08-13"
+---
+
+<SectionLabel label="PUBLIC API SURFACE" />
+
+This page is the checked reference for `@prism/core`'s exports — the drift
+script (`scripts/docs-api-drift.mjs`) fails when the declarations and this
+page disagree.
+
+## Factories
+
+- `createPrismClient(options: PrismClientOptions): Promise<PrismClient>`
+
+## Constants & limits
+
+- `WIRE_SCHEMA_VERSION`
+- `SDK_NAME`
+- `SDK_VERSION`
+- `INGEST_LIMITS`
+
+## Validation & sanitization
+
+- `sanitizeProperties`
+- `validateJsonValue`
+- `isValidEventName`
+- `assertValidEventName`
+- `assertProjectKey`
+- `assertEndpoint`
+- `REDACTED`
+
+## Types (the contract)
+
+- `PrismClient`
+- `PrismClientOptions`
+- `PrismQueueOptions`
+- `PrismRuntimeAdapter`
+- `PrismRuntimeContext`
+- `PrismTransport`
+- `PrismRequest`
+- `PrismResponse`
+- `PrismStorage`
+- `PrismLifecycle`
+- `PrismLifecycleEvent`
+- `PrismSignal`
+- `PrismDiagnostic`
+- `PrismDiagnosticHandle`
+- `PrismSessionHandle`
+- `CaptureResult`
+- `DropReason`
+- `CollectionState`
+- `AnonymousPersistence`
+- `SessionStartResult`
+- `SessionEndResult`
+- `JsonObject`
+- `JsonValue`
+- `JsonPrimitive`
+- `WireEnvelope`
+- `WireBatch`
+- `WireContext`
+- `IngestResult`
+- `IngestResponseBody`
+- `IngestStatus`
+- `SanitizeOptions`
+- `JsonValidationResult`
+- `JsonValidationReason`

@@ -337,3 +337,50 @@ describe("runtime edge cases (branch coverage)", () => {
     await prism.shutdown({ timeoutMs: 50 });
   });
 });
+
+describe("identity defaults (§4)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    window.localStorage.clear();
+  });
+
+  it("defaults to session-scoped anonymous persistence", async () => {
+    const posted: string[] = [];
+    installFetchMock(async (_url, init) => {
+      posted.push(String(init.body));
+      return okResponse();
+    });
+    const prism = await createBrowserClient({
+      projectKey: BASE.projectKey,
+      endpoint: BASE.endpoint,
+      collection: { initialState: "granted" },
+    });
+    prism.track("identity_check");
+    await prism.flush();
+    const envelope = JSON.parse(posted[0] ?? "{}") as {
+      events: Array<{ anonymousId?: string }>;
+    };
+    expect(envelope.events[0]?.anonymousId).toBeTruthy();
+    await prism.shutdown({ timeoutMs: 50 });
+  });
+
+  it("honors an explicit none persistence", async () => {
+    const posted: string[] = [];
+    installFetchMock(async (_url, init) => {
+      posted.push(String(init.body));
+      return okResponse();
+    });
+    const prism = await createBrowserClient({
+      projectKey: BASE.projectKey,
+      endpoint: BASE.endpoint,
+      collection: { initialState: "granted", anonymousPersistence: "none" },
+    });
+    prism.track("no_identity");
+    await prism.flush();
+    const envelope = JSON.parse(posted[0] ?? "{}") as {
+      events: Array<{ anonymousId?: string }>;
+    };
+    expect("anonymousId" in (envelope.events[0] ?? {})).toBe(false);
+    await prism.shutdown({ timeoutMs: 50 });
+  });
+});

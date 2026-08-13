@@ -223,7 +223,13 @@ class PrismClientImpl implements PrismClient {
     // server-side dedup by eventId covers the overlap, and the browser
     // adapter implements a storage lease in its slice.
     this.instanceId = runtime.createId();
-    this.queueStorageKey = `prism:queue:v2:${this.projectKey}`;
+    // Storage namespaces carry BOTH endpoint and project identity (§15):
+    // an endpoint change (hosted → self-hosted, instance migration) must
+    // NEVER silently deliver a persisted queue to the new instance. The
+    // endpoint origin is hashed (deterministic, no URL in storage keys).
+    this.queueStorageKey = `prism:queue:v2:${hashString(
+      options.endpoint,
+    )}:${this.projectKey}`;
     this.runtime = runtime;
     this.state = options.collection.initialState;
     this.persistence = options.collection.anonymousPersistence ?? "none";

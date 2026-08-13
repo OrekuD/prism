@@ -28,12 +28,22 @@ another project — the project id is derived from the key on the server.
 
 ## Sessions
 
-A session is one visit: started by the SDK with the page path, referrer, and
-user agent. The analytics API derives OS, browser, mobile flag, and
-best-effort country/coordinates from the client IP. A session is `online`
-from start until `sessions/end` marks it offline (the SDK does this with a
-`keepalive` request on page close). Sessions that never end are treated as
-stale server-side.
+A session is one visit with a **client-owned ID**: the SDK generates it
+locally and emits `session_started`/`session_ended` events through the
+standard batch ingestion — events are accepted before any server
+round-trip. Sessions carry start/end/last-seen timestamps and normalized
+context. Raw IPs and coordinates are never stored.
+
+## The SDK layers
+
+| Package | Role |
+| --- | --- |
+| `@prism/core` | The runtime-neutral engine — queueing, consent, sanitization, sessions, batching, retries, authentication. No DOM/Node/framework globals; every platform reaches it through one injected runtime seam. |
+| `@prism/browser` | A thin browser seam: fetch transport, localStorage, timers, lifecycle events, minimal approved context. It implements NO analytics semantics. |
+| `@prism/react` | A thin framework binding: a zero-effect provider over an already-created client. It creates no queue, session, or retry policy. |
+
+See [Writing a runtime adapter](/docs/sdks/adapters) for the authoring
+pattern.
 
 ## Events
 

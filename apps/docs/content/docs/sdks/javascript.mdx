@@ -66,9 +66,18 @@ Withdrawing consent clears the queue, deletes the persisted anonymous ID,
 closes the active session, and cancels in-flight delivery — nothing
 collected before a withdrawal is ever transmitted.
 
-## Delivery
+## Delivery semantics (honest)
 
-Batched (`POST /api/v2/ingest`), idempotent by client-owned event IDs,
-bounded retries with exponential backoff and Retry-After compliance. Call
-`await prism.flush()` explicitly or `await prism.shutdown({ timeoutMs })`
-for a bounded final flush.
+- `queued` is **not** delivered: `track()` accepts the event into the local
+  queue and returns immediately; delivery happens on the batch threshold,
+  the background interval, lifecycle events, or an explicit `flush()`.
+- `flush()` **can reject** on delivery failure (network, 429/5xx) — the
+  batch stays queued and retries with exponential backoff; a valid
+  `Retry-After` is honored as a minimum. Rejections also surface through
+  the diagnostics subscription (`onDiagnostic`).
+- A `queue-full` result means the configured local ceiling was reached —
+  the event was NOT queued.
+- Batches are idempotent by client-owned event IDs: transport retries
+  become `duplicate` server-side, never double rows.
+- `shutdown({ timeoutMs })` performs one bounded final flush and stops all
+  timers/listeners — post-shutdown captures return `dropped` explicitly.

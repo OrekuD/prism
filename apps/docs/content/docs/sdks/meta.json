@@ -3,7 +3,9 @@
   "pages": [
     "javascript",
     "react",
+    "consent",
     "sessions",
-    "events"
+    "events",
+    "adapters"
   ]
 }

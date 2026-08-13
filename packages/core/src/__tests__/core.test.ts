@@ -52,6 +52,15 @@ const base = {
   endpoint: "https://analytics.example.com",
 };
 
+/** The storage key for `base` — mirrors the core's endpoint-hash djb2 (§15). */
+function queueKey(): string {
+  let hash = 5381;
+  for (let i = 0; i < base.endpoint.length; i += 1) {
+    hash = (hash * 33) ^ base.endpoint.charCodeAt(i);
+  }
+  return `prism:queue:v2:${hash >>> 0}:${base.projectKey}`;
+}
+
 async function ready(options: Partial<Parameters<typeof createPrismClient>[0]> = {}) {
   return createPrismClient({
     ...base,
@@ -707,7 +716,7 @@ describe("queue persistence (slice 3)", () => {
 
   it("quarantines corrupt queue state with a diagnostic", async () => {
     // the client's ACTUAL key: prism:queue:v1:<projectKey>
-    const corruptKey = `prism:queue:v2:${base.projectKey}`;
+    const corruptKey = queueKey();
     const stored = new Map<string, string>([[corruptKey, "{not json"]]);
     const runtime: PrismRuntimeAdapter = {
       ...fakeRuntime(),
@@ -928,7 +937,7 @@ describe("consent-gated restore and delivery (slice 3 corrections)", () => {
       context: { platform: "node", kind: "server" },
     });
     stored.set(
-      `prism:queue:v2:${base.projectKey}`,
+      queueKey(),
       JSON.stringify({
         v: 2,
         events: [{ eventId: "seed-1", name: "seeded", occurredAt, serialized }],
@@ -959,7 +968,7 @@ describe("consent-gated restore and delivery (slice 3 corrections)", () => {
     expect(posts).toBe(0);
     expect(codes).toContain("queue_state_purged");
     // the persisted queue was purged — no stale state survives withdrawal
-    expect(stored.get(`prism:queue:v2:${base.projectKey}`)).toBeUndefined();
+    expect(stored.get(queueKey())).toBeUndefined();
   });
 
   it("defers restored events under pending until consent is granted", async () => {
@@ -1197,7 +1206,7 @@ describe("v2 wire envelope (slice 4)", () => {
   it("restores pre-envelope snapshots defensively (timestamp fallback)", async () => {
     const stored = new Map<string, string>([
       [
-        `prism:queue:v2:${base.projectKey}`,
+        queueKey(),
         JSON.stringify({
           v: 1,
           events: [
@@ -1771,5 +1780,44 @@ describe("retry timer cancellation (harden F21)", () => {
     await prism.shutdown({ timeoutMs: 100 });
     // the runtime scheduler handle was invoked — the entry is marked cancelled
     expect(retry?.cancelled).toBe(true);
+  });
+});
+
+describe("endpoint-scoped persistence (§15)", () => {
+  it("never restores a queue persisted for a DIFFERENT endpoint", async () => {
+    const stored = new Map<string, string>();
+    const runtime: PrismRuntimeAdapter = {
+      ...fakeRuntime(),
+      storage: memoryStorage(stored),
+    };
+    let offline = true;
+    let posts = 0;
+    runtime.transport.post = async () => {
+      if (offline) throw new Error("instance down");
+      posts += 1;
+      return { status: 200, headers: {}, text: async () => "" };
+    };
+    // persist an event under endpoint A's key (delivery unavailable, so
+    // the event stays in A's snapshot)
+    const prismA = await ready({ runtime, queue: { maxRetries: 2 } });
+    prismA.track("for_endpoint_a");
+    await expect(prismA.flush()).rejects.toThrow(/batch delivery failed/);
+    await prismA.shutdown({ timeoutMs: 50 });
+    const keyA = [...stored.keys()].find((k) => k.startsWith("prism:queue:v2:"));
+    expect(keyA).toBeDefined();
+
+    // endpoint B's client uses a DIFFERENT storage namespace — the
+    // endpoint-A queue must never be delivered to endpoint B
+    offline = false;
+    const prismB = await ready({
+      runtime,
+      endpoint: "https://other-instance.example.com",
+    });
+    await prismB.flush();
+    expect(posts).toBe(0); // nothing from A's queue crossed over
+    expect(
+      [...stored.keys()].filter((k) => k.startsWith("prism:queue:v2:")),
+    ).toHaveLength(1); // only A's snapshot exists
+    await prismB.shutdown({ timeoutMs: 50 });
   });
 });

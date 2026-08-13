@@ -27,17 +27,19 @@ network; the only outbound traffic is from integrations you explicitly
 configure (mail, geo enrichment, S3, social providers) — see
 [Networking & egress](/docs/operations/networking).
 
-The SDK sends ingestion to the **analytics origin baked into the package at
-build time**. A self-hosted deployment must rebuild the SDK against its own
-origin (see the [JavaScript SDK](/docs/sdks/javascript)) — otherwise the SDK
-would post to Prism's hosted analytics API.
+The SDK sends ingestion to an **explicit runtime endpoint** chosen by the
+caller (hosted or self-hosted origin) — the packages never bake a host at
+build time, and an operator never rebuilds the SDK (see the
+[JavaScript SDK](/docs/sdks/javascript)). A persisted queue is namespaced
+by endpoint identity, so changing the endpoint can never silently deliver
+previously collected events to a different instance.
 
 ## IP addresses
 
 Client IPs are used for best-effort geo enrichment and rate limiting, never
-for authorization. They are stored in the analytics store as part of the
-session record. IP enrichment is optional (`IP_INFO_API_TOKEN`); without it,
-geo fields stay null and sessions still record.
+for authorization — and raw IPs are NEVER persisted: the v2 schema has no IP
+columns, event/session resources carry no IP fields, and WebSocket messages
+never include them.
 
 ## Retention & deletion
 
