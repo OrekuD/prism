@@ -4,11 +4,9 @@
   "compilerOptions": {
     "rootDir": ".",
     "outDir": "dist",
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
-    },
-    "ignoreDeprecations": "5.0"
+    }
   },
   "include": ["src", "vite.config.ts"]
 }

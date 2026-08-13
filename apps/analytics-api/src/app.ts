@@ -5,6 +5,7 @@ import { createMiddleware } from "hono/factory";
 import WebSocketManager from "./managers/WebSocketManager.js";
 import TursoDatabaseManager from "./managers/TursoDatabaseManager.js";
 import IngestRouter from "./routers/IngestRouter.js";
+import { latestMigrationVersion } from "./database/migrations.js";
 import { ErrorResponse } from "./network/responses/ErrorResponse.js";
 import { RateLimiter, clientIpFrom } from "./utils/RateLimiter.js";
 
@@ -36,16 +37,25 @@ app.get("/", (ctx) => {
   return ctx.text("Waguan!");
 });
 
-// Readiness (task-9 §8): /health/live is process health; /health/ready
-// verifies the analytics store itself (the migrated schema must exist).
-// Optional enrichment is NEVER a readiness dependency.
+// Readiness (task-9 §8, release review): /health/live is process
+// health; /health/ready verifies the store is FULLY migrated — the
+// journal's latest version AND the sessions_v2 table must exist (an
+// events-only store is not ready). Optional enrichment is NEVER a
+// readiness dependency.
 app.get("/health/live", (ctx) => {
   return ctx.text("ok");
 });
 app.get("/health/ready", async (ctx) => {
   try {
+    const journal = await TursoDatabaseManager.instance.execute(
+      "SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1",
+    );
+    const latest = Number(journal.rows[0]?.version ?? 0);
+    if (latest < latestMigrationVersion()) {
+      return ctx.text("analytics store not migrated", 503);
+    }
     await TursoDatabaseManager.instance.execute(
-      "SELECT 1 FROM events LIMIT 1",
+      "SELECT 1 FROM sessions_v2 LIMIT 1",
     );
     return ctx.text("ok");
   } catch {
@@ -76,7 +86,4 @@ app.use("/api/v2/*", rateLimitMiddleware(ingestionLimiter));
 
 app.route("api/v2", IngestRouter);
 
-app.get("/test", async (ctx) => {
-  const test = { message: "ok" };
-  return ctx.text("Hello Test!");
-});
+

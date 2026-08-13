@@ -1,8 +1,7 @@
 import type { WSContext } from "hono/ws";
-import {
-  Roles,
-  type SocketConnectProject,
-  type SocketMessageTypes,
+import type {
+  SocketConnectProject,
+  SocketMessageTypes,
 } from "@prism/types";
 import NeonDatabaseManager from "./NeonDatabaseManager.js";
 import { JwtVerifier } from "../services/JwtVerifier.js";
@@ -170,9 +169,12 @@ class WebSocketManager {
       return null;
     }
 
-    // The subject must be an active USER in the product database.
+    // The subject must be an ACTIVE user in the product database —
+    // role-agnostic (release review): first-boot owners are promoted to
+    // ADMIN, and they must still subscribe to their realtime feeds.
+    // AUTHORIZATION happens below through project/team membership.
     const user =
-      await NeonDatabaseManager.instance`SELECT id FROM "user" WHERE id = ${verified.sub} AND role = ${Roles.USER};`;
+      await NeonDatabaseManager.instance`SELECT id FROM "user" WHERE id = ${verified.sub};`;
 
     if (user.length === 0) {
       return null;

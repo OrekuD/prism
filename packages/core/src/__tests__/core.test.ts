@@ -741,9 +741,9 @@ describe("queue persistence (slice 3)", () => {
     expect(codes).toContain("queue_state_reset");
     expect(prism.track("fresh").status).toBe("queued");
     await prism.shutdown({ timeoutMs: 50 });
-    // the corrupt entry was quarantined; the final snapshot is a valid v1 state
-    const final = [...stored.values()].find((v) => v.includes('"v":2')) ?? "";
-    expect(final).toContain('"v":2');
+    // the corrupt entry was quarantined; the final snapshot is a valid v3 state
+    const final = [...stored.values()].find((v) => v.includes('"v":3')) ?? "";
+    expect(final).toContain('"v":3');
   });
 });
 
@@ -939,8 +939,10 @@ describe("consent-gated restore and delivery (slice 3 corrections)", () => {
     stored.set(
       queueKey(),
       JSON.stringify({
-        v: 2,
-        events: [{ eventId: "seed-1", name: "seeded", occurredAt, serialized }],
+        v: 3,
+        events: [
+          { owner: "other-context", eventId: "seed-1", name: "seeded", occurredAt, serialized },
+        ],
       }),
     );
   }
@@ -1819,5 +1821,67 @@ describe("endpoint-scoped persistence (§15)", () => {
       [...stored.keys()].filter((k) => k.startsWith("prism:queue:v2:")),
     ).toHaveLength(1); // only A's snapshot exists
     await prismB.shutdown({ timeoutMs: 50 });
+  });
+});
+
+describe("multi-context persistence (release review)", () => {
+  it("never erases another context's queued events (owner-segmented merge)", async () => {
+    const stored = new Map<string, string>();
+    const makeRuntime = (prefix: string) => {
+      const runtime: PrismRuntimeAdapter = {
+        ...fakeRuntime(),
+        storage: memoryStorage(stored),
+      };
+      // distinct execution-context identities (like real crypto IDs)
+      let counter = 0;
+      runtime.createId = () => `${prefix}-id-${(counter += 1)}`;
+      runtime.transport.post = async () => {
+        throw new TypeError("network error");
+      };
+      return runtime;
+    };
+
+    // tab A queues from_a (offline — its segment persists)
+    const prismA = await ready({ runtime: makeRuntime("tab-a"), queue: { maxRetries: 5 } });
+    prismA.track("from_a");
+    await expect(prismA.flush()).rejects.toThrow(/batch delivery failed/);
+    await prismA.shutdown({ timeoutMs: 50 });
+
+    // tab B queues from_b with the SAME storage namespace
+    const prismB = await ready({ runtime: makeRuntime("tab-b"), queue: { maxRetries: 5 } });
+    prismB.track("from_b");
+    await expect(prismB.flush()).rejects.toThrow(/batch delivery failed/);
+    await prismB.shutdown({ timeoutMs: 50 });
+
+    // the snapshot holds BOTH segments — nothing was erased
+    const key = [...stored.keys()].find((k) => k.startsWith("prism:queue:v2:"));
+    const snapshot = JSON.parse(stored.get(key ?? "") ?? "{}") as {
+      events: Array<{ name: string; owner: string }>;
+    };
+    // no loss, no unknown names — adoption dedupes the surviving copies
+    expect(snapshot.events.map((e) => e.name).sort()).toEqual(["from_a", "from_b"]);
+  });
+
+  it("a context delivering its own segment never replays it (segment replacement)", async () => {
+    const stored = new Map<string, string>();
+    let posts = 0;
+    const runtime: PrismRuntimeAdapter = {
+      ...fakeRuntime(),
+      storage: memoryStorage(stored),
+    };
+    runtime.transport.post = async () => {
+      posts += 1;
+      return { status: 200, headers: {}, text: async () => "" };
+    };
+    const prism = await ready({ runtime });
+    prism.track("delivered_once");
+    await prism.shutdown({ timeoutMs: 100 }); // final flush delivers it
+    expect(posts).toBe(1);
+
+    // the delivered event left the segment — a fresh client replays nothing
+    const prism2 = await ready({ runtime });
+    await prism2.flush();
+    expect(posts).toBe(1);
+    await prism2.shutdown({ timeoutMs: 50 });
   });
 });

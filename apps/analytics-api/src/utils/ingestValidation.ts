@@ -175,8 +175,11 @@ export function validateEvent(raw: unknown, now: number): EventValidationResult 
     return { ok: false, reason: "invalid-timestamp" };
   }
 
-  // Serialized size measured on the canonical round trip (client order).
-  if (utf8Length(JSON.stringify(event)) > INGEST_LIMITS.maxEventBytes) {
+  // Serialized size measured on the RAW event (release review): a zod
+  // parse strips unknown fields, so measuring the parsed value would let
+  // an oversized raw event sneak through — count the bytes the client
+  // actually sent.
+  if (utf8Length(JSON.stringify(raw)) > INGEST_LIMITS.maxEventBytes) {
     return { ok: false, reason: "too-large" };
   }
 

@@ -356,9 +356,12 @@ it("maintains sessions_v2 state and broadcasts session-started for accepted sess
     const result = await ingest(ctx);
 
     expect(result.status).toBe(200);
-    const [statements] = dbBatch.mock.calls[0];
-    expect(statements).toHaveLength(2);
-    const sessionStatement = statements[1] as { sql: string; args: unknown[] };
+    // two batches: the atomic event insert, then the derived session state
+    expect(dbBatch).toHaveBeenCalledTimes(2);
+    const [eventStatements] = dbBatch.mock.calls[0];
+    expect(eventStatements).toHaveLength(1);
+    const sessionBatch = dbBatch.mock.calls[1][0] as Array<{ sql: string; args: unknown[] }>;
+    const sessionStatement = sessionBatch[0] as { sql: string; args: unknown[] };
     expect(String(sessionStatement.sql)).toContain("INSERT INTO sessions_v2");
     expect(String(sessionStatement.sql)).toContain("ON CONFLICT (project_id, session_id)");
     expect(sessionStatement.args).toEqual([
@@ -420,8 +423,8 @@ it("maintains sessions_v2 state and broadcasts session-started for accepted sess
 
     await ingest(ctx);
 
-    const [statements] = dbBatch.mock.calls[0];
-    const sessionStatement = statements[1] as { sql: string; args: unknown[] };
+    const sessionBatch = dbBatch.mock.calls[1][0] as Array<{ sql: string; args: unknown[] }>;
+    const sessionStatement = sessionBatch[0] as { sql: string; args: unknown[] };
     expect(String(sessionStatement.sql)).toContain("UPDATE sessions_v2 SET ended_at");
     expect(sessionStatement.args).toEqual([
       VALID_EVENT.occurredAt,
@@ -429,5 +432,99 @@ it("maintains sessions_v2 state and broadcasts session-started for accepted sess
       "sess-1",
       PROJECT_A,
     ]);
+  });
+});
+
+describe("release review — duplicate session safety", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dbBatch.mockResolvedValue([{ rows: [], rowsAffected: 1 }]);
+    eventLimiter.reset();
+  });
+
+  it("a duplicate session_started does NOT reopen the session (no session mutation)", async () => {
+    // batch #1 (events) → duplicate; the session batch must never run
+    dbBatch.mockResolvedValueOnce([{ rows: [], rowsAffected: 0 }]);
+    const ctx = makeContext(
+      batch([{ ...VALID_EVENT, eventId: "evt-dup", sessionId: "sess-1", name: "session_started" }]),
+    );
+
+    const result = await ingest(ctx);
+
+    const results = (result.__json as IngestResponseBody).results;
+    expect(results[0]?.status).toBe("duplicate");
+    // only ONE batch call — the event insert; no session-state batch
+    expect(dbBatch).toHaveBeenCalledTimes(1);
+    const [statements] = dbBatch.mock.calls[0];
+    expect(statements).toHaveLength(1);
+    expect(String((statements[0] as { sql: string }).sql)).toContain("INSERT INTO events");
+    expect(emitToClient).not.toHaveBeenCalled();
+  });
+
+  it("a duplicate session_ended does NOT touch the session row", async () => {
+    dbBatch.mockResolvedValueOnce([{ rows: [], rowsAffected: 0 }]);
+    const ctx = makeContext(
+      batch([{ ...VALID_EVENT, sessionId: "sess-1", name: "session_ended" }]),
+    );
+
+    await ingest(ctx);
+
+    expect(dbBatch).toHaveBeenCalledTimes(1); // events only
+    const [statements] = dbBatch.mock.calls[0];
+    expect(statements).toHaveLength(1);
+  });
+
+  it("a duplicate ordinary sessioned event does NOT bump last_seen_at", async () => {
+    dbBatch.mockResolvedValueOnce([{ rows: [], rowsAffected: 0 }]);
+    const ctx = makeContext(
+      batch([{ ...VALID_EVENT, sessionId: "sess-1", name: "click" }]),
+    );
+
+    await ingest(ctx);
+
+    expect(dbBatch).toHaveBeenCalledTimes(1);
+    const [statements] = dbBatch.mock.calls[0];
+    expect(statements).toHaveLength(1);
+  });
+
+  it("a NEWLY inserted session_started still mutates session state (second batch)", async () => {
+    dbBatch.mockResolvedValueOnce([{ rows: [], rowsAffected: 1 }]);
+    const ctx = makeContext(
+      batch([{ ...VALID_EVENT, sessionId: "sess-1", name: "session_started" }]),
+    );
+
+    const result = await ingest(ctx);
+
+    const results = (result.__json as IngestResponseBody).results;
+    expect(results[0]?.status).toBe("accepted");
+    expect(dbBatch).toHaveBeenCalledTimes(2); // events batch + session batch
+    const sessionStatements = dbBatch.mock.calls[1][0] as Array<{ sql: string }>;
+    expect(sessionStatements).toHaveLength(1);
+    expect(String((sessionStatements[0] as { sql: string }).sql)).toContain(
+      "INSERT INTO sessions_v2",
+    );
+  });
+
+  it("rejects an oversized RAW event with unknown fields (measured pre-parse)", async () => {
+    // unknown field inflates the raw event beyond 32 KiB; the zod parse
+    // would strip it — the size check must measure the RAW payload
+    const oversized = {
+      ...VALID_EVENT,
+      eventId: "evt-raw-big",
+      properties: {
+        pad: ["x".repeat(9_900), "x".repeat(9_900), "x".repeat(9_900), "x".repeat(9_900)],
+      },
+      unknownExtraField: "y".repeat(6_000), // stripped by the schema, counted raw
+    };
+    const ctx = makeContext(
+      JSON.stringify({ schemaVersion: 2, sentAt: Date.now(), events: [oversized] }),
+    );
+
+    const result = await ingest(ctx);
+
+    const results = (result.__json as IngestResponseBody).results;
+    expect(results[0]?.status).toBe("rejected");
+    expect(results[0]?.reason).toBe("too-large");
+    expect(dbBatch).not.toHaveBeenCalled();
   });
 });

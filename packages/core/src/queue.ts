@@ -29,6 +29,8 @@ export function utf8Length(value: string): number {
 }
 
 export interface QueuedEvent {
+  /** Persistence-segment owner (execution-context identity). */
+  readonly owner: string;
   readonly eventId: string;
   readonly name: string;
   readonly properties?: JsonObject;
@@ -49,6 +51,8 @@ export interface EventQueueOptions {
 
 export class EventQueue {
   private readonly items: QueuedEvent[] = [];
+  /** Recently removed event IDs (persistence tombstones — bounded). */
+  private readonly removedIds: string[] = [];
   private readonly maxEvents: number;
   private readonly maxBytes: number;
 
@@ -105,9 +109,18 @@ export class EventQueue {
     return batch;
   }
 
-  /** Remove `count` events from the head (after a batch was delivered). */
+  /**
+   * Remove `count` events from the head (after a batch was delivered).
+   * The removed IDs become persistence tombstones so a shared-storage
+   * merge never resurrects a delivered event from another context's
+   * stale segment.
+   */
   removeFirst(count: number): void {
-    this.items.splice(0, count);
+    const removed = this.items.splice(0, count);
+    for (const event of removed) {
+      this.removedIds.push(event.eventId);
+    }
+    this.trimRemovedIds();
   }
 
   /**
@@ -119,7 +132,35 @@ export class EventQueue {
   }
 
   clear(): void {
+    for (const event of this.items) {
+      this.removedIds.push(event.eventId);
+    }
     this.items.length = 0;
+    this.trimRemovedIds();
+  }
+
+  /** Tombstoned IDs (delivered or consent-purged) — shared-storage merge filters them. */
+  recentlyRemovedIds(): Set<string> {
+    return new Set(this.removedIds);
+  }
+
+  /**
+   * Mark IDs as tombstoned WITHOUT removing them from the queue — used
+   * when a context ADOPTS restored events: the stale copy in the other
+   * context's segment must not survive alongside the adopted one.
+   */
+  tombstoneIds(ids: string[]): void {
+    for (const id of ids) {
+      this.removedIds.push(id);
+    }
+    this.trimRemovedIds();
+  }
+
+  private trimRemovedIds(): void {
+    const MAX_TOMBSTONES = 2_000;
+    while (this.removedIds.length > MAX_TOMBSTONES) {
+      this.removedIds.shift();
+    }
   }
 
   /** Read-only copy of the queued events (for persistence snapshots). */

@@ -195,24 +195,29 @@ describe("createBrowserClient", () => {
     await expect(prism.flush()).rejects.toThrow(/batch delivery failed/);
     await prism.shutdown({ timeoutMs: 100 });
 
-    // the snapshot lives under the core's versioned key in localStorage
-    const keys = Object.keys(window.localStorage).filter((k) =>
+    // the snapshot lives under the core's versioned key in SESSION
+    // storage (per-execution-context namespace)
+    const keys = Object.keys(window.sessionStorage).filter((k) =>
       k.startsWith("prism:queue:v2:"),
     );
     expect(keys.length).toBe(1);
-    const snapshot = JSON.parse(window.localStorage.getItem(keys[0] ?? "") ?? "{}") as {
+    const snapshot = JSON.parse(window.sessionStorage.getItem(keys[0] ?? "") ?? "{}") as {
       events: unknown[];
     };
     expect(snapshot.events.length).toBe(1);
+    // queue data must NEVER sit in origin-shared local storage
+    expect(
+      Object.keys(window.localStorage).some((k) => k.startsWith("prism:queue:")),
+    ).toBe(false);
 
-    // a reload (fresh client, same origin storage) restores and delivers
+    // a reload (fresh client, same session storage) restores and delivers
     fail = false;
     const prism2 = await createBrowserClient(BASE);
     await prism2.flush();
-    const keysAfter = Object.keys(window.localStorage).filter((k) =>
+    const keysAfter = Object.keys(window.sessionStorage).filter((k) =>
       k.startsWith("prism:queue:v2:"),
     );
-    expect(JSON.parse(window.localStorage.getItem(keysAfter[0] ?? "") ?? "{}").events).toHaveLength(0);
+    expect(JSON.parse(window.sessionStorage.getItem(keysAfter[0] ?? "") ?? "{}").events).toHaveLength(0);
     await prism2.shutdown({ timeoutMs: 100 });
   });
 
@@ -382,5 +387,104 @@ describe("identity defaults (§4)", () => {
     };
     expect("anonymousId" in (envelope.events[0] ?? {})).toBe(false);
     await prism.shutdown({ timeoutMs: 50 });
+  });
+});
+
+describe("release review — timeouts, keepalive budget, multi-tab safety", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    window.sessionStorage.clear();
+    window.localStorage.clear();
+    vi.useRealTimers();
+  });
+
+  it("aborts a hanging request at the configured timeout", async () => {
+    vi.useFakeTimers();
+    const captured: Array<{ signal: AbortSignal; keepalive?: boolean }> = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+      const requestInit = init as RequestInit & { signal: AbortSignal };
+      captured.push({ signal: requestInit.signal });
+      // hang until aborted
+      await new Promise((resolve, reject) => {
+        requestInit.signal.addEventListener("abort", () =>
+          reject(new DOMException("aborted", "AbortError")),
+        );
+      });
+      throw new DOMException("aborted", "AbortError");
+    });
+
+    const prism = await createBrowserClient({
+      ...BASE,
+      queue: { requestTimeoutMs: 5_000, maxRetries: 1 },
+    });
+    prism.track("hanging");
+    const flushPromise = prism.flush();
+    // mark the rejection handled so the fake-timer advance below cannot
+    // surface a transient unhandled rejection before the expect attaches
+    void flushPromise.catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(5_100);
+    await expect(flushPromise).rejects.toThrow(/batch delivery failed/);
+    expect(captured[0]?.signal.aborted).toBe(true);
+    await prism.shutdown({ timeoutMs: 50 });
+  });
+
+  it("sets keepalive only within the browser-safe 64 KiB budget", async () => {
+    const captured: Array<{ keepalive?: boolean; body: string }> = [];
+    installFetchMock(async (_url, init) => {
+      captured.push({ keepalive: init.keepalive, body: String(init.body) });
+      return okResponse();
+    });
+
+    const prism = await createBrowserClient(BASE);
+    prism.track("small");
+    await prism.flush();
+    expect(captured[0]?.keepalive).toBe(true); // small batch
+
+    // exceed the keepalive budget at BATCH level: four ~20 KiB events
+    // (each within the 32 KiB event ceiling) form a >64 KiB batch
+    for (const label of ["big-1", "big-2", "big-3", "big-4"]) {
+      prism.track(label, {
+        pad: ["x".repeat(9_900), "x".repeat(9_900)],
+      });
+    }
+    await prism.flush();
+    expect(captured[1]?.keepalive).toBe(false); // > 64 KiB → no keepalive
+    await prism.shutdown({ timeoutMs: 50 });
+  });
+
+  it("namespaces each tab's queue so offline persistence never collides", async () => {
+    // release review: two execution contexts sharing an origin must not
+    // clobber each other's persisted snapshots (sessionStorage per tab;
+    // the core's owner-segmented merge covers shared-storage adapters).
+    const fail = (): never => {
+      throw new TypeError("network error");
+    };
+    installFetchMock(async () => fail());
+
+    // persist each context FULLY before the next (sequential — real tabs
+    // each own a sessionStorage namespace, so cross-tab races cannot
+    // occur in a real browser)
+    const tabA = await createBrowserClient({ ...BASE, queue: { maxRetries: 5 } });
+    tabA.track("from_a");
+    await expect(tabA.flush()).rejects.toThrow(/batch delivery failed/);
+    await tabA.shutdown({ timeoutMs: 50 });
+
+    const tabB = await createBrowserClient({ ...BASE, queue: { maxRetries: 5 } });
+    tabB.track("from_b");
+    await expect(tabB.flush()).rejects.toThrow(/batch delivery failed/);
+    await tabB.shutdown({ timeoutMs: 50 });
+
+    // the merged snapshot loses NOTHING: both tabs' events survive
+    const queueKeys = Object.keys(window.sessionStorage).filter((k) =>
+      k.startsWith("prism:queue:v2:"),
+    );
+    expect(queueKeys).toHaveLength(1);
+    const snapshot = JSON.parse(
+      window.sessionStorage.getItem(queueKeys[0] ?? "") ?? "{}",
+    ) as { events: Array<{ name: string }> };
+    expect(snapshot.events.map((entry) => entry.name).sort()).toEqual([
+      "from_a",
+      "from_b",
+    ]);
   });
 });

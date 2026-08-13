@@ -39,6 +39,15 @@ export function resolveMigrationsDir(): string {
 
 export const MIGRATIONS_DIR = resolveMigrationsDir();
 
+/** The highest migration version on disk (readiness checks use it). */
+export function latestMigrationVersion(): number {
+  const migrations = readMigrationFiles();
+  return migrations.reduce(
+    (max, migration) => Math.max(max, migration.version),
+    0,
+  );
+}
+
 /** Read + sort the migration files (version prefix is the order key). */
 export function readMigrationFiles(dir = MIGRATIONS_DIR): Migration[] {
   const files = readdirSync(dir)

@@ -22,32 +22,40 @@ function browserCreateId(): string {
 }
 
 /**
- * localStorage-backed storage. Returns undefined when storage is denied
- * (privacy modes, quota errors) — the core then falls back to its
- * in-memory queue with the documented persistence tradeoff, never a
- * crash or a silent cross-origin write.
+ * Storage adapter with a per-execution-context namespace for queues
+ * (release review): queue snapshots live in SESSION storage — one
+ * namespace per tab, surviving reloads — so two tabs sharing an origin
+ * can never clobber each other's persisted queue. The anonymous identity
+ * stays in LOCAL storage (one shared origin identity across tabs, the
+ * documented segment-style decision). Returns undefined when storage is
+ * denied (privacy modes, quota errors) — the core then falls back to
+ * its in-memory queue, never a crash.
  */
 export function createBrowserStorage(): PrismStorage | undefined {
   try {
     const probe = "__prism_storage_probe__";
+    window.sessionStorage.setItem(probe, "1");
+    window.sessionStorage.removeItem(probe);
     window.localStorage.setItem(probe, "1");
     window.localStorage.removeItem(probe);
   } catch {
     return undefined;
   }
+  const storeFor = (key: string): Storage =>
+    key.startsWith("prism:queue:") ? window.sessionStorage : window.localStorage;
   return {
     getItem: async (key) => {
       try {
-        return window.localStorage.getItem(key);
+        return storeFor(key).getItem(key);
       } catch {
         return null;
       }
     },
     setItem: async (key, value) => {
-      window.localStorage.setItem(key, value);
+      storeFor(key).setItem(key, value);
     },
     removeItem: async (key) => {
-      window.localStorage.removeItem(key);
+      storeFor(key).removeItem(key);
     },
   };
 }
@@ -156,20 +164,38 @@ export function createBrowserRuntime(): PrismRuntimeAdapter {
     now: () => Date.now(),
     createId: browserCreateId,
     transport: {
-      post: (url, request) =>
-        fetch(url, {
+      post: (url, request) => {
+        // REAL cancellation (release review): the core's PrismSignal is
+        // bridged to a genuine AbortController, and the configured
+        // request timeout schedules an abort of its own. A timeout abort
+        // is a genuine delivery failure for the core's retry policy.
+        const controller = new AbortController();
+        const onCoreAbort = (): void => controller.abort();
+        request.signal.addEventListener("abort", onCoreAbort);
+        const timer = window.setTimeout(() => controller.abort(), request.timeoutMs);
+
+        // keepalive only within the browser's ~64 KiB budget: large valid
+        // batches must not silently fail (or drop auth) at unload time.
+        const bodyBytes = new TextEncoder().encode(request.body).length;
+        const keepalive = bodyBytes <= 64 * 1024;
+
+        return fetch(url, {
           method: "POST",
           headers: { ...request.headers },
           body: request.body,
-          signal: request.signal as AbortSignal,
-          // Authenticated keepalive: unload flushes carry the write key —
-          // there is never an unauthenticated fallback implying success.
-          keepalive: true,
-        }).then(async (response) => ({
-          status: response.status,
-          headers: Object.fromEntries(response.headers.entries()),
-          text: () => response.text(),
-        })),
+          signal: controller.signal,
+          keepalive,
+        })
+          .then(async (response) => ({
+            status: response.status,
+            headers: Object.fromEntries(response.headers.entries()),
+            text: () => response.text(),
+          }))
+          .finally(() => {
+            window.clearTimeout(timer);
+            request.signal.removeEventListener("abort", onCoreAbort);
+          });
+      },
     },
     schedule: (delayMs, callback) => {
       const handle = window.setTimeout(callback, delayMs);

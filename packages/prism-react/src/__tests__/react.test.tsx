@@ -257,3 +257,30 @@ describe("facade surface", () => {
     expect(client.shutdown).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("release review — live collectionState", () => {
+  it("reflects consent changes through the facade getter (no stale snapshot)", async () => {
+    const client = makeClient();
+    let readState: unknown = null;
+    const Reader = (): React.ReactNode => {
+      const prism = usePrism();
+      readState = prism.collectionState;
+      return null;
+    };
+    render(
+      <PrismProvider client={client}>
+        <Reader />
+      </PrismProvider>,
+    );
+    expect(readState).toBe("granted");
+    // the underlying client state changes AFTER the facade was created —
+    // the getter must observe the change
+    (client as unknown as { collectionState: string }).collectionState = "denied";
+    render(
+      <PrismProvider client={client}>
+        <Reader />
+      </PrismProvider>,
+    );
+    expect(readState).toBe("denied");
+  });
+});

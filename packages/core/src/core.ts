@@ -649,6 +649,7 @@ class PrismClientImpl implements PrismClient {
     };
     const serialized = JSON.stringify(envelope);
     return {
+      owner: this.instanceId,
       eventId,
       name,
       properties,
@@ -854,16 +855,46 @@ class PrismClientImpl implements PrismClient {
     if (!storage) return Promise.resolve();
     this.persistChain = this.persistChain
       .then(async () => {
-        const snapshot = JSON.stringify({
-          v: 2,
-          events: this.queue.snapshot().map((event) => ({
-            eventId: event.eventId,
-            name: event.name,
-            occurredAt: event.timestamp,
-            serialized: event.serialized,
-          })),
-        });
-        await storage.setItem(this.queueStorageKey, snapshot);
+        // Owner-segmented merge (release review): the snapshot keeps ONE
+        // segment per execution context (owner = instanceId). Persisting
+        // replaces THIS context's segment while PRESERVING the other
+        // contexts' segments — a co-writing context never erases the
+        // other's queued events, and this context's delivered events stay
+        // removed (they left its segment). Segments share the same
+        // endpoint+project namespace, so either context may safely
+        // deliver any segment (server dedup makes overlaps idempotent).
+        const current = this.queue.snapshot().map((event) => ({
+          owner: event.owner,
+          eventId: event.eventId,
+          name: event.name,
+          occurredAt: event.timestamp,
+          serialized: event.serialized,
+        }));
+        let merged = current;
+        try {
+          const raw = await storage.getItem(this.queueStorageKey);
+          if (raw) {
+            const parsed = JSON.parse(raw) as { v?: number; events?: unknown };
+            if (parsed?.v === 3 && Array.isArray(parsed.events)) {
+              // Keep only OTHER contexts' segments — this context's old
+              // segment is fully replaced by `current` (delivered events
+              // stay removed), and tombstoned IDs (delivered or consent-
+              // purged anywhere in this context) never resurrect.
+              const tombstones = this.queue.recentlyRemovedIds();
+              const others = (parsed.events as Array<{ owner?: string; eventId?: string }>).filter(
+                (entry) =>
+                  typeof entry.owner === "string" &&
+                  entry.owner !== this.instanceId &&
+                  typeof entry.eventId === "string" &&
+                  !tombstones.has(entry.eventId),
+              );
+              merged = [...others, ...current] as typeof current;
+            }
+          }
+        } catch {
+          // unreadable snapshot — write the current queue as-is
+        }
+        await storage.setItem(this.queueStorageKey, JSON.stringify({ v: 3, events: merged }));
       })
       .catch(() => {
         this.emit("warn", "queue_persist_failed", "could not persist the queue");
@@ -905,21 +936,27 @@ class PrismClientImpl implements PrismClient {
     if (!raw) return;
     try {
       const parsed = JSON.parse(raw) as { v?: unknown; events?: unknown };
-      if (parsed?.v !== 2 || !Array.isArray(parsed.events)) {
+      if (parsed?.v !== 3 || !Array.isArray(parsed.events)) {
         throw new Error("unsupported queue state version");
       }
       for (const entry of parsed.events as unknown[]) {
         this.validatePersistedEntry(entry);
       }
+      const adoptedIds: string[] = [];
       for (const entry of parsed.events as unknown[]) {
         const e = entry as {
+          owner: string;
           eventId: string;
           name: string;
           occurredAt: number;
           serialized: string;
         };
         const envelope = JSON.parse(e.serialized) as WireEnvelope;
+        // Adoption: this context takes ownership of the restored event —
+        // it delivers it and its segment replaces the stale stored copy.
+        adoptedIds.push(e.eventId);
         this.queue.enqueue({
+          owner: this.instanceId,
           eventId: e.eventId,
           name: e.name,
           properties: envelope.properties,
@@ -928,6 +965,9 @@ class PrismClientImpl implements PrismClient {
           serialized: e.serialized,
         });
       }
+      // The adopted IDs tombstone the OTHER contexts' stale copies so the
+      // next persist keeps exactly one copy per event.
+      this.queue.tombstoneIds(adoptedIds);
       this.queueRestored = true;
       if (this.queue.size > 0) {
         this.emit(
@@ -957,14 +997,17 @@ class PrismClientImpl implements PrismClient {
       throw new Error("corrupt queue entry");
     }
     const record = entry as Record<string, unknown>;
-    const expectedKeys = ["eventId", "name", "occurredAt", "serialized"];
+    const expectedKeys = ["owner", "eventId", "name", "occurredAt", "serialized"];
     if (Object.keys(record).length !== expectedKeys.length) {
       throw new Error("queue entry has unknown fields");
     }
     for (const key of expectedKeys) {
       if (!(key in record)) throw new Error("queue entry is missing fields");
     }
-    const { eventId, name, occurredAt, serialized } = record;
+    const { owner, eventId, name, occurredAt, serialized } = record;
+    if (typeof owner !== "string" || owner.length === 0 || owner.length > 128) {
+      throw new Error("queue entry has an invalid owner");
+    }
     if (typeof eventId !== "string" || eventId.length === 0 || eventId.length > 128) {
       throw new Error("queue entry has an invalid event id");
     }

@@ -228,3 +228,64 @@ run("analytics database integration (v2)", () => {
     }
   });
 });
+run("release review — duplicate session replay", () => {
+  it("a replayed session_started never reopens an ended session", async () => {
+    if (!enabled) return;
+    const client = createClient({
+      url: process.env.TURSO_DATABASE_URL ?? "",
+      authToken: process.env.TURSO_AUTH_TOKEN ?? "",
+    });
+    const sessionId = `itest-replay-sess-${Date.now()}`;
+    const startEventId = `itest-replay-start-${Date.now()}`;
+    const makeBody = (eventId: string, name: string) =>
+      JSON.stringify({
+        schemaVersion: 2,
+        sentAt: Date.now(),
+        sdk: { name: "@prism/core", version: "0.0.1" },
+        events: [
+          {
+            schemaVersion: 2,
+            eventId,
+            type: "track",
+            occurredAt: Date.now(),
+            sessionId,
+            name,
+            properties: {},
+          },
+        ],
+      });
+
+    try {
+      await IngestController.ingest(
+        makeCtx(PROJECT_ID, makeBody(startEventId, "session_started")),
+      );
+      await IngestController.ingest(
+        makeCtx(PROJECT_ID, makeBody(`itest-replay-end-${Date.now()}`, "session_ended")),
+      );
+      const closed = await client.execute({
+        sql: "SELECT is_online FROM sessions_v2 WHERE project_id = ? AND session_id = ?",
+        args: [PROJECT_ID, sessionId],
+      });
+      expect((closed.rows[0] as unknown as { is_online: number }).is_online).toBe(0);
+
+      // REPLAY the ORIGINAL start event — the duplicate must change nothing
+      const replay = (await IngestController.ingest(
+        makeCtx(PROJECT_ID, makeBody(startEventId, "session_started")),
+      )) as unknown as { __json: { results: Array<{ status: string }> } };
+      expect(replay.__json.results[0]?.status).toBe("duplicate");
+
+      const after = await client.execute({
+        sql: "SELECT is_online FROM sessions_v2 WHERE project_id = ? AND session_id = ?",
+        args: [PROJECT_ID, sessionId],
+      });
+      expect((after.rows[0] as unknown as { is_online: number }).is_online).toBe(0);
+    } finally {
+      await client.execute({ sql: "DELETE FROM events WHERE project_id = ?", args: [PROJECT_ID] });
+      await client.execute({
+        sql: "DELETE FROM sessions_v2 WHERE project_id = ?",
+        args: [PROJECT_ID],
+      });
+      client.close();
+    }
+  });
+});

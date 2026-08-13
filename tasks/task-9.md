@@ -1448,6 +1448,50 @@ core 120, browser 22, react 10, analytics 82+2 opt-in, api 110+4 opt-in,
 web 23. Root gates: test 6/6, typecheck 9/9, lint 11/11, build 9/9,
 audit clean, docs build + drift green. Certification 23/23.
 
+### Release review round 3 — four High + five Medium closed (2026-08-13)
+
+- **High — duplicate session events mutated session state**: the
+  repository now applies sessions_v2 mutations ONLY for newly inserted
+  events (two write batches: atomic event inserts, then derived state
+  for accepted events; a session-batch failure is logged and the honest
+  `accepted` response stands — the derived state is recoverable).
+  Duplicate session_started/session_ended/ordinary replays change
+  NOTHING (unit + real-sqld integration: a replayed start never reopens
+  an ended session).
+- **High — browser timeouts**: the browser transport bridges the core
+  signal to a real AbortController AND schedules an abort from
+  `request.timeoutMs`; a timeout abort is a genuine delivery failure for
+  the retry policy. Tested with fake timers (hanging fetch aborts at the
+  configured timeout).
+- **High — multi-tab persistence loss**: the persisted snapshot is now
+  OWNER-SEGMENTED (v3, one segment per execution context) with an
+  adoption + tombstone merge: persisting replaces THIS context's segment
+  while preserving others', restored events are adopted and tombstone
+  the stale copies, delivered/consent-purged IDs never resurrect. The
+  browser additionally routes queue snapshots to SESSION storage
+  (per-tab namespace; identity stays origin-shared in localStorage).
+  Tests: sequential shared-storage merge keeps both tabs' events; a
+  delivered event never replays; racing microtask interleaving is a
+  documented best-effort window (real tabs never share the namespace).
+- **High — self-hosted owners could not subscribe to realtime**: the
+  WebSocket auth verifies the ACTIVE user role-agnostically and
+  authorizes through project/team membership (SQL asserted to carry no
+  role filter; an ADMIN owner subscribes successfully).
+- **Medium**: keepalive only within the ~64 KiB browser budget (batch-
+  level test); the React facade's collectionState is a live getter;
+  /health/ready verifies the migration journal's latest version AND
+  sessions_v2; event-size validation measures the RAW payload (unknown
+  fields cannot smuggle an oversized event); the sessions store is
+  project-scoped + deduped + cleared (never persisted — live-only);
+  realtime renders session rows without Mapbox; the production /test
+  route is gone (404 test).
+- **Verification**: core 122, browser 25, react 11, analytics 88+2
+  opt-in, web 24, api 110+4 opt-in; real-sqld integration 3/3 with the
+  duplicate-replay flow; root gates: test 6/6, typecheck 9/9, lint
+  11/11, build 9/9, audit clean, docs drift OK. The React 18 fixture's
+  registry-dependent test timeout raised to 300 s.
+
+
 ## Context
 
 The current SDK (`@prism/core`) is browser-coupled, best-effort, and bakes a

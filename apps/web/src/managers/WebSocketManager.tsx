@@ -10,6 +10,7 @@ type Props = {
 
 export function WebSocketManager(props: React.PropsWithChildren<Props>) {
   const addSession = useActiveSessionsStore((store) => store.addSession);
+  const clearProject = useActiveSessionsStore((store) => store.clearProject);
   const { data: sessionData } = authClient.useSession();
   const projectId = props.projectId;
 
@@ -48,7 +49,7 @@ export function WebSocketManager(props: React.PropsWithChildren<Props>) {
 
           switch (message.type) {
             case "session-started":
-              addSession(message.data.session);
+              addSession(projectId, message.data.session);
               break;
           }
         };
@@ -64,8 +65,11 @@ export function WebSocketManager(props: React.PropsWithChildren<Props>) {
     return () => {
       cancelled = true;
       ws?.close();
+      // the project's live list is cleared when the subscription ends —
+      // navigating away never leaves the previous project's sessions
+      if (projectId) clearProject(projectId);
     };
-  }, [projectId, sessionData?.session, addSession]);
+  }, [projectId, sessionData?.session, addSession, clearProject]);
 
   return <>{props.children}</>;
 }

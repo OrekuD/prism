@@ -231,6 +231,41 @@ describe("WebSocketManager.connect-project", () => {
     expect(WebSocketManager.getConnectedClientIds()).not.toContain(PROJECT_ID);
   });
 
+  it("authenticates the ADMIN owner (role-agnostic user check)", async () => {
+    // release review: first-boot owners are promoted to ADMIN — the
+    // realtime auth must verify the ACTIVE user regardless of role and
+    // authorize through project/team membership.
+    const seenSql: string[] = [];
+    mockDb((sql) => {
+      seenSql.push(sql);
+      if (sql.includes('FROM "user"') || sql.includes("FROM user")) {
+        return Promise.resolve([{ id: OWNER_ID, role: Roles.ADMIN }]);
+      }
+      if (sql.includes("FROM projects")) {
+        return Promise.resolve([{ team_id: TEAM_ID }]);
+      }
+      if (sql.includes("FROM teams")) {
+        return Promise.resolve([{ id: TEAM_ID, owner_id: OWNER_ID }]);
+      }
+      if (sql.includes("FROM team_members")) {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve([]);
+    });
+    const ws = makeSocket();
+
+    await WebSocketManager.onMessage(
+      { data: JSON.stringify(connectMessage()) } as unknown as Event,
+      ws,
+    );
+
+    expect(WebSocketManager.getConnectedClientIds()).toContain(PROJECT_ID);
+    // the user query must be ROLE-AGNOSTIC — no role filter at all
+    const userQuery = seenSql.find((sql) => sql.includes('FROM "user"'));
+    expect(userQuery).toBeDefined();
+    expect(String(userQuery)).not.toContain("role");
+  });
+
   it("rejects an unknown project", async () => {
     defaultDb({ projects: [] });
     const ws = makeSocket();

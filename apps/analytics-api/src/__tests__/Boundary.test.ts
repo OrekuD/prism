@@ -164,3 +164,61 @@ describe("analytics API boundary (CORS + rate limits)", () => {
     expect(response.status).toBe(401);
   });
 });
+
+describe("release review — readiness + dead route", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    ingestionLimiter.reset();
+  });
+
+  it("removed the production /test route (404)", async () => {
+    const response = await app.request("/test");
+    expect(response.status).toBe(404);
+  });
+
+  it("reports ready only for a fully migrated store (journal + sessions_v2)", async () => {
+    const turso = (await import("../managers/TursoDatabaseManager.js")).default
+      .instance as unknown as { execute: ReturnType<typeof vi.fn> };
+    const execute = turso.execute;
+    execute.mockImplementation((input: string | { sql: string }) => {
+      const sql = String(typeof input === "string" ? input : input.sql);
+      if (sql.includes("schema_migrations")) {
+        return Promise.resolve({ rows: [{ version: 4 }] });
+      }
+      return Promise.resolve({ rows: [{}] }); // sessions_v2 exists
+    });
+
+    const response = await app.request("/health/ready");
+    expect(response.status).toBe(200);
+  });
+
+  it("reports 503 when the journal is behind or missing", async () => {
+    const turso = (await import("../managers/TursoDatabaseManager.js")).default
+      .instance as unknown as { execute: ReturnType<typeof vi.fn> };
+    turso.execute.mockImplementation((input: string | { sql: string }) => {
+      const sql = String(typeof input === "string" ? input : input.sql);
+      if (sql.includes("schema_migrations")) {
+        return Promise.resolve({ rows: [{ version: 2 }] }); // behind
+      }
+      return Promise.resolve({ rows: [{}] });
+    });
+
+    const response = await app.request("/health/ready");
+    expect(response.status).toBe(503);
+  });
+
+  it("reports 503 when sessions_v2 is missing", async () => {
+    const turso = (await import("../managers/TursoDatabaseManager.js")).default
+      .instance as unknown as { execute: ReturnType<typeof vi.fn> };
+    turso.execute.mockImplementation((input: string | { sql: string }) => {
+      const sql = String(typeof input === "string" ? input : input.sql);
+      if (sql.includes("schema_migrations")) {
+        return Promise.resolve({ rows: [{ version: 4 }] });
+      }
+      return Promise.reject(new Error("no such table: sessions_v2"));
+    });
+
+    const response = await app.request("/health/ready");
+    expect(response.status).toBe(503);
+  });
+});

@@ -109,6 +109,6 @@ describe("React 18 peer compatibility", () => {
         cleanup();
       }
     },
-    180_000,
+    300_000,
   );
 });

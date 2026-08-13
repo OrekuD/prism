@@ -61,7 +61,11 @@ function createFacade(client: PrismClient): PrismReactFacade {
     flush: () => client.flush(),
     shutdown: (options) => client.shutdown(options),
     onDiagnostic: (listener) => client.onDiagnostic(listener),
-    collectionState: client.collectionState,
+    // Getter (release review): a snapshot would go stale after consent
+    // changes; React-side rerender subscriptions are a later concern.
+    get collectionState() {
+      return client.collectionState;
+    },
   };
 }
 
