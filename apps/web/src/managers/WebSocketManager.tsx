@@ -47,7 +47,7 @@ export function WebSocketManager(props: React.PropsWithChildren<Props>) {
           const message: SocketMessageTypes = JSON.parse(event.data);
 
           switch (message.type) {
-            case "user-connected":
+            case "session-started":
               addSession(message.data.session);
               break;
           }

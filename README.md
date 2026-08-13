@@ -15,7 +15,7 @@ API with WebSockets, a React dashboard, and a browser SDK.
 | `apps/api` (`prism-api`) | Cloudflare Worker product API (auth, teams, projects) | http://localhost:8787 |
 | `apps/analytics-api` (`prism-analytics-api`) | Node/Hono analytics API + WebSocket server | http://localhost:8080 |
 | `apps/docs` (`prism-docs`) | Astro Starlight docs | http://localhost:4321 |
-| `packages/core` (`@prism/core`) | Browser analytics SDK (`PrismClient`) | — |
+| `packages/core` (`@prism/core`) | Runtime-neutral v2 analytics SDK (`createPrismClient`) | — |
 | `packages/prism-react` (`@prism/react`) | React bindings for the SDK | — |
 | `packages/types` (`@prism/types`) | Shared request/response types & schemas | — |
 
@@ -109,14 +109,20 @@ SDK's development build targets `http://localhost:8080`.
 3. In the browser console, start a session with the SDK:
 
    ```js
-   import { PrismClient } from "@prism/core";
-   const prism = new PrismClient({ key: "YOUR_API_KEY" });
-   prism.startSession({ referrer: document.referrer, location: "" });
-   await prism.logEvent("button-click", { label: "signup" });
+   import { createPrismClient } from "@prism/core";
+   const prism = await createPrismClient({
+     projectKey: "YOUR_API_KEY",
+     endpoint: window.location.origin, // runtime choice — never compiled in
+     runtime, // browser runtime (or @prism/browser once it lands)
+     collection: { initialState: "granted" },
+   });
+   prism.startSession();
+   prism.track("button-click", { label: "signup" });
    ```
 
-4. The session appears in the project overview; the realtime page shows a map
-   marker for it (requires `VITE_MAPBOX_ACCESS_TOKEN`).
+4. The session appears in the project overview; the realtime page lists live
+   sessions (the v2 model carries no raw IP or coordinates, so the map is
+   decorative — Mapbox-optional).
 5. Logged events appear on the project's Events dashboard.
 
 ## Quality gates

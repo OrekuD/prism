@@ -43,25 +43,8 @@ async function seed(): Promise<void> {
     sql: "INSERT INTO sessions_v2 (session_id, project_id, started_at, last_seen_at) VALUES ('fresh-session', 'p1', ?, ?)",
     args: [NEW_DAY_MS, NEW_DAY_MS],
   });
-  // legacy v1 sessions (TEXT created_at) — recreated here because a
-  // fresh migrations-only store has no `sessions` table (the legacy
-  // leftover scenario retention must tolerate)
-  await client.execute(
-    `CREATE TABLE IF NOT EXISTS sessions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      session_id TEXT NOT NULL,
-      project_id TEXT NOT NULL,
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )`,
-  );
-  await client.execute(
-    `INSERT INTO sessions (session_id, project_id, created_at)
-     VALUES ('old-legacy', 'p1', ${OLD_DAY})`,
-  );
-  await client.execute(
-    `INSERT INTO sessions (session_id, project_id, created_at)
-     VALUES ('fresh-legacy', 'p1', ${NEW_DAY})`,
-  );
+  // The legacy v1 sessions table was dropped with the v1 routes
+  // (task-9 slice 6) — retention operates on the v2 model only.
 }
 
 beforeAll(async () => {
@@ -107,12 +90,11 @@ describe("applyRetention", () => {
     expect(result).toEqual({
       deletedEvents: 0,
       deletedSessions: 0,
-      deletedLegacySessions: 0,
     });
     const stats = await retentionStats(client, 0);
     expect(stats.events.total).toBe(2);
     expect(stats.sessions.total).toBe(2);
-    expect(stats.legacySessions.total).toBe(2);
+    
   });
 
   it("reports expired counts without deleting (dry-run path)", async () => {
@@ -120,12 +102,12 @@ describe("applyRetention", () => {
     expect(stats.enabled).toBe(true);
     expect(stats.events.expired).toBe(1); // old-event only
     expect(stats.sessions.expired).toBe(1); // old-session only
-    expect(stats.legacySessions.expired).toBe(1); // old-legacy only
+    
     // nothing deleted yet
     const after = await retentionStats(client, 7);
     expect(after.events.total).toBe(2);
     expect(after.sessions.total).toBe(2);
-    expect(after.legacySessions.total).toBe(2);
+    
   });
 
   it("deletes expired v2 events, v2 sessions, and legacy sessions atomically", async () => {
@@ -133,13 +115,12 @@ describe("applyRetention", () => {
     expect(result).toEqual({
       deletedEvents: 1,
       deletedSessions: 1,
-      deletedLegacySessions: 1,
     });
     const stats = await retentionStats(client, 7);
     expect(stats.events.total).toBe(1); // fresh-event survives
     expect(stats.events.expired).toBe(0);
     expect(stats.sessions.total).toBe(1); // fresh-session survives
-    expect(stats.legacySessions.total).toBe(1); // fresh-legacy survives
+    
   });
 
   it("is idempotent — a second apply deletes nothing", async () => {
@@ -147,7 +128,6 @@ describe("applyRetention", () => {
     expect(second).toEqual({
       deletedEvents: 0,
       deletedSessions: 0,
-      deletedLegacySessions: 0,
     });
   });
 });

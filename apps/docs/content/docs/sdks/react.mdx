@@ -19,10 +19,15 @@ Thin React bindings over `@prism/core`. Peer dependencies: React
 Wrap your app with a provider that receives an existing client:
 
 ```tsx
-import { PrismClient } from "@prism/core";
+import { createPrismClient } from "@prism/core";
 import { PrismProvider } from "@prism/react";
 
-const prism = new PrismClient("pr_xxx");
+const prism = await createPrismClient({
+  projectKey: "pr_xxx",
+  endpoint: window.location.origin,
+  runtime,
+  collection: { initialState: "granted" },
+});
 
 export function App() {
   return <PrismProvider client={prism}>{/* … */}</PrismProvider>;
@@ -45,10 +50,10 @@ Behavior (from source):
 import { usePrism } from "@prism/react";
 
 function CheckoutButton() {
-  const { logEvent, logCustomEvent } = usePrism();
+  const { track } = usePrism();
 
   return (
-    <button onClick={() => logEvent("checkout-started", { value: 42 })}>
+    <button onClick={() => track("checkout-started", { value: 42 })}>
       Checkout
     </button>
   );
@@ -57,7 +62,7 @@ function CheckoutButton() {
 
 - Throws `"usePrism" must be used within a PrismProvider` when used outside
   the provider.
-- Returns bound `logEvent` and `logCustomEvent` methods (stable identity per
+- Returns a bound `track` method (stable identity per
   client instance).
 
 ## What the integration does not do yet

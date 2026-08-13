@@ -12,7 +12,7 @@ lastReviewed: "2026-08-11"
 
 
 The `web` container (nginx) is the only public entry point and already
-routes `/api`, `/api/v1/analytics`, `/ws`, and `/files/*` to the right
+routes `/api`, `/api/v2/ingest`, `/ws`, and `/files/*` to the right
 upstreams. Terminate TLS in front of it — every example below ends at the
 `web` service on port `PUBLIC_PORT`.
 

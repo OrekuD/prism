@@ -3,14 +3,9 @@
  *
  * Deletes expired analytics data from the store (Turso/libSQL):
  * - v2 `events` by `received_at` (server clock — the retention timestamp);
- * - v2 `sessions_v2` by `last_seen_at`;
- * - the legacy v1 `sessions` table by `created_at` when it still exists
- *   (until the read-path slice removes the v1 tables).
+ * - v2 `sessions_v2` by `last_seen_at`.
  *
- * Legacy tables are existence-guarded: a fresh migrations-only store has
- * no `sessions` table, and pre-migration legacy stores fail migration 001
- * loudly (the guarded reset is the escape hatch), so retention never
- * crashes on either shape.
+ * The legacy v1 tables were dropped with the v1 routes (task-9 slice 6).
  *
  * Every deletion happens in ONE atomic write batch (events before
  * sessions — dependents first), so a failure rolls back everything.
@@ -62,8 +57,6 @@ export interface RetentionStats {
   events: { total: number; expired: number };
   /** v2 sessions (last_seen_at) */
   sessions: { total: number; expired: number };
-  /** legacy v1 sessions (created_at) — 0 when the table is absent */
-  legacySessions: { total: number; expired: number };
 }
 
 const countOf = (result: { rows: Array<Record<string, unknown>> }): number =>
@@ -81,12 +74,10 @@ export async function retentionStats(
   client: Client,
   days: number,
 ): Promise<RetentionStats> {
-  const cutoff = retentionCutoff(days);
   const cutoffMs = retentionCutoffMs(days);
-  const tables = await existingTables(client);
   const none = Promise.resolve({ rows: [{ n: 0 }] }) as never;
 
-  const [events, sessions, legacySessions] = await Promise.all([
+  const [events, sessions] = await Promise.all([
     Promise.all([
       client.execute("SELECT COUNT(*) AS n FROM events"),
       days > 0
@@ -97,24 +88,11 @@ export async function retentionStats(
         : none,
     ]),
     Promise.all([
-      tables.has("sessions_v2")
-        ? client.execute("SELECT COUNT(*) AS n FROM sessions_v2")
-        : none,
-      days > 0 && tables.has("sessions_v2")
+      client.execute("SELECT COUNT(*) AS n FROM sessions_v2"),
+      days > 0
         ? client.execute({
             sql: "SELECT COUNT(*) AS n FROM sessions_v2 WHERE last_seen_at < ?",
             args: [cutoffMs],
-          })
-        : none,
-    ]),
-    Promise.all([
-      tables.has("sessions")
-        ? client.execute("SELECT COUNT(*) AS n FROM sessions")
-        : none,
-      days > 0 && tables.has("sessions")
-        ? client.execute({
-            sql: "SELECT COUNT(*) AS n FROM sessions WHERE created_at < ?",
-            args: [cutoff],
           })
         : none,
     ]),
@@ -125,14 +103,12 @@ export async function retentionStats(
     retentionDays: days,
     events: { total: countOf(events[0]), expired: countOf(events[1]) },
     sessions: { total: countOf(sessions[0]), expired: countOf(sessions[1]) },
-    legacySessions: { total: countOf(legacySessions[0]), expired: countOf(legacySessions[1]) },
   };
 }
 
 export interface RetentionResult {
   deletedEvents: number;
   deletedSessions: number;
-  deletedLegacySessions: number;
 }
 
 /**
@@ -143,50 +119,22 @@ export async function applyRetention(
   client: Client,
   days: number,
 ): Promise<RetentionResult> {
-  const empty: RetentionResult = {
-    deletedEvents: 0,
-    deletedSessions: 0,
-    deletedLegacySessions: 0,
-  };
   if (days <= 0) {
-    return empty;
+    return { deletedEvents: 0, deletedSessions: 0 };
   }
-  const cutoff = retentionCutoff(days);
   const cutoffMs = retentionCutoffMs(days);
-  const tables = await existingTables(client);
 
-  const statements: InStatement[] = [
-    { sql: "DELETE FROM events WHERE received_at < ?", args: [cutoffMs] },
-  ];
-  if (tables.has("sessions_v2")) {
-    statements.push({
-      sql: "DELETE FROM sessions_v2 WHERE last_seen_at < ?",
-      args: [cutoffMs],
-    });
-  }
-  if (tables.has("sessions")) {
-    statements.push({
-      sql: "DELETE FROM sessions WHERE created_at < ?",
-      args: [cutoff],
-    });
-  }
-  if (statements.length === 1) {
-    // only the v2 events delete applies
-    const result = await client.execute(statements[0]);
-    return {
-      deletedEvents: result.rowsAffected,
-      deletedSessions: 0,
-      deletedLegacySessions: 0,
-    };
-  }
-
-  const results = await client.batch(statements, "write");
+  const results = await client.batch(
+    [
+      { sql: "DELETE FROM events WHERE received_at < ?", args: [cutoffMs] },
+      { sql: "DELETE FROM sessions_v2 WHERE last_seen_at < ?", args: [cutoffMs] },
+    ],
+    "write",
+  );
 
   return {
     deletedEvents: results[0]?.rowsAffected ?? 0,
     deletedSessions: results[1]?.rowsAffected ?? 0,
-    deletedLegacySessions:
-      statements.length > 2 ? results[2]?.rowsAffected ?? 0 : 0,
   };
 }
 
@@ -229,8 +177,7 @@ async function main(): Promise<void> {
       {
         expiredEvents: stats.events.expired,
         expiredSessions: stats.sessions.expired,
-        expiredLegacySessions: stats.legacySessions.expired,
-        cutoff: retentionCutoff(days),
+        cutoffMs: retentionCutoffMs(days),
       },
     );
     process.exit(0);

@@ -105,28 +105,9 @@ export const CreateProjectRequestSchema = z.strictObject({
 
 export type CreateProjectRequest = z.infer<typeof CreateProjectRequestSchema>;
 
-export const StartSessionRequestSchema = z.strictObject({
-  referrer: z.string(),
-  userAgent: z.string(),
-  location: z.string(),
-});
-
-export type StartSessionRequest = z.infer<typeof StartSessionRequestSchema>;
-
-export const EndSessionRequestSchema = z.strictObject({
-  sessionId: z.string(),
-});
-
-export type EndSessionRequest = z.infer<typeof EndSessionRequestSchema>;
-
-export const LogEventRequestSchema = z.strictObject({
-  sessionId: z.string().min(1),
-  name: z.string().min(1).max(128),
-  data: z.record(z.string(), z.unknown()).optional(),
-});
-
-export type LogEventRequest = z.infer<typeof LogEventRequestSchema>;
-
+// The v1 analytics ingestion requests (StartSession/EndSession/LogEvent)
+// were removed with the v1 routes (task-9 slice 6) — the v2 SDK sends the
+// versioned batch envelope to POST /api/v2/ingest.
 export const RenameProjectRequestSchema = z.strictObject({
   name: z.string().min(1).max(120),
 });

@@ -16,9 +16,7 @@ export type TeamInviteLinkResource = {
   teamInviteUrl: string;
 };
 
-export type CreateNewSessionResource = {
-  sessionId: string;
-};
+
 
 export type ProfileResource = {
   firstName: string;
@@ -57,30 +55,35 @@ export type ProjectResource = {
   summary: Array<{ date: string; desktop: number; mobile: number }>;
 };
 
+/**
+ * v2 session resource (task-9 slice 6): client-generated IDs, camelCase,
+ * decoded context JSON. Raw IP and approximate coordinates are NOT part
+ * of the model — a null-geo session still renders as a useful list row.
+ */
 export type SessionResource = {
-  id: number;
-  session_id: string;
-  project_id: string;
-  referrer: string;
-  country_code: string;
-  os: string;
-  browser: string;
-  location: string;
-  is_mobile: 0 | 1;
-  ip: string;
-  long: string;
-  lat: string;
-  is_online: 0 | 1;
-  created_at: string;
+  sessionId: string;
+  projectId: string;
+  anonymousId: string | null;
+  startedAt: number;
+  endedAt: number | null;
+  lastSeenAt: number;
+  context: Record<string, unknown> | null;
+  isOnline: 0 | 1;
 };
 
+/**
+ * v2 event resource: properties are DECODED at the API boundary into a
+ * typed JSON value (never a JSON string the dashboard prints verbatim).
+ */
 export type EventResource = {
-  id: number;
-  session_id: string;
-  project_id: string;
+  id: string;
+  sessionId: string | null;
+  projectId: string;
   name: string;
-  data: string | null;
-  created_at: string;
+  properties: Record<string, unknown> | null;
+  occurredAt: number;
+  receivedAt: number;
+  schemaVersion: number;
 };
 
 export type ProjectDetailedResource = {
@@ -90,19 +93,11 @@ export type ProjectDetailedResource = {
   apiKey: string | null;
   teamId: string;
   analytics: {
+    /** Per-day session counts over the requested duration (bounded aggregate). */
     summary: Array<{ date: string; desktop: number; mobile: number }>;
     device: {
       desktop: number;
       mobile: number;
-    };
-    browserStats: {
-      [key: string]: number;
-    };
-    osStats: {
-      [key: string]: number;
-    };
-    countryStats: {
-      [key: string]: number;
     };
   };
 };

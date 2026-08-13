@@ -1,5 +1,6 @@
 /**
- * Database integration tests for the analytics (Turso) API.
+ * Database integration tests for the analytics (Turso) API — v2 only
+ * (the v1 routes were removed in task-9 slice 6).
  *
  * OPT-IN: these tests hit the real Turso database and are SKIPPED unless
  * PRISM_RUN_INTEGRATION=1 (with TURSO_DATABASE_URL/TURSO_AUTH_TOKEN pointing
@@ -14,7 +15,6 @@ import "./../testEnv.js";
 import { config } from "dotenv";
 import { describe, expect, it } from "vitest";
 import { createClient } from "@libsql/client";
-import { AnalyticsController } from "../../controllers/AnalyticsController.js";
 import { IngestController } from "../../controllers/IngestController.js";
 
 config({ path: ".env" });
@@ -26,123 +26,33 @@ const enabled =
 const run = enabled ? describe : describe.skip;
 
 const PROJECT_ID = "itest-project-00000000-0000-0000-0000-000000000000";
+const OTHER_PROJECT = "itest-other-00000000-0000-0000-0000-000000000001";
 
-run("analytics database integration", () => {
-  it("startSession writes a session that endSession and reads can see", async () => {
-    if (!enabled) return;
-    const client = createClient({
-      url: process.env.TURSO_DATABASE_URL ?? "",
-      authToken: process.env.TURSO_AUTH_TOKEN ?? "",
-    });
-
-    const cleanup = async () => {
-      await client.execute({
-        sql: "DELETE FROM sessions WHERE project_id = ?",
-        args: [PROJECT_ID],
-      });
-      client.close();
-    };
-
-    try {
-      // Ensure the canonical schema exists.
-      await client.execute(`
-        CREATE TABLE IF NOT EXISTS sessions (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          session_id TEXT NOT NULL,
-          project_id TEXT NOT NULL,
-          referrer TEXT, country_code TEXT, os TEXT, browser TEXT,
-          location TEXT, is_mobile INTEGER NOT NULL DEFAULT 0,
-          ip TEXT, lat TEXT, long TEXT,
-          is_online INTEGER NOT NULL DEFAULT 1,
-          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )`);
-
-      const ctx = {
-        req: {
-          json: async () => ({
-            referrer: "https://itest.example",
-            userAgent:
-              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/126.0 Safari/537.36",
-            location: "Integration",
-          }),
-          header: () => undefined,
-          raw: { headers: new Headers() },
-        },
-        json: (value: unknown) => ({ __json: value }),
-        get: () => PROJECT_ID,
-      } as never;
-
-      const start = await AnalyticsController.startSession(ctx);
-      const sessionId = (
-        start as unknown as { __json: { sessionId: string } }
-      ).__json.sessionId;
-      expect(sessionId).toBeTruthy();
-
-      // The session is readable with the canonical summary query shape.
-      const rows = await client.execute({
-        sql: "SELECT session_id, is_online FROM sessions WHERE project_id = ? AND session_id = ?",
-        args: [PROJECT_ID, sessionId],
-      });
-      expect(rows.rows.length).toBe(1);
-      expect(rows.rows[0].is_online).toBe(1);
-
-      // endSession flips is_online, scoped to the authenticated project.
-      const endCtx = {
-        req: { json: async () => ({ sessionId }) },
-        json: (value: unknown) => ({ __json: value }),
-        get: () => PROJECT_ID,
-      } as never;
-      const end = await AnalyticsController.endSession(endCtx);
-      expect(
-        (end as unknown as { __json: { message: string } }).__json.message,
-      ).toBe("success");
-
-      const after = await client.execute({
-        sql: "SELECT is_online FROM sessions WHERE project_id = ? AND session_id = ?",
-        args: [PROJECT_ID, sessionId],
-      });
-      expect(after.rows[0].is_online).toBe(0);
-    } finally {
-      await cleanup();
-    }
+function streamOf(body: string): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(body));
+      controller.close();
+    },
   });
+}
 
-  it("a key from another project cannot end this project's session (scoped update)", async () => {
-    if (!enabled) return;
-    const client = createClient({
-      url: process.env.TURSO_DATABASE_URL ?? "",
-      authToken: process.env.TURSO_AUTH_TOKEN ?? "",
-    });
+function makeCtx(projectId: string, body: string) {
+  return {
+    req: {
+      header: (name: string) =>
+        name.toLowerCase() === "content-type"
+          ? "application/json"
+          : String(body.length),
+      raw: { body: streamOf(body) },
+    },
+    header: () => undefined,
+    json: (value: unknown, status?: number) => ({ __json: value, status }),
+    get: () => projectId,
+  } as never;
+}
 
-    const OTHER_PROJECT = "itest-other-00000000-0000-0000-0000-000000000001";
-    const sessionId = `itest-session-${Date.now()}`;
-
-    try {
-      await client.execute({
-        sql: "INSERT INTO sessions (project_id, session_id, is_online) VALUES (?, ?, 1)",
-        args: [PROJECT_ID, sessionId],
-      });
-
-      // Attacker's key belongs to OTHER_PROJECT; the controller must scope
-      // the UPDATE by project_id, so this session stays online.
-      const ctx = {
-        req: { json: async () => ({ sessionId }) },
-        json: (value: unknown) => ({ __json: value }),
-        get: () => OTHER_PROJECT,
-      } as never;
-      await AnalyticsController.endSession(ctx);
-
-      const rows = await client.execute({
-        sql: "SELECT is_online FROM sessions WHERE session_id = ?",
-        args: [sessionId],
-      });
-      expect(rows.rows[0].is_online).toBe(1);
-    } finally {
-      await client.execute({ sql: "DELETE FROM sessions WHERE session_id = ?", args: [sessionId] });
-      client.close();
-    }
-  });
-
+run("analytics database integration (v2)", () => {
   it("v2 ingest persists events idempotently and scoped to the project", async () => {
     if (!enabled) return;
     const client = createClient({
@@ -152,31 +62,13 @@ run("analytics database integration", () => {
 
     const cleanup = async () => {
       await client.execute({
-        sql: "DELETE FROM events WHERE project_id = ?",
-        args: [PROJECT_ID],
+        sql: "DELETE FROM events WHERE project_id IN (?, ?)",
+        args: [PROJECT_ID, OTHER_PROJECT],
       });
       client.close();
     };
 
     try {
-      await client.execute(`
-        CREATE TABLE IF NOT EXISTS events (
-          id TEXT NOT NULL,
-          project_id TEXT NOT NULL,
-          type TEXT NOT NULL,
-          name TEXT,
-          schema_version INTEGER NOT NULL,
-          occurred_at INTEGER NOT NULL,
-          received_at INTEGER NOT NULL,
-          session_id TEXT,
-          anonymous_id TEXT,
-          properties TEXT,
-          context TEXT,
-          sdk_name TEXT,
-          sdk_version TEXT,
-          PRIMARY KEY (project_id, id)
-        )`);
-
       const eventId = `itest-ev-${Date.now()}`;
       const body = JSON.stringify({
         schemaVersion: 2,
@@ -193,31 +85,8 @@ run("analytics database integration", () => {
           },
         ],
       });
-      // factory: each ingest consumes the request stream — the replay
-      // must get a FRESH ctx with a fresh body stream
-      const makeCtx = (projectId: string) => ({
-        req: {
-          header: (name: string) =>
-            name.toLowerCase() === "content-type"
-              ? "application/json"
-              : String(body.length),
-          raw: {
-            body: new ReadableStream({
-              start(controller) {
-                controller.enqueue(new TextEncoder().encode(body));
-                controller.close();
-              },
-            }),
-          },
-        },
-        header: () => undefined,
-        json: (value: unknown, status?: number) => ({ __json: value, status }),
-        get: () => projectId,
-      }) as never;
 
-      const ctx = makeCtx(PROJECT_ID);
-
-      const first = (await IngestController.ingest(ctx)) as unknown as {
+      const first = (await IngestController.ingest(makeCtx(PROJECT_ID, body))) as unknown as {
         __json: { results: Array<{ status: string }> };
       };
       expect(first.__json.results).toEqual([
@@ -225,7 +94,7 @@ run("analytics database integration", () => {
       ]);
 
       // replayed transport retry → duplicate, not a second row
-      const second = (await IngestController.ingest(makeCtx(PROJECT_ID))) as unknown as {
+      const second = (await IngestController.ingest(makeCtx(PROJECT_ID, body))) as unknown as {
         __json: { results: Array<{ status: string }> };
       };
       expect(second.__json.results).toEqual([
@@ -255,19 +124,105 @@ run("analytics database integration", () => {
       expect(stored.password).toBe("[REDACTED]");
 
       // a different project's key cannot see or duplicate this event
-      const OTHER = "itest-other-00000000-0000-0000-0000-000000000001";
-      const third = (await IngestController.ingest(makeCtx(OTHER))) as unknown as {
+      const third = (await IngestController.ingest(makeCtx(OTHER_PROJECT, body))) as unknown as {
         __json: { results: Array<{ status: string }> };
       };
-      // same event ID under another project is NOT a duplicate — scoping holds
       expect(third.__json.results).toEqual([
         { index: 0, id: eventId, status: "accepted" },
       ]);
+    } finally {
+      await cleanup();
+    }
+  });
 
+  it("session_started/ended events maintain the sessions_v2 state atomically", async () => {
+    if (!enabled) return;
+    const client = createClient({
+      url: process.env.TURSO_DATABASE_URL ?? "",
+      authToken: process.env.TURSO_AUTH_TOKEN ?? "",
+    });
+
+    const sessionId = `itest-sess-${Date.now()}`;
+    const anonId = `itest-anon-${Date.now()}`;
+    const cleanup = async () => {
       await client.execute({
         sql: "DELETE FROM events WHERE project_id = ?",
-        args: [OTHER],
+        args: [PROJECT_ID],
       });
+      await client.execute({
+        sql: "DELETE FROM sessions_v2 WHERE project_id = ?",
+        args: [PROJECT_ID],
+      });
+      client.close();
+    };
+
+    try {
+      const startedAt = Date.now() - 5000;
+      const startBody = JSON.stringify({
+        schemaVersion: 2,
+        sentAt: Date.now(),
+        sdk: { name: "@prism/core", version: "0.0.1" },
+        events: [
+          {
+            schemaVersion: 2,
+            eventId: `itest-ev-start-${Date.now()}`,
+            type: "track",
+            occurredAt: startedAt,
+            sessionId,
+            anonymousId: anonId,
+            name: "session_started",
+            properties: {},
+          },
+        ],
+      });
+      const start = (await IngestController.ingest(makeCtx(PROJECT_ID, startBody))) as unknown as {
+        __json: { results: Array<{ status: string }> };
+      };
+      expect(start.__json.results[0]?.status).toBe("accepted");
+
+      const sessionRows = await client.execute({
+        sql: "SELECT session_id, anonymous_id, started_at, is_online, ended_at FROM sessions_v2 WHERE project_id = ? AND session_id = ?",
+        args: [PROJECT_ID, sessionId],
+      });
+      expect(sessionRows.rows.length).toBe(1);
+      const sessionRow = sessionRows.rows[0] as unknown as {
+        anonymous_id: string;
+        started_at: number;
+        is_online: number;
+        ended_at: number | null;
+      };
+      expect(sessionRow.anonymous_id).toBe(anonId);
+      expect(sessionRow.started_at).toBe(startedAt);
+      expect(sessionRow.is_online).toBe(1);
+      expect(sessionRow.ended_at).toBeNull();
+
+      // session_ended closes the row
+      const endedAt = Date.now();
+      const endBody = JSON.stringify({
+        schemaVersion: 2,
+        sentAt: Date.now(),
+        sdk: { name: "@prism/core", version: "0.0.1" },
+        events: [
+          {
+            schemaVersion: 2,
+            eventId: `itest-ev-end-${Date.now()}`,
+            type: "track",
+            occurredAt: endedAt,
+            sessionId,
+            name: "session_ended",
+            properties: {},
+          },
+        ],
+      });
+      await IngestController.ingest(makeCtx(PROJECT_ID, endBody));
+
+      const closed = await client.execute({
+        sql: "SELECT is_online, ended_at FROM sessions_v2 WHERE project_id = ? AND session_id = ?",
+        args: [PROJECT_ID, sessionId],
+      });
+      const closedRow = closed.rows[0] as unknown as { is_online: number; ended_at: number };
+      expect(closedRow.is_online).toBe(0);
+      expect(closedRow.ended_at).toBe(endedAt);
     } finally {
       await cleanup();
     }

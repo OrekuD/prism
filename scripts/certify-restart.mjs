@@ -257,23 +257,32 @@ async function main() {
   const analyticsKey = projectInfo.data?.apiKey;
   check("analytics key retrieved", !!analyticsKey, "no key in project payload");
 
-  const session = await request("/api/v1/analytics/sessions", {
+  // v2 ingestion (task-9 slice 6): the v1 analytics routes were removed —
+  // the drill seeds through the versioned batch endpoint.
+  const event = await request("/api/v2/ingest", {
     method: "POST",
-    body: { userAgent: "restart-cert", referrer: "", location: "/cert" },
+    body: JSON.stringify({
+      schemaVersion: 2,
+      sentAt: Date.now(),
+      sdk: { name: "@prism/core", version: "0.0.1" },
+      events: [
+        {
+          schemaVersion: 2,
+          eventId: `restart-ev-${Date.now()}`,
+          type: "track",
+          occurredAt: Date.now(),
+          name: EVENT_NAME,
+          properties: { marker: true },
+        },
+      ],
+    }),
     headers: [`authorization: Bearer ${analyticsKey}`],
   });
   check(
-    "session ingested",
-    session.status === 200 && !!session.data?.sessionId,
-    `got ${session.status}`,
+    "v2 event ingested",
+    event.status === 200 && event.data?.results?.[0]?.status === "accepted",
+    `got ${event.status} ${JSON.stringify(event.data)}`,
   );
-
-  const event = await request("/api/v1/analytics/events", {
-    method: "POST",
-    body: { sessionId: session.data.sessionId, name: EVENT_NAME, data: { marker: true } },
-    headers: [`authorization: Bearer ${analyticsKey}`],
-  });
-  check("event ingested", event.status === 200, `got ${event.status}`);
 
   const eventsBefore = await request(`/api/v1/projects/${slug}/events`, { cookie });
   check(

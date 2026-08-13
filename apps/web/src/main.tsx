@@ -14,8 +14,7 @@ import { ThemeProvider } from "./components/theme-provider";
 import { Toaster } from "./components/ui/sonner";
 import { toast } from "sonner";
 import { LocalStorageKeys } from "./constants/LocalStorageKeys";
-import { PrismProvider } from "@prism/react";
-import { PrismClientV1 } from "@prism/core";
+import { initTelemetry } from "./lib/prism";
 
 const client = new QueryClient({
   queryCache: new QueryCache({
@@ -31,7 +30,9 @@ const client = new QueryClient({
   },
 });
 
-const prism = new PrismClientV1("pr_fa1b798ee9a540ad8e7eda40d43b321b");
+// Opt-in product telemetry (v2 core, task-9 slice 6): no-op without
+// VITE_TELEMETRY_KEY — the hardcoded v1 client is gone.
+void initTelemetry();
 
 const el = document.getElementById("root");
 if (el) {
@@ -41,12 +42,10 @@ if (el) {
       defaultTheme="dark"
       storageKey={LocalStorageKeys.THEME_VALUE}
     >
-      <PrismProvider client={prism}>
-        <QueryClientProvider client={client}>
-          <App />
-          <Toaster />
-        </QueryClientProvider>
-      </PrismProvider>
+      <QueryClientProvider client={client}>
+        <App />
+        <Toaster />
+      </QueryClientProvider>
     </ThemeProvider>,
   );
 } else {

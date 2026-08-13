@@ -20,11 +20,7 @@ import type { Project } from "../models/Project";
 import { ProjectResponse } from "../network/responses/ProjectResponse";
 import { ProjectDetailedResponse } from "../network/responses/ProjectDetailedResponse";
 import { generateApiKey } from "../utils/generateApiKey";
-import type { Session } from "../models/Session";
-import { groupSessionsByDateAndPlatform } from "../utils/groupSessionsByDateAndPlatform";
-import { groupByBrowsers } from "../utils/groupByBrowsers";
-import { groupByOs } from "../utils/groupByOs";
-import { groupByCountry } from "../utils/groupByCountry";
+import { projectAnalytics, projectEvents } from "../utils/analyticsStore";
 import { TursoDatabaseManager } from "../managers/TursoDatabaseManager";
 
 export class ProjectsController {
@@ -201,12 +197,14 @@ export class ProjectsController {
       return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
     }
 
-    const { rows } = await TursoDatabaseManager.getInstance(ctx).execute({
-      sql: "SELECT id, session_id, project_id, name, data, created_at FROM events WHERE project_id = ? ORDER BY created_at DESC, id DESC LIMIT 200",
-      args: [project[0].id],
-    });
+    // v2 event listing (task-9 slice 6): bounded query, properties
+    // decoded into typed JSON values at this boundary.
+    const events = await projectEvents(
+      TursoDatabaseManager.getInstance(ctx),
+      project[0].id,
+    );
 
-    return ctx.json(rows as unknown as Array<EventResource>);
+    return ctx.json(events satisfies Array<EventResource>);
   }
 
   public static async getProjectBySlug(ctx: Context<HonoConfig>) {
@@ -244,66 +242,17 @@ export class ProjectsController {
       return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
     }
 
-    let preparedStatement =
-      "SELECT * FROM sessions WHERE created_at BETWEEN datetime('now', '-3 months') AND datetime('now') AND project_id = ?";
-
-    if (query) {
-      switch (query) {
-        case "24-hours":
-          preparedStatement =
-            "SELECT * FROM sessions WHERE created_at BETWEEN datetime('now', '-24 hours') AND datetime('now') AND project_id = ?";
-          break;
-        case "seven-days":
-          preparedStatement =
-            "SELECT * FROM sessions WHERE created_at BETWEEN datetime('now', '-7 days') AND datetime('now') AND project_id = ?";
-          break;
-        case "two-weeks":
-          preparedStatement =
-            "SELECT * FROM sessions WHERE created_at BETWEEN datetime('now', '-14 days') AND datetime('now') AND project_id = ?";
-          break;
-        case "one-month":
-          preparedStatement =
-            "SELECT * FROM sessions WHERE created_at BETWEEN datetime('now', '-1 month') AND datetime('now') AND project_id = ?";
-          break;
-        case "one-year":
-          preparedStatement =
-            "SELECT * FROM sessions WHERE created_at BETWEEN datetime('now', '-12 months') AND datetime('now') AND project_id = ?";
-          break;
-      }
-    }
-
-    // const { results: sessionResults } = await ctx.env.DB.prepare(
-    //   preparedStatement,
-    // )
-    //   .bind(project[0].id)
-    //   .all<Session>();
-
-    const { rows } = await TursoDatabaseManager.getInstance(ctx).execute({
-      sql: preparedStatement,
-      args: [project[0].id],
-    });
-
-    const sessionResults = rows as unknown as Array<Session>;
-
-    const desktop = sessionResults.filter(
-      ({ is_mobile }) => is_mobile === 0,
-    ).length;
-
-    const mobile = sessionResults.filter(
-      ({ is_mobile }) => is_mobile === 1,
-    ).length;
+    // v2 bounded aggregates (task-9 slice 6): per-day session counts +
+    // device split computed in the database for the requested window.
+    // Browser/OS/country rankings have no v2 source and were removed.
+    const analytics = await projectAnalytics(
+      TursoDatabaseManager.getInstance(ctx),
+      project[0].id,
+      query,
+    );
 
     return ctx.json(
-      new ProjectDetailedResponse(project[0], {
-        summary: groupSessionsByDateAndPlatform(sessionResults, query),
-        device: {
-          desktop,
-          mobile,
-        },
-        browserStats: Object.fromEntries(groupByBrowsers(sessionResults)),
-        osStats: Object.fromEntries(groupByOs(sessionResults)),
-        countryStats: Object.fromEntries(groupByCountry(sessionResults)),
-      }).toJSON(),
+      new ProjectDetailedResponse(project[0], analytics).toJSON(),
     );
   }
 

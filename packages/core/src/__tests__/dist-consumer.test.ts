@@ -86,10 +86,8 @@ describe("clean installed-package consumption", () => {
             track: (name: string, properties?: Record<string, unknown>) => { status: string };
             shutdown: (options?: { timeoutMs?: number }) => Promise<void>;
           }>;
-          PrismClientV1: unknown;
         };
         expect(typeof installed.createPrismClient).toBe("function");
-        expect(typeof installed.PrismClientV1).toBe("function");
 
         // the installed artifact actually works
         const runtime = {

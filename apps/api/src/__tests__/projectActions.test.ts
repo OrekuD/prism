@@ -114,7 +114,16 @@ describe("ProjectsController.getProjectEvents", () => {
     const execute = vi.fn(
       async (_opts: { sql: string; args: unknown[] }) => ({
         rows: [
-          { id: 1, session_id: "s1", project_id: PROJECT_ID, name: "click", data: null, created_at: "2026-08-01 10:00:00" },
+          {
+            id: "evt-1",
+            session_id: "s1",
+            project_id: PROJECT_ID,
+            name: "click",
+            properties: '{"label":"signup"}',
+            occurred_at: 1_700_000_000_000,
+            received_at: 1_700_000_001_000,
+            schema_version: 2,
+          },
         ],
       }),
     );
@@ -130,9 +139,21 @@ describe("ProjectsController.getProjectEvents", () => {
       args: unknown[];
     };
     expect(String(call.sql)).toContain("FROM events");
-    expect(call.args).toEqual([PROJECT_ID]);
+    expect(call.args).toEqual([PROJECT_ID, 200]);
+    // v2 camelCase resource with properties DECODED into a JSON object
     expect(result).toMatchObject({
-      __json: [{ name: "click", session_id: "s1" }],
+      __json: [
+        {
+          id: "evt-1",
+          sessionId: "s1",
+          projectId: PROJECT_ID,
+          name: "click",
+          properties: { label: "signup" },
+          occurredAt: 1_700_000_000_000,
+          receivedAt: 1_700_000_001_000,
+          schemaVersion: 2,
+        },
+      ],
     });
   });
 

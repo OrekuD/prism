@@ -1,6 +1,5 @@
 import { ActivitySummary } from "@/components/charts/activity-summary";
 import { MetricsFrame } from "@/components/charts/metrics-frame";
-import { RankingsSummary } from "@/components/charts/rankings-summary";
 import { useProjectQuery } from "@/network/queries/useProjectQuery";
 import { useProjectEventsQuery } from "@/network/queries/useProjectEventsQuery";
 import { useParams } from "react-router-dom";
@@ -10,7 +9,10 @@ export function ProjectSummary() {
   const { data, isLoading } = useProjectQuery({ slug, duration: "three-months" });
   const eventsQuery = useProjectEventsQuery(slug);
 
-  const visitors =
+  // "Sessions", never "Visitors": the v2 model counts client-owned
+  // session_started events — cross-session visitor uniqueness does not
+  // exist yet (task-9 §10).
+  const sessions =
     (data?.analytics.device.desktop ?? 0) + (data?.analytics.device.mobile ?? 0);
 
   return (
@@ -19,10 +21,10 @@ export function ProjectSummary() {
         isLoading={isLoading}
         cells={[
           {
-            id: "visitors",
-            label: "Visitors",
+            id: "sessions",
+            label: "Sessions",
             icon: "visitors",
-            value: visitors,
+            value: sessions,
             unit: "this period",
           },
           {
@@ -42,7 +44,6 @@ export function ProjectSummary() {
         ]}
       />
       <ActivitySummary />
-      <RankingsSummary />
     </div>
   );
 }

@@ -92,18 +92,18 @@ async function inspectTurso() {
   }
 
   const sessions = objects.rows.filter(
-    (r) => r.type === "table" && r.name === "sessions",
+    (r) => r.type === "table" && r.name === "sessions_v2",
   );
   if (sessions.length > 0) {
-    const info = await client.execute("PRAGMA table_info(sessions)");
-    console.log("\n--- sessions columns ---");
+    const info = await client.execute("PRAGMA table_info(sessions_v2)");
+    console.log("\n--- sessions_v2 columns ---");
     for (const c of info.rows) {
       console.log(
         `  ${c.name}: ${c.type} notnull=${c.notnull} default=${c.dflt_value ?? "—"} pk=${c.pk}`,
       );
     }
-    const count = await client.execute("SELECT count(*) AS n FROM sessions");
-    console.log(`\n--- sessions rows: ${count.rows[0].n} ---`);
+    const count = await client.execute("SELECT count(*) AS n FROM sessions_v2");
+    console.log(`\n--- sessions_v2 rows: ${count.rows[0].n} ---`);
   }
 
   client.close();

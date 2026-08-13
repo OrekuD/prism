@@ -37,7 +37,7 @@ and [Privacy & data](/docs/operations/privacy)).
 The dashboard does not write events — that is the SDK's job:
 
 ```ts
-await prism.logEvent("checkout-started", { value: 42 });
+prism.track("checkout-started", { value: 42 });
 ```
 
 See [Events](/docs/sdks/events).

@@ -3,7 +3,6 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { createMiddleware } from "hono/factory";
 import WebSocketManager from "./managers/WebSocketManager.js";
-import Router from "./routers/Router.js";
 import IngestRouter from "./routers/IngestRouter.js";
 import { ErrorResponse } from "./network/responses/ErrorResponse.js";
 import { RateLimiter, clientIpFrom } from "./utils/RateLimiter.js";
@@ -53,11 +52,10 @@ app.get(
 );
 
 // Per-IP ingestion throttle applied before routing so it covers every
-// /api/v1/analytics/* and /api/v2/* endpoint regardless of the key in use.
-app.use("/api/v1/*", rateLimitMiddleware(ingestionLimiter));
+// /api/v2/* ingestion endpoint regardless of the key in use. (The v1
+// /api/v1/analytics/* routes were removed in task-9 slice 6.)
 app.use("/api/v2/*", rateLimitMiddleware(ingestionLimiter));
 
-app.route("api/v1", Router);
 app.route("api/v2", IngestRouter);
 
 app.get("/test", async (ctx) => {

@@ -39,7 +39,7 @@ own project). Keys cannot read data or manage anything. See
 
 | Boundary | Policy |
 | --- | --- |
-| Ingestion (`/api/v1/analytics/*`) | Any origin (public write keys) |
+| Ingestion (`/api/v2/ingest`) | Any origin (public write keys) |
 | WebSocket `/ws` | Any origin (JWT-authenticated) |
 | Auth + management (`/api/auth/*`, `/api/v1/*`) | Allowlisted origins only, credentials enabled |
 | Static dashboard + docs | Same-origin by construction |

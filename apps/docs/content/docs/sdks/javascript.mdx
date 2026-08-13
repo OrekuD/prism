@@ -1,102 +1,74 @@
 ---
 title: JavaScript SDK (@prism/core)
-description: PrismClient constructor, session lifecycle, events, and error behavior — verified from source.
+description: "The v2 runtime-neutral core: createPrismClient, consent, sessions, events, and delivery."
 audience: Developer
 scope: Both
-lastReviewed: "2026-08-11"
+lastReviewed: "2026-08-13"
 ---
 
 <SectionLabel label="PACKAGE: @prism/core" />
 
-
-
-
-
-The browser SDK ships a single class, `PrismClient`. It is built as CJS +
-ESM with TypeScript declarations (`tsup`). `import { PrismClient } from
-"@prism/core"`.
-
-## `new PrismClient(key)`
-
-| Argument | Type | Description |
-| --- | --- | --- |
-| `key` | `string` | Project analytics key (public, write-only) |
-
-- Throws `Prism Api key not provided` when `key` is empty.
-- Starts a session automatically (best-effort — failures are swallowed, never
-  unhandled rejections).
-- Registers global `error` / `unhandledrejection` listeners that are
-  currently no-ops (they exist so the SDK can grow crash capture without
-  changing the contract).
-
-## Where the SDK sends data
-
-<Callout type="info" title="Self-hosted">
-The published package points at Prism's hosted analytics origin. A
-self-hosted instance must rebuild the SDK with its own `API_URL` — a
-stale origin would post your sessions to the wrong place.
-</Callout>
-
-
-The ingestion base URL is **baked in at build time**:
+The core is runtime-neutral: no DOM, Node, or framework globals. It is built
+as CJS + ESM with TypeScript declarations (`tsup`).
 
 ```ts
-this.apiUrl = process.env.API_URL + "/api/v1/analytics";
+import { createPrismClient } from "@prism/core";
 ```
 
-The published package is built with Prism's hosted analytics origin. A
-self-hosted deployment must build the package against its own origin:
+## `createPrismClient(options)`
 
-```sh
-# from the repository root
-API_URL=https://analytics.example.com yarn workspace @prism/core build
+The async factory resolves to a READY client. One options object — no
+positional arguments:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `projectKey` | `string` | Project analytics key (public, write-only) |
+| `endpoint` | `string` | Ingestion origin chosen at runtime — never compiled in |
+| `runtime` | `PrismRuntimeAdapter` | Injected transport/storage/time/scheduler/lifecycle seams |
+| `collection.initialState` | `"pending" \| "granted" \| "denied"` | Consent state machine |
+
+The [Node example](../../start/overview) shows a complete fake runtime. Browser
+apps use the runtime adapter from `@prism/browser` (or a small inline runtime
+until it ships).
+
+Invalid caller input throws a specific validation error. Consent, shutdown,
+and queue-capacity conditions return discriminated `dropped` results — never
+silent no-ops.
+
+## `track(name, properties?)`
+
+```ts
+const result = prism.track("button-click", { label: "signup" });
+// { status: "queued", eventId } | { status: "dropped", reason }
 ```
 
-and serve/install that build (workspace copy, private registry, or a bundler
-alias). The endpoint path suffix `/api/v1/analytics` is always appended by
-the SDK.
+`queued` means accepted locally. Delivery is never part of the call stack —
+background failures surface through the diagnostics subscription and through
+rejected `flush()`/`shutdown()` promises.
 
-## `startSession()`
+## Sessions
 
-Sends the current page path, `document.referrer`, and `navigator.userAgent`:
-
-```json
-{ "userAgent": "…", "referrer": "https://…", "location": "/path" }
+```ts
+const handle = prism.startSession({ properties: { plan: "pro" } });
+handle.end(); // emits session_ended (second call → not-active)
 ```
 
-The response supplies the session id used by all later calls. Called
-automatically by the constructor; call it again after client-side navigation
-in a SPA to start a fresh session.
+Client-owned session IDs; no server round-trip before events are accepted.
 
-## `logEvent(name, data?)`
+## Consent
 
-Logs a named event against the current session. `name` is 1–128 characters;
-`data` is optional structured JSON. **No-op (resolves immediately) when no
-session is active** — the SDK never crashes the host app.
+```ts
+prism.track("early"); // dropped when initialState is "pending" or "denied"
+await prism.setCollectionState("granted");
+```
 
-## `logCustomEvent(name, data?)`
+Withdrawing consent clears the queue, deletes the persisted anonymous ID,
+closes the active session, and cancels in-flight delivery — nothing
+collected before a withdrawal is ever transmitted.
 
-Alias of `logEvent` for product events.
+## Delivery
 
-## `endSession()`
-
-Marks the session offline with a `fetch(..., { keepalive: true })` — it
-preserves the `Authorization` header and survives page close. If `fetch`
-itself throws, the SDK falls back to `navigator.sendBeacon`, which cannot
-carry the header (the endpoint is scoped server-side to the project key).
-Safe to call multiple times; the second call is a no-op. Sessions that never
-end are also marked stale server-side.
-
-## Errors
-
-- **Network failures never throw** into the host app: `sendPostRequest`
-  resolves `undefined` and logs to the console.
-- The constructor's automatic `startSession()` failure is caught and
-  discarded.
-- SDK methods are not a data source for analytics reads; ingestion is
-  fire-and-forget from the page's perspective.
-
-## Browser support
-
-Any browser with `fetch`, `navigator.sendBeacon`, and `crypto` basics. The
-package has no runtime dependencies.
+Batched (`POST /api/v2/ingest`), idempotent by client-owned event IDs,
+bounded retries with exponential backoff and Retry-After compliance. Call
+`await prism.flush()` explicitly or `await prism.shutdown({ timeoutMs })`
+for a bounded final flush.

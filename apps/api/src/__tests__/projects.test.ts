@@ -61,7 +61,7 @@ describe("TeamsController.projects (canonical analytics store)", () => {
     ]);
     getInstance.mockReturnValue(neon as never);
     const turso = makeTurso([
-      { project_id: PROJECT_A, is_mobile: 1, created_at: "2026-08-01 10:00:00" },
+      { project_id: PROJECT_A, day: "2026-08-01", mobile: 1, desktop: 0 },
     ]);
 
     await TeamsController.projects(ctxFor(USER_ID));
@@ -71,12 +71,19 @@ describe("TeamsController.projects (canonical analytics store)", () => {
       sql: string;
       args: unknown[];
     };
+    // ONE bounded aggregate over all projects, session_started only,
+    // 7-day epoch-ms window — never a full session-row load
     expect(String(call.sql)).toMatch(
       /project_id\s+IN\s*\(\s*\?\s*,\s*\?\s*\)/i,
     );
-    expect(call.args).toEqual([PROJECT_A, PROJECT_B]);
-    // 7-day window like the dashboard summary
-    expect(String(call.sql)).toMatch(/-7 days/i);
+    expect(String(call.sql)).toMatch(/session_started/i);
+    expect(String(call.sql)).toMatch(/GROUP BY project_id, day/i);
+    expect(call.args).toHaveLength(3);
+    expect(call.args[0]).toBe(PROJECT_A);
+    expect(call.args[1]).toBe(PROJECT_B);
+    const sinceMs = call.args[2] as number;
+    expect(sinceMs).toBeGreaterThan(Date.now() - 8 * 86_400_000);
+    expect(sinceMs).toBeLessThan(Date.now() - 6 * 86_400_000);
   });
 
   it("does not build an invalid IN () query for a team without projects", async () => {

@@ -46,8 +46,5 @@ export type {
   SessionStartResult,
 } from "./contract";
 
-// v1 legacy class — renamed (deprecated) so the public `PrismClient` name
-// belongs to the v2 contract; removed in the browser/read-path slice
-// (ADR 0002 §2).
-export { PrismClient as PrismClientV1 } from "./prism-client";
-export * from "./types";
+// The v1 legacy client was removed in the read-path slice (task-9 slice 6,
+// ADR 0002 §2) — the package exposes ONLY the v2 contract.

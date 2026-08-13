@@ -7,25 +7,12 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import "mapbox-gl/dist/mapbox-gl.css";
-import MapGL, { Marker } from "react-map-gl/mapbox";
-import countries from "@/data/countries.json";
+import MapGL from "react-map-gl/mapbox";
 import { useTheme } from "@/components/theme-provider";
 import { useIsDarkTheme } from "@/hooks/useIsDarkTheme";
 import type { MapRef } from "react-map-gl/mapbox";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeftIcon } from "@radix-ui/react-icons";
-import {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { WebSocketManager } from "@/managers/WebSocketManager";
@@ -44,16 +31,6 @@ export function ProjectRealtime() {
   const { sessions } = useActiveSessionsStore();
   const mapboxToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
 
-  // React.useEffect(() => {
-  //   if (!ref.current) return;
-
-  //   const country = countries[40];
-
-  //   ref.current.flyTo({
-  //     center: [country.longitude, country.latitude],
-  //   });
-  // }, []);
-  //
 
   if (!mapboxToken) {
     return (
@@ -97,71 +74,48 @@ export function ProjectRealtime() {
               : "mapbox://styles/mapbox/light-v10"
           }
           attributionControl={false}
-        >
-          {sessions.map((session) => {
-            return (
-              <Marker
-                longitude={Number.parseFloat(session.long)}
-                latitude={Number.parseFloat(session.lat)}
-                anchor="bottom"
-                key={session.id}
-              >
-                <Sheet>
-                  <SheetTrigger asChild>
-                    <button
-                      type="button"
-                      className="size-5 bg-blue-600 rounded-full animate-scale-pulse motion-reduce:animate-none"
-                    />
-                  </SheetTrigger>
-                  <SheetContent>
-                    <SheetHeader>
-                      <SheetTitle>Session details</SheetTitle>
-                      <SheetDescription>
-                        Live session captured by the Prism SDK.
-                      </SheetDescription>
-                    </SheetHeader>
-                    <div className="grid gap-3 py-4 text-sm">
-                      <div className="flex justify-between gap-4">
-                        <span className="text-muted-foreground">Referrer</span>
-                        <span className="truncate">{session.referrer || "—"}</span>
-                      </div>
-                      <div className="flex justify-between gap-4">
-                        <span className="text-muted-foreground">Country</span>
-                        <span>{session.country_code || "—"}</span>
-                      </div>
-                      <div className="flex justify-between gap-4">
-                        <span className="text-muted-foreground">Device</span>
-                        <span>
-                          {session.os} · {session.browser}{" "}
-                          {session.is_mobile === 1 ? "(mobile)" : ""}
-                        </span>
-                      </div>
-                      <div className="flex justify-between gap-4">
-                        <span className="text-muted-foreground">Location</span>
-                        <span>{session.location || "—"}</span>
-                      </div>
-                      <div className="flex justify-between gap-4">
-                        <span className="text-muted-foreground">Coordinates</span>
-                        <span>
-                          {session.lat}, {session.long}
-                        </span>
-                      </div>
-                      <div className="flex justify-between gap-4">
-                        <span className="text-muted-foreground">Started</span>
-                        <span>{new Date(session.created_at).toLocaleString()}</span>
-                      </div>
-                    </div>
-                    <SheetFooter>
-                      <SheetClose asChild>
-                        <Button type="button">Close</Button>
-                      </SheetClose>
-                    </SheetFooter>
-                  </SheetContent>
-                </Sheet>
-              </Marker>
-            );
-          })}
-        </MapGL>
+        />
+      </div>
+      {/* v2 session rows (task-9 slice 6): the v2 model carries NO raw IP
+          or coordinates — sessions render as useful list rows (null geo
+          must not break the Mapbox-optional page). */}
+      <div className="mt-4 grid gap-3">
+        {sessions.length === 0 ? (
+          <EmptyState
+            label="Live sessions"
+            title="Waiting for sessions"
+            description="Sessions appear here when a Prism v2 SDK calls startSession() against this project."
+          />
+        ) : (
+          sessions.map((session) => (
+            <Card key={session.sessionId}>
+              <CardHeader className="py-3">
+                <CardTitle className="font-mono text-sm">
+                  {session.sessionId.slice(0, 12)}…
+                </CardTitle>
+                <CardDescription>
+                  {session.isOnline === 1 ? "Online" : "Ended"}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-2 py-2 text-sm">
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Started</span>
+                  <span>{new Date(session.startedAt).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Last seen</span>
+                  <span>{new Date(session.lastSeenAt).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Anonymous ID</span>
+                  <span className="truncate font-mono text-xs">
+                    {session.anonymousId?.slice(0, 12) ?? "—"}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        )}
       </div>
     </WebSocketManager>
   );

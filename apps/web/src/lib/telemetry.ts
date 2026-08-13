@@ -18,20 +18,23 @@ export const TELEMETRY_EVENTS = {
 export type TelemetryEvent =
   (typeof TELEMETRY_EVENTS)[keyof typeof TELEMETRY_EVENTS];
 
-let client: { logEvent: (name: string, data?: Record<string, unknown>) => Promise<void> } | null = null;
+import type { JsonObject } from "@prism/core";
+import { telemetryClient } from "./prism";
 
-/** One-time opt-in wiring; call from main.tsx when a key is configured. */
-export function enableTelemetry(
-  prism: { logEvent: (name: string, data?: Record<string, unknown>) => Promise<void> },
-): void {
-  client = prism;
-}
-
-/** Fire-and-forget, error-contained, no-op unless enabled. */
+/**
+ * Fire-and-forget, error-contained, no-op unless the operator opted in
+ * with VITE_TELEMETRY_KEY. track() is synchronous — the v2 core queues the
+ * event and flushes in the background.
+ */
 export function trackTelemetry(
   event: TelemetryEvent,
   data?: Record<string, unknown>,
 ): void {
+  const client = telemetryClient();
   if (!client) return;
-  client.logEvent(event, data).catch(() => undefined);
+  try {
+    client.track(event, data as JsonObject | undefined);
+  } catch {
+    // Validation rejections are intentionally silent for product telemetry.
+  }
 }

@@ -14,6 +14,11 @@ vi.mock("../managers/WebSocketManager.js", () => ({
 }));
 
 import TursoDatabaseManager from "../managers/TursoDatabaseManager.js";
+import WebSocketManager from "../managers/WebSocketManager.js";
+
+const emitToClient = WebSocketManager.emitToClient as unknown as ReturnType<
+  typeof vi.fn
+>;
 
 const dbBatch = TursoDatabaseManager.instance.batch as unknown as ReturnType<
   typeof vi.fn
@@ -329,5 +334,100 @@ describe("IngestController.ingest (v2 batch ingestion)", () => {
     await IngestController.ingest(ctx as never);
 
     expect(hit).toHaveBeenCalledWith(PROJECT_A, 3);
+  });
+
+it("maintains sessions_v2 state and broadcasts session-started for accepted sessions", async () => {
+    dbBatch.mockResolvedValue([
+      { rows: [], rowsAffected: 1 }, // event insert
+      { rows: [], rowsAffected: 1 }, // session upsert
+    ]);
+    const ctx = makeContext(
+      batch([
+        {
+          ...VALID_EVENT,
+          eventId: "evt-session",
+          sessionId: "sess-1",
+          anonymousId: "anon-1",
+          name: "session_started",
+        },
+      ]),
+    );
+
+    const result = await ingest(ctx);
+
+    expect(result.status).toBe(200);
+    const [statements] = dbBatch.mock.calls[0];
+    expect(statements).toHaveLength(2);
+    const sessionStatement = statements[1] as { sql: string; args: unknown[] };
+    expect(String(sessionStatement.sql)).toContain("INSERT INTO sessions_v2");
+    expect(String(sessionStatement.sql)).toContain("ON CONFLICT (project_id, session_id)");
+    expect(sessionStatement.args).toEqual([
+      "sess-1",
+      PROJECT_A,
+      "anon-1",
+      VALID_EVENT.occurredAt,
+      expect.any(Number),
+      "{}",
+    ]);
+
+    expect(emitToClient).toHaveBeenCalledTimes(1);
+    const [projectArg, messageArg] = emitToClient.mock.calls[0];
+    expect(projectArg).toBe(PROJECT_A);
+    const message = JSON.parse(String(messageArg)) as {
+      type: string;
+      data: { session: Record<string, unknown> };
+    };
+    expect(message.type).toBe("session-started");
+    expect(message.data.session).toMatchObject({
+      sessionId: "sess-1",
+      projectId: PROJECT_A,
+      anonymousId: "anon-1",
+      isOnline: 1,
+    });
+  });
+
+  it("never re-broadcasts a duplicate session-started event", async () => {
+    dbBatch.mockResolvedValue([
+      { rows: [], rowsAffected: 0 }, // duplicate event insert
+      { rows: [], rowsAffected: 1 },
+    ]);
+    const ctx = makeContext(
+      batch([
+        {
+          ...VALID_EVENT,
+          eventId: "evt-dup-session",
+          sessionId: "sess-1",
+          name: "session_started",
+        },
+      ]),
+    );
+
+    const result = await ingest(ctx);
+
+    const results = (result.__json as IngestResponseBody).results;
+    expect(results[0]?.status).toBe("duplicate");
+    expect(emitToClient).not.toHaveBeenCalled();
+  });
+
+  it("closes the session row for session_ended events", async () => {
+    dbBatch.mockResolvedValue([
+      { rows: [], rowsAffected: 1 },
+      { rows: [], rowsAffected: 1 },
+    ]);
+    const ctx = makeContext(
+      batch([{ ...VALID_EVENT, sessionId: "sess-1", name: "session_ended" }]),
+    );
+
+    await ingest(ctx);
+
+    const [statements] = dbBatch.mock.calls[0];
+    const sessionStatement = statements[1] as { sql: string; args: unknown[] };
+    expect(String(sessionStatement.sql)).toContain("UPDATE sessions_v2 SET ended_at");
+    expect(sessionStatement.args).toEqual([
+      VALID_EVENT.occurredAt,
+      expect.any(Number),
+      "sess-1",
+      PROJECT_A,
+    ]);
   });
 });

@@ -15,9 +15,9 @@ const VITE_DOCS_URL: string =
   import.meta.env.VITE_DOCS_URL ?? "http://localhost:3000";
 import { useParams } from "react-router-dom";
 
-function formatTime(value: string) {
+function formatTime(value: number) {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
+  if (Number.isNaN(date.getTime())) return String(value);
   return date.toLocaleString();
 }
 
@@ -72,17 +72,21 @@ export function ProjectEvents() {
                       {event.name}
                     </td>
                     <td className="px-4 py-3 text-text-muted">
-                      <code className="text-xs">{event.session_id.slice(0, 8)}…</code>
+                      {event.sessionId ? (
+                        <code className="text-xs">{event.sessionId.slice(0, 8)}…</code>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td className="max-w-[220px] truncate px-4 py-3 text-text-muted">
-                      {event.data ? (
-                        <code className="text-xs">{event.data}</code>
+                      {event.properties ? (
+                        <code className="text-xs">{JSON.stringify(event.properties)}</code>
                       ) : (
                         "—"
                       )}
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-[12px] tabular-nums text-text-muted">
-                      {formatTime(event.created_at)}
+                      {formatTime(event.occurredAt)}
                     </td>
                   </tr>
                 ))}
@@ -93,7 +97,7 @@ export function ProjectEvents() {
           <EmptyState
             label="No events"
             title="No events yet"
-            description={'Log events from your site with prism.logEvent("name", data) using the project key, then watch them appear here in realtime.'}
+            description={'Log events from your site with prism.track("name", { … }) using the project key, then watch them appear here.'}
             action={
               <a
                 href={`${VITE_DOCS_URL}/docs/sdks/javascript`}

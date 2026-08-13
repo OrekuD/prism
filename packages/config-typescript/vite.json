@@ -4,7 +4,6 @@
   "Display": "Vite",
   "compilerOptions": {
     "allowJs": false,
-    "esModuleInterop": false,
     "jsx": "react-jsx",
     "lib": ["dom", "dom.iterable", "esnext"],
     "module": "ESNext",

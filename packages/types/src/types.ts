@@ -53,25 +53,16 @@ export type SocketConnectProject = {
   };
 };
 
-export type SocketUserConnected = {
-  type: "user-connected";
+export type SocketSessionStarted = {
+  type: "session-started";
   data: {
     session: SessionResource;
   };
 };
 
-export type SocketMessageTypes = SocketConnectProject | SocketUserConnected;
+export type SocketMessageTypes = SocketConnectProject | SocketSessionStarted;
 
-export type IpInfoResponse = {
-  ip: string;
-  city: string;
-  region: string;
-  country: string;
-  loc: string;
-  org: string;
-  timezone: string;
-  readme: string;
-};
+
 
 export type IpAPIResponse = {
   ip: string;

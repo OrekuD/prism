@@ -17,13 +17,13 @@ lastReviewed: "2026-08-11"
 The Compose stack runs everything on an **internal Docker network** with no
 default route: containers cannot reach the internet. One service — `web`
 (nginx) — is published to the host port (`PUBLIC_PORT`, default 3000) and
-proxies `/api` to `api`, `/api/v1/analytics` and `/ws` to `analytics`.
+proxies `/api` to `api`, `/api/v2/ingest` and `/ws` to `analytics`.
 
 | Direction | Path | Service |
 | --- | --- | --- |
 | Browser → `web` | `/` | static dashboard |
 | Browser → `web` | `/api/*` | product API |
-| Browser → `web` | `/api/v1/analytics/*` | ingestion (proxied to analytics) |
+| Browser → `web` | `/api/v2/ingest` | v2 batch ingestion (proxied to analytics) |
 | Browser → `web` | `/ws` | realtime WebSocket |
 | Browser → `web` | `/files/*` | local storage driver objects |
 

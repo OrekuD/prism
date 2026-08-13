@@ -7,6 +7,8 @@ import {
 } from "@prism/core";
 import type { Context } from "hono";
 import { config } from "dotenv";
+import type { SessionResource } from "@prism/types";
+import WebSocketManager from "../managers/WebSocketManager.js";
 import { RateLimiter } from "../utils/RateLimiter.js";
 import { logger } from "../utils/logger.js";
 import { IngestRepository } from "../repositories/IngestRepository.js";
@@ -82,6 +84,25 @@ export class IngestController {
    * write key; client-provided ownership fields are ignored. Persistence
    * is atomic per request (one Turso write batch — review F6).
    */
+  /**
+   * Project-scoped realtime broadcast for an accepted session_started
+   * event. A failing socket never disrupts delivery to healthy clients
+   * (the WebSocketManager's safeSend handles that).
+   */
+  private static emitSessionStarted(
+    projectId: string,
+    event: ValidatedEvent,
+    receivedAt: number,
+  ): void {
+    const message = JSON.stringify({
+      type: "session-started",
+      data: {
+        session: buildSessionResource(event, projectId, receivedAt),
+      },
+    });
+    WebSocketManager.emitToClient(projectId, message);
+  }
+
   public static async ingest(ctx: Context) {
     // Content type + cheap Content-Length precheck BEFORE streaming.
     const contentType = ctx.req.header("content-type") ?? "";
@@ -194,6 +215,17 @@ export class IngestController {
           id: outcome.eventId,
           status: outcome.duplicate ? "duplicate" : "accepted",
         };
+        // Realtime session updates (task-9 slice 6): a freshly accepted
+        // session_started event broadcasts a project-scoped, authorized
+        // "session-started" message to subscribed dashboard sockets.
+        // Duplicates never re-broadcast.
+        if (
+          !outcome.duplicate &&
+          entry.event.name === "session_started" &&
+          entry.event.sessionId
+        ) {
+          IngestController.emitSessionStarted(projectId, entry.event, now);
+        }
       }
     }
     const orderedResults = results.filter(
@@ -218,4 +250,26 @@ export class IngestController {
 
 function ingestError(code: string, message: string): IngestErrorBody {
   return { ok: false, error: { code, message } };
+}
+
+/**
+ * Broadcast a project-scoped session-started message. The session resource
+ * carries no raw IP and no approximate coordinates (task-9 §9) — the
+ * dashboard renders a useful non-map session row from context/lastSeenAt.
+ */
+export function buildSessionResource(
+  event: ValidatedEvent,
+  projectId: string,
+  receivedAt: number,
+): SessionResource {
+  return {
+    sessionId: event.sessionId ?? "",
+    projectId,
+    anonymousId: event.anonymousId ?? null,
+    startedAt: event.occurredAt,
+    endedAt: null,
+    lastSeenAt: receivedAt,
+    context: (event.context as Record<string, unknown> | undefined) ?? null,
+    isOnline: 1,
+  };
 }

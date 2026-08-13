@@ -138,7 +138,7 @@ export function Overview() {
           <Frame className="p-6">
             <p className="text-[13px] leading-relaxed text-text-muted">
               {eventsQuery.data?.length
-                ? `The most recent event was ${eventsQuery.data[0].name} at ${new Date(eventsQuery.data[0].created_at).toLocaleString()}.`
+                ? `The most recent event was ${eventsQuery.data[0].name} at ${new Date(eventsQuery.data[0].occurredAt).toLocaleString()}.`
                 : "Sessions are being recorded. Open a project for the full overview."}
             </p>
           </Frame>

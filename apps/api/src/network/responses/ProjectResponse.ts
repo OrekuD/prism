@@ -1,15 +1,13 @@
-import { type ProjectResource, TeamResource } from "@prism/types";
+import type { ProjectResource } from "@prism/types";
 import type { Project } from "../../models/Project";
-import type { Session } from "../../models/Session";
-import { groupSessionsByDateAndPlatform } from "../../utils/groupSessionsByDateAndPlatform";
 
 export class ProjectResponse {
   private project: Project;
-  private sessionData: Array<Session>;
+  private summary: ProjectResource["summary"];
 
-  constructor(project: Project, sessionData: Array<Session>) {
+  constructor(project: Project, summary: ProjectResource["summary"]) {
     this.project = project;
-    this.sessionData = sessionData;
+    this.summary = summary;
   }
 
   toJSON(): ProjectResource {
@@ -17,7 +15,7 @@ export class ProjectResponse {
       id: this.project.id,
       name: this.project.name,
       slug: this.project.slug,
-      summary: groupSessionsByDateAndPlatform(this.sessionData, "seven-days"),
+      summary: this.summary,
     };
   }
 }

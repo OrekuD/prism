@@ -3,6 +3,7 @@ import type { HonoConfig } from "../types/types";
 import { validateData } from "../utils/validateData";
 import { DatabaseManager } from "../managers/DatabaseManager";
 import { TursoDatabaseManager } from "../managers/TursoDatabaseManager";
+import { dailySessionSummary } from "../utils/analyticsStore";
 import { ErrorResponse } from "../network/responses/ErrorResponse";
 import { TeamResponse } from "../network/responses/TeamResponse";
 import type { Team } from "../models/Team";
@@ -21,7 +22,6 @@ import { TeamInviteResponse } from "../network/responses/TeamInviteResponse";
 import { TeamInviteLinkResponse } from "../network/responses/TeamInviteLinkResponse";
 import type { TeamMember } from "../models/TeamMember";
 import { ProjectResponse } from "../network/responses/ProjectResponse";
-import type { Session } from "../models/Session";
 import type { Project } from "../models/Project";
 
 export class TeamsController {
@@ -361,27 +361,23 @@ export class TeamsController {
       (await db`SELECT id, slug, name FROM projects WHERE team_id = ${teamId} ORDER BY created_at DESC `) as Array<Project>;
 
     // Analytics sessions come from Turso — the canonical analytics store.
-    // (The legacy D1 binding was removed; see db reconciliation notes.)
+    // One BOUNDED database aggregate (task-9 slice 6): per-day session
+    // counts for every project over the last 7 days — no session rows are
+    // ever loaded into application memory.
     if (projects.length === 0) {
       return ctx.json([]);
     }
-
-    const placeholders = projects.map((_) => "?").join(",");
     const ids = projects.map(({ id }) => id);
-
-    const { rows: sessionResults } = await TursoDatabaseManager.getInstance(
-      ctx,
-    ).execute({
-      sql: `SELECT * FROM sessions WHERE created_at BETWEEN datetime('now', '-7 days') AND datetime('now') AND project_id IN (${placeholders})`,
-      args: ids,
-    });
+    const summaries = await dailySessionSummary(
+      TursoDatabaseManager.getInstance(ctx),
+      ids,
+      Date.now() - 7 * 86_400_000,
+    );
 
     return ctx.json(
       projects.map((project) => {
-        const sessionData = (sessionResults as unknown as Array<Session>).filter(
-          ({ project_id }) => project_id === project.id,
-        );
-        return new ProjectResponse(project, sessionData).toJSON();
+        const summary = summaries.find((entry) => entry.projectId === project.id);
+        return new ProjectResponse(project, summary?.days ?? []).toJSON();
       }),
     );
   }

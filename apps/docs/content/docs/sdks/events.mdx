@@ -1,58 +1,69 @@
 ---
 title: Events
-description: Named events, structured data, validation, and delivery guarantees.
+description: Named events, structured properties, validation, and the v2 ingestion contract.
 audience: Developer
 scope: Both
-lastReviewed: "2026-08-11"
+lastReviewed: "2026-08-13"
 ---
 
 <SectionLabel label="INGESTION" />
 
-
-
-
 ## Shape
 
-`POST /api/v1/analytics/events` with a Bearer analytics key:
+`POST /api/v2/ingest` with a Bearer analytics key (the SDK constructs the
+batch envelope for you):
 
 ```json
 {
-  "sessionId": "…",
-  "name": "checkout-started",
-  "data": { "value": 42 }
+  "schemaVersion": 2,
+  "sentAt": 1723456789012,
+  "sdk": { "name": "@prism/core", "version": "0.0.1" },
+  "events": [
+    {
+      "schemaVersion": 2,
+      "eventId": "client-generated-id",
+      "type": "track",
+      "occurredAt": 1723456789000,
+      "sessionId": "client-owned-session",
+      "anonymousId": "anonymous-identity",
+      "name": "button-click",
+      "properties": { "label": "signup" },
+      "context": { "platform": "browser", "kind": "web" }
+    }
+  ]
 }
 ```
 
-Validation (`LogEventRequestSchema`, strict object):
+## Response
 
-| Field | Rule |
-| --- | --- |
-| `sessionId` | Required, non-empty |
-| `name` | Required, 1–128 characters |
-| `data` | Optional record of string keys to any JSON values |
+Per-event results, keyed by index and ID — never echoing submitted
+properties or values:
 
-Invalid bodies return `400` with `{ "errors": ["…"] }` — the zod messages,
-one per failed field.
+```json
+{
+  "ok": true,
+  "results": [
+    { "index": 0, "id": "client-generated-id", "status": "accepted" }
+  ]
+}
+```
 
-## Storage
+`duplicate` means a replayed event ID (transport retries are idempotent);
+`rejected` carries a coarse reason (`invalid-name`, `invalid-properties`,
+`invalid-timestamp`, `unsupported-type`, `too-large`).
 
-Events are stored per session and project (the project id comes from the
-authenticated key, never from the body). Structured `data` is serialized to
-JSON. Events appear on the project's **Events dashboard** once the analytics
-store is reachable.
+## Validation
 
-## Delivery guarantees
+Names are non-empty, ≤ 128 characters, no control characters. Properties are
+strict JSON values — non-finite numbers, dates, class instances, accessors,
+cycles, and `__proto__`/`constructor`/`prototype` keys are rejected. The
+shared ceilings (batch 50 / request 512 KiB / event 32 KiB / depth 12 /
+strings 10 000) are enforced identically by the SDK and the server, so an
+official-SDK event is never rejected as oversized.
 
-- Ingestion is **fire-and-forget** from the SDK's perspective: failures log
-  to the console and never throw into the host app.
-- The server records the event **after** validating it; there is no retry or
-  outbox in the SDK — the page's own retry (e.g. on `navigator.onLine`
-  changes) is up to you.
-- Rate limits: 120 ingestion requests per minute per client IP
-  (`429` + `Retry-After` on breach; in-memory, per-process).
+## Server-side protection
 
-## Events vs. custom events
-
-`logEvent` and `logCustomEvent` are the same wire call; the alias exists so
-product events read distinctly in code. There is no server-side event
-taxonomy or schema registry yet — the name and `data` are stored as sent.
+Direct HTTP clients are untrusted: the server validates the same rules,
+sanitizes credential keys (`[REDACTED]`), enforces per-request byte limits
+while streaming (413), and applies per-IP plus event-weighted per-project
+quotas (429 + Retry-After).

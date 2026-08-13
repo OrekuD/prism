@@ -1254,6 +1254,56 @@ Suite state: core 119 tests green; analytics 102 passed (92 unit +
 against sqld during this slice). Root gates: test 4/4, typecheck 7/7,
 lint 10/10, build 8/8.
 
+### Slice 6 — read/realtime (completed 2026-08-13)
+
+- **v1 removal (ADR 0002 §2)**: the v1 analytics routes
+  (`POST /api/v1/analytics/sessions|sessions/end|events`), the v1
+  AnalyticsController, CreateNewSessionResponse, IpEnrichmentService, and
+  the browser/OS/mobile-detection utils are gone; the analytics app serves
+  only `/api/v2/ingest` + the authorized WebSocket. The v1 request schemas,
+  `SocketUserConnected`, `CreateNewSessionResource`, and `IpInfoResponse`
+  left @prism/types; the legacy `PrismClientV1` (core `prism-client.ts`/
+  `types.ts`) and @prism/react's v1 bindings were removed (the react
+  package is an empty shell until slice 8). Migration 004 drops the legacy
+  `sessions` table; retention no longer has a legacy path.
+- **Sessions v2 + realtime**: the ingestion repository maintains
+  `sessions_v2` in the SAME atomic write batch as the events
+  (session_started upserts, session_ended closes, sessioned events bump
+  last_seen_at); accepted session_started events broadcast a
+  project-scoped, JWT-authorized `session-started` WebSocket message (the
+  dashboard's realtime page + store + WebSocketManager moved to it).
+- **Product API reads (bounded, honest)**: `analyticsStore.ts` computes
+  per-day session counts + device splits with parameterized, date-bounded
+  SQL aggregates (`session_started` events, context.kind) — no session-row
+  loads into memory; `getProjectEvents` decodes properties JSON at the
+  boundary into typed camelCase resources; browser/OS/country rankings
+  have no v2 source and were REMOVED (fabricated rankings + their chart
+  components deleted); the dashboard's "Visitors" label is now "Sessions"
+  (cross-session visitor uniqueness does not exist yet); the realtime page
+  renders v2 session rows (no raw IP/coordinates — the map stays
+  decorative, Mapbox-optional); the overview/landing/onboarding
+  copy + code snippets use `track()`/`createPrismClient`.
+- **Web telemetry v2**: main.tsx drops the hardcoded v1 client +
+  PrismProvider; `lib/prism.ts` builds a v2 client with a small inline
+  browser runtime, gated by `VITE_TELEMETRY_KEY` (opt-in, endpoint =
+  serving origin, never compiled in).
+- **Docs**: sdks/javascript|events|sessions|react, quickstart, concepts,
+  api-reference/ingestion, operations/networking|security,
+  reverse-proxy — all v1 wire/SDK references replaced with the v2
+  contract (the deeper Fumadocs pass remains slice 9).
+- **Certification + drills**: the restart drill seeds through
+  `/api/v2/ingest`; the public-origin certification re-ran 23/23 against
+  the slice-6 stack (product API seeding through the new bounded read
+  paths, v2 ingest, session state, realtime-safe path).
+- **Fixed latent breakage**: web vitest `test.alias` (the pre-existing
+  `resolve.alias` was dead under vite 7 — masked by turbo cache), web
+  tsconfig deprecations, docs frontmatter YAML quoting.
+
+Suite state: core 119 tests (95.2/90.4/98.5/95.2); analytics 82 passed +
+2 opt-in integration; api 110 passed + 4 opt-in; web 23 passed. Root
+gates: test 4/4, typecheck 7/7, lint 10/10, build 8/8. Certification:
+23/23.
+
 ## Context
 
 The current SDK (`@prism/core`) is browser-coupled, best-effort, and bakes a

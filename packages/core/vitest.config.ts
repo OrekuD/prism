@@ -8,8 +8,6 @@ export default defineConfig({
       exclude: [
         "src/__tests__/**",
         "src/contract.ts", // frozen declarations — covered by the contract tests' assertions
-        "src/types.ts", // v1 type definitions (legacy)
-        "src/prism-client.ts", // v1 implementation (legacy; removed in the browser slice)
         "src/index.ts", // re-export surface
       ],
       // Task-9 gate: changed code at the 80% project-wide goal. The v2 core

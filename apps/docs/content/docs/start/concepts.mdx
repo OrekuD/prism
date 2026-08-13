@@ -40,7 +40,7 @@ stale server-side.
 Named events with optional structured data, logged against a session:
 
 ```ts
-await prism.logEvent("button-click", { label: "signup" });
+prism.track("button-click", { label: "signup" });
 ```
 
 Events are stored per project and shown on the Events dashboard.

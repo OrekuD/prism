@@ -50,24 +50,30 @@ npm install @prism/core
 ## 5. Start tracking
 
 ```ts
-import { PrismClient } from "@prism/core";
+import { createPrismClient } from "@prism/core";
 
-const prism = new PrismClient("pr_xxx");
+const prism = await createPrismClient({
+  projectKey: "pr_xxx",
+  endpoint: window.location.origin,
+  runtime,
+  collection: { initialState: "granted" },
+});
 ```
 
-The constructor starts a session automatically using the current page path as
-the location and `document.referrer` as the referrer.
+The factory resolves to a ready client — no automatic side effects.
+`startSession()` starts a client-owned session explicitly.
 
 ## 6. Log an event
 
 ```ts
-await prism.logEvent("button-click", { label: "signup" });
+prism.track("button-click", { label: "signup" });
 ```
 
 ## 7. See it live
 
-Open **Project → Realtime** — new sessions appear as map markers the moment
-they start. Logged events appear on the **Events** dashboard.
+Open **Project → Realtime** — new sessions appear as live rows the moment
+they start (the v2 model carries no coordinates; the map is decorative).
+Logged events appear on the **Events** dashboard.
 
 ## Next
 

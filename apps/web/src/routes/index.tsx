@@ -10,8 +10,13 @@ const VITE_DOCS_URL: string = import.meta.env.VITE_DOCS_URL ?? "http://localhost
 const EXAMPLE_KEY = "pr_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
 
 const installCommand = "yarn add @prism/core";
-const initializeCommand = `const prism = new PrismClient("${EXAMPLE_KEY}")`;
-const verifyCommand = `await prism.logEvent("app_opened", { source: "landing" })`;
+const initializeCommand = `const prism = await createPrismClient({
+  projectKey: "${EXAMPLE_KEY}",
+  endpoint: "https://your-prism-instance.example", // runtime choice, never compiled in
+  runtime,
+  collection: { initialState: "granted" },
+});`;
+const verifyCommand = `prism.track("app_opened", { source: "landing" });`;
 
 function Hero() {
   return (
@@ -103,13 +108,18 @@ const snippets = {
     ["Install", installCommand],
     [
       "Initialize",
-      `const prism = new PrismClient("${EXAMPLE_KEY}")`,
+      `const prism = await createPrismClient({
+  projectKey: "${EXAMPLE_KEY}",
+  endpoint: "https://your-prism-instance.example",
+  runtime,
+  collection: { initialState: "granted" },
+});`,
     ],
     [
       "Verify",
       `useEffect(() => {
-  prism.logEvent("app_opened", { source: "landing" })
-}, [])`,
+  prism.track("app_opened", { source: "landing" });
+}, []);`,
     ],
   ] as const,
 };
