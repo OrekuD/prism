@@ -37,5 +37,7 @@ COPY --from=builder /repo/apps/analytics-api/db ./apps/analytics-api/db
 WORKDIR /repo/apps/analytics-api
 USER node
 EXPOSE 8080
+HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=5 \
+  CMD node -e "fetch('http://127.0.0.1:8080/health/live').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
 # Ordered forward migrations with a journal, then serve.
 CMD ["sh", "-c", "node dist/src/database/migrate.js && exec node dist/src/index.js"]

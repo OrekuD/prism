@@ -318,47 +318,47 @@ Do not add console output to the SDK itself; examples may inspect results.
 
 ## 3. Define one versioned analytics event envelope
 
-- [ ] Define JSON-safe primitives and objects. Reject functions, symbols,
+- [x] Define JSON-safe primitives and objects. Reject functions, symbols,
       bigint values, non-finite numbers, cyclic structures, class instances,
       unsupported dates, and `undefined` at runtime rather than relying only
       on TypeScript.
-- [ ] Add a versioned envelope base containing at least: `schemaVersion`,
+- [x] Add a versioned envelope base containing at least: `schemaVersion`,
       `eventId`, event `type`, `occurredAt`, optional `sessionId`, optional
       `anonymousId`, and runtime/library context.
-- [ ] Keep the project ID out of the client-controlled body. Derive it from the
+- [x] Keep the project ID out of the client-controlled body. Derive it from the
       authenticated write key on the server.
-- [ ] Give explicit track events their own variant with a non-empty `name` and
+- [x] Give explicit track events their own variant with a non-empty `name` and
       optional JSON-safe `properties`.
-- [ ] Reserve stable extension points for future page, screen, identify,
+- [x] Reserve stable extension points for future page, screen, identify,
       group, exception, and metric variants without exporting fake capture
       methods during this task.
-- [ ] Add batch-level `sentAt` and SDK metadata only where it avoids repeating
+- [x] Add batch-level `sentAt` and SDK metadata only where it avoids repeating
       identical values. Do not make query logic depend on an undocumented mix
       of batch-level and event-level fields.
-- [ ] Include context that is meaningful across runtimes: SDK name/version,
+- [x] Include context that is meaningful across runtimes: SDK name/version,
       runtime kind, optional application name/version/build/environment,
       locale, timezone, and runtime-provided device/page/screen information.
       Browser-only fields must stay in a browser context variant.
-- [ ] Generate event IDs and session IDs client-side with a collision-resistant
+- [x] Generate event IDs and session IDs client-side with a collision-resistant
       adapter. Never wait for a server session response before accepting an
       event into the local queue.
-- [ ] Store both `occurredAt` and server-generated `receivedAt`; analytics must
+- [x] Store both `occurredAt` and server-generated `receivedAt`; analytics must
       distinguish offline/delayed delivery from the time the action occurred.
-- [ ] Validate timestamps and reject unreasonable future clock skew while
+- [x] Validate timestamps and reject unreasonable future clock skew while
       permitting bounded offline delivery. Document the accepted window and
       how retention treats delayed events.
-- [ ] Define centralized, tested limits. Suggested initial ceilings are 50
+- [x] Define centralized, tested limits. Suggested initial ceilings are 50
       events per batch, 512 KiB per request, 32 KiB per serialized event, 128
       characters per event name, five nested property levels, 100 total
       property keys, 100 array elements, and 4 KiB per string. If benchmarks
       justify different values, record them in the ADR and use one shared
       constants source.
-- [ ] Reject empty/whitespace-only names and control characters. Do not impose
+- [x] Reject empty/whitespace-only names and control characters. Do not impose
       a naming regex that prevents reasonable human-readable event names;
       document a recommended naming convention separately.
-- [ ] Reject prototype-pollution keys such as `__proto__`, `prototype`, and
+- [x] Reject prototype-pollution keys such as `__proto__`, `prototype`, and
       `constructor` at every nested level.
-- [ ] Add golden contract fixtures that encode in core, validate at ingestion,
+- [x] Add golden contract fixtures that encode in core, validate at ingestion,
       persist, read back, and compare without undocumented field loss.
 
 ## 4. Make privacy and collection state foundational
@@ -490,34 +490,34 @@ Do not add console output to the SDK itself; examples may inspect results.
       lifecycle/shutdown signals. Core must not install browser lifecycle
       listeners itself. Interval + explicit flush + before-unload via the
       runtime lifecycle seam + bounded final flush on shutdown.
-- [ ] Retry only external nondeterminism: network failures, request timeout,
+- [x] Retry only external nondeterminism: network failures, request timeout,
       `408`, `429`, and retryable `5xx` responses. Honor a valid `Retry-After`
       header and use bounded exponential backoff with jitter.
-- [ ] Do not retry permanent `400`, `401`, `403`, or `413` responses unchanged.
+- [x] Do not retry permanent `400`, `401`, `403`, or `413` responses unchanged.
       Return/surface a specific diagnostic that names remediation without
       exposing the key or event body.
 - [x] Put a timeout and cancellation signal on every transport attempt. Timers
       must be owned and cleaned up; tests use fake clocks rather than sleeps.
       PrismRequest carries timeoutMs + an abortable signal; the client timer
       is cancelled on shutdown (covered by the transport contract tests).
-- [ ] Define queue-overflow behavior. Prefer dropping the oldest unflushed
+- [x] Define queue-overflow behavior. Prefer dropping the oldest unflushed
       event only after the configured bound is reached, emit a diagnostic, and
       return an observable result for the triggering capture. Never allow
       unbounded memory or storage growth.
-- [ ] Persist the queue through the injected storage adapter using namespaced,
+- [x] Persist the queue through the injected storage adapter using namespaced,
       versioned keys. Corrupt or future-version state is quarantined/cleared
       with a diagnostic rather than crashing the host.
-- [ ] Prevent two tabs/processes sharing one storage namespace from endlessly
+- [x] Prevent two tabs/processes sharing one storage namespace from endlessly
       duplicating the same queue. Either implement a documented ownership/
       lease strategy in the browser adapter or deliberately namespace clients
       per execution context and record the tradeoff.
-- [ ] Treat server `accepted`, `duplicate`, and `rejected` results separately.
+- [x] Treat server `accepted`, `duplicate`, and `rejected` results separately.
       Remove accepted/duplicate IDs, retain only retryable failures, and never
       resend permanently rejected poison events forever.
 - [x] Make `shutdown()` idempotent and terminal. It removes subscriptions,
       stops scheduling, performs the bounded final flush, and produces a clear
       result/error if delivery cannot finish before `timeoutMs`.
-- [ ] Keep normal background delivery quiet. Diagnostics are disabled unless
+- [x] Keep normal background delivery quiet. Diagnostics are disabled unless
       subscribed/configured; no `console.log`/`console.error` calls exist in
       package runtime code.
 
@@ -551,133 +551,133 @@ Do not add console output to the SDK itself; examples may inspect results.
 
 ## 8. Add a versioned, idempotent batch-ingestion API
 
-- [ ] Add the chosen v2 ingestion route behind the existing public write-key
+- [x] Add the chosen v2 ingestion route behind the existing public write-key
       authentication boundary. The key derives the project; client-provided
       project/team/user ownership fields are ignored or rejected.
-- [ ] Validate content type and enforce request byte limits before allocating
+- [x] Validate content type and enforce request byte limits before allocating
       or parsing an arbitrarily large body.
-- [ ] Validate the batch envelope and each event using shared contract fixtures
+- [x] Validate the batch envelope and each event using shared contract fixtures
       and server-owned runtime validation. TypeScript types alone are not a
       trust boundary.
-- [ ] Define partial-batch behavior explicitly. Prefer event-level accepted,
+- [x] Define partial-batch behavior explicitly. Prefer event-level accepted,
       duplicate, and rejected results keyed only by event ID/index, without
       echoing properties or sensitive values.
-- [ ] Add a uniqueness constraint on `(project_id, event_id)` and use conflict-
+- [x] Add a uniqueness constraint on `(project_id, event_id)` and use conflict-
       safe inserts so transport retries cannot duplicate analytics.
-- [ ] Keep write-key/project scoping in every session/event mutation and test
+- [x] Keep write-key/project scoping in every session/event mutation and test
       cross-project event IDs, session IDs, and replay attempts.
-- [ ] Sanitize on the server even when the official SDK already sanitized.
+- [x] Sanitize on the server even when the official SDK already sanitized.
       Direct HTTP clients are untrusted.
-- [ ] Add event-weighted abuse protection in addition to request/IP limiting;
+- [x] Add event-weighted abuse protection in addition to request/IP limiting;
       batching must not multiply the current effective ingestion allowance by
       the batch size without a deliberate configured quota.
-- [ ] Preserve CORS behavior required by public browser ingestion while never
+- [x] Preserve CORS behavior required by public browser ingestion while never
       adding credentialed wildcard CORS.
-- [ ] Use coarse error codes and safe response envelopes. Never return SQL,
+- [x] Use coarse error codes and safe response envelopes. Never return SQL,
       internal table names, write keys, full payloads, IPs, or provider errors.
-- [ ] Ensure logs include safe correlation/event IDs and counts only. The
+- [x] Ensure logs include safe correlation/event IDs and counts only. The
       existing redaction layer remains defense in depth; ingestion bodies are
       never logged.
-- [ ] Add readiness behavior for the analytics store without making optional
+- [x] Add readiness behavior for the analytics store without making optional
       enrichment a readiness dependency.
-- [ ] Add API reference fixtures/examples for successful, duplicate, partially
+- [x] Add API reference fixtures/examples for successful, duplicate, partially
       rejected, unauthorized, rate-limited, and oversized batches.
 
 ## 9. Replace the analytics schema with a migration-owned v2 model
 
-- [ ] Introduce ordered analytics migrations and a migration journal rather
+- [x] Introduce ordered analytics migrations and a migration journal rather
       than growing one idempotent setup SQL file forever. The migration runner
       must work for hosted Turso/libSQL and packaged sqld.
-- [ ] Keep forward migrations as the production contract. A separate guarded
+- [x] Keep forward migrations as the production contract. A separate guarded
       reset command may exist for disposable development/test stores.
-- [ ] Add an `events` v2 model containing stable event ID, project ID, type,
+- [x] Add an `events` v2 model containing stable event ID, project ID, type,
       name where applicable, schema version, occurrence/receive timestamps,
       optional session/anonymous IDs, properties JSON, and normalized context.
-- [ ] Add uniqueness and query indexes for project/time, project/name/time,
+- [x] Add uniqueness and query indexes for project/time, project/name/time,
       session/time, and anonymous identity where justified by the next query
       stages. Verify plans on representative data rather than indexing every
       column speculatively.
-- [ ] Add or revise the session model for client-generated IDs, start/end/
+- [x] Add or revise the session model for client-generated IDs, start/end/
       last-seen timestamps, runtime/device/browser/OS context, approximate geo,
       and online/stale status.
-- [ ] Remove raw IP from persistent schema, resources, queries, WebSocket
+- [x] Remove raw IP from persistent schema, resources, queries, WebSocket
       messages, fixtures, integration tests, backup examples, and documentation.
-- [ ] Do not create person/profile/group tables in this task. Reserve nullable
+- [x] Do not create person/profile/group tables in this task. Reserve nullable
       identity fields only where the Task 10 model can adopt them without
       rewriting the event envelope.
-- [ ] Decide JSON storage/query strategy for libSQL. Preserve exact JSON-safe
+- [x] Decide JSON storage/query strategy for libSQL. Preserve exact JSON-safe
       values and add generated/extracted columns only for measured query needs.
-- [ ] Make retention delete dependent records in a safe order/transaction and
+- [x] Make retention delete dependent records in a safe order/transaction and
       operate on the v2 timestamps. Preserve `--status`, `--dry-run`, apply,
       idempotency, and redacted output tests.
-- [ ] Add a guarded development migration/reset procedure that prints the
+- [x] Add a guarded development migration/reset procedure that prints the
       resolved non-secret target identity, refuses non-approved production
       targets, and requires an explicit confirmation flag before deleting the
       disposable legacy sessions/events.
-- [ ] Inspect the configured analytics store before applying the destructive
+- [x] Inspect the configured analytics store before applying the destructive
       reset. Record table counts/schema, apply migration, run inspection again,
       and verify only expected analytics test data was removed.
-- [ ] Update backup/restore and self-hosting schema expectations so a new v2
+- [x] Update backup/restore and self-hosting schema expectations so a new v2
       database and a restored v2 database pass the same readiness checks.
 
 ## 10. Preserve honest management APIs, realtime, and dashboard behavior
 
-- [ ] Update product API analytics reads to the v2 schema with parameterized
+- [x] Update product API analytics reads to the v2 schema with parameterized
       database queries and project/team authorization unchanged.
-- [ ] Stop deriving total event metrics from a latest-200 array. Use a real
+- [x] Stop deriving total event metrics from a latest-200 array. Use a real
       aggregate count for the selected project/date range.
-- [ ] Rename any session count labeled `Visitors` until unique-visitor
+- [x] Rename any session count labeled `Visitors` until unique-visitor
       semantics exist, or compute a documented anonymous-visitor count from
       the new session-scoped identifier. Do not imply cross-session uniqueness
       before Task 10/11 supports it.
-- [ ] Move summary aggregation into bounded database queries rather than
+- [x] Move summary aggregation into bounded database queries rather than
       loading every session row into application memory.
-- [ ] Keep the existing event table usable with v2 names, properties, session,
+- [x] Keep the existing event table usable with v2 names, properties, session,
       occurred time, and delayed receive time. Advanced filters/pagination UI
       remain Task 12, but the current list must not misrepresent totals.
-- [ ] Decode stored JSON at the API boundary into a typed JSON value rather
+- [x] Decode stored JSON at the API boundary into a typed JSON value rather
       than returning a JSON string that the dashboard prints verbatim.
-- [ ] Update `EventResource`, `SessionResource`, WebSocket message types, query
+- [x] Update `EventResource`, `SessionResource`, WebSocket message types, query
       hooks, loading/error/empty states, and tests together. Do not preserve
       stale snake_case database resources as the public management contract
       merely because the old table used them.
-- [ ] Keep realtime session updates project-scoped and authorized through the
+- [x] Keep realtime session updates project-scoped and authorized through the
       existing service JWT/member verification path.
-- [ ] Ensure approximate/null geo still renders a useful non-map session row
+- [x] Ensure approximate/null geo still renders a useful non-map session row
       and does not break Mapbox-optional behavior.
-- [ ] Verify onboarding's first-event poll and landing/docs examples against
+- [x] Verify onboarding's first-event poll and landing/docs examples against
       the new endpoint and SDK API.
-- [ ] Remove old v1 routes, response types, controller methods, stores, docs,
+- [x] Remove old v1 routes, response types, controller methods, stores, docs,
       and dead schema only after all consumers have moved.
 
 ## 11. Add the minimal browser runtime after core passes
 
-- [ ] Create `@prism/browser` only after the core contract, core tests, and
+- [x] Create `@prism/browser` only after the core contract, core tests, and
       Node-without-DOM import test are green.
-- [ ] Implement browser transport, clock/ID adapters where required, runtime
+- [x] Implement browser transport, clock/ID adapters where required, runtime
       context, session/local/memory storage strategies, and lifecycle cleanup
       without copying core queue/session/privacy logic.
-- [ ] Require a runtime `endpoint` option; remove `API_URL` build substitution
+- [x] Require a runtime `endpoint` option; remove `API_URL` build substitution
       from `@prism/core` and its build scripts.
-- [ ] Capture only the currently approved minimal context: sanitized path,
+- [x] Capture only the currently approved minimal context: sanitized path,
       safe referrer, locale/timezone, viewport/device classification, and
       browser/OS data needed for existing reports. Query strings, hashes, DOM
       content, form values, and click targets remain excluded.
-- [ ] Prefer server parsing of the request User-Agent where practical and
+- [x] Prefer server parsing of the request User-Agent where practical and
       discard the raw value after deriving coarse fields. Do not persist a
       second raw user-agent copy in event properties.
-- [ ] Use browser lifecycle signals to request bounded flush/session updates,
+- [x] Use browser lifecycle signals to request bounded flush/session updates,
       but keep stale-session handling authoritative because unload events are
       unreliable.
-- [ ] If `sendBeacon` cannot carry write-key authentication safely, do not send
+- [x] If `sendBeacon` cannot carry write-key authentication safely, do not send
       an unauthenticated fallback and imply success. Use an authenticated
       keepalive transport or leave the event queued for the next lifecycle.
-- [ ] Clean up every browser listener, timer, lock/lease, and storage
+- [x] Clean up every browser listener, timer, lock/lease, and storage
       subscription during shutdown.
-- [ ] Add browser tests for reload persistence, two-tab behavior, offline/
+- [x] Add browser tests for reload persistence, two-tab behavior, offline/
       online transitions, denied consent, storage denial/quota errors,
       lifecycle flush, sanitized URL/referrer, and deterministic cleanup.
-- [ ] Add a package-consumer smoke fixture using only public exports and an
+- [x] Add a package-consumer smoke fixture using only public exports and an
       explicit self-hosted endpoint.
 
 ## 12. Adapt React only after core and browser are complete
@@ -1303,6 +1303,54 @@ Suite state: core 119 tests (95.2/90.4/98.5/95.2); analytics 82 passed +
 2 opt-in integration; api 110 passed + 4 opt-in; web 23 passed. Root
 gates: test 4/4, typecheck 7/7, lint 10/10, build 8/8. Certification:
 23/23.
+
+### Slice 7 — browser (completed 2026-08-13)
+
+- **`@prism/browser`** (new workspace package): `createBrowserClient({…})`
+  is a THIN runtime seam over @prism/core — the core owns every queueing,
+  consent, sanitization, session, authentication, and retry semantic; the
+  package only translates browser primitives. Explicit runtime `endpoint`
+  required (no compiled-in host, no API_URL substitution anywhere); fails
+  loudly outside a browser (Node import stays window-free at module
+  scope).
+- **Transport**: authenticated `fetch` with `keepalive: true` — unload
+  flushes carry the write key; there is never an unauthenticated
+  `sendBeacon` fallback implying success (asserted by test).
+- **Storage**: localStorage-backed adapter with a write/read probe —
+  storage denial (privacy modes, quota) degrades to the core's in-memory
+  queue, never a crash; reload persistence flows through the core's
+  versioned queue snapshot; two-tab tradeoff recorded (project-scoped
+  key, server dedup).
+- **Context**: the APPROVED minimal set only — platform/kind, viewport,
+  locale, timezone. No user-agent capture (the server sees the request UA
+  naturally; no v2 report needs a second copy — the decision is
+  recorded). `capturePageContext()` exports the sanitized path (pathname
+  only — query strings/hashes excluded) and referrer ORIGIN (never a full
+  URL) for explicit tracking.
+- **Lifecycle**: visibilitychange → foreground/background,
+  beforeunload → before-unload with the core's bounded flush; the core's
+  per-subscription removers give deterministic cleanup (asserted:
+  post-shutdown unload events are no-ops).
+- **Tests (20, jsdom)**: runtime endpoint + core-owned auth headers +
+  keepalive; endpoint required; approved-context capture; sanitized
+  path/referrer; storage denial fallback; lifecycle flush; deterministic
+  cleanup; offline retention + recovery; denied consent; reload
+  persistence via localStorage; two tabs; Node-without-DOM import +
+  loud failure; branch coverage 82.9%.
+- **Package-consumer smoke**: real pack+install fixture (owned npm
+  cache) installing @prism/browser AND its unpublished @prism/core
+  dependency from workspace tarballs, consumed via public exports against
+  an explicit self-hosted endpoint.
+- **Web product**: the interim inline runtime in lib/prism.ts is replaced
+  by @prism/browser (first production consumer); the web Dockerfile
+  builds and ships the package.
+- **Analytics readiness (§8)**: /health/live (process) + /health/ready
+  (store ping — the migrated schema must exist; enrichment is never a
+  readiness dependency) + container HEALTHCHECK.
+
+Suite state: browser 20 tests (98.3/82.9/100); core 119; analytics 82+2
+opt-in; api 110+4 opt-in; web 23. Root gates: test 5/5, typecheck 8/8,
+lint 11/11, build 9/9.
 
 ## Context
 

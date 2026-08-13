@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { createMiddleware } from "hono/factory";
 import WebSocketManager from "./managers/WebSocketManager.js";
+import TursoDatabaseManager from "./managers/TursoDatabaseManager.js";
 import IngestRouter from "./routers/IngestRouter.js";
 import { ErrorResponse } from "./network/responses/ErrorResponse.js";
 import { RateLimiter, clientIpFrom } from "./utils/RateLimiter.js";
@@ -33,6 +34,23 @@ const rateLimitMiddleware = (limiter: RateLimiter) =>
 
 app.get("/", (ctx) => {
   return ctx.text("Waguan!");
+});
+
+// Readiness (task-9 §8): /health/live is process health; /health/ready
+// verifies the analytics store itself (the migrated schema must exist).
+// Optional enrichment is NEVER a readiness dependency.
+app.get("/health/live", (ctx) => {
+  return ctx.text("ok");
+});
+app.get("/health/ready", async (ctx) => {
+  try {
+    await TursoDatabaseManager.instance.execute(
+      "SELECT 1 FROM events LIMIT 1",
+    );
+    return ctx.text("ok");
+  } catch {
+    return ctx.text("analytics store unavailable", 503);
+  }
 });
 
 app.get(
