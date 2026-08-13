@@ -16,7 +16,7 @@ services:
 
   analytics:
     build: { context: ., dockerfile: apps/analytics-api/Dockerfile }
-    command: ["sh", "-c", "cd /repo/apps/analytics-api && node dist/src/database/setup.js && yarn tsx watch src/index.ts"]
+    command: ["sh", "-c", "cd /repo/apps/analytics-api && node dist/src/database/migrate.js && yarn tsx watch src/index.ts"]
     environment:
       ENVIRONMENT: development
     volumes:

@@ -1492,6 +1492,26 @@ audit clean, docs build + drift green. Certification 23/23.
   registry-dependent test timeout raised to 300 s.
 
 
+### Release review round 4 — dev-store migration incident (2026-08-13)
+
+- The dev environment (apps/api .dev.vars + apps/analytics-api .env)
+  points at the HOSTED dev Turso store `libsql://prism-analytics-orekud
+  .turso.io`, which still held the LEGACY schema (v1 events/sessions,
+  no migration journal) — the v2 read paths 500'd with
+  `no such column: received_at`.
+- Fixes: (1) the guarded reset now supports an EXPLICIT pinned target —
+  `ANALYTICS_RESET_TARGET` must exactly equal the configured
+  TURSO_DATABASE_URL (alongside ANALYTICS_RESET_ALLOW=1 + --yes) — the
+  declared escape hatch for a DISPOSABLE hosted dev store; unpinned
+  hosted targets stay refused (tests). (2) deploy/compose.dev.yml ran
+  the deleted `setup.js` — fixed to `migrate.js`.
+- Applied: the dev store was reset (operator-pinned + confirmed — the
+  legacy dev tables were disposable, product not yet launched) and all
+  4 migrations applied; the exact `dailySessionSummary` query that 500'd
+  now runs against the migrated store.
+- Gates: test 6/6, typecheck 9/9, lint 11/11, build 9/9.
+
+
 ## Context
 
 The current SDK (`@prism/core`) is browser-coupled, best-effort, and bakes a

@@ -203,3 +203,18 @@ describe("guarded reset", () => {
     store.close();
   });
 });
+
+describe("pinned reset target (release review 4)", () => {
+  it("refuses hosted targets unless the EXACT url is pinned", () => {
+    process.env.ANALYTICS_RESET_TARGET = "";
+    expect(isApprovedResetTarget("libsql://hosted.turso.io")).toBe(false);
+
+    process.env.ANALYTICS_RESET_TARGET = "libsql://hosted.turso.io";
+    expect(isApprovedResetTarget("libsql://hosted.turso.io")).toBe(true);
+    // a DIFFERENT configured url is still refused — the pin is exact
+    expect(isApprovedResetTarget("libsql://other.turso.io")).toBe(false);
+
+    process.env.ANALYTICS_RESET_TARGET = "";
+    expect(isApprovedResetTarget("libsql://hosted.turso.io")).toBe(false);
+  });
+});

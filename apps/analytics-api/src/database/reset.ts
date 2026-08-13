@@ -36,8 +36,13 @@ export function targetIdentity(url: string): string {
 }
 
 /**
- * Approval policy: file: URLs and loopback-only hosts. Anything else
- * (hosted Turso, internal service names, public hosts) is refused.
+ * Approval policy: file: URLs and loopback-only hosts are approved by
+ * default. Anything else (hosted Turso, internal service names, public
+ * hosts) is refused UNLESS the operator pins the exact target with
+ * ANALYTICS_RESET_TARGET — a full exact match against the configured
+ * TURSO_DATABASE_URL — which is the explicit, declared escape hatch for
+ * a DISPOSABLE hosted dev database. An unpinned hosted store is always
+ * refused.
  */
 export function isApprovedResetTarget(url: string): boolean {
   if (url.startsWith("file:")) return true;
@@ -48,7 +53,11 @@ export function isApprovedResetTarget(url: string): boolean {
   } catch {
     return false;
   }
-  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") {
+    return true;
+  }
+  const pinned = process.env.ANALYTICS_RESET_TARGET ?? "";
+  return pinned.length > 0 && pinned === url;
 }
 
 // `events` covers BOTH the legacy v1 table and the v2 model (same table
@@ -84,7 +93,7 @@ export function main(): void {
   if (!isApprovedResetTarget(url)) {
     logger.error(
       "analytics:reset",
-      `refused: ${targetIdentity(url)} is not an approved disposable target (file: or loopback only)`,
+      `refused: ${targetIdentity(url)} is not an approved disposable target (file:/loopback, or pin the EXACT url with ANALYTICS_RESET_TARGET for a declared disposable hosted dev store)`,
     );
     process.exit(1);
   }
