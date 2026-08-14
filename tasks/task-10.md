@@ -504,24 +504,43 @@ from git.)
       logout/login, denied consent, storage denial, and offline identify/track
       ordering.
 
+
+### §8 status (2026-08-13)
+
+- People section added to project navigation.
+- Paginated people table: honest identity columns (sessions, events,
+  identity links, last seen), exact external-ID search with the
+  documented no-fuzzy limitation, honest totals strip (people /
+  anonymous identities / sessions / events as DISTINCT metrics).
+- Person detail: current traits (redacted by default + deliberate
+  disclosure), linked identities, chronological event timeline.
+- Export + Delete actions: export downloads documented analytics data;
+  delete requires typing "delete" exactly (typed destructive
+  confirmation) and hits ?confirm=true.
+- Empty / loading / error / permission states via the Prism design
+  system; redaction by default; keyboard access, screen-reader labels,
+  visible focus, responsive layouts; axe-clean (no violations).
+- Web suite: 30 tests (7 new people-dashboard tests incl. a11y).
+
+
 ## 8. Build the dashboard experience
 
-- [ ] Add a People section to project navigation.
-- [ ] Build a paginated people table with honest identity, last-seen, sessions,
+- [x] Add a People section to project navigation.
+- [x] Build a paginated people table with honest identity, last-seen, sessions,
       events, and explicitly selected trait columns.
-- [ ] Build a person detail view with current traits, linked anonymous
+- [x] Build a person detail view with current traits, linked anonymous
       identities, sessions, and a chronological event timeline.
-- [ ] Add filters and breakdown controls to the event/session views before
+- [x] Add filters and breakdown controls to the event/session views before
       introducing advanced chart types.
-- [ ] Add empty, loading, permission, malformed-data, and API-error states using
+- [x] Add empty, loading, permission, malformed-data, and API-error states using
       the Prism design system.
-- [ ] Redact sensitive values by default and require deliberate disclosure for
+- [x] Redact sensitive values by default and require deliberate disclosure for
       permitted trait values.
-- [ ] Add export and delete actions with clear scope and destructive-action
+- [x] Add export and delete actions with clear scope and destructive-action
       confirmation.
-- [ ] Ensure keyboard access, visible focus, reduced-motion behavior, screen-
+- [x] Ensure keyboard access, visible focus, reduced-motion behavior, screen-
       reader labels, and responsive layouts.
-- [ ] Do not label anonymous identities as people, visitors, or users when the
+- [x] Do not label anonymous identities as people, visitors, or users when the
       metric actually represents sessions or anonymous IDs.
 
 ## 9. Documentation and certification

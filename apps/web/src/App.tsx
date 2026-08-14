@@ -43,6 +43,16 @@ const ProjectRealtime = lazy(() =>
     default: m.ProjectRealtime,
   })),
 );
+const ProjectPeople = lazy(() =>
+  import("./routes/projects/project/people").then((m) => ({
+    default: m.ProjectPeople,
+  })),
+);
+const PersonDetail = lazy(() =>
+  import("./routes/projects/project/person").then((m) => ({
+    default: m.PersonDetail,
+  })),
+);
 const ProjectSettingsLayout = lazy(() =>
   import("./components/layout/project-settings-layout").then((m) => ({
     default: m.ProjectSettingsLayout,
@@ -140,6 +150,8 @@ const router = createBrowserRouter(
             <Route path="" element={<ProjectSummary />} />
             <Route path="events" element={<ProjectEvents />} />
             <Route path="realtime" element={<ProjectRealtime />} />
+            <Route path="people" element={<ProjectPeople />} />
+            <Route path="people/:personId" element={<PersonDetail />} />
             <Route path="settings" element={<ProjectSettingsLayout />}>
               <Route path="" element={<Navigate to="general" />} />
               <Route path="general" element={<ProjectSettingsGeneral />} />

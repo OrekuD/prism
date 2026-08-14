@@ -36,6 +36,10 @@ const tabs = [
     url: "events",
   },
   {
+    label: "People",
+    url: "people",
+  },
+  {
     label: "Settings",
     url: "settings",
   },
