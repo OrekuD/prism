@@ -86,6 +86,48 @@ export type EventResource = {
   schemaVersion: number;
 };
 
+/**
+ * Person resource (task-10 §5): opaque personId (the deterministic
+ * internal id — clients need it for detail/export/delete), safe trait
+ * values, first/last seen, and honest distinct counts. No email/name
+ * inference — only developer-supplied data is ever present.
+ */
+export type PeopleResource = {
+  personId: string;
+  firstSeenAt: number;
+  lastSeenAt: number;
+  traits: Record<string, unknown>;
+  /** Distinct linked identities (external + anonymous). */
+  identityCount: number;
+  /** Distinct sessions across the person's events. */
+  sessionCount: number;
+  /** Event occurrences. */
+  eventCount: number;
+};
+
+export type PersonDetailResource = PeopleResource & {
+  externalIds: string[];
+  anonymousIds: string[];
+};
+
+export type PeopleListResource = {
+  people: Array<PeopleResource>;
+  /** Keyset cursor for the next page (opaque; absent on the last page). */
+  nextCursor: string | null;
+};
+
+export type BreakdownResource = {
+  dimension: string;
+  rows: Array<{ key: string; count: number }>;
+};
+
+export type TotalsResource = {
+  events: number;
+  people: number;
+  anonymousIdentities: number;
+  sessions: number;
+};
+
 export type ProjectDetailedResource = {
   id: string;
   name: string;

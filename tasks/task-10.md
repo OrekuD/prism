@@ -382,29 +382,52 @@ from git.)
 - [x] Verify migrations against both in-memory libSQL and the packaged sqld
       runtime; retain opt-in hosted Turso verification.
 
+
+### §5 status (2026-08-13)
+
+- People list: bounded keyset pagination (last_seen, person_id), honest
+  counts (event occurrences, DISTINCT sessions, identity links),
+  exact-match search by external ID and indexed safe traits (no
+  prefix/fuzzy — documented limitation).
+- Person detail: traits (primitive + object JSON decoded at the
+  boundary), all linked external + anonymous identities.
+- Person activity: bounded chronological event timeline.
+- Events explorer: date range, name, person, session, and safe
+  property-value filters (parameterized json_extract).
+- Breakdowns: event / person / session / context-kind / context-platform
+  with bounded cardinality (LIMIT 100).
+- Honest totals: events ≠ people ≠ anonymous identities ≠ sessions
+  (four distinct metrics).
+- Malformed stored JSON quarantined to null — never crashes a response.
+- Query-plan tests justify the person + identity indexes on
+  representative data (EXPLAIN QUERY PLAN → USING INDEX).
+- Every read project-scoped before filtering/pagination.
+- api suite: 122 passed + 4 opt-in; people store: 12 real-libSQL tests.
+
+
 ## 5. Add people and baseline query APIs
 
-- [ ] Add authenticated, team/project-authorized APIs for a bounded people list
+- [x] Add authenticated, team/project-authorized APIs for a bounded people list
       and person details.
-- [ ] Support cursor pagination; never load an unbounded project's people,
+- [x] Support cursor pagination; never load an unbounded project's people,
       sessions, or events into application memory.
-- [ ] Allow people search by exact external ID and explicitly indexed safe
+- [x] Allow people search by exact external ID and explicitly indexed safe
       traits. Avoid broad PII enumeration and document search limitations.
-- [ ] Return current safe traits, first/last seen times, identity count, session
+- [x] Return current safe traits, first/last seen times, identity count, session
       count, and event count without exposing internal database identifiers that
       clients do not need.
-- [ ] Add a bounded, chronological person activity endpoint covering sessions
+- [x] Add a bounded, chronological person activity endpoint covering sessions
       and events.
-- [ ] Extend event/session queries with date range, event name, person,
+- [x] Extend event/session queries with date range, event name, person,
       session, and safe property filters.
-- [ ] Add breakdowns for event, person, session, and approved context properties
+- [x] Add breakdowns for event, person, session, and approved context properties
       using parameterized SQL and bounded cardinality.
-- [ ] Support honest totals: event occurrences, unique resolved people, unique
+- [x] Support honest totals: event occurrences, unique resolved people, unique
       anonymous identities, and sessions must remain distinct metrics.
-- [ ] Treat malformed stored JSON as a boundary error or quarantined value;
+- [x] Treat malformed stored JSON as a boundary error or quarantined value;
       never crash an entire response.
-- [ ] Add query-plan tests for representative data and justify every new index.
-- [ ] Ensure every read is project-scoped before filtering or pagination.
+- [x] Add query-plan tests for representative data and justify every new index.
+- [x] Ensure every read is project-scoped before filtering or pagination.
 
 ## 6. Add privacy export and deletion operations
 

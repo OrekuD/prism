@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { PeopleController } from "../controllers/PeopleController";
 import { ProjectsController } from "../controllers/ProjectsController";
 import {
   AuthenticationMiddleware,
@@ -10,6 +11,13 @@ const router = new Hono();
 router.use(AuthenticationMiddleware);
 router.get("/:slug", ProjectsController.getProjectBySlug);
 router.get("/:slug/events", ProjectsController.getProjectEvents);
+// People + baseline query APIs (task-10 §5)
+router.get("/:slug/people", PeopleController.list);
+router.get("/:slug/people/:personId", PeopleController.detail);
+router.get("/:slug/people/:personId/activity", PeopleController.activity);
+router.get("/:slug/events/filtered", PeopleController.events);
+router.get("/:slug/breakdown", PeopleController.breakdown);
+router.get("/:slug/totals", PeopleController.totals);
 router.post(
   "/:teamId",
   RequireVerifiedEmailMiddleware,

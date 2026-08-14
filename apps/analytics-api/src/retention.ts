@@ -147,15 +147,15 @@ export async function applyRetention(
       { sql: "DELETE FROM events WHERE received_at < ?", args: [cutoffMs] },
       { sql: "DELETE FROM sessions_v2 WHERE last_seen_at < ?", args: [cutoffMs] },
       {
-        sql: `DELETE FROM external_identities WHERE project_id IN (SELECT project_id FROM people WHERE last_seen_at < ?)`,
+        sql: "DELETE FROM external_identities WHERE project_id IN (SELECT project_id FROM people WHERE last_seen_at < ?)",
         args: [cutoffMs],
       },
       {
-        sql: `DELETE FROM anonymous_identities WHERE project_id IN (SELECT project_id FROM people WHERE last_seen_at < ?)`,
+        sql: "DELETE FROM anonymous_identities WHERE project_id IN (SELECT project_id FROM people WHERE last_seen_at < ?)",
         args: [cutoffMs],
       },
       {
-        sql: `DELETE FROM person_traits WHERE project_id IN (SELECT project_id FROM people WHERE last_seen_at < ?)`,
+        sql: "DELETE FROM person_traits WHERE project_id IN (SELECT project_id FROM people WHERE last_seen_at < ?)",
         args: [cutoffMs],
       },
       { sql: "DELETE FROM people WHERE last_seen_at < ?", args: [cutoffMs] },

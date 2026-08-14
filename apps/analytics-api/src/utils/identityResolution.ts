@@ -3,8 +3,8 @@ import { createHash } from "node:crypto";
 /**
  * Identity resolution (task-10 §4, ADR 0003): DETERMINISTIC person IDs.
  *
- * person_id = `u_<sha256(projectId:userId)>` for known people and
- * `a_<sha256(projectId:anonymousId)>` for anonymous-only identities. A
+ * person_id = 'u_<sha256(projectId:userId)>' for known people and
+ * 'a_<sha256(projectId:anonymousId)>' for anonymous-only identities. A
  * deterministic ID means concurrent identifies for the same external user
  * always target the SAME person row (ON CONFLICT DO NOTHING converges),
  * and replaying an op after a crash cannot create duplicate people.
@@ -79,12 +79,12 @@ export function buildIdentityStatements(
     {
       // Reassign the anonymous-only person's history to the known person
       // (derived projection rebuild — raw events untouched).
-      sql: `UPDATE events SET person_id = ? WHERE project_id = ? AND person_id = ? AND user_id IS NULL`,
+      sql: 'UPDATE events SET person_id = ? WHERE project_id = ? AND person_id = ? AND user_id IS NULL',
       args: [knownPersonId, projectId, anonPersonId],
     },
     {
       // The anonymous-only person row is now empty of links and history.
-      sql: `DELETE FROM people WHERE project_id = ? AND person_id = ?`,
+      sql: 'DELETE FROM people WHERE project_id = ? AND person_id = ?',
       args: [projectId, anonPersonId],
     },
   ];
