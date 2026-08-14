@@ -15,6 +15,8 @@ router.get("/:slug/events", ProjectsController.getProjectEvents);
 router.get("/:slug/people", PeopleController.list);
 router.get("/:slug/people/:personId", PeopleController.detail);
 router.get("/:slug/people/:personId/activity", PeopleController.activity);
+router.get("/:slug/people/:personId/export", PeopleController.export);
+router.delete("/:slug/people/:personId", PeopleController.remove);
 router.get("/:slug/events/filtered", PeopleController.events);
 router.get("/:slug/breakdown", PeopleController.breakdown);
 router.get("/:slug/totals", PeopleController.totals);

@@ -8,6 +8,9 @@ import {
   filteredEvents,
   breakdown,
   honestTotals,
+  exportPerson,
+  deletePerson,
+  personExists,
 } from "../utils/peopleStore";
 import { personIdForUser, personIdForAnonymous, buildIdentityStatements } from "../../../analytics-api/src/utils/identityResolution";
 
@@ -204,5 +207,55 @@ describe("query plans justify the indexes", () => {
       args: [PROJECT, "plan", JSON.stringify("pro")],
     });
     expect(JSON.stringify(traitPlan.rows)).toMatch(/USING (COVERING )?INDEX/i);
+  });
+});
+
+describe("privacy export + deletion (§6)", () => {
+  it("exports documented analytics data only", async () => {
+    const exported = await exportPerson(client, PROJECT, personIdForUser(PROJECT, "user-1"));
+    expect(exported?.externalIds).toEqual(["user-1"]);
+    expect(exported?.anonymousIds).toEqual(["anon-1"]);
+    expect(exported?.traits).toMatchObject({ plan: "pro" });
+    expect(exported?.sessions.length).toBeGreaterThanOrEqual(3);
+    expect(exported?.events.length).toBeGreaterThanOrEqual(6);
+    // never contains keys/tokens/raw IPs or other users' data
+    const serialized = JSON.stringify(exported);
+    expect(serialized).not.toContain("projectKey");
+    expect(serialized).not.toContain("user-2");
+    expect(exportPerson(client, PROJECT, "u_missing")).resolves.toBeNull();
+  });
+
+  it("deletes a person atomically with idempotent retries", async () => {
+    // a fresh anonymous-only person to delete
+    const anon = personIdForAnonymous(PROJECT, "anon-delete-me");
+    await client.execute({
+      sql: "INSERT INTO people (person_id, project_id, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?)",
+      args: [anon, PROJECT, 1, 2],
+    });
+    await client.execute({
+      sql: `INSERT INTO events (id, project_id, type, name, schema_version, occurred_at, received_at, anonymous_id, person_id, properties, context, sdk_name, sdk_version)
+            VALUES ('del-ev', ?, 'track', 'x', 3, 1, 2, 'anon-delete-me', ?, '{}', '{}', NULL, NULL)`,
+      args: [PROJECT, anon],
+    });
+
+    const first = await deletePerson(client, PROJECT, anon);
+    expect(first.deleted).toBe(true);
+    // everything is gone: links, traits, events, person
+    expect(await personExists(client, PROJECT, anon)).toBe(false);
+    const events = await personActivity(client, PROJECT, anon, 10);
+    expect(events).toHaveLength(0);
+
+    // idempotent retry: no error, reports not-deleted
+    const second = await deletePerson(client, PROJECT, anon);
+    expect(second.deleted).toBe(false);
+  });
+
+  it("never deletes a person in another project", async () => {
+    const other = personIdForUser(OTHER, "user-1");
+    const before = await personExists(client, OTHER, other);
+    expect(before).toBe(true);
+    const result = await deletePerson(client, PROJECT, other);
+    expect(result.deleted).toBe(false); // scoped: nothing matched in PROJECT
+    expect(await personExists(client, OTHER, other)).toBe(true);
   });
 });

@@ -1,6 +1,8 @@
 import type { Context } from "hono";
 import {
   breakdown,
+  deletePerson,
+  exportPerson,
   filteredEvents,
   honestTotals,
   peopleList,
@@ -156,6 +158,38 @@ export class PeopleController {
       to ? Number(to) : undefined,
     );
     return ctx.json(result);
+  }
+
+  public static async export(ctx: Context) {
+    const slug = ctx.req.param("slug") ?? "";
+    const personId = ctx.req.param("personId") ?? "";
+    const project = await PeopleController.projectForSlug(ctx, slug);
+    if (!project) {
+      return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
+    }
+    const exported = await exportPerson(PeopleController.store(ctx), project.id, personId);
+    if (!exported) {
+      return ctx.json(new ErrorResponse("person_not_found").toJSON(), 404);
+    }
+    return ctx.json(exported);
+  }
+
+  public static async remove(ctx: Context) {
+    const slug = ctx.req.param("slug") ?? "";
+    const personId = ctx.req.param("personId") ?? "";
+    const project = await PeopleController.projectForSlug(ctx, slug);
+    if (!project) {
+      return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
+    }
+    // explicit destructive action: confirmation is a contract-level
+    // requirement (the dashboard requires a typed confirmation; the API
+    // requires the ?confirm=true flag). Idempotent retries are safe.
+    const confirmed = ctx.req.query("confirm") === "true";
+    if (!confirmed) {
+      return ctx.json(new ErrorResponse("confirmation_required").toJSON(), 400);
+    }
+    const result = await deletePerson(PeopleController.store(ctx), project.id, personId);
+    return ctx.json({ deleted: result.deleted, personId });
   }
 
   public static async totals(ctx: Context) {

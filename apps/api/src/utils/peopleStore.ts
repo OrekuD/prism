@@ -21,6 +21,10 @@ interface AnalyticsClient {
     sql: string;
     args: Array<string | number | null>;
   }): Promise<{ rows: Array<Record<string, unknown>> }>;
+  batch?(
+    statements: Array<{ sql: string; args: Array<string | number | null> }>,
+    mode: "write",
+  ): Promise<Array<{ rowsAffected: number }>>;
 }
 
 const PAGE_SIZE = 50;
@@ -395,4 +399,88 @@ export async function personExists(
     args: [projectId, personId],
   });
   return rows.length > 0;
+}
+
+
+// ---------------------------------------------------------------------------
+// §6 — privacy export + deletion
+// ---------------------------------------------------------------------------
+
+/** Person export: identity references, traits, sessions, events — documented analytics data only. */
+export interface PersonExport {
+  projectId: string;
+  personId: string;
+  exportedAt: number;
+  externalIds: string[];
+  anonymousIds: string[];
+  traits: Record<string, unknown>;
+  sessions: Array<{ sessionId: string; startedAt: number; lastSeenAt: number }>;
+  events: EventResource[];
+}
+
+/**
+ * Build a person's export (bounded — a documented analytics-data export:
+ * identity references, traits, sessions, and events; never keys, tokens,
+ * raw IPs, or other users' data).
+ */
+export async function exportPerson(
+  client: AnalyticsClient,
+  projectId: string,
+  personId: string,
+): Promise<PersonExport | null> {
+  const person = await personDetail(client, projectId, personId);
+  if (!person) return null;
+
+  const sessions = (
+    await client.execute({
+      sql: `SELECT session_id, MIN(occurred_at) AS started_at, MAX(received_at) AS last_seen_at
+            FROM events
+            WHERE project_id = ? AND person_id = ? AND session_id IS NOT NULL
+            GROUP BY session_id`,
+      args: [projectId, personId],
+    })
+  ).rows.map((row) => ({
+    sessionId: String(row.session_id),
+    startedAt: Number(row.started_at ?? 0),
+    lastSeenAt: Number(row.last_seen_at ?? 0),
+  }));
+
+  const events = await personActivity(client, projectId, personId, 500);
+
+  return {
+    projectId,
+    personId,
+    exportedAt: Date.now(),
+    externalIds: person.externalIds,
+    anonymousIds: person.anonymousIds,
+    traits: person.traits,
+    sessions,
+    events,
+  };
+}
+
+/**
+ * Destructive person deletion (task-10 §6): removes identity links FIRST
+ * (a future use of the same external userId creates a NEW person —
+ * deleted history never silently returns), then traits, then events, then
+ * the person row — one atomic batch, idempotent (deleting an already
+ * deleted person is a no-op that still returns the deletion record).
+ */
+export async function deletePerson(
+  client: AnalyticsClient,
+  projectId: string,
+  personId: string,
+): Promise<{ deleted: boolean }> {
+  const results = await client.batch?.(
+    [
+      { sql: "DELETE FROM external_identities WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
+      { sql: "DELETE FROM anonymous_identities WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
+      { sql: "DELETE FROM person_traits WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
+      { sql: "DELETE FROM events WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
+      { sql: "DELETE FROM people WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
+    ],
+    "write",
+  );
+  const last = results?.[results.length - 1];
+  return { deleted: (last?.rowsAffected ?? 0) > 0 };
 }

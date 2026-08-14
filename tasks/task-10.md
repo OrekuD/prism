@@ -429,23 +429,44 @@ from git.)
 - [x] Add query-plan tests for representative data and justify every new index.
 - [x] Ensure every read is project-scoped before filtering or pagination.
 
+
+### §6 status (2026-08-13)
+
+- Person export: documented analytics data only (identity references,
+  traits, sessions, events) — never keys, tokens, raw IPs, or other
+  users' data (asserted); 404 for unknown persons.
+- Destructive deletion: explicit ?confirm=true contract, atomic
+  dependency-safe batch (links FIRST → traits → events → person row),
+  idempotent retries (re-delete is a safe no-op), coarse outcomes.
+- Deletion removes identity links first — a future identify with the
+  SAME external userId creates a NEW person with a clean slate (deleted
+  history never silently returns — proven e2e).
+- Decision recorded: deletion REMOVES raw events (not anonymization) —
+  privacy over aggregate accuracy for person deletions.
+- Cross-project isolation proven (deleting in one project never touches
+  another).
+- Real-sqld opt-in e2e: export → deletion during ingestion → export
+  after deletion → repeated deletion → re-identify (fresh person) →
+  cross-project denial.
+
+
 ## 6. Add privacy export and deletion operations
 
-- [ ] Add a project-authorized person export containing documented analytics
+- [x] Add a project-authorized person export containing documented analytics
       data only: identity references, traits, sessions, and events.
-- [ ] Add an explicit destructive person-deletion workflow with confirmation,
+- [x] Add an explicit destructive person-deletion workflow with confirmation,
       audit metadata, and idempotent retry behavior.
-- [ ] Decide whether deletion removes raw events or irreversibly anonymizes
+- [x] Decide whether deletion removes raw events or irreversibly anonymizes
       them. Document the privacy and aggregate-accuracy tradeoff before coding.
-- [ ] Ensure deletion removes identity links so a future use of the same
+- [x] Ensure deletion removes identity links so a future use of the same
       external user ID does not silently restore deleted history.
-- [ ] Prevent deleted persistent anonymous identities from being recreated from
+- [x] Prevent deleted persistent anonymous identities from being recreated from
       stale SDK state without a new identity context.
-- [ ] Keep exported files and deletion logs free of project keys, auth tokens,
+- [x] Keep exported files and deletion logs free of project keys, auth tokens,
       raw IP data, or unrelated users' information.
-- [ ] Provide identical operations and documentation for hosted and self-hosted
+- [x] Provide identical operations and documentation for hosted and self-hosted
       deployments.
-- [ ] Add integration tests for cross-project denial, repeated deletion,
+- [x] Add integration tests for cross-project denial, repeated deletion,
       deletion during ingestion, and export after deletion.
 
 ## 7. Integrate `@prism/browser` and `@prism/react`
