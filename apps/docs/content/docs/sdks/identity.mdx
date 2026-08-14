@@ -1,0 +1,79 @@
+---
+title: Identity & profiles
+description: identify, reset, anonymous vs known, shared devices, multi-device resolution — the v2 identity model.
+audience: Developer
+scope: Both
+lastReviewed: "2026-08-13"
+---
+
+<SectionLabel label="IDENTITY MODEL" />
+
+Prism's identity model (ADR 0003):
+
+- **person** — the resolved analytics subject (project-scoped).
+- **userId** — YOUR external identifier, supplied explicitly via
+  `identify()`. Opaque (1–256 chars); never inferred from emails, names,
+  or devices.
+- **anonymousId** — SDK-generated per origin; the pre-identify identity.
+- **traits** — explicitly supplied profile attributes (set/update, plus
+  `$unset` for removal).
+
+## `identify(userId, traits?)`
+
+```ts
+const result = await prism.identify("user_123", { plan: "pro", company: "acme" });
+// { status: "queued", opId, userId, anonymousId } | { status: "dropped", reason }
+```
+
+One ordered operation: the current anonymous identity is linked to the
+external ID, traits are applied, and immediately-following `track()`
+events carry the userId. The operation is async and queued — retries are
+idempotent (client operation IDs).
+
+- **Multi-device**: one userId may link many anonymous IDs — events
+  resolve to the person by userId; pre-identify history links through the
+  anonymous identity (historical events are never rewritten).
+- **Shared devices**: an anonymous identity is never silently re-linked
+  to a second person. `identify(B)` after `identify(A)` rotates to a
+  fresh anonymous context — two known people are never merged.
+- **Traits**: set/update via `identify(userId, traits)`; removal via
+  `identify(userId, { $unset: ["old_key"] })`. Counters and array
+  mutations are deferred capabilities.
+
+## `reset()`
+
+```ts
+const result = await prism.reset(); // { status: "ok", anonymousId }
+```
+
+Logout semantics: closes the session, clears the known identity, ROTATES
+the anonymous ID, clears queued identify operations and ALL
+global-property scopes — the next user on a shared device never inherits
+the previous user's context. Queued EVENTS keep their immutable identity
+context (never relabeled).
+
+## Consent
+
+Denied/pending collection never persists identity links, traits, global
+properties, or queued identify operations. Withdrawal clears all of them;
+re-grant starts a fresh anonymous context.
+
+## Global properties
+
+```ts
+await prism.setGlobalProperty("theme", "dark");                 // memory
+await prism.setGlobalProperty("referral", "friend", "session"); // this context
+await prism.setGlobalProperty("plan", "pro", "persistent");     // survives reloads
+await prism.unsetGlobalProperty("theme");
+await prism.clearGlobalProperties();
+```
+
+Precedence: `persistent < session < memory`, and per-event properties
+override ALL globals for that event without mutating stored globals.
+
+## What Prism never captures
+
+PII is developer-supplied ONLY. Prism never automatically captures names,
+emails, phone numbers, advertising IDs, exact locations, contacts,
+clipboard contents, form values, DOM content, or input values — and the
+SDK never infers an identity from any of them.

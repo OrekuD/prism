@@ -94,6 +94,29 @@ const compose = (args, opts = {}) =>
 
 /** HTTP through the web container (inside the compose network). */
 const request = (path, { method = "GET", body, cookie, headers = [] } = {}) => {
+  if (method === "DELETE") {
+    // busybox wget cannot send DELETE — use node fetch inside the
+    // ANALYTICS container (the web image is nginx-only) against the
+    // public origin through nginx; the route requires ?confirm=true.
+    const script =
+      `fetch("http://web${path}", { method: "DELETE", headers: {` +
+      `${cookie ? `"cookie": "${cookie}", ` : ""}` +
+      `"accept": "application/json" } }).then(async (r) => { console.log("CERT_STATUS=" + r.status); console.log(await r.text()); }).catch((e) => console.log("CERT_STATUS=0 " + String(e)));`;
+    const res = run("docker", [
+      "compose", "-p", PROJECT, "-f", COMPOSE_FILE, "--env-file", ENV_FILE,
+      "exec", "-T", "analytics", "node", "--input-type=module", "-e", script,
+    ], { allowFailure: true });
+    const stdout = res.stdout ?? "";
+    const statusMatch = stdout.match(/CERT_STATUS=(\d+)/);
+    const status = statusMatch ? Number(statusMatch[1]) : 0;
+    let data = null;
+    try {
+      data = JSON.parse(stdout.split("\n").slice(1).join("\n"));
+    } catch {
+      /* non-JSON */
+    }
+    return { status, data, cookie: "" };
+  }
   const args = [
     "compose", "-p", PROJECT, "-f", COMPOSE_FILE, "--env-file", ENV_FILE,
     "exec", "-T", "web", "wget", "-qO-", "-S", "--timeout=10",
@@ -469,6 +492,175 @@ client.close();
     "SDK metadata derived from the batch (authoritative)",
     rowSdk.includes('"name":"@prism/core"') && rowSdk.includes('"version":"0.0.1"'),
     `got ${rowSdk}`,
+  );
+
+  console.log("[6.5/8] Identity + privacy through the public origin (task-10 §9)…");
+  // v3 batch: identify with explicit traits + an anonymous event + an
+  // identified event — the full person lifecycle through the real origin.
+  const identifyUserId = `cert-user-${Date.now()}`;
+  const identifyOpId = `cert-op-${Date.now()}`;
+  const anonEventId = `cert-anon-ev-${Date.now()}`;
+  const knownEventId = `cert-known-ev-${Date.now()}`;
+  const identityBatch = JSON.stringify({
+    schemaVersion: 3,
+    sentAt: Date.now(),
+    sdk: { name: "@prism/core", version: "0.0.1" },
+    identity: [
+      {
+        opId: identifyOpId,
+        userId: identifyUserId,
+        anonymousId: "cert-anon-1",
+        traits: { plan: "pro", company: "acme" },
+        occurredAt: Date.now(),
+      },
+    ],
+    events: [
+      {
+        schemaVersion: 3,
+        eventId: anonEventId,
+        type: "track",
+        occurredAt: Date.now(),
+        anonymousId: "cert-anon-1",
+        name: "anonymous_event",
+        properties: {},
+      },
+      {
+        schemaVersion: 3,
+        eventId: knownEventId,
+        type: "track",
+        occurredAt: Date.now(),
+        anonymousId: "cert-anon-1",
+        userId: identifyUserId,
+        name: "identified_event",
+        properties: { tier: "pro" },
+      },
+    ],
+  });
+  const identityPost = await request("/api/v2/ingest", {
+    method: "POST",
+    body: identityBatch,
+    headers: [`authorization: Bearer ${analyticsKey}`],
+  });
+  check(
+    "v3 identity batch accepted through the public origin",
+    identityPost.status === 200 &&
+      identityPost.data?.identity?.[0]?.status === "accepted" &&
+      identityPost.data?.results?.every((r) => r.status === "accepted"),
+    JSON.stringify(identityPost.data),
+  );
+
+  // verify the person storage through sqld
+  const identityVerify = inAnalytics(`
+import { createClient } from "@libsql/client";
+const client = createClient({
+  url: process.env.TURSO_DATABASE_URL,
+  authToken: process.env.TURSO_AUTH_TOKEN,
+});
+const people = await client.execute({
+  sql: "SELECT person_id, last_seen_at FROM people WHERE project_id = ? LIMIT 5",
+  args: ["${expectedProjectId}"],
+});
+const ext = await client.execute({
+  sql: "SELECT user_id FROM external_identities WHERE project_id = ?",
+  args: ["${expectedProjectId}"],
+});
+const traits = await client.execute({
+  sql: "SELECT key, value FROM person_traits WHERE project_id = ?",
+  args: ["${expectedProjectId}"],
+});
+const anonLink = await client.execute({
+  sql: "SELECT anonymous_id FROM anonymous_identities WHERE project_id = ? AND anonymous_id = 'cert-anon-1'",
+  args: ["${expectedProjectId}"],
+});
+const identified = await client.execute({
+  sql: "SELECT COUNT(*) AS n FROM events WHERE project_id = ? AND user_id = ?",
+  args: ["${expectedProjectId}", "${identifyUserId}"],
+});
+const anonResolved = await client.execute({
+  sql: "SELECT COUNT(*) AS n FROM events WHERE project_id = ? AND id = ? AND person_id LIKE 'u_%'",
+  args: ["${expectedProjectId}", "${anonEventId}"],
+});
+console.log("CERT_PEOPLE=" + String(people.rows.length));
+console.log("CERT_EXT_ID=" + String(ext.rows[0]?.user_id ?? ""));
+console.log("CERT_TRAITS=" + String(traits.rows.length));
+console.log("CERT_ANON_LINKED=" + String(anonLink.rows.length));
+console.log("CERT_IDENTIFIED_EVENTS=" + String(identified.rows[0]?.n ?? 0));
+console.log("CERT_ANON_RESOLVED_TO_KNOWN=" + String(anonResolved.rows[0]?.n ?? 0));
+client.close();
+`);
+  const identityOut = identityVerify.stdout ?? "";
+  check(
+    "identify created the person, external identity, traits, and anon link",
+    identityOut.includes("CERT_PEOPLE=1") &&
+      identityOut.includes(`CERT_EXT_ID=${identifyUserId}`) &&
+      identityOut.includes("CERT_TRAITS=2") &&
+      identityOut.includes("CERT_ANON_LINKED=1"),
+    identityOut.slice(0, 400),
+  );
+  check(
+    "identified events resolve to the person; anonymous history links to the known person",
+    identityOut.includes("CERT_IDENTIFIED_EVENTS=1") &&
+      identityOut.includes("CERT_ANON_RESOLVED_TO_KNOWN=1"),
+    identityOut.slice(0, 300),
+  );
+
+  // dashboard profile through the product API (authorized read path)
+  const peopleList = await request(`/api/v1/projects/${slug}/people`, { cookie });
+  const personRow = peopleList.data?.people?.[0];
+  check(
+    "people list through the dashboard API (project-authorized)",
+    peopleList.status === 200 && personRow?.eventCount >= 2 && personRow?.identityCount >= 2,
+    JSON.stringify(peopleList.data).slice(0, 300),
+  );
+  const personDetail = await request(
+    `/api/v1/projects/${slug}/people/${encodeURIComponent(personRow?.personId ?? "")}`,
+    { cookie },
+  );
+  check(
+    "person detail exposes traits + linked identities",
+    personDetail.status === 200 &&
+      personDetail.data?.externalIds?.includes(identifyUserId) &&
+      personDetail.data?.anonymousIds?.includes("cert-anon-1") &&
+      personDetail.data?.traits?.plan === "pro",
+    JSON.stringify(personDetail.data).slice(0, 300),
+  );
+  const personExport = await request(
+    `/api/v1/projects/${slug}/people/${encodeURIComponent(personRow?.personId ?? "")}/export`,
+    { cookie },
+  );
+  check(
+    "person export returns documented analytics data",
+    personExport.status === 200 &&
+      personExport.data?.events?.length >= 2 &&
+      personExport.data?.traits?.company === "acme",
+    JSON.stringify(personExport.data).slice(0, 200),
+  );
+  const totals = await request(`/api/v1/projects/${slug}/totals`, { cookie });
+  check(
+    "honest totals: events / people / anonymous identities / sessions distinct",
+    totals.status === 200 &&
+      totals.data?.events >= 3 &&
+      totals.data?.people >= 1 &&
+      totals.data?.anonymousIdentities >= 1,
+    JSON.stringify(totals.data),
+  );
+  const deleteCheck = await request(
+    `/api/v1/projects/${slug}/people/${encodeURIComponent(personRow?.personId ?? "")}?confirm=true`,
+    { method: "DELETE", cookie },
+  );
+  check(
+    "destructive person deletion with explicit confirmation",
+    deleteCheck.status === 200 && deleteCheck.data?.deleted === true,
+    JSON.stringify(deleteCheck.data),
+  );
+  const afterDelete = await request(
+    `/api/v1/projects/${slug}/people/${encodeURIComponent(personRow?.personId ?? "")}`,
+    { cookie },
+  );
+  check(
+    "deleted person is gone (404) and re-identify would start fresh",
+    afterDelete.status === 404,
+    `got ${afterDelete.status}`,
   );
 
   console.log("[7/8] Replay + consent + oversized stream…");

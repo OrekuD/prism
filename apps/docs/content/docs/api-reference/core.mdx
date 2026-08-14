@@ -23,6 +23,20 @@ page disagree.
 - `SDK_VERSION`
 - `INGEST_LIMITS`
 
+## Identity & global properties
+
+- `identify(userId, traits?)` — link the current anonymous identity to a
+  developer-supplied external ID (queued, idempotent, async).
+- `reset()` — logout: rotate the anonymous ID, clear the known identity,
+  queued identify ops, and all global-property scopes.
+- `setGlobalProperty` / `unsetGlobalProperty` / `clearGlobalProperties`
+  — explicit memory/session/persistent scopes.
+- `PrismIdentityState` — the live `identity` getter.
+- `IdentifyResult` / `ResetResult` / `GlobalPropertyResult` — the
+  discriminated outcomes.
+- `WireIdentifyOp` — the wire operation carried in v3 batches.
+- `GlobalPropertyScope` — `memory` | `session` | `persistent`.
+
 ## Validation & sanitization
 
 - `sanitizeProperties`

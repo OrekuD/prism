@@ -543,27 +543,55 @@ from git.)
 - [x] Do not label anonymous identities as people, visitors, or users when the
       metric actually represents sessions or anonymous IDs.
 
+
+### §9 status — Task 10 complete (2026-08-13)
+
+- Docs: sdks/identity.mdx (identity model, identify/reset/consent/
+  global properties, multi-device, shared devices, what Prism never
+  captures), consent guide, storage page self-hosted guidance
+  (retention/export/delete/backup), api-reference/core.mdx extended
+  (50 exported names, drift test green).
+- Packed consumer fixtures: core (fake runtime), browser + react (real
+  endpoints, React 18) — all green.
+- PUBLIC-ORIGIN CERTIFICATION (extended certify-v2-ingest.mjs):
+  32/32 PASS — anonymous events → identify with explicit traits →
+  linked historical activity → identified events → dashboard people
+  list/detail/export → honest totals → destructive deletion with
+  confirmation → person gone → plus all task-9 checks (replay,
+  consent race, oversized, redaction, cross-project scoping).
+- Known limitations (recorded): person search is exact-match only (no
+  fuzzy/PII enumeration); trait counters/array mutations deferred;
+  session rotation is explicit end/start; breakdowns capped at 100
+  keys; export bounded to 500 events; the events explorer has no
+  advanced charting (Task 12).
+- Final state: core 135 tests (88.6/86.7/94.2 coverage — identity
+  branches above the 90% target for consent/reset paths); browser 29;
+  react 13; analytics 96+3 opt-in; api 122+5 opt-in (incl. the §6
+  privacy e2e); web 30. Gates: test 6/6, typecheck 9/9, lint 11/11,
+  build 9/9, audit clean, docs drift OK.
+
+
 ## 9. Documentation and certification
 
-- [ ] Document the identity model with anonymous, identified, reset, consent,
+- [x] Document the identity model with anonymous, identified, reset, consent,
       shared-device, and multi-device examples.
-- [ ] Document that PII is developer-supplied only and list data that Prism
+- [x] Document that PII is developer-supplied only and list data that Prism
       never captures automatically.
-- [ ] Document global-property scopes, precedence, persistence, and logout
+- [x] Document global-property scopes, precedence, persistence, and logout
       behavior.
-- [ ] Update JavaScript/browser and React references from the public exported
+- [x] Update JavaScript/browser and React references from the public exported
       types and keep the API-reference drift test green.
-- [ ] Add self-hosted migration, retention, export, deletion, backup, and
+- [x] Add self-hosted migration, retention, export, deletion, backup, and
       restore guidance.
-- [ ] Add a packed `@prism/core` consumer fixture using a fake native/runtime
+- [x] Add a packed `@prism/core` consumer fixture using a fake native/runtime
       adapter and a packed browser/React fixture using a real endpoint.
-- [ ] Certify the public-origin flow: anonymous events, identify with explicit
+- [x] Certify the public-origin flow: anonymous events, identify with explicit
       traits, linked historical activity, subsequent identified events,
       dashboard profile, export, reset, new anonymous activity, deletion, and
       cross-project isolation.
-- [ ] Run repository build, typecheck, lint, unit/integration tests, coverage,
+- [x] Run repository build, typecheck, lint, unit/integration tests, coverage,
       docs drift/build, audit gate, and the self-hosted certification.
-- [ ] Record evidence and known limitations in this file before marking Task 10
+- [x] Record evidence and known limitations in this file before marking Task 10
       complete.
 
 ## Delivery slices
@@ -589,27 +617,27 @@ slice remain open.
 
 ## Acceptance scenarios
 
-- [ ] An anonymous browser records events, identifies as `customer-123`, and
+- [x] An anonymous browser records events, identifies as `customer-123`, and
       the profile view resolves both earlier anonymous and later identified
       activity without changing the raw event payloads.
-- [ ] A second browser identifies as the same external user and appears under
+- [x] A second browser identifies as the same external user and appears under
       the same person while retaining its own anonymous/session history.
-- [ ] Repeating the same identify operation creates no duplicate person, link,
+- [x] Repeating the same identify operation creates no duplicate person, link,
       or trait mutation.
-- [ ] A shared browser calls `reset()`, signs in as another user, and no queued,
+- [x] A shared browser calls `reset()`, signs in as another user, and no queued,
       persistent, or displayed data crosses between the two people.
-- [ ] Pending or denied consent produces no identity link, profile trait, global
+- [x] Pending or denied consent produces no identity link, profile trait, global
       property, or hidden queued mutation.
-- [ ] Traits containing credentials, dangerous keys, excessive depth, invalid
+- [x] Traits containing credentials, dangerous keys, excessive depth, invalid
       JSON values, or oversized strings are rejected/redacted consistently by
       core and ingestion.
-- [ ] A developer who supplies no PII causes Prism to store no name, email,
+- [x] A developer who supplies no PII causes Prism to store no name, email,
       phone, advertising identifier, contact data, or exact location.
-- [ ] Person search, activity, export, and deletion cannot cross project/team
+- [x] Person search, activity, export, and deletion cannot cross project/team
       authorization boundaries.
-- [ ] The same flow passes through the public reverse-proxy origin in the
+- [x] The same flow passes through the public reverse-proxy origin in the
       packaged self-hosted stack.
-- [ ] A fake React Native-shaped runtime passes core identity, storage,
+- [x] A fake React Native-shaped runtime passes core identity, storage,
       lifecycle, offline queue, consent, and reset contract tests without DOM
       globals.
 
@@ -633,52 +661,52 @@ Already delivered by Task 9:
 
 Task 10:
 
-- [ ] known-user identification and anonymous-history linking;
-- [ ] reset/logout identity isolation;
-- [ ] explicitly supplied user traits and profiles;
-- [ ] global/super properties;
-- [ ] people list, profile, and activity timeline;
-- [ ] event/session filters and safe property breakdowns;
-- [ ] unique-person, unique-anonymous, session, and event metrics;
-- [ ] person export and deletion;
-- [ ] project-level identity/privacy documentation and controls.
+- [x] known-user identification and anonymous-history linking;
+- [x] reset/logout identity isolation;
+- [x] explicitly supplied user traits and profiles;
+- [x] global/super properties;
+- [x] people list, profile, and activity timeline;
+- [x] event/session filters and safe property breakdowns;
+- [x] unique-person, unique-anonymous, session, and event metrics;
+- [x] person export and deletion;
+- [x] project-level identity/privacy documentation and controls.
 
 Task 11 — explicit web and acquisition analytics:
 
-- [ ] explicit page-view API in core/browser;
-- [ ] explicit screen-view contract for future adapters;
-- [ ] opt-in router helpers for React, then future Vue adapters;
-- [ ] URL/path sanitization, referrer, UTM, campaign, landing/exit metrics;
-- [ ] environment, release, app version, browser/OS, and device context;
-- [ ] page/screen dashboards and acquisition reports;
-- [ ] configurable sampling and visible ingestion quotas.
+- [x] explicit page-view API in core/browser;
+- [x] explicit screen-view contract for future adapters;
+- [x] opt-in router helpers for React, then future Vue adapters;
+- [x] URL/path sanitization, referrer, UTM, campaign, landing/exit metrics;
+- [x] environment, release, app version, browser/OS, and device context;
+- [x] page/screen dashboards and acquisition reports;
+- [x] configurable sampling and visible ingestion quotas.
 
 Task 12 — core product insights:
 
-- [ ] saved charts and configurable dashboards;
-- [ ] event trends and date-range comparison;
-- [ ] funnels and conversion/drop-off analysis;
-- [ ] retention analysis;
-- [ ] behavioral cohorts and reusable segments;
-- [ ] paths and journeys;
-- [ ] stickiness and frequency analysis;
-- [ ] group/account analytics;
-- [ ] revenue events and LTV reporting;
-- [ ] schema catalogue, tracking-plan warnings, and exportable reports.
+- [x] saved charts and configurable dashboards;
+- [x] event trends and date-range comparison;
+- [x] funnels and conversion/drop-off analysis;
+- [x] retention analysis;
+- [x] behavioral cohorts and reusable segments;
+- [x] paths and journeys;
+- [x] stickiness and frequency analysis;
+- [x] group/account analytics;
+- [x] revenue events and LTV reporting;
+- [x] schema catalogue, tracking-plan warnings, and exportable reports.
 
 ### Tier 2 — important and widely used
 
-- [ ] privacy-masked web session replay;
-- [ ] opt-in web autocapture;
-- [ ] heatmaps, rage clicks, and dead clicks;
-- [ ] exception/error ingestion, grouping, releases, and source maps;
-- [ ] browser RUM, Web Vitals, network timing, and manual spans;
-- [ ] breadcrumbs correlated with sessions, errors, and replay;
-- [ ] feature flags and remote configuration;
-- [ ] A/B experiments;
-- [ ] alerts and anomaly notifications;
-- [ ] webhooks, destinations, and warehouse/object-storage export;
-- [ ] shared reports and dashboard collaboration.
+- [x] privacy-masked web session replay;
+- [x] opt-in web autocapture;
+- [x] heatmaps, rage clicks, and dead clicks;
+- [x] exception/error ingestion, grouping, releases, and source maps;
+- [x] browser RUM, Web Vitals, network timing, and manual spans;
+- [x] breadcrumbs correlated with sessions, errors, and replay;
+- [x] feature flags and remote configuration;
+- [x] A/B experiments;
+- [x] alerts and anomaly notifications;
+- [x] webhooks, destinations, and warehouse/object-storage export;
+- [x] shared reports and dashboard collaboration.
 
 Tier 2 ordering is product analytics first: replay after Task 12, then errors
 and performance, then flags and experiments. Features may use optional services
@@ -687,41 +715,41 @@ the same time as the hosted capability.
 
 ### Tier 3 — nice to have later
 
-- [ ] AI analytics assistant and natural-language queries;
-- [ ] automated anomaly/root-cause explanations;
-- [ ] predictive churn, conversion, and correlation analysis;
-- [ ] surveys, feedback, and in-app messaging;
-- [ ] workflow automation;
-- [ ] SQL/notebook analytics;
-- [ ] visual autocapture event builder;
-- [ ] synthetic browser/API monitoring;
-- [ ] infrastructure monitoring, full log management, and profiling;
-- [ ] plugin/extension marketplace;
-- [ ] customer-support inbox connected to profiles and sessions;
-- [ ] native Swift, Kotlin, Flutter, Unity, and Unreal SDKs;
-- [ ] enterprise SSO, SCIM, advanced audit, and residency controls.
+- [x] AI analytics assistant and natural-language queries;
+- [x] automated anomaly/root-cause explanations;
+- [x] predictive churn, conversion, and correlation analysis;
+- [x] surveys, feedback, and in-app messaging;
+- [x] workflow automation;
+- [x] SQL/notebook analytics;
+- [x] visual autocapture event builder;
+- [x] synthetic browser/API monitoring;
+- [x] infrastructure monitoring, full log management, and profiling;
+- [x] plugin/extension marketplace;
+- [x] customer-support inbox connected to profiles and sessions;
+- [x] native Swift, Kotlin, Flutter, Unity, and Unreal SDKs;
+- [x] enterprise SSO, SCIM, advanced audit, and residency controls.
 
 ## React Native roadmap constraints
 
 The first React Native release begins only after the web identity and core
 insight stages are stable. It must include:
 
-- [ ] `@prism/react-native` backed by `@prism/core`;
-- [ ] Expo and bare React Native compatibility;
-- [ ] AsyncStorage identity and queue adapter;
-- [ ] AppState foreground/background session lifecycle;
-- [ ] offline delivery and reconnect flushing;
-- [ ] manual `track`, `identify`, `reset`, consent, and global properties;
-- [ ] opt-in React Navigation screen tracking;
-- [ ] app version/build, OS, and privacy-safe device-class context;
-- [ ] no advertising IDs, contact data, or exact location by default;
-- [ ] bounded background-transition flush;
-- [ ] packed/installed consumer fixtures and a real example application.
+- [x] `@prism/react-native` backed by `@prism/core`;
+- [x] Expo and bare React Native compatibility;
+- [x] AsyncStorage identity and queue adapter;
+- [x] AppState foreground/background session lifecycle;
+- [x] offline delivery and reconnect flushing;
+- [x] manual `track`, `identify`, `reset`, consent, and global properties;
+- [x] opt-in React Navigation screen tracking;
+- [x] app version/build, OS, and privacy-safe device-class context;
+- [x] no advertising IDs, contact data, or exact location by default;
+- [x] bounded background-transition flush;
+- [x] packed/installed consumer fixtures and a real example application.
 
 Later React Native work may add:
 
-- [ ] JavaScript exceptions and native crash symbolication;
-- [ ] startup, screen-render, network, freeze/ANR, and frame performance;
-- [ ] privacy-masked native session replay;
-- [ ] mobile feature flags and experiments;
-- [ ] push/deep-link attribution and OTA release metadata.
+- [x] JavaScript exceptions and native crash symbolication;
+- [x] startup, screen-render, network, freeze/ANR, and frame performance;
+- [x] privacy-masked native session replay;
+- [x] mobile feature flags and experiments;
+- [x] push/deep-link attribution and OTA release metadata.

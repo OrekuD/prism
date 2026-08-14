@@ -3,6 +3,7 @@
   "pages": [
     "javascript",
     "react",
+    "identity",
     "consent",
     "sessions",
     "events",
