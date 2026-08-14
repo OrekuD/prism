@@ -1,8 +1,8 @@
 import React, { StrictMode, useEffect, useRef, useState } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PrismProvider, usePrism, PrismContext } from "../index";
-import type { PrismClient } from "@prism/core";
+import { PrismProvider, usePrism, PrismContext, type PrismReactFacade } from "../index";
+import type { JsonObject, PrismClient } from "@prism/core";
 
 /**
  * @prism/react tests (task-9 §12): the provider is a ZERO-effect context
@@ -23,6 +23,7 @@ function makeClient(): PrismClient & { calls: Record<string, number> } {
   };
   return {
     collectionState: "granted",
+    identity: { anonymousId: "anon-fake", userId: null, lastOpId: null },
     get session() {
       return session;
     },
@@ -47,6 +48,17 @@ function makeClient(): PrismClient & { calls: Record<string, number> } {
     onDiagnostic: vi.fn(() => ({
       remove: vi.fn(),
     })),
+    identify: vi.fn(async (userId: string, traits?: JsonObject) => ({
+      status: "queued",
+      opId: "op-fake",
+      userId,
+      anonymousId: "anon-fake",
+      ...(traits ? { traits } : {}),
+    })),
+    reset: vi.fn(async () => ({ status: "ok", anonymousId: "anon-fresh" })),
+    setGlobalProperty: vi.fn(async () => ({ status: "ok" })),
+    unsetGlobalProperty: vi.fn(async () => ({ status: "ok" })),
+    clearGlobalProperties: vi.fn(async () => ({ status: "ok" })),
     calls,
   } as unknown as PrismClient & { calls: Record<string, number> };
 }
@@ -282,5 +294,60 @@ describe("release review — live collectionState", () => {
       </PrismProvider>,
     );
     expect(readState).toBe("denied");
+  });
+});
+
+describe("identity facade (task-10 §7)", () => {
+  it("exposes identify/reset/global properties bound to the client", async () => {
+    const client = makeClient();
+    const holder: { facade: PrismReactFacade | null } = { facade: null };
+    const Probe = (): React.ReactNode => {
+      holder.facade = usePrism();
+      return null;
+    };
+    render(
+      <PrismProvider client={client}>
+        <Probe />
+      </PrismProvider>,
+    );
+    const facade = holder.facade as PrismReactFacade;
+    expect(typeof facade.identify).toBe("function");
+    expect(typeof facade.reset).toBe("function");
+    expect(typeof facade.setGlobalProperty).toBe("function");
+    expect(typeof facade.unsetGlobalProperty).toBe("function");
+    expect(typeof facade.clearGlobalProperties).toBe("function");
+    expect(facade.identity).toMatchObject({ anonymousId: expect.any(String), userId: null });
+
+    await facade.identify("user-123", { plan: "pro" });
+    expect(client.identify).toHaveBeenCalledWith("user-123", { plan: "pro" });
+    await facade.setGlobalProperty("plan", "pro", "persistent");
+    expect(client.setGlobalProperty).toHaveBeenCalledWith("plan", "pro", "persistent");
+    await facade.reset();
+    expect(client.reset).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the identity getter live", () => {
+    const client = makeClient();
+    let read: unknown = null;
+    const Probe = (): React.ReactNode => {
+      const prism = usePrism();
+      read = prism.identity.userId;
+      return null;
+    };
+    render(
+      <PrismProvider client={client}>
+        <Probe />
+      </PrismProvider>,
+    );
+    const mutable = client as unknown as {
+      identity: { userId: string | null };
+    };
+    mutable.identity.userId = "user-9"; // underlying state changes
+    render(
+      <PrismProvider client={client}>
+        <Probe />
+      </PrismProvider>,
+    );
+    expect(read).toBe("user-9");
   });
 });

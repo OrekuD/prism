@@ -42,7 +42,9 @@ export function createBrowserStorage(): PrismStorage | undefined {
     return undefined;
   }
   const storeFor = (key: string): Storage =>
-    key.startsWith("prism:queue:") ? window.sessionStorage : window.localStorage;
+    key.startsWith("prism:queue:") || key.includes(":globals:session:")
+      ? window.sessionStorage
+      : window.localStorage;
   return {
     getItem: async (key) => {
       try {

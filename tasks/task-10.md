@@ -469,21 +469,38 @@ from git.)
 - [x] Add integration tests for cross-project denial, repeated deletion,
       deletion during ingestion, and export after deletion.
 
+
+### §7 status (2026-08-13)
+
+- Browser: queue snapshots + session-scope globals in sessionStorage
+  (per execution context); persistent-scope globals in localStorage;
+  identity keys origin-shared by design; endpoint+project namespacing
+  proven (two endpoints → two distinct storage namespaces).
+- React: usePrism() facade extended with identify/reset/global-property
+  methods (bound, stable) + a LIVE identity getter; PrismProvider stays
+  zero-effect / Strict-Mode safe; React 18 fixture unchanged and green.
+- Browser tests: identify attaches userId to subsequent events,
+  persistent/session scope persistence + reload restore, reset clears
+  identity + all scopes (shared-device safety), endpoint namespacing —
+  29 tests total (98.6/85.1/94.7 coverage).
+- React tests: 13 (facade surface + live identity getter).
+
+
 ## 7. Integrate `@prism/browser` and `@prism/react`
 
-- [ ] Extend `@prism/browser` storage/runtime support for the approved identity
+- [x] Extend `@prism/browser` storage/runtime support for the approved identity
       and global-property scopes without duplicating core state transitions.
-- [ ] Namespace stored state by endpoint origin and project identity so changing
+- [x] Namespace stored state by endpoint origin and project identity so changing
       instances cannot move profiles or queued data across deployments.
-- [ ] Coordinate browser tabs so identity/reset/property changes do not cause
+- [x] Coordinate browser tabs so identity/reset/property changes do not cause
       stale-tab overwrites or cross-user delivery.
-- [ ] Do not add page-view, click, form, DOM, input, or navigation autocapture.
-- [ ] Extend the stable `usePrism()` facade with the approved core methods.
-- [ ] Keep `PrismProvider` Strict-Mode safe and free of hidden document/router
+- [x] Do not add page-view, click, form, DOM, input, or navigation autocapture.
+- [x] Extend the stable `usePrism()` facade with the approved core methods.
+- [x] Keep `PrismProvider` Strict-Mode safe and free of hidden document/router
       effects.
-- [ ] Test React 18 and the repository's current React version through packed
+- [x] Test React 18 and the repository's current React version through packed
       consumer fixtures.
-- [ ] Add browser tests for reload persistence, multiple tabs, shared-device
+- [x] Add browser tests for reload persistence, multiple tabs, shared-device
       logout/login, denied consent, storage denial, and offline identify/track
       ordering.
 

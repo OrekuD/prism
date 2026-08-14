@@ -488,3 +488,109 @@ describe("release review — timeouts, keepalive budget, multi-tab safety", () =
     ]);
   });
 });
+
+describe("identity + global properties in the browser (task-10 §7)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    window.sessionStorage.clear();
+    window.localStorage.clear();
+  });
+
+  it("identifies and attaches the userId to subsequent events", async () => {
+    const posted: string[] = [];
+    installFetchMock(async (_url, init) => {
+      posted.push(String(init.body));
+      return okResponse();
+    });
+    const prism = await createBrowserClient(BASE);
+    await prism.identify("browser-user", { plan: "pro" });
+    prism.track("after");
+    await prism.flush();
+
+    const envelope = JSON.parse(posted[posted.length - 1] ?? "{}") as {
+      identity?: Array<{ userId: string }>;
+      events: Array<{ userId?: string }>;
+    };
+    expect(envelope.identity?.[0]?.userId).toBe("browser-user");
+    expect(envelope.events[0]?.userId).toBe("browser-user");
+    expect(prism.identity.userId).toBe("browser-user");
+    await prism.shutdown({ timeoutMs: 50 });
+  });
+
+  it("persists the persistent global-property scope through local storage", async () => {
+    const prism = await createBrowserClient(BASE);
+    await prism.setGlobalProperty("referral", "friend", "persistent");
+    await prism.setGlobalProperty("tab_pick", "left", "session");
+    await prism.shutdown({ timeoutMs: 50 });
+
+    const persistentKeys = Object.keys(window.localStorage).filter((k) =>
+      k.includes(":globals:persistent:"),
+    );
+    expect(persistentKeys).toHaveLength(1);
+    expect(JSON.parse(window.localStorage.getItem(persistentKeys[0] ?? "") ?? "{}").referral).toBe("friend");
+    // the SESSION scope lives in session storage (per execution context)
+    const sessionKeys = Object.keys(window.sessionStorage).filter((k) =>
+      k.includes(":globals:session:"),
+    );
+    expect(sessionKeys).toHaveLength(1);
+    expect(JSON.parse(window.sessionStorage.getItem(sessionKeys[0] ?? "") ?? "{}").tab_pick).toBe("left");
+
+    // a reload restores the persistent scope
+    const prism2 = await createBrowserClient(BASE);
+    const posted: string[] = [];
+    installFetchMock(async (_url, init) => {
+      posted.push(String(init.body));
+      return okResponse();
+    });
+    prism2.track("checkout", {});
+    await prism2.flush();
+    const envelope = JSON.parse(posted[0] ?? "{}") as {
+      events: Array<{ properties: Record<string, unknown> }>;
+    };
+    expect(envelope.events[0]?.properties.referral).toBe("friend");
+    await prism2.shutdown({ timeoutMs: 50 });
+  });
+
+  it("reset clears identity and every global scope (shared-device safety)", async () => {
+    const prism = await createBrowserClient({
+      ...BASE,
+      collection: { initialState: "granted", anonymousPersistence: "session" },
+    });
+    await prism.identify("user-a");
+    await prism.setGlobalProperty("plan", "pro", "persistent");
+    const anonBefore = prism.identity.anonymousId;
+    await prism.reset();
+
+    expect(prism.identity.userId).toBeNull();
+    expect(prism.identity.anonymousId).not.toBe(anonBefore);
+    const posted: string[] = [];
+    installFetchMock(async (_url, init) => {
+      posted.push(String(init.body));
+      return okResponse();
+    });
+    prism.track("after_reset", {});
+    await prism.flush();
+    const envelope = JSON.parse(posted[0] ?? "{}") as {
+      events: Array<{ properties: Record<string, unknown> }>;
+    };
+    expect(envelope.events[0]?.properties.plan).toBeUndefined();
+    await prism.shutdown({ timeoutMs: 50 });
+  });
+
+  it("namespaces stored identity state by endpoint + project", async () => {
+    const prismA = await createBrowserClient(BASE);
+    const prismB = await createBrowserClient({
+      ...BASE,
+      endpoint: "https://other-instance.example.com",
+    });
+    await prismA.setGlobalProperty("scope_probe", "a", "persistent");
+    await prismB.setGlobalProperty("scope_probe", "b", "persistent");
+    await prismA.shutdown({ timeoutMs: 50 });
+    await prismB.shutdown({ timeoutMs: 50 });
+
+    const keys = Object.keys(window.localStorage).filter((k) =>
+      k.includes(":globals:persistent:"),
+    );
+    expect(keys).toHaveLength(2); // one per endpoint identity
+  });
+});

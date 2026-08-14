@@ -1,11 +1,16 @@
 import { createContext, useContext, useMemo } from "react";
 import type { ReactNode } from "react";
 import type {
+  GlobalPropertyResult,
+  GlobalPropertyScope,
+  IdentifyResult,
   JsonObject,
+  JsonValue,
   PrismClient,
   PrismDiagnostic,
   PrismDiagnosticHandle,
   PrismSessionHandle,
+  ResetResult,
 } from "@prism/core";
 
 /**
@@ -29,12 +34,23 @@ export interface PrismReactFacade {
   /** Bound core methods — stable references across renders. */
   readonly track: (name: string, properties?: JsonObject) => ReturnType<PrismClient["track"]>;
   readonly startSession: (options?: { properties?: JsonObject }) => ReturnType<PrismClient["startSession"]>;
+  readonly identify: (userId: string, traits?: JsonObject) => Promise<IdentifyResult>;
+  readonly reset: () => Promise<ResetResult>;
+  readonly setGlobalProperty: (
+    key: string,
+    value: JsonValue,
+    scope?: GlobalPropertyScope,
+  ) => Promise<GlobalPropertyResult>;
+  readonly unsetGlobalProperty: (key: string, scope?: GlobalPropertyScope) => Promise<GlobalPropertyResult>;
+  readonly clearGlobalProperties: (scope?: GlobalPropertyScope) => Promise<GlobalPropertyResult>;
   readonly setCollectionState: (state: Parameters<PrismClient["setCollectionState"]>[0]) => Promise<void>;
   readonly flush: () => Promise<void>;
   readonly shutdown: (options?: { timeoutMs?: number }) => Promise<void>;
   readonly onDiagnostic: (listener: (diagnostic: PrismDiagnostic) => void) => PrismDiagnosticHandle;
   /** Readonly observed collection state. */
   readonly collectionState: PrismClient["collectionState"];
+  /** Readonly observed identity state (task-10). */
+  readonly identity: PrismClient["identity"];
 }
 
 /** Context carries the READY client — never an initialization config. */
@@ -57,6 +73,11 @@ function createFacade(client: PrismClient): PrismReactFacade {
     client,
     track: (name, properties) => client.track(name, properties),
     startSession: (options) => client.startSession(options),
+    identify: (userId, traits) => client.identify(userId, traits),
+    reset: () => client.reset(),
+    setGlobalProperty: (key, value, scope) => client.setGlobalProperty(key, value, scope),
+    unsetGlobalProperty: (key, scope) => client.unsetGlobalProperty(key, scope),
+    clearGlobalProperties: (scope) => client.clearGlobalProperties(scope),
     setCollectionState: (state) => client.setCollectionState(state),
     flush: () => client.flush(),
     shutdown: (options) => client.shutdown(options),
@@ -65,6 +86,9 @@ function createFacade(client: PrismClient): PrismReactFacade {
     // changes; React-side rerender subscriptions are a later concern.
     get collectionState() {
       return client.collectionState;
+    },
+    get identity() {
+      return client.identity;
     },
   };
 }
