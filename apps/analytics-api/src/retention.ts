@@ -3,7 +3,10 @@
  *
  * Deletes expired analytics data from the store (Turso/libSQL):
  * - v2 `events` by `received_at` (server clock — the retention timestamp);
- * - v2 `sessions_v2` by `last_seen_at`.
+ * - v2 `sessions_v2` by `last_seen_at`;
+ * - identity links, traits, and people by `last_seen_at` (task-10 §4) —
+ *   events first, then links/traits, then people: dependency-safe order
+ *   in ONE atomic write batch.
  *
  * The legacy v1 tables were dropped with the v1 routes (task-9 slice 6).
  *
@@ -57,6 +60,8 @@ export interface RetentionStats {
   events: { total: number; expired: number };
   /** v2 sessions (last_seen_at) */
   sessions: { total: number; expired: number };
+  /** people (last_seen_at) — task-10 */
+  people: { total: number; expired: number };
 }
 
 const countOf = (result: { rows: Array<Record<string, unknown>> }): number =>
@@ -77,7 +82,7 @@ export async function retentionStats(
   const cutoffMs = retentionCutoffMs(days);
   const none = Promise.resolve({ rows: [{ n: 0 }] }) as never;
 
-  const [events, sessions] = await Promise.all([
+  const [events, sessions, people] = await Promise.all([
     Promise.all([
       client.execute("SELECT COUNT(*) AS n FROM events"),
       days > 0
@@ -96,6 +101,15 @@ export async function retentionStats(
           })
         : none,
     ]),
+    Promise.all([
+      client.execute("SELECT COUNT(*) AS n FROM people"),
+      days > 0
+        ? client.execute({
+            sql: "SELECT COUNT(*) AS n FROM people WHERE last_seen_at < ?",
+            args: [cutoffMs],
+          })
+        : none,
+    ]),
   ]);
 
   return {
@@ -103,12 +117,14 @@ export async function retentionStats(
     retentionDays: days,
     events: { total: countOf(events[0]), expired: countOf(events[1]) },
     sessions: { total: countOf(sessions[0]), expired: countOf(sessions[1]) },
+    people: { total: countOf(people[0]), expired: countOf(people[1]) },
   };
 }
 
 export interface RetentionResult {
   deletedEvents: number;
   deletedSessions: number;
+  deletedPeople: number;
 }
 
 /**
@@ -120,14 +136,29 @@ export async function applyRetention(
   days: number,
 ): Promise<RetentionResult> {
   if (days <= 0) {
-    return { deletedEvents: 0, deletedSessions: 0 };
+    return { deletedEvents: 0, deletedSessions: 0, deletedPeople: 0 };
   }
   const cutoffMs = retentionCutoffMs(days);
 
+  // Dependency-safe order in ONE atomic batch (task-10 §4): events →
+  // sessions → identity links → traits → people.
   const results = await client.batch(
     [
       { sql: "DELETE FROM events WHERE received_at < ?", args: [cutoffMs] },
       { sql: "DELETE FROM sessions_v2 WHERE last_seen_at < ?", args: [cutoffMs] },
+      {
+        sql: `DELETE FROM external_identities WHERE project_id IN (SELECT project_id FROM people WHERE last_seen_at < ?)`,
+        args: [cutoffMs],
+      },
+      {
+        sql: `DELETE FROM anonymous_identities WHERE project_id IN (SELECT project_id FROM people WHERE last_seen_at < ?)`,
+        args: [cutoffMs],
+      },
+      {
+        sql: `DELETE FROM person_traits WHERE project_id IN (SELECT project_id FROM people WHERE last_seen_at < ?)`,
+        args: [cutoffMs],
+      },
+      { sql: "DELETE FROM people WHERE last_seen_at < ?", args: [cutoffMs] },
     ],
     "write",
   );
@@ -135,6 +166,7 @@ export async function applyRetention(
   return {
     deletedEvents: results[0]?.rowsAffected ?? 0,
     deletedSessions: results[1]?.rowsAffected ?? 0,
+    deletedPeople: results[5]?.rowsAffected ?? 0,
   };
 }
 
@@ -177,6 +209,7 @@ async function main(): Promise<void> {
       {
         expiredEvents: stats.events.expired,
         expiredSessions: stats.sessions.expired,
+        expiredPeople: stats.people.expired,
         cutoffMs: retentionCutoffMs(days),
       },
     );

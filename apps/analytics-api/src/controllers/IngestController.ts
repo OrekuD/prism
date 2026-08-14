@@ -9,9 +9,11 @@ import type { Context } from "hono";
 import { config } from "dotenv";
 import type { SessionResource } from "@prism/types";
 import WebSocketManager from "../managers/WebSocketManager.js";
+import TursoDatabaseManager from "../managers/TursoDatabaseManager.js";
+import { IngestRepository } from "../repositories/IngestRepository.js";
+import { validateIdentityOp, type ValidatedIdentityOp } from "../utils/ingestValidation.js";
 import { RateLimiter } from "../utils/RateLimiter.js";
 import { logger } from "../utils/logger.js";
-import { IngestRepository } from "../repositories/IngestRepository.js";
 import {
   eventIdOf,
   parseBatchBody,
@@ -185,7 +187,32 @@ export class IngestController {
       validEvents.push({ index, event: sanitized });
     }
 
-    if (validEvents.length > 0) {
+    // Identity operations (task-10 §4): validated like events — rejected
+    // ops never enter the transaction. Duplicate op ids are skipped via
+    // the idempotency read (the identity_ops PK covers the race).
+    const validOps: Array<{ index: number; op: ValidatedIdentityOp }> = [];
+    for (const raw of parsed.batch.identity ?? []) {
+      const validation = validateIdentityOp(raw);
+      if (!validation.ok) {
+        logger.warn("analytics:ingest", "rejected identity op", {
+          projectId,
+        });
+        continue;
+      }
+      validOps.push({ index: validOps.length, op: validation.op });
+    }
+    let alreadyProcessed: ReadonlySet<string> = new Set();
+    if (validOps.length > 0) {
+      const { rows } = await TursoDatabaseManager.instance.execute({
+        sql: `SELECT op_id FROM identity_ops WHERE project_id = ? AND op_id IN (${validOps.map(() => "?").join(",")})`,
+        args: [projectId, ...validOps.map((entry) => entry.op.opId)],
+      });
+      alreadyProcessed = new Set(
+        rows.map((row) => String((row as { op_id?: unknown }).op_id ?? "")),
+      );
+    }
+
+    if (validEvents.length > 0 || validOps.length > 0) {
       let persisted: Array<{ eventId: string; duplicate: boolean }>;
       try {
         persisted = await new IngestRepository().persistBatch(
@@ -193,6 +220,8 @@ export class IngestController {
           validEvents.map((entry) => entry.event),
           now,
           parsed.batch.sdk,
+          validOps.map((entry) => entry.op),
+          alreadyProcessed,
         );
       } catch (error) {
         // One database outcome per request: nothing was committed. Coarse
@@ -232,6 +261,13 @@ export class IngestController {
       (result): result is IngestResult => result !== null,
     );
 
+    const identityResults: NonNullable<IngestResponseBody["identity"]> =
+      validOps.map(({ index, op }) => ({
+        index,
+        opId: op.opId,
+        status: alreadyProcessed.has(op.opId) ? ("duplicate" as const) : ("accepted" as const),
+      }));
+
     const counts = {
       accepted: orderedResults.filter((r) => r.status === "accepted").length,
       duplicate: orderedResults.filter((r) => r.status === "duplicate").length,
@@ -244,7 +280,14 @@ export class IngestController {
       ...counts,
     });
 
-    return ctx.json({ ok: true, results: orderedResults } satisfies IngestResponseBody, 200);
+    return ctx.json(
+      {
+        ok: true,
+        results: orderedResults,
+        ...(identityResults.length > 0 ? { identity: identityResults } : {}),
+      } satisfies IngestResponseBody,
+      200,
+    );
   }
 }
 

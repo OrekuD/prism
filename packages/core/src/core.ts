@@ -622,6 +622,7 @@ class PrismClientImpl implements PrismClient {
       return { status: "dropped", reason: "invalid-user-id" };
     }
     let sanitizedTraits: JsonObject | undefined;
+    let unsetKeys: string[] = [];
     if (traits !== undefined) {
       const validation = validateJsonValue(traits, {
         maxDepth: this.maxDepth,
@@ -632,7 +633,31 @@ class PrismClientImpl implements PrismClient {
       if (!validation.ok) {
         return { status: "dropped", reason: "invalid-traits" };
       }
-      sanitizedTraits = sanitizeProperties(traits, {
+      const rawTraits = traits as Record<string, unknown>;
+      const unset = rawTraits["$unset"];
+      if (unset !== undefined) {
+        // The reserved $unset convention: an array of valid trait keys to
+        // remove. It is validated, extracted, and never stored as a trait.
+        if (
+          !Array.isArray(unset) ||
+          unset.length > 50 ||
+          !unset.every(
+            (key) =>
+              typeof key === "string" &&
+              key.length > 0 &&
+              key.length <= 128 &&
+              !/[\x00-\x1f\x7f]/.test(key),
+          )
+        ) {
+          return { status: "dropped", reason: "invalid-traits" };
+        }
+        unsetKeys = unset as string[];
+      }
+      const withoutUnset: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(rawTraits)) {
+        if (key !== "$unset") withoutUnset[key] = value;
+      }
+      sanitizedTraits = sanitizeProperties(withoutUnset as JsonObject, {
         denyList: this.denyList,
         maxDepth: this.maxDepth,
         maxStringLength: this.maxStringLength,
@@ -660,6 +685,7 @@ class PrismClientImpl implements PrismClient {
       userId,
       anonymousId: this.anonymousId ?? "",
       ...(sanitizedTraits ? { traits: sanitizedTraits } : {}),
+      ...(unsetKeys.length > 0 ? { unset: unsetKeys } : {}),
       occurredAt,
     };
     this.knownUserId = userId;

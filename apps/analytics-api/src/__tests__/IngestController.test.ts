@@ -31,6 +31,7 @@ const VALID_EVENT = {
   eventId: "evt-0001",
   type: "track",
   occurredAt: Date.now(),
+  anonymousId: "anon-0001",
   name: "page_viewed",
   properties: { url: "/home", count: 2 },
 };
@@ -88,6 +89,10 @@ describe("IngestController.ingest (v2 batch ingestion)", () => {
     vi.clearAllMocks();
     dbBatch.mockResolvedValue([{ rows: [], rowsAffected: 1 }]);
     eventLimiter.reset();
+    // default: no identity ops were processed yet
+    (
+      TursoDatabaseManager.instance.execute as unknown as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({ rows: [] });
   });
 
   it("rejects a non-JSON content type before parsing", async () => {
@@ -185,7 +190,9 @@ describe("IngestController.ingest (v2 batch ingestion)", () => {
       VALID_EVENT.occurredAt,
       expect.any(Number), // server receivedAt
       null,
-      null,
+      "anon-0001",
+      null, // user_id (anonymous-only v2 event)
+      expect.stringContaining("a_"), // derived person_id
       JSON.stringify({ url: "/home", count: 2 }),
       "{}", // no context
       null, // no batch sdk name
@@ -292,7 +299,7 @@ describe("IngestController.ingest (v2 batch ingestion)", () => {
 
     const [statements] = dbBatch.mock.calls[0];
     const { args } = statements[0];
-    const stored = JSON.parse(String(args[9])) as Record<string, unknown>;
+    const stored = JSON.parse(String(args[11])) as Record<string, unknown>;
     expect(stored.password).toBe("[REDACTED]");
     expect((stored.nested as Record<string, unknown>).token).toBe("[REDACTED]");
     expect(stored.ok).toBe(true);
@@ -526,5 +533,133 @@ describe("release review — duplicate session safety", () => {
     expect(results[0]?.status).toBe("rejected");
     expect(results[0]?.reason).toBe("too-large");
     expect(dbBatch).not.toHaveBeenCalled();
+  });
+});
+
+describe("identity operations (task-10 §4)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dbBatch.mockResolvedValue([{ rows: [], rowsAffected: 1 }]);
+    eventLimiter.reset();
+  });
+
+  it("accepts v3 batches with identity ops and reports accepted outcomes", async () => {
+    const ctx = makeContext(
+      JSON.stringify({
+        schemaVersion: 3,
+        sentAt: Date.now(),
+        sdk: { name: "@prism/core", version: "0.0.1" },
+        identity: [
+          {
+            opId: "op-1",
+            userId: "user-123",
+            anonymousId: "anon-1",
+            traits: { plan: "pro" },
+            occurredAt: Date.now(),
+          },
+        ],
+        events: [VALID_EVENT],
+      }),
+    );
+
+    const result = await ingest(ctx);
+
+    expect(result.status).toBe(200);
+    const body = result.__json as IngestResponseBody;
+    expect(body.results[0]?.status).toBe("accepted");
+    expect(body.identity?.[0]).toMatchObject({
+      index: 0,
+      opId: "op-1",
+      status: "accepted",
+    });
+
+    const [statements] = dbBatch.mock.calls[0];
+    // event insert + 6 identity statements (person, external link, anon
+    // link, reassignment, delete anon person, traits, op record = 7)
+    const identityStatements = statements.filter((s: { sql: string }) =>
+      String(s.sql).includes("people") ||
+      String(s.sql).includes("identities") ||
+      String(s.sql).includes("person_traits") ||
+      String(s.sql).includes("identity_ops"),
+    );
+    expect(identityStatements.length).toBeGreaterThanOrEqual(6);
+  });
+
+  it("deduplicates retried identity ops by op id", async () => {
+    // first pass: no prior ops
+    const ctx = makeContext(
+      JSON.stringify({
+        schemaVersion: 3,
+        sentAt: Date.now(),
+        identity: [
+          { opId: "op-dup", userId: "user-123", anonymousId: "anon-1", occurredAt: Date.now() },
+        ],
+        events: [VALID_EVENT],
+      }),
+    );
+    await ingest(ctx);
+    const firstCall = dbBatch.mock.calls[0][0] as Array<{ sql: string }>;
+    expect(firstCall.some((s) => String(s.sql).includes("identity_ops"))).toBe(true);
+
+    // second pass: the op was already processed → skipped entirely
+    dbBatch.mockClear();
+    const turso = (await import("../managers/TursoDatabaseManager.js")).default
+      .instance as unknown as { execute: ReturnType<typeof vi.fn> };
+    turso.execute.mockImplementation(async (input: string | { sql: string }) => {
+      const sql = String(typeof input === "string" ? input : input.sql);
+      if (sql.includes("identity_ops")) {
+        return Promise.resolve({ rows: [{ op_id: "op-dup" }] });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+    const ctx2 = makeContext(
+      JSON.stringify({
+        schemaVersion: 3,
+        sentAt: Date.now(),
+        identity: [
+          { opId: "op-dup", userId: "user-123", anonymousId: "anon-1", occurredAt: Date.now() },
+        ],
+        events: [VALID_EVENT],
+      }),
+    );
+    const result = await ingest(ctx2);
+    const body = result.__json as IngestResponseBody;
+    expect(body.identity?.[0]?.status).toBe("duplicate");
+    const secondCall = dbBatch.mock.calls[0][0] as Array<{ sql: string }>;
+    // NO identity-processing statements (the event insert is still there)
+    expect(
+      secondCall.some(
+        (s) =>
+          String(s.sql).includes("person_traits") ||
+          String(s.sql).includes("external_identities"),
+      ),
+    ).toBe(false);
+  });
+
+  it("derives the person from the authenticated project, ignoring client ownership", async () => {
+    const ctx = makeContext(
+      JSON.stringify({
+        schemaVersion: 3,
+        sentAt: Date.now(),
+        identity: [
+          {
+            opId: "op-x",
+            userId: "user-123",
+            anonymousId: "anon-1",
+            traits: { plan: "pro" },
+            occurredAt: Date.now(),
+          },
+        ],
+        events: [{ ...VALID_EVENT, userId: "user-123", projectId: "evil" }],
+      }),
+    );
+
+    await ingest(ctx);
+
+    const [statements] = dbBatch.mock.calls[0];
+    const event = statements[0] as { sql: string; args: unknown[] };
+    expect(event.args[1]).toBe(PROJECT_A); // key-derived, never "evil"
+    expect(event.args[9]).toBe("user-123"); // user_id column
+    expect(String(event.args[10])).toContain("u_"); // derived person_id
   });
 });

@@ -318,6 +318,8 @@ export interface WireIdentifyOp {
   readonly userId: string;
   readonly anonymousId: string;
   readonly traits?: JsonObject;
+  /** Trait keys to REMOVE (the reserved $unset convention, validated). */
+  readonly unset?: readonly string[];
   readonly occurredAt: number;
 }
 

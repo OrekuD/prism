@@ -125,4 +125,10 @@ export interface IngestResult {
 export interface IngestResponseBody {
   readonly ok: true;
   readonly results: readonly IngestResult[];
+  /** Identity-operation outcomes (task-10 §4) — present when ops were submitted. */
+  readonly identity?: readonly {
+    readonly index: number;
+    readonly opId: string;
+    readonly status: "accepted" | "duplicate";
+  }[];
 }

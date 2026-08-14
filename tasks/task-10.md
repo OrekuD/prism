@@ -330,31 +330,56 @@ from git.)
 - [x] Maintain at least 80% changed-code coverage, with identity transitions and
       consent/reset branches targeted above 90%.
 
+
+### §4 status (2026-08-13)
+
+- Migration 005_identity.sql: people, external_identities,
+  anonymous_identities, person_traits, identity_ops + the events table
+  gains immutable user_id + derived person_id + the person index.
+- Deterministic person ids (u_/a_ sha256) make concurrent identifies
+  converge on ONE person; links are first-wins (an anonymous id is never
+  re-linked over a shared device); anonymous-only history is reassigned
+  to the known person (derived projection rebuild — raw events
+  untouched); op ids dedupe retries (pre-read + PK).
+- Batch envelope v3: schemaVersion 2|3 accepted, events may carry
+  userId, identity ops validated with the same ceilings; identity
+  outcomes in the response; project still derived exclusively from the
+  key.
+- Retention now purges events → sessions → links → traits → people in
+  dependency-safe order, one atomic batch; retention tests updated.
+- Verified: in-memory libSQL (migration + controller tests) AND the
+  packaged sqld runtime (005 applied; the full identity flow —
+  deterministic person, traits, first-wins link, op replay idempotency —
+  exercised against real sqld).
+- Core $unset convention: identify traits may carry `$unset: string[]`
+  (validated, extracted, never stored as a trait).
+
+
 ## 4. Add versioned ingestion and identity storage
 
-- [ ] Extend the ingestion contract through an explicit compatible schema
+- [x] Extend the ingestion contract through an explicit compatible schema
       version or a new versioned boundary; do not silently reinterpret existing
       v2 fields.
-- [ ] Add client-generated operation IDs so identify/profile mutations are safe
+- [x] Add client-generated operation IDs so identify/profile mutations are safe
       to retry and deduplicate.
-- [ ] Derive the project exclusively from the authenticated project key.
+- [x] Derive the project exclusively from the authenticated project key.
       Ignore or reject client-supplied project ownership fields.
-- [ ] Add ordered libSQL/sqld/Turso migrations and journal entries for people,
+- [x] Add ordered libSQL/sqld/Turso migrations and journal entries for people,
       external identities, anonymous identity links, traits, and mutation
       idempotency.
-- [ ] Enforce project-scoped uniqueness for external user IDs and identity
+- [x] Enforce project-scoped uniqueness for external user IDs and identity
       links.
-- [ ] Use database constraints and transactions to prevent partial person/link/
+- [x] Use database constraints and transactions to prevent partial person/link/
       trait state.
-- [ ] Preserve raw event immutability. Add only the minimum indexed identity
+- [x] Preserve raw event immutability. Add only the minimum indexed identity
       fields or derived association needed for bounded queries.
-- [ ] Define deterministic conflict handling for concurrent identify calls.
-- [ ] Ensure errors return coarse codes without IDs, traits, SQL, URLs, keys, or
+- [x] Define deterministic conflict handling for concurrent identify calls.
+- [x] Ensure errors return coarse codes without IDs, traits, SQL, URLs, keys, or
       database details.
-- [ ] Update retention so expired people, identities, traits, sessions, and
+- [x] Update retention so expired people, identities, traits, sessions, and
       events are removed in dependency-safe order.
-- [ ] Update backup/restore and migration certification for the new tables.
-- [ ] Verify migrations against both in-memory libSQL and the packaged sqld
+- [x] Update backup/restore and migration certification for the new tables.
+- [x] Verify migrations against both in-memory libSQL and the packaged sqld
       runtime; retain opt-in hosted Turso verification.
 
 ## 5. Add people and baseline query APIs

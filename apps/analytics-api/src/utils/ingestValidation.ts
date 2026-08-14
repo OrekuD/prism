@@ -29,12 +29,25 @@ export type IngestRejectReason =
 export interface ValidatedEvent {
   eventId: string;
   type: "track";
+  schemaVersion: number;
   occurredAt: number;
   sessionId?: string;
   anonymousId?: string;
+  /** Developer-supplied external user id (v3 events, task-10 §4). */
+  userId?: string;
   name: string;
   properties: Record<string, unknown>;
   context?: WireContext;
+}
+
+/** Validated identify operation (task-10 §4). */
+export interface ValidatedIdentityOp {
+  opId: string;
+  userId: string;
+  anonymousId: string;
+  traits?: Record<string, unknown>;
+  unset?: string[];
+  occurredAt: number;
 }
 
 export type EventValidationResult =
@@ -42,29 +55,45 @@ export type EventValidationResult =
   | { readonly ok: false; readonly reason: IngestRejectReason };
 
 const eventSchema = z.object({
-  schemaVersion: z.literal(INGEST_LIMITS.schemaVersion),
+  // v2 (anonymous) and v3 (with developer-supplied userId) events are
+  // both accepted — never silently reinterpreted (task-10 §4).
+  schemaVersion: z.union([z.literal(2), z.literal(3)]),
   eventId: z.string().min(1).max(128),
   type: z.literal("track"),
   occurredAt: z.number().finite(),
   sessionId: z.string().min(1).max(128).optional(),
   anonymousId: z.string().min(1).max(128).optional(),
+  userId: z.string().min(1).max(256).optional(),
   name: z.string(),
   properties: z.record(z.string(), z.unknown()).optional(),
   context: z.record(z.string(), z.unknown()).optional(),
 });
 
+const identityOpSchema = z.object({
+  opId: z.string().min(1).max(128),
+  userId: z.string().min(1).max(256),
+  anonymousId: z.string().min(1).max(128),
+  traits: z.record(z.string(), z.unknown()).optional(),
+  unset: z.array(z.string().min(1).max(128)).max(50).optional(),
+  occurredAt: z.number().finite(),
+});
+
 const batchSchema = z.object({
-  schemaVersion: z.literal(INGEST_LIMITS.schemaVersion),
+  // The envelope is versioned: v2 (events only) and v3 (events + identity
+  // operations) — explicit versions, never silent reinterpretation.
+  schemaVersion: z.union([z.literal(2), z.literal(3)]),
   sentAt: z.number().finite().optional(),
   sdk: z
     .object({ name: z.string().min(1).max(64), version: z.string().min(1).max(64) })
     .optional(),
+  identity: z.array(z.unknown()).max(INGEST_LIMITS.maxBatchEvents).optional(),
   events: z.array(z.unknown()).min(1).max(INGEST_LIMITS.maxBatchEvents),
 });
 
 /** Parsed batch with the authoritative batch-level SDK identity. */
 export interface ParsedBatch {
   events: unknown[];
+  identity?: unknown[];
   sdk?: { name: string; version: string };
 }
 
@@ -80,7 +109,45 @@ export function parseBatchBody(
   }
   const result = batchSchema.safeParse(parsed);
   if (!result.success) return { ok: false };
-  return { ok: true, batch: { events: result.data.events, sdk: result.data.sdk } };
+  return {
+    ok: true,
+    batch: {
+      events: result.data.events,
+      identity: result.data.identity,
+      sdk: result.data.sdk,
+    },
+  };
+}
+
+/** Structural validation of one identify operation. */
+export function validateIdentityOp(
+  raw: unknown,
+): { ok: true; op: ValidatedIdentityOp } | { ok: false } {
+  const result = identityOpSchema.safeParse(raw);
+  if (!result.success) return { ok: false };
+  const data = result.data;
+  // traits/values + unset keys are validated by the same rules the SDK
+  // uses; the operation is coarse-rejected when they are not JSON-safe.
+  if (data.traits !== undefined) {
+    const validation = validateJsonValue(data.traits, {
+      maxDepth: INGEST_LIMITS.maxPropertyDepth,
+      maxStringLength: INGEST_LIMITS.maxStringLength,
+      maxKeys: INGEST_LIMITS.maxPropertyKeys,
+      maxArrayElements: INGEST_LIMITS.maxArrayElements,
+    });
+    if (!validation.ok) return { ok: false };
+  }
+  return {
+    ok: true,
+    op: {
+      opId: data.opId,
+      userId: data.userId,
+      anonymousId: data.anonymousId,
+      ...(data.traits !== undefined ? { traits: data.traits } : {}),
+      ...(data.unset !== undefined ? { unset: data.unset } : {}),
+      occurredAt: data.occurredAt,
+    },
+  };
 }
 
 /** UTF-8 encoded byte length (no platform globals; mirrors the core). */
@@ -188,9 +255,11 @@ export function validateEvent(raw: unknown, now: number): EventValidationResult 
     event: {
       eventId: event.eventId,
       type: event.type,
+      schemaVersion: event.schemaVersion,
       occurredAt: event.occurredAt,
       sessionId: event.sessionId,
       anonymousId: event.anonymousId,
+      ...(event.userId !== undefined ? { userId: event.userId } : {}),
       name: event.name,
       properties: event.properties ?? {},
       context: event.context as WireContext | undefined,

@@ -90,10 +90,12 @@ describe("applyRetention", () => {
     expect(result).toEqual({
       deletedEvents: 0,
       deletedSessions: 0,
+      deletedPeople: 0,
     });
     const stats = await retentionStats(client, 0);
     expect(stats.events.total).toBe(2);
     expect(stats.sessions.total).toBe(2);
+    expect(stats.people.total).toBe(0);
     
   });
 
@@ -115,6 +117,7 @@ describe("applyRetention", () => {
     expect(result).toEqual({
       deletedEvents: 1,
       deletedSessions: 1,
+      deletedPeople: 0,
     });
     const stats = await retentionStats(client, 7);
     expect(stats.events.total).toBe(1); // fresh-event survives
@@ -128,6 +131,7 @@ describe("applyRetention", () => {
     expect(second).toEqual({
       deletedEvents: 0,
       deletedSessions: 0,
+      deletedPeople: 0,
     });
   });
 });

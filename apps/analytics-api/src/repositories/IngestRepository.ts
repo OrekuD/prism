@@ -1,8 +1,13 @@
 import { INGEST_LIMITS } from "@prism/core";
-import type { Client, InStatement } from "@libsql/client";
+import type { Client } from "@libsql/client";
+import type { InStatement } from "@libsql/client";
 import TursoDatabaseManager from "../managers/TursoDatabaseManager.js";
 import { logger } from "../utils/logger.js";
-import type { ValidatedEvent } from "../utils/ingestValidation.js";
+import { eventPersonId, buildIdentityStatements } from "../utils/identityResolution.js";
+import type {
+  ValidatedEvent,
+  ValidatedIdentityOp,
+} from "../utils/ingestValidation.js";
 
 /**
  * Batch persistence boundary (task-9 slice-4 review F6, slice 5, release
@@ -33,8 +38,9 @@ export interface PersistedEventResult {
 const INSERT_EVENT_SQL = `
   INSERT INTO events
     (id, project_id, type, name, schema_version, occurred_at, received_at,
-     session_id, anonymous_id, properties, context, sdk_name, sdk_version)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     session_id, anonymous_id, user_id, person_id, properties, context,
+     sdk_name, sdk_version)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT (project_id, id) DO NOTHING
 `;
 
@@ -89,6 +95,8 @@ export class IngestRepository {
     events: ValidatedEvent[],
     receivedAt: number,
     sdk?: { name: string; version: string },
+    identityOps: ValidatedIdentityOp[] = [],
+    alreadyProcessedOpIds: ReadonlySet<string> = new Set(),
   ): Promise<PersistedEventResult[]> {
     const insertStatements: InStatement[] = events.map((event) => ({
       sql: INSERT_EVENT_SQL,
@@ -97,11 +105,13 @@ export class IngestRepository {
         projectId,
         event.type,
         event.name,
-        INGEST_LIMITS.schemaVersion,
+        event.schemaVersion,
         event.occurredAt,
         receivedAt,
         event.sessionId ?? null,
         event.anonymousId ?? null,
+        event.userId ?? null,
+        eventPersonId(projectId, event.userId, event.anonymousId),
         JSON.stringify(event.properties),
         JSON.stringify(event.context ?? {}),
         sdk?.name ?? null,
@@ -109,7 +119,22 @@ export class IngestRepository {
       ],
     }));
 
-    const insertResults = await this.client.batch(insertStatements, "write");
+    // Identity operations join the SAME atomic batch (task-10 §4): person
+    // rows, links, traits, and idempotency records commit with the events
+    // or not at all. Already-processed op ids (idempotency reads) are
+    // skipped.
+    const identityStatements: InStatement[] = [];
+    for (const op of identityOps) {
+      if (alreadyProcessedOpIds.has(op.opId)) continue;
+      for (const statement of buildIdentityStatements(projectId, op, receivedAt)) {
+        identityStatements.push(statement as InStatement);
+      }
+    }
+
+    const insertResults = await this.client.batch(
+      [...insertStatements, ...identityStatements],
+      "write",
+    );
 
     const outcomes = events.map((event, index) => {
       const duplicate = (insertResults[index]?.rowsAffected ?? 0) === 0;
