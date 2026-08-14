@@ -1,0 +1,53 @@
+---
+title: "@prism/react"
+description: PrismProvider, usePrism, and the stable facade.
+audience: Developer
+scope: Both
+lastReviewed: "2026-08-13"
+---
+
+`@prism/react` binds an already-created client to React. It creates no
+queue, session, envelope, consent store, or retry policy, and it never
+installs router tracking.
+
+## `PrismProvider`
+
+| Prop | Type | Description |
+| --- | --- | --- |
+| `client` | `PrismClient` | A READY client (from `createPrismClient` or `createBrowserClient`) |
+
+The provider registers no effects, listeners, or timers, so React Strict
+Mode double-mounting cannot duplicate work. It is not an error boundary.
+
+## `usePrism()`
+
+Returns a stable facade with bound methods that keep their identity
+across renders:
+
+- `track(name, properties?)`
+- `startSession(options?)`
+- `identify(userId, traits?)`
+- `reset()`
+- `setGlobalProperty` / `unsetGlobalProperty` / `clearGlobalProperties`
+- `setCollectionState(state)`
+- `flush()` / `shutdown(options?)`
+- `onDiagnostic(listener)`
+- `collectionState` and `identity` (live getters)
+- `client` — the raw client for advanced use
+
+`usePrism()` throws outside a `PrismProvider`.
+
+## Peer versions
+
+React 18 and React 19 are supported (`^18.0.0 || ^19.0.0`). The package
+never imports React from `@prism/core` or `@prism/browser`.
+
+## Lifecycle ownership
+
+Create the client once outside the render path, pass it to the provider,
+and shut it down where it was created — the provider does not own
+creation or cleanup.
+
+## Next steps
+
+- [React SDK](/docs/tracking/web/react) is the task-based guide.

@@ -13,28 +13,28 @@ import {
 
 const PANELS = [
   {
-    href: '/docs/sdks/javascript',
+    href: '/docs/tracking/web/javascript-browser',
     label: 'SDKs',
     title: 'JavaScript & React',
     desc: 'PrismClient lifecycle, events, and the React provider.',
     icon: Braces,
   },
   {
-    href: '/docs/api-reference/ingestion',
+    href: '/docs/reference/api/ingestion',
     label: 'API reference',
     title: 'Ingestion endpoints',
     desc: 'Sessions, events, auth, limits, and error envelopes.',
     icon: TerminalSquare,
   },
   {
-    href: '/docs/self-hosting/evaluation/installation',
+    href: '/docs/self-hosting/installation',
     label: 'Operations',
     title: 'Self-hosting guide',
     desc: 'Install, first boot, configuration, backups, upgrades.',
     icon: Server,
   },
   {
-    href: '/docs/hosted/authentication',
+    href: '/docs/management/authentication',
     label: 'Accounts',
     title: 'Authentication',
     desc: 'Verification, social sign-in, sessions, service JWTs.',
@@ -48,7 +48,7 @@ const PANELS = [
     icon: Wrench,
   },
   {
-    href: '/docs/operations/security',
+    href: '/docs/privacy-security/security-model',
     label: 'Security',
     title: 'Security model',
     desc: 'Write keys, cookies, JWTs, CORS, and disclosure.',
@@ -74,14 +74,14 @@ export default function HomePage() {
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
           <Link
-            href="/docs/hosted/quickstart"
+            href="/docs/getting-started/hosted-quickstart"
             className="inline-flex h-11 items-center gap-2 rounded-[2px] bg-fd-primary px-5 font-medium text-fd-primary-foreground transition-colors hover:bg-fd-primary/90"
           >
             Start with hosted Prism
             <ArrowRight className="size-4" aria-hidden />
           </Link>
           <Link
-            href="/docs/start/overview"
+            href="/docs/getting-started/overview"
             className="inline-flex h-11 items-center rounded-[2px] border border-fd-border px-5 font-medium text-fd-foreground transition-colors hover:border-fd-primary/60 hover:bg-fd-accent"
           >
             Docs overview
@@ -144,7 +144,7 @@ export default function HomePage() {
               ))}
             </ul>
             <Link
-              href="/docs/hosted/quickstart"
+              href="/docs/getting-started/hosted-quickstart"
               className="mt-auto inline-flex h-11 w-fit items-center rounded-[2px] bg-fd-primary px-5 text-[13px] font-medium text-fd-primary-foreground transition-colors hover:bg-fd-primary/90"
             >
               Start hosted
@@ -169,7 +169,7 @@ export default function HomePage() {
               ))}
             </ul>
             <Link
-              href="/docs/self-hosting/evaluation/overview"
+              href="/docs/self-hosting/overview"
               className="mt-auto inline-flex h-11 w-fit items-center rounded-[2px] bg-fd-primary px-5 text-[13px] font-medium text-fd-primary-foreground transition-colors hover:bg-fd-primary/90"
             >
               Self-host

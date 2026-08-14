@@ -1,0 +1,91 @@
+---
+title: Installation
+description: Configure and start the Docker Compose stack.
+audience: Operator
+scope: Self-hosted
+lastReviewed: "2026-08-11"
+---
+
+<SectionLabel label="DOCKER COMPOSE" />
+
+
+
+
+
+## Prerequisites
+
+- A Linux host (macOS works for local testing) with Docker + Compose v2.
+- A domain (optional locally: `http://localhost:3000` works).
+- Git access to the Prism repository for the compose file (or a copy of
+  `deploy/`).
+
+## 1. Configure
+
+<Callout type="warn" title="Warning">
+`SIGNUP_POLICY` defaults to `disabled`. Open registration only after the
+first owner exists and mail is configured — otherwise users sign up and
+cannot verify their email.
+</Callout>
+
+
+```sh
+cp deploy/compose.env.example deploy/compose.env
+```
+
+Edit `deploy/compose.env` and replace every `CHANGE_ME`:
+
+```sh
+# One-time generation (never reuse across instances):
+openssl rand -hex 24   # JWT_SECRET_KEY (32+ chars)
+openssl rand -hex 24   # SETUP_TOKEN (first-boot owner setup)
+openssl rand -hex 24   # POSTGRES_PASSWORD
+```
+
+Required variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `PUBLIC_URL` | The single public origin (`https://analytics.example.com`). Browser, API, and WebSocket all use it. |
+| `JWT_SECRET_KEY` | Session/identity signing key (min 32 chars). |
+| `SETUP_TOKEN` | Required by the one-time owner setup at `/setup`. |
+| `POSTGRES_PASSWORD` | Product database password. |
+
+`SIGNUP_POLICY` defaults to `disabled`; open it only after the first owner
+exists, or use invites.
+
+## 2. Start
+
+```sh
+docker compose --env-file deploy/compose.env -f deploy/compose.yml up -d --build
+```
+
+The `migrate` service runs forward-only database migrations before `api`
+starts. Wait for readiness:
+
+```sh
+curl -fsS http://localhost:3000/health/live   # process
+curl -fsS http://localhost:3000/health/ready  # database reachable
+```
+
+## 3. Verify
+
+- `GET /api/v1/config` reports `deploymentMode: "self-hosted"` and the
+  configured instance name — no secrets.
+- Named volumes exist: `pgdata`, `sqlddata`, `uploads`.
+
+## Local development
+
+`deploy/compose.dev.yml` overlays the production compose file with relaxed
+settings (open registration, localhost-friendly origins) for trying the
+stack on one machine:
+
+```sh
+docker compose --env-file deploy/compose.env -f deploy/compose.yml \
+  -f deploy/compose.dev.yml up -d --build
+```
+
+## Next
+
+- [First boot](/docs/self-hosting/first-boot) — create the owner account.
+- [Configuration reference](/docs/self-hosting/configuration/environment-variables) — every variable.
+- [Reverse proxy & TLS](/docs/self-hosting/configuration/domains-tls) — production exposure.

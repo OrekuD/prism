@@ -1,0 +1,58 @@
+---
+title: Errors & envelopes
+description: The response envelope and every error code in the codebase.
+audience: Developer
+scope: Both
+lastReviewed: "2026-08-11"
+---
+
+<SectionLabel label="RESPONSE CONTRACT" />
+
+
+
+
+## Success envelopes
+
+- `{ "message": "success" }` — default mutation success (`OkResponse`).
+- `{ "sessionId": "…" }` — session start (`CreateNewSessionResponse`).
+- Bare JSON arrays — list endpoints (events, projects, teams).
+
+## Error envelope
+
+```json
+{ "errors": ["code"] }
+```
+
+`errors` is always an array; validation failures carry one message per
+failed field.
+
+## Error codes (from source)
+
+| Code | Meaning | Typical status |
+| --- | --- | --- |
+| `unauthorized` | Missing/invalid session, key, or JWT | 401 |
+| `email_not_verified` | Action requires a verified email | 403 |
+| `weak_password` | Password below minimum length | 400 |
+| `signup_failed` | Account provisioning failed | 400 |
+| `team_not_found` | Team missing, or caller lacks access | 404/401 |
+| `team_id_not_found` | Route param missing | 404/401 |
+| `team_owner` | Owner attempted join/leave on own team | 400 |
+| `team_membership_not_found` | Not a member of the team | 404 |
+| `already_a_team_member` | Duplicate membership | 400 |
+| `project_not_found` | Project missing, or caller lacks access (no existence leak) | 404 |
+| `project_id_not_found` | Route param missing | 404 |
+| `slug_not_found` | Slug param missing | 404 |
+| `cannot_create_project` | Caller lacks permission on the team | 400 |
+| `token_not_found` / `token_invalid` | Invite or setup token missing/invalid | 404/400 |
+| `file_not_found` | Avatar upload without a file | 400 |
+| `setup_token_required` | `/setup/owner` without the header | 401 |
+| `setup_not_enabled` | Setup endpoint not enabled (hosted / not first boot) | 503 |
+| `setup_in_progress` | Another first-boot claim in progress | 409 |
+| `database_not_ready` | Product database unavailable at request time | 503 |
+| `db_error` | Unexpected database failure | 500 |
+| `invalid_request` | Malformed request | 400 |
+| `rate_limited` | Per-IP limit exceeded | 429 |
+| `not_found` | Unknown route or file | 404 |
+
+Status codes are contextual: a few codes are returned as 401/404 depending
+on the route (see the [management reference](/docs/reference/api/management)).

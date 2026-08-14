@@ -1,0 +1,4 @@
+{
+  "title": "SDK reference",
+  "pages": ["core", "browser", "frameworks", "runtime-adapter"]
+}

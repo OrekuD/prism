@@ -1,0 +1,57 @@
+---
+title: Requirements
+description: Preflight checklist for a self-hosted Prism deployment.
+audience: Operator
+scope: Self-hosted
+lastReviewed: "2026-08-13"
+---
+
+Prism runs as a single-host Docker Compose stack. The numbers below are an
+evaluation baseline, not a scaling guarantee — Prism does not yet document
+multi-replica operation.
+
+## Host
+
+- A Linux host (x86_64 or arm64) with Docker Engine and the Compose v2
+  plugin.
+- 4 GB RAM minimum for a small evaluation workload; 2 CPUs recommended.
+- Persistent disk for the named volumes: PostgreSQL data, sqld data, and
+  uploads. Plan for event volume plus a retention buffer; 20 GB is a
+  reasonable starting point.
+
+## Network
+
+- A production domain pointing at the host.
+- TLS termination (the bundled Caddy image or your own reverse proxy) —
+  see [Domains, TLS, and reverse proxies](/docs/self-hosting/configuration/domains-tls).
+- Outbound ports: registry access for image pulls; SMTP (25/465/587) for
+  mail; any optional integrations you configure.
+- Inbound ports: 80/443 (or the public port you configure).
+
+## Secrets
+
+Generate these before first boot and keep them out of git:
+
+- `JWT_SECRET_KEY` — signs dashboard sessions and service JWTs.
+- `SETUP_TOKEN` — the one-time first-owner claim.
+- `TURSO_AUTH_TOKEN` — authenticates product API reads of the analytics
+  store.
+- PostgreSQL credentials.
+
+Generate values with `openssl rand -hex 32`.
+
+## Optional integrations
+
+- SMTP or Resend credentials for email delivery.
+- GitHub and Google OAuth credentials for social sign-in.
+- S3-compatible or ImageKit credentials for external file storage.
+- `IP_INFO_API_TOKEN` for optional geo enrichment.
+
+See [Environment variables](/docs/self-hosting/configuration/environment-variables)
+for the complete reference.
+
+## Next steps
+
+- Read [Architecture](/docs/self-hosting/architecture) to understand the
+  services before you install.
+- Follow [Install with Docker Compose](/docs/self-hosting/installation).

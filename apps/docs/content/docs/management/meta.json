@@ -1,0 +1,4 @@
+{
+  "title": "Manage Prism",
+  "pages": ["projects", "api-keys", "teams", "accounts", "authentication"]
+}

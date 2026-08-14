@@ -1,0 +1,99 @@
+---
+title: Management API
+description: "Authenticated dashboard boundaries: config, user, teams, projects."
+audience: Developer
+scope: Both
+lastReviewed: "2026-08-11"
+---
+
+<SectionLabel label="PRODUCT BOUNDARY" />
+
+
+
+
+Base URL: `{API_ORIGIN}/api/v1`. The dashboard consumes this API with its
+session cookie (Better Auth); direct clients authenticate with a session
+from `/api/auth/*`.
+
+## Public
+
+### `GET /api/v1/config`
+
+Public runtime configuration for the dashboard. **No secrets**: providers
+and mail are booleans, names are display strings.
+
+```json
+{
+  "deploymentMode": "hosted",
+  "instanceName": "Prism",
+  "signupPolicy": "open",
+  "baseUrl": "https://…",
+  "setupRequired": false,
+  "providers": { "github": false, "google": false },
+  "mailConfigured": true,
+  "setupTokenRequired": true
+}
+```
+
+`setupRequired` is only meaningful in self-hosted mode: it reports whether
+the database has any users (unreachable database reports `true` so the UI
+never dead-ends).
+
+## Authenticated (session cookie)
+
+### `GET /user` — current user
+
+### `PUT /user` — update name/username
+
+### `PUT /user/update-profile-picture` — avatar upload
+
+Multipart `file` field. Server-side validation: image MIME type
+(jpeg/png/gif/webp/heif/heic) and magic bytes, max **5 MB**
+(`file_not_found` when missing, validation messages otherwise).
+
+### `GET /teams` — list my teams
+
+### `POST /teams` — create a team (verified email required)
+
+### `DELETE /teams/:teamId` — delete a non-personal team (owner only)
+
+### `GET /teams/:teamId/invite-link` — generate invite link (permission-checked)
+
+### `GET /teams/invite/:token` — public invite lookup
+
+### `POST /teams/:teamId/join` — join via invite
+
+### `POST /teams/:teamId/leave` — leave (owner cannot leave)
+
+### `GET /teams/:teamId/projects` — projects of a team
+
+### `GET /projects/:slug` — project summary for a duration
+
+Query parameter `duration` selects the summary window (e.g. `24h`, `7d`).
+
+### `GET /projects/:slug/events` — latest 200 events
+
+### `POST /api/v1/projects/:teamId` — create a project `{ name, teamId }` (verified email)
+
+### `PATCH /api/v1/projects/:projectId` — rename
+
+### `DELETE /api/v1/projects/:projectId` — delete
+
+## One-time setup (self-hosted)
+
+### `POST /api/v1/setup/owner` — create the first owner
+
+Header `X-Setup-Token: <token>` required; rate-limited; succeeds exactly
+once (see [First boot](/docs/self-hosting/first-boot)).
+
+## Auth
+
+All `/api/auth/*` routes are served by the Better Auth handler (rate-limited
+20 req/min/IP): sign-up/email, sign-in/email, sign-out, verify-email,
+forget-password, reset-password, social callbacks, `session`, `jwks`, and
+the public `providers` inventory. See [Authentication](/docs/management/authentication).
+
+## Errors
+
+Every endpoint returns `{ "errors": ["code"] }` on failure. The full code
+list is on [Errors & envelopes](/docs/reference/api/errors).

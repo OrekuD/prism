@@ -1,0 +1,53 @@
+---
+title: Apply retention
+description: Configure, validate, and schedule analytics data retention.
+audience: Operator
+scope: Self-hosted
+lastReviewed: "2026-08-13"
+---
+
+Analytics data expires according to `ANALYTICS_RETENTION_DAYS`. Retention
+is opt-in: unset or `0` disables deletion, so an operator never loses
+data by accident.
+
+## Configure
+
+Set `ANALYTICS_RETENTION_DAYS` in the analytics service environment. A
+positive integer deletes events older than that many days (by the server
+`received_at` clock), plus their sessions, identity links, traits, and
+people — in dependency-safe order, in one atomic write batch.
+
+## Validate before applying
+
+```sh
+yarn workspace prism-analytics-api retention --status   # configuration + row counts
+yarn workspace prism-analytics-api retention --dry-run  # exact expired counts
+```
+
+Both commands are read-only. Output is redacted — counts and configuration
+only, never event data.
+
+## Apply
+
+```sh
+yarn workspace prism-analytics-api retention  # apply deletion
+```
+
+The apply command is idempotent: a second run deletes nothing. Schedule
+it with cron (or your job runner) inside the analytics container or on a
+host with access to the store.
+
+## Scope and caveats
+
+- Retention operates on the live store only. It does not rewrite
+  existing backups — keep backup retention separate.
+- Person deletion (dashboard/API) is independent of the retention window.
+- Disabling retention (unset or `0`) stops future runs; already-deleted
+  data is not restored.
+
+## Next steps
+
+- [Data retention](/docs/privacy-security/retention) explains the
+  privacy model behind the CLI.
+- [Back up and restore](/docs/self-hosting/operations/backup-restore)
+  covers store-level backups.

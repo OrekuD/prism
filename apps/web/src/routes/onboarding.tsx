@@ -521,12 +521,16 @@ export function Onboarding() {
                   </p>
                 </div>
                 <div className="grid gap-2">
-                  <CodeCopyRow command="yarn add @prism/core" />
+                  <CodeCopyRow command="yarn add @prism/core @prism/browser" />
                   <CodeCopyRow
-                    command={`const prism = new PrismClient("pr_…")`}
+                    command={`const prism = await createBrowserClient({
+  projectKey: "pr_…",
+  endpoint: window.location.origin,
+  collection: { initialState: "granted" },
+});`}
                   />
                   <CodeCopyRow
-                    command={`await prism.logEvent("app_opened", { source: "onboarding" })`}
+                    command={`prism.track("app_opened", { source: "onboarding" });`}
                   />
                 </div>
                 <div className="flex items-center gap-3">

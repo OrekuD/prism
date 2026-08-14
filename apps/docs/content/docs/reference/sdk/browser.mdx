@@ -1,0 +1,58 @@
+---
+title: "@prism/browser"
+description: The browser runtime adapter — transport, storage, lifecycle, and context.
+audience: Developer
+scope: Both
+lastReviewed: "2026-08-13"
+---
+
+`@prism/browser` is the thin browser seam over `@prism/core`. It
+implements no analytics semantics: queueing, identity, consent,
+sanitization, and delivery all belong to the core.
+
+## `createBrowserClient(options)`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `projectKey` | `string` | Public, write-only project analytics key |
+| `endpoint` | `string` | Ingestion origin chosen at runtime — required, never compiled in |
+| `collection` | `{ initialState, anonymousPersistence? }` | Explicit consent; anonymous persistence defaults to `session` |
+| `queue` | `PrismQueueOptions?` | Passed through to the core |
+| `sanitize` | `SanitizeOptions?` | Passed through to the core |
+
+The factory throws outside a browser and requires a non-empty endpoint.
+
+## Transport
+
+Authenticated `fetch` with `keepalive` within the browser's ~64 KiB
+budget (larger batches send without keepalive). The core's cancellation
+signal and `requestTimeoutMs` map to a real `AbortController`. There is
+never an unauthenticated `sendBeacon` fallback.
+
+## Storage
+
+- Queue snapshots and session-scoped global properties: `sessionStorage`
+  (one namespace per tab, survives reloads).
+- Persistent identity and persistent-scope globals: `localStorage`.
+- Storage denial (privacy modes, quota) degrades to the core's in-memory
+  queue — never a crash.
+
+## Lifecycle
+
+`visibilitychange` maps to `foreground`/`background`; `beforeunload`
+requests a bounded flush. The core's per-subscription removers provide
+deterministic cleanup on `shutdown()`.
+
+## Context capture
+
+The approved context is platform/kind, viewport size, locale, and
+timezone. No user-agent copy, no DOM content, no form values.
+`capturePageContext()` returns the sanitized path (pathname only) and the
+referrer ORIGIN for explicit tracking.
+
+## Next steps
+
+- [JavaScript and browser](/docs/tracking/web/javascript-browser) is the
+  task-based guide.
+- [Runtime adapter interface](/docs/reference/sdk/runtime-adapter)
+  documents the contract this package implements.

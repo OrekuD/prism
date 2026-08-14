@@ -1,0 +1,50 @@
+---
+title: Authentication and registration
+description: Setup tokens, signup policies, verification, providers, and session secrets.
+audience: Operator
+scope: Self-hosted
+lastReviewed: "2026-08-13"
+---
+
+Authentication behavior is configuration-driven and identical across
+hosted and self-hosted deployments.
+
+## First boot
+
+The instance has no owner until someone claims the one-time setup token
+(`SETUP_TOKEN`) at `/setup`. The setup endpoint closes after the first
+successful claim and refuses further claims.
+
+## Signup policy
+
+`SIGNUP_POLICY` controls who can create accounts:
+
+- `open` — anyone can sign up (with email verification).
+- `invite` — accounts are created through team invitations.
+- `disabled` — no new signups; only the setup owner exists.
+
+## Email verification
+
+Email and password accounts must verify their address before creating
+projects. Verification emails go through the configured SMTP or Resend
+delivery. Without a mail provider, the product API logs that delivery was
+skipped — verification links are not sent.
+
+## Social providers
+
+GitHub and Google sign-in are optional. Configure client IDs and secrets,
+and set the callback URLs to your public origin
+(`/api/auth/callback/{provider}`).
+
+## Sessions and secrets
+
+Dashboard sessions are HTTP-only cookies signed with `JWT_SECRET_KEY`.
+The analytics WebSocket authenticates with short-lived service JWTs
+(issuer- and audience-bound) verified against the published JWKS.
+
+## Next steps
+
+- [Environment variables](/docs/self-hosting/configuration/environment-variables)
+  lists every authentication-related setting.
+- [Security model](/docs/privacy-security/security-model) explains the
+  threat boundaries.

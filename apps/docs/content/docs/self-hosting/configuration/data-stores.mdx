@@ -1,0 +1,53 @@
+---
+title: Product and analytics data
+description: PostgreSQL versus libSQL/sqld, migrations, volumes, and data ownership.
+audience: Operator
+scope: Self-hosted
+lastReviewed: "2026-08-13"
+---
+
+Prism stores product data in PostgreSQL and analytics data in
+libSQL/sqld. The two stores are never mixed: the product API owns
+PostgreSQL, the analytics API owns sqld, and the product API reads the
+analytics store for dashboard queries.
+
+## PostgreSQL
+
+PostgreSQL 16 holds accounts, teams, projects, analytics keys,
+authentication data, and configuration. The product API applies
+forward-only migrations (`db:migrate`) before serving.
+
+## libSQL / sqld
+
+sqld holds events, sessions, people, identity links, and traits. The
+analytics API applies an ordered migration journal (`schema_migrations`)
+at startup. The schema is versioned (currently 5 migrations) and is
+verified by the analytics readiness endpoint before the service reports
+ready.
+
+## Volumes
+
+Named volumes persist both stores and uploads across container
+restarts. Back up all three — see
+[Back up and restore](/docs/self-hosting/operations/backup-restore).
+
+## Resetting a disposable store
+
+The analytics CLI provides a guarded reset for disposable development and
+test stores:
+
+```sh
+ANALYTICS_RESET_ALLOW=1 yarn workspace prism-analytics-api db:reset --yes
+```
+
+The command prints the resolved target, refuses non-approved targets
+(file or loopback, or an exact `ANALYTICS_RESET_TARGET` pin for a
+declared disposable hosted dev store), and requires the explicit
+confirmation flags. After a reset, run `db:migrate` to rebuild the
+schema. A legacy-format `events` table makes migration 001 fail loudly
+instead of silently serving the wrong schema.
+
+## Next steps
+
+- [Environment variables](/docs/self-hosting/configuration/environment-variables)
+  lists the connection settings.

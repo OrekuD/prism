@@ -1,0 +1,77 @@
+---
+title: Storage
+description: Local, S3-compatible, and ImageKit object storage drivers.
+audience: Operator
+scope: Self-hosted
+lastReviewed: "2026-08-11"
+---
+
+<SectionLabel label="OBJECT STORAGE DRIVERS" />
+
+
+import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
+
+`STORAGE_DRIVER` selects where avatars live. All drivers sit behind one
+`StorageManager` seam; uploads validate MIME type, magic bytes, and size
+(max 5 MB) before reaching the driver.
+
+## Driver configuration
+
+<Tabs items={['Local (default)', 'S3-compatible', 'ImageKit']}>
+<Tab>
+
+```txt
+STORAGE_DRIVER=local
+STORAGE_LOCAL_DIR=./data/uploads
+```
+
+</Tab>
+<Tab>
+
+```txt
+STORAGE_DRIVER=s3
+STORAGE_S3_ENDPOINT=http://minio:9000
+STORAGE_S3_REGION=us-east-1
+STORAGE_S3_BUCKET=prism
+STORAGE_S3_ACCESS_KEY_ID=…
+STORAGE_S3_SECRET_ACCESS_KEY=…
+STORAGE_PUBLIC_URL=https://minio.example.com/prism
+```
+
+</Tab>
+<Tab>
+
+```txt
+STORAGE_DRIVER=imagekit
+IMAGE_KIT_API_KEY=…
+```
+
+</Tab>
+</Tabs>
+
+## Driver notes
+
+- **Local**: zero-config and fully offline. Files are written under
+  `STORAGE_LOCAL_DIR` (the `uploads` named volume in Compose) and served by
+  the product API at `/files/*` with percent-decoding + traversal guards
+  (no `..` escapes), content types from the file extension, and
+  `cache-control: public, max-age=31536000, immutable`. Back up the volume
+  (see [Backup & restore](/docs/self-hosting/operations/backup-restore)).
+- **S3-compatible**: requests are signed with **SigV4 implemented in-process
+  over `fetch`** — no SDK dependency, works in Node and Worker runtimes.
+  Path-style addressing; works with MinIO, R2, and S3. `STORAGE_PUBLIC_URL`
+  is URL-validated at boot (may include the bucket prefix path) and must be
+  reachable by **browsers** — public bucket or a proxied path. The bucket
+  must allow `PUT`/`DELETE` with the configured keys.
+- **ImageKit**: the hosted default. Self-hosted instances may use it, but
+  note it makes avatar uploads depend on a third-party service (outbound
+  HTTPS).
+
+## Validation rules
+
+| Rule | Enforcement |
+| --- | --- |
+| Hosted mode rejects `s3`/`local` | Config boot failure (Worker has no filesystem) |
+| `s3` requires endpoint/bucket/keys/`STORAGE_PUBLIC_URL` | Config boot failure |
+| `imagekit` requires `IMAGE_KIT_API_KEY` | Config boot failure |
+| Unknown driver | Config boot failure |

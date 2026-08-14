@@ -1,0 +1,70 @@
+---
+title: Runtime adapter interface
+description: The PrismRuntimeAdapter seams every platform implements.
+audience: Developer
+scope: Both
+lastReviewed: "2026-08-13"
+---
+
+`@prism/core` reaches a platform through one injected seam. Adapters
+translate platform primitives; they never reimplement core behavior.
+
+```ts
+interface PrismRuntimeAdapter {
+  readonly name: string;                 // capability identifier
+  now(): number;                          // epoch ms
+  createId(): string;                     // collision-resistant IDs
+  readonly transport: PrismTransport;     // batch POST (headers carry auth)
+  readonly storage?: PrismStorage;        // optional durable queue/identity
+  schedule(delayMs: number, cb: () => void): () => void; // timers with cancel
+  readonly context: PrismRuntimeContext;  // normalized, minimal, JSON-safe
+  readonly lifecycle?: PrismLifecycle;    // foreground/background/before-unload
+}
+```
+
+## Transport
+
+`post(url, request)` receives the URL, the body, the authorization
+headers, `timeoutMs`, and the cancellation signal. Forward the headers
+unchanged, honor the timeout, and cancel the request when the signal
+fires. Never add an unauthenticated fallback.
+
+## Storage
+
+`getItem` / `setItem` / `removeItem`, async. Queue snapshots and the
+persistent anonymous ID flow through it. Denied storage should degrade to
+the core's in-memory behavior, never crash.
+
+## Schedule
+
+Return a REAL cancel handle. The core's bounded retry loop and shutdown
+depend on cancelling pending timers, including chunked long delays.
+
+## Context
+
+Supply the normalized runtime context: platform, kind, screen size,
+locale, timezone, and app/device metadata. No user-agent copies, no DOM
+content.
+
+## Lifecycle
+
+`foreground` / `background` / `before-unload` subscriptions. Unload
+events are unreliable; the core treats lifecycle flushes as bounded
+requests.
+
+## Rules for thin adapters
+
+1. Never implement queueing, consent, sanitization, sessions, batching,
+   or retry in an adapter.
+2. Never log or strip the authorization header.
+3. Keep context minimal and JSON-safe.
+4. Schedulers must return a real cancel.
+5. Storage is optional but all-or-nothing.
+
+Reference implementations: `@prism/browser` (platform) and `@prism/react`
+(framework binding).
+
+## Next steps
+
+- [Write a runtime adapter](/docs/tracking/runtime-adapters) is the
+  task-based guide.

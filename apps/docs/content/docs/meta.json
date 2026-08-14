@@ -1,12 +1,12 @@
 {
   "pages": [
-    "start",
-    "hosted",
+    "getting-started",
+    "analytics",
+    "tracking",
+    "management",
+    "privacy-security",
     "self-hosting",
-    "sdks",
-    "product",
-    "api-reference",
-    "operations",
+    "reference",
     "contributing"
   ]
 }

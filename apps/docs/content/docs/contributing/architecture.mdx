@@ -60,12 +60,12 @@ self-hosted:
 Better Auth, one shared `buildAuthOptions` used by the Worker runtime, the
 CLI, and tests. UUID ids, text-keyed tables, provisioning hooks (profile +
 personal team created idempotently after user creation), JWT plugin for
-realtime service tokens. See [Authentication](/docs/hosted/authentication).
+realtime service tokens. See [Authentication](/docs/management/authentication).
 
 ## Deployment modes
 
 The same build serves two topologies: hosted (Cloudflare Worker + managed
 stores) and self-hosted (Compose: postgres + migrate + api + sqld +
-analytics + web behind one origin). See the [self-hosting overview](/docs/self-hosting/evaluation/overview) and
+analytics + web behind one origin). See the [self-hosting overview](/docs/self-hosting/overview) and
 [ADR 0001: deployment modes](https://github.com/OrekuD/prism/blob/main/docs/adr/0001-deployment-modes.md)
 in the repository.

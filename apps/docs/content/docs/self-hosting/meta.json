@@ -1,8 +1,4 @@
 {
-  "title": "Self-hosting",
-  "pages": [
-    "evaluation",
-    "operating",
-    "reference"
-  ]
+  "title": "Self-host Prism",
+  "pages": ["overview", "requirements", "architecture", "installation", "first-boot", "configuration", "operations", "troubleshooting"]
 }

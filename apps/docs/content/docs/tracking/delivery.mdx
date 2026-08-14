@@ -1,0 +1,65 @@
+---
+title: Delivery, retries, and diagnostics
+description: What queued means, when delivery runs, and how failures surface.
+audience: Developer
+scope: Both
+lastReviewed: "2026-08-13"
+---
+
+Delivery is never part of a `track()` call. Understanding the queue and
+the retry loop keeps integration failures debuggable.
+
+## What `queued` means
+
+`track()` returns `{ status: "queued", eventId }` when the event is
+accepted into the local queue. It is NOT delivered yet. A
+`{ status: "dropped", reason }` result means the event was never queued —
+consent, shutdown, or a full queue — and no delivery attempt happens.
+
+## When delivery runs
+
+Events leave the queue in batches (up to 50 events or 256 KiB) when:
+
+- the batch threshold is reached;
+- the background interval fires;
+- lifecycle signals request a bounded flush (for example
+  `beforeunload`);
+- you call `await prism.flush()`.
+
+`flush()` rejects when delivery fails — the batch stays queued. A
+successful flush of an empty queue is silent.
+
+## Batching and idempotency
+
+Batches post to `POST /api/v2/ingest` with the project key. Events carry
+client-generated IDs, so a transport retry that reaches the server twice
+becomes `duplicate` server-side — never a second row.
+
+## Retries
+
+Failures retry with exponential backoff and bounded jitter. A valid
+`Retry-After` header from the server is honored as a minimum. Permanent
+responses (400, 401, 403, 413) are not retried: the batch is dropped with
+a remediation diagnostic.
+
+## Persisted queues
+
+When the runtime provides storage, the queue persists across reloads
+(endpoint- and project-namespaced). If persistent storage fails, the
+queue stays stable in memory and a coarse diagnostic is emitted.
+
+## Shutdown
+
+`shutdown({ timeoutMs })` performs one bounded final flush, then stops
+timers and listeners. Post-shutdown captures return
+`{ status: "dropped", reason: "shutdown" }`.
+
+## Diagnostics
+
+Subscribe with `onDiagnostic(listener)`. Diagnostics use stable codes and
+coarse messages — never event bodies, keys, or the project key.
+
+## Next steps
+
+- Tune the queue in [Limits and validation](/docs/reference/limits).
+- See the wire contract in [Ingestion API](/docs/reference/api/ingestion).

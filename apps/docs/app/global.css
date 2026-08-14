@@ -316,12 +316,12 @@ figure[data-rehype-pretty-code-figure],
 
 /* The Docs overview CTA renders as a secondary-styled nav button; make
    it the primary violet action. */
-#nd-nav a[href='/docs/start/overview'] {
+#nd-nav a[href='/docs/getting-started/overview'] {
   background: var(--color-fd-primary);
   color: var(--color-fd-primary-foreground);
 }
 
-#nd-nav a[href='/docs/start/overview']:hover {
+#nd-nav a[href='/docs/getting-started/overview']:hover {
   background: color-mix(in srgb, var(--color-fd-primary) 90%, black);
   color: var(--color-fd-primary-foreground);
 }

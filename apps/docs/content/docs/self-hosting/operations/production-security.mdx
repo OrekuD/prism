@@ -1,0 +1,58 @@
+---
+title: Production security checklist
+description: The deployment gate for exposing a self-hosted instance.
+audience: Operator
+scope: Self-hosted
+lastReviewed: "2026-08-13"
+---
+
+Run this checklist before exposing a self-hosted Prism instance to real
+users. Each item links to the page that explains the control.
+
+## Secrets and configuration
+
+- [ ] `JWT_SECRET_KEY`, `SETUP_TOKEN`, and `TURSO_AUTH_TOKEN` are long
+  random values, generated per instance, and absent from git.
+- [ ] `deploy/compose.env` is not committed; example values are not in
+  use.
+- [ ] The setup token is rotated or the setup endpoint confirmed closed
+  after first boot.
+
+## Network
+
+- [ ] Only the public origin (web) is published; other services are
+  internal to the Compose network.
+- [ ] TLS is terminated at the origin (Caddy or your reverse proxy) and
+  HTTP redirects to HTTPS.
+- [ ] The reverse proxy forwards the real peer address to the bundled
+  nginx so rate limiting keys are honest.
+
+## Signup and access
+
+- [ ] `SIGNUP_POLICY` matches your intent (`invite` or `disabled` for
+  private instances).
+- [ ] Email delivery is configured and verified; password recovery works.
+- [ ] Social providers use your domain's callback URLs.
+
+## Storage and data
+
+- [ ] Upload volumes and both data stores are covered by
+  [backups](/docs/self-hosting/operations/backup-restore) with a tested
+  restore drill.
+- [ ] Retention is configured deliberately
+  ([apply retention](/docs/self-hosting/operations/retention)).
+- [ ] External storage credentials (S3/ImageKit) are scoped to the
+  bucket only.
+
+## Maintenance
+
+- [ ] An update cadence is set; upgrades follow the
+  [upgrade runbook](/docs/self-hosting/operations/upgrades) with a
+  backup before each change.
+- [ ] Logs are collected and monitored; sensitive values are redacted at
+  the source (see [Logging](/docs/self-hosting/operations/logging)).
+
+## Next steps
+
+- Review the [Security model](/docs/privacy-security/security-model) for
+  the threat boundaries behind these controls.

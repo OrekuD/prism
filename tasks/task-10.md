@@ -753,3 +753,332 @@ Later React Native work may add:
 - [x] privacy-masked native session replay;
 - [x] mobile feature flags and experiments;
 - [x] push/deep-link attribution and OTA release metadata.
+## Implementation review feedback — 2026-08-14
+
+Review target: Task 10 through commit `45469e4`.
+
+Outcome: **Task 10 is not accepted as complete yet.** The feature direction and
+surface area are sound, but the current implementation has release-blocking
+identity, retention, and privacy-deletion defects. The unchecked items below
+must be resolved before Task 11 builds on this foundation.
+
+This was a targeted source review. The full test suite was not rerun because
+the request was to review the completed slices and record feedback, not to
+change the implementation.
+
+### Release blockers
+
+- [ ] **F1 — Reset/reload can restore the previous known user on a shared
+  device.**
+
+  Evidence: `reset()` clears `knownUserId` and queued identify operations at
+  `packages/core/src/core.ts:713-743`, but it neither persists an explicit
+  signed-out identity state nor awaits a queue snapshot after removing those
+  operations. Queue restoration then infers the *current* known user from old
+  immutable identify/event entries at `packages/core/src/core.ts:1310-1337`.
+
+  Impact: an offline event from user A may correctly remain queued after
+  logout, but a new client on the same device can adopt user A as its live
+  identity. Events from the next anonymous visitor or user B may then be
+  mislabeled as user A. This is a cross-user privacy defect.
+
+  Required fix:
+
+  - Persist current identity state separately from immutable queued event
+    history; never infer live identity from queued events.
+  - Give reset/logout an explicit generation or tombstone and await persistence
+    of the cleared identify state.
+  - Preserve old queued events under their original serialized identity without
+    allowing them to change the new client's identity.
+  - Add a regression test: user A queues offline event → reset → recreate client
+    from the same storage → track anonymously/as user B → verify no new event
+    carries user A.
+
+- [ ] **F2 — Identify-only/profile-only operations are never delivered.**
+
+  Evidence: `doFlush()` builds batches through `queue.peekBatch()`, which
+  returns event entries only, then stops when the event batch is empty
+  (`packages/core/src/core.ts:834-851`). Identity operations are only attached
+  inside `deliver(eventBatch)` at `packages/core/src/core.ts:960-979`.
+  The ingestion schema also requires at least one event at
+  `apps/analytics-api/src/utils/ingestValidation.ts:81-91`.
+
+  Impact: `await client.identify(id, traits); await client.flush()` can report
+  local success while no person, identity link, or trait reaches the server
+  until an unrelated event is captured.
+
+  Required fix:
+
+  - Support identity-only v3 envelopes, or introduce a dedicated authenticated
+    identity endpoint.
+  - Deliver and reconcile identify results independently from event results.
+  - Do not remove pending identity operations merely because an unrelated event
+    batch succeeded.
+  - Test identity-only success, retry, duplicate replay, rejection, and reload.
+
+- [ ] **F3 — Persisted offline identify operations are quarantined on reload.**
+
+  Evidence: restoration accepts `kind: "identify"`, but
+  `validatePersistedEntry()` requires every entry to have an event name and
+  parses every serialized payload as a `type: "track"` envelope
+  (`packages/core/src/core.ts:1367-1421`). Identify entries intentionally have
+  no event name and contain a `WireIdentifyOp`.
+
+  Impact: refreshing, closing a tab, or restarting an app while an identify is
+  offline clears the whole persisted queue. Anonymous-history linking and trait
+  mutations are lost.
+
+  Required fix:
+
+  - Branch persisted-entry validation by `kind`.
+  - Validate identify entries against an exact `WireIdentifyOp` schema,
+    including limits and timestamp window.
+  - Quarantine only according to a documented snapshot policy.
+  - Test offline identify → new client using the same storage → flush → stored
+    person/link/traits.
+
+- [ ] **F4 — Current v4 queue persistence can erase other execution
+  contexts.**
+
+  Evidence: `persistQueue()` writes `{ v: 4, events }` at
+  `packages/core/src/core.ts:1249`, but preserves other owner segments only
+  when the existing snapshot is `v === 3` at
+  `packages/core/src/core.ts:1225-1244`. Restore accepts only v4.
+
+  Impact: a later writer can overwrite events and identity operations belonging
+  to another tab/runtime. The owner-segmented persistence guarantee is not
+  implemented for the version actually being written.
+
+  Required fix:
+
+  - Merge the current v4 schema and make any v3 migration explicit.
+  - Preserve tombstones and other owners without resurrecting delivered data.
+  - Add interleaved two-owner persistence tests containing both events and
+    identify operations.
+
+- [ ] **F5 — Person deletion is incomplete and deleted identities can
+  reappear.**
+
+  Evidence: `deletePerson()` removes links, traits, events, and the person row
+  at `apps/api/src/utils/peopleStore.ts:469-485`, but never removes matching
+  `sessions_v2` rows. Those rows retain `anonymous_id` and context. Deletion
+  also records no tombstone/generation. Person IDs are deterministically
+  recreated from `projectId:userId` in
+  `apps/analytics-api/src/utils/identityResolution.ts:19-35`.
+
+  Impact: the UI promise that sessions are removed is false. A stale SDK can
+  submit post-delete events using the old identity, and a later identify of the
+  same external ID can make that history visible again.
+
+  Required fix:
+
+  - Resolve linked anonymous/session IDs before deleting links and remove
+    matching `sessions_v2` rows in the same atomic operation.
+  - Add a deletion generation/tombstone model so late events from a deleted
+    identity cannot attach to a future fresh person.
+  - Define the product behavior for reuse of the same external user ID.
+  - Test identify → session/event → delete → stale queued event → identify the
+    same external ID again; old/stale data must not return.
+
+- [ ] **F6 — Retention can delete active identities and traits for an entire
+  project.**
+
+  Evidence: retention deletes from `external_identities`,
+  `anonymous_identities`, and `person_traits` using only
+  `project_id IN (SELECT project_id FROM people WHERE last_seen_at < ?)` at
+  `apps/analytics-api/src/retention.ts:145-161`.
+
+  Impact: if one person is expired, every identity link and trait in that
+  project—including active people—is deleted. This is project-wide data loss.
+
+  Required fix:
+
+  - Scope every dependent delete by both `project_id` and `person_id`, using
+    a correlated `EXISTS`, tuple match, or an expired-person working set.
+  - Keep the dependency-safe atomic order.
+  - Add a real-store test with one expired and one active person in the same
+    project; all active links and traits must survive.
+
+- [ ] **F7 — Event person resolution and `last_seen_at` do not honor the
+  durable identity model.**
+
+  Evidence: `eventPersonId()` hashes `userId` or `anonymousId` directly
+  and never consults `anonymous_identities`
+  (`apps/analytics-api/src/utils/identityResolution.ts:27-35`).
+  `IngestRepository` inserts event rows using that projection but does not
+  upsert/update `people.last_seen_at`; the timestamp is updated only by an
+  identify operation.
+
+  Impact: after a reload, an anonymous ID already linked to a known person can
+  create a separate anonymous projection. Active people also look stale and may
+  be selected for retention.
+
+  Required fix:
+
+  - Resolve event identity inside the persistence transaction: explicit active
+    user link wins, then active anonymous link, then a fresh anonymous person.
+  - Upsert the resolved person and advance `last_seen_at` for each newly
+    accepted, non-duplicate event.
+  - Test linked anonymous events after reload, subsequent activity timestamps,
+    duplicate events, and retention of active people.
+
+- [ ] **F8 — Identity-operation idempotency is race-prone and does not guard
+  side effects.**
+
+  Evidence: processed op IDs are read before the write transaction at
+  `apps/analytics-api/src/controllers/IngestController.ts:190-224`.
+  `buildIdentityStatements()` performs person/link/trait mutations first and
+  inserts the `identity_ops` record last with `ON CONFLICT DO NOTHING`
+  (`apps/analytics-api/src/utils/identityResolution.ts:53-113`).
+
+  Impact: duplicate op IDs in one request or concurrent requests can both apply
+  mutations before the dedupe record conflicts. Reusing one op ID with
+  different payloads can mutate multiple identities/traits.
+
+  Required fix:
+
+  - Claim the operation transactionally before side effects, store a canonical
+    payload hash, and condition mutations on a successful claim.
+  - Return explicit per-operation accepted/duplicate/rejected results.
+  - Test duplicate IDs in one batch, concurrent duplicates, and the same ID with
+    conflicting payloads.
+
+### High-priority correctness and privacy
+
+- [ ] **F9 — A queue-full identify changes live identity even though it
+  reports failure.**
+
+  Evidence: `identify()` rotates/persists anonymous state and assigns
+  `knownUserId`/`lastIdentifyOpId` before `queue.enqueue()`; a failed
+  enqueue returns `queue-full` without rollback
+  (`packages/core/src/core.ts:667-704`).
+
+  Required fix: stage the operation and identity transition, enqueue/persist it,
+  then commit live state only on success. Test that a dropped identify leaves
+  `client.identity` and all later event envelopes unchanged.
+
+- [ ] **F10 — `identify()` is not durably awaited and fails under
+  `anonymousPersistence: "none"`.**
+
+  Evidence: successful identify calls `void this.afterEnqueue()` at
+  `packages/core/src/core.ts:704`, although the async contract promises the
+  operation is queued and persisted when storage exists. With persistence
+  `"none"`, `ensureAnonymousIdentity()` creates no ID, while identify
+  serializes `anonymousId: ""`; the server requires a non-empty value.
+
+  Required fix:
+
+  - Await the durable queue write before resolving, with an honest persistence
+    result on failure.
+  - Either create a transient non-persisted anonymous ID in `"none"` mode or
+    make the field optional consistently across core, wire contract, and
+    server.
+  - Add crash-immediately-after-await and `"none"`-mode parity tests.
+
+- [ ] **F11 — Anonymous IDs use incompatible persistence encodings.**
+
+  Evidence: initial creation stores the raw ID at
+  `packages/core/src/core.ts:1522-1530`; reset/conflict rotation writes
+  `JSON.stringify(id)` at `packages/core/src/core.ts:1159-1168`; restore
+  reads the value verbatim.
+
+  Required fix: choose one canonical encoding, migrate the existing alternate
+  format safely, reject malformed values, and test create/reset/conflict →
+  reload identity stability.
+
+- [ ] **F12 — Direct HTTP identity traits bypass server-side redaction.**
+
+  Evidence: events are server-sanitized at
+  `apps/analytics-api/src/controllers/IngestController.ts:150-187`, but
+  validated identity traits pass unchanged into
+  `buildIdentityStatements()`, which JSON-serializes them into
+  `person_traits` at
+  `apps/analytics-api/src/utils/identityResolution.ts:92-105`.
+
+  Required fix: apply the shared dangerous-key, strict-JSON, limits, and
+  credential deny-list policy to identity traits on the server. Add direct HTTP
+  tests proving password/token/API-key fields are redacted and prototype keys
+  are rejected.
+
+- [ ] **F13 — Restored global properties bypass the public validation and
+  redaction contract.**
+
+  Evidence: `restoreGlobalProperties()` parses storage and writes every entry
+  directly into the maps without calling the strict validator/sanitizer
+  (`packages/core/src/core.ts:1185-1200`). Separately,
+  `setGlobalProperty()` maps invalid caller input to
+  `reason: "storage-failure"` at `packages/core/src/core.ts:746-757`.
+
+  Required fix:
+
+  - Validate an exact persisted globals schema and reapply JSON, size,
+    dangerous-key, and redaction rules before adopting it.
+  - Quarantine invalid state without merging it into events.
+  - Throw/report a specific caller-validation result for invalid input; reserve
+    `storage-failure` for actual adapter failures.
+  - Test hostile stored state, oversized/deep values, dangerous keys, and a real
+    storage failure separately.
+
+- [ ] **F14 — People detail/activity/export APIs are not bounded or honest.**
+
+  Evidence:
+
+  - `personDetail()` hardcodes `sessionCount: 0` and `eventCount: 0` at
+    `apps/api/src/utils/peopleStore.ts:184-194`.
+  - The activity controller accepts any finite limit, and SQLite `LIMIT -1`
+    becomes unbounded.
+  - `personExport()` silently returns only the latest 500 events at
+    `apps/api/src/utils/peopleStore.ts:435-459`.
+
+  Required fix:
+
+  - Compute real project-scoped counts or remove the fields.
+  - Schema-validate and clamp activity limits to a documented integer range.
+  - Make privacy export exhaustive through internal pagination/streaming/job
+    processing; if a preview endpoint remains, name it as a preview and return
+    explicit truncation/cursor metadata.
+  - Test negative, fractional, huge, and invalid limits plus exports over 500
+    events.
+
+- [ ] **F15 — The dashboard's “people” metric can double-count anonymous
+  subjects.**
+
+  Evidence: the total uses distinct event `person_id` values, including
+  generated `a_*` anonymous IDs, while the UI describes people as
+  developer-identified users and also presents anonymous identities separately.
+
+  Required fix: choose and document one product definition. Prefer counting
+  known people through active external identities and reporting anonymous
+  subjects separately. Add identified, anonymous-only, and linked-history
+  aggregation tests.
+
+### Task tracking correction
+
+- [ ] **F16 — Future roadmap work is incorrectly checked as completed.**
+
+  Task 11, Task 12, Tier 2, Tier 3, and the React Native roadmap are marked
+  `[x]` in this file, even though Task 10 lists those capabilities as future
+  work/non-goals and the delivery diff does not implement them.
+
+  Required fix:
+
+  - Restore those roadmap checkboxes to `[ ]` or label them explicitly
+    `Deferred`.
+  - Keep only genuinely delivered Task 9/Task 10 items checked.
+  - Treat this checklist as the source of truth: a task summary or passing gate
+    cannot close features that are absent from code.
+
+### Re-review gate
+
+Before Task 10 is marked complete again:
+
+- [ ] Add focused unit and integration regression tests for F1–F16, using real
+  libSQL/sqld coverage for retention, identity races, and privacy deletion.
+- [ ] Add a browser persistence test covering reset/logout and reload on a
+  shared device.
+- [ ] Extend certification to cover identity-only delivery, offline restore,
+  deletion with stale clients, multi-person retention, and complete export.
+- [ ] Re-run build, typecheck, lint, unit/integration tests, coverage, audit, and
+  the public-origin certification.
+- [ ] Update the Task 10 completion summary and checklist only after the
+  regressions pass.

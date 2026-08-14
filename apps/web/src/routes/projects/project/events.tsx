@@ -100,7 +100,7 @@ export function ProjectEvents() {
             description={'Log events from your site with prism.track("name", { … }) using the project key, then watch them appear here.'}
             action={
               <a
-                href={`${VITE_DOCS_URL}/docs/sdks/javascript`}
+                href={`${VITE_DOCS_URL}/docs/tracking/web/javascript-browser`}
                 className="text-[13px] font-medium text-link transition-colors duration-150 hover:underline"
               >
                 Read the SDK reference

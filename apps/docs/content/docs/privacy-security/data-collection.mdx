@@ -1,0 +1,57 @@
+---
+title: What Prism collects
+description: The data classes Prism stores, and what it never captures automatically.
+audience: User
+scope: Both
+lastReviewed: "2026-08-13"
+---
+
+Prism stores only data that flows through its explicit APIs. Automatic
+context is minimal and documented; everything else is developer-supplied.
+
+## Product account data
+
+Accounts, teams, projects, analytics keys, authentication data, and
+configuration live in the product database. Profile names, usernames,
+avatars, and email addresses are provided by the user.
+
+## Analytics data
+
+- **Events** — event ID, name, properties, timestamps (client
+  `occurredAt`, server `receivedAt`), session and anonymous IDs, the
+  developer-supplied external user ID when present, the derived person
+  association, and the batch SDK metadata.
+- **Session context** — platform, kind, viewport size, locale, and
+  timezone from the runtime context allowlist.
+- **People** — external IDs, anonymous IDs, and explicitly supplied
+  traits.
+- **Properties and traits** — developer-supplied values, sanitized
+  server-side (credential-like keys become `[REDACTED]`).
+
+## What Prism never captures
+
+- Raw IP addresses are never persisted in the v2 analytics schema — no
+  IP columns exist on events, sessions, or people. Client IPs are used
+  transiently for rate limiting and optional geo enrichment.
+- No names, emails, phone numbers, advertising IDs, exact locations,
+  contacts, clipboard contents, form values, or DOM content are captured
+  automatically.
+- No page-view, route, click, scroll, or navigation autocapture exists.
+
+## Developer-supplied data
+
+PII is developer-supplied only: an external ID and traits arrive through
+an explicit `identify()` call, never by inference.
+
+## Runtime egress
+
+Self-hosted deployments block outbound traffic except for integrations
+you configure explicitly (mail, geo enrichment, external storage, social
+providers). See [Networking and egress](/docs/self-hosting/configuration/networking).
+
+## Next steps
+
+- [Consent and anonymous identity](/docs/privacy-security/consent-identity)
+  explains what consent controls.
+- [Security model](/docs/privacy-security/security-model) covers the
+  threat boundaries.

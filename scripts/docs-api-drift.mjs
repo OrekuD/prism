@@ -10,7 +10,7 @@
 import { readFileSync } from "node:fs";
 
 const DTS = "packages/core/dist/index.d.ts";
-const DOCS = "apps/docs/content/docs/api-reference/core.mdx";
+const DOCS = "apps/docs/content/docs/reference/sdk/core.mdx";
 
 const dts = readFileSync(DTS, "utf8");
 const docs = readFileSync(DOCS, "utf8");

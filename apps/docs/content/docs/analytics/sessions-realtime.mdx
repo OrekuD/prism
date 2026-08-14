@@ -1,0 +1,41 @@
+---
+title: Sessions and realtime
+description: Client-owned sessions, online state, and the live WebSocket view.
+audience: User
+scope: Both
+lastReviewed: "2026-08-13"
+---
+
+Sessions are client-owned: the SDK generates the session ID locally and
+emits `session_started` and `session_ended` events through the standard
+batch ingestion. There is no server round-trip before events are
+accepted.
+
+## Session lifecycle
+
+- `startSession()` queues `session_started` with the client-owned ID.
+- Sessioned events attach the session ID and bump the server-side
+  `last_seen_at`.
+- `end()` queues `session_ended`; a second `end()` returns
+  `not-active`.
+- Abandoned sessions are marked stale server-side through the documented
+  last-seen timestamp.
+
+A session is not a person: one person may have many sessions across
+devices, and one session may contain events from an anonymous identity
+before an `identify()` call.
+
+## The realtime page
+
+The **Realtime** page subscribes to the project's live stream over the
+authorized WebSocket and shows live session rows as they start. The
+stream is project-scoped and authenticated with a short-lived service
+JWT; sessions render as list rows with start time, last seen, and
+anonymous ID. The v2 model carries no coordinates, so the optional
+Mapbox map is decorative — session data flows with or without it.
+
+## Next steps
+
+- [Manage sessions](/docs/tracking/sessions) documents the SDK methods.
+- [Realtime WebSocket](/docs/reference/api/realtime) documents the wire
+  contract.
