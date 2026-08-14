@@ -14,7 +14,7 @@ import type { JsonObject } from "./contract";
  */
 
 /** Wire protocol major (ADR 0002 §2) — one envelope per endpoint major. */
-export const WIRE_SCHEMA_VERSION = 2;
+export const WIRE_SCHEMA_VERSION = 3;
 
 /** SDK identity sent with every batch (batch-level, not per event). */
 export const SDK_NAME = "@prism/core";

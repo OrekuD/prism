@@ -28,15 +28,25 @@ export function utf8Length(value: string): number {
   return bytes;
 }
 
+/**
+ * One immutable queue entry (task-10): either an event or an identify
+ * operation. Events and identify ops share the FIFO so ordering is
+ * deterministic; both kinds serialize at enqueue time (immutable
+ * identity context) and both are persisted in the same snapshot.
+ */
 export interface QueuedEvent {
   /** Persistence-segment owner (execution-context identity). */
   readonly owner: string;
+  /** "event" | "identify" */
+  readonly kind: "event" | "identify";
+  /** eventId for events, opId for identify operations. */
   readonly eventId: string;
-  readonly name: string;
+  /** Event name (events only). */
+  readonly name?: string;
   readonly properties?: JsonObject;
-  /** Epoch milliseconds (runtime.now() at track time). */
+  /** Epoch milliseconds (runtime.now() at enqueue time). */
   readonly timestamp: number;
-  /** Active session ID at track time, when one exists. */
+  /** Active session ID at track time, when one exists (events only). */
   readonly sessionId?: string;
   /** Pre-serialized body for byte accounting and delivery. */
   readonly serialized: string;
@@ -92,34 +102,81 @@ export class EventQueue {
   }
 
   /**
-   * Peek the next batch without removing it. The head event is ALWAYS
-   * included — an event larger than maxBytes delivers alone rather than
-   * wedging the queue forever.
+   * Peek the next EVENT batch without removing it. Identify operations
+   * are excluded (they ride alongside in the same request); the head
+   * event is ALWAYS included — an event larger than maxBytes delivers
+   * alone rather than wedging the queue forever.
    */
   peekBatch(maxEvents: number, maxBytes: number): QueuedEvent[] {
     const batch: QueuedEvent[] = [];
     let bytes = 0;
-    for (const event of this.items) {
+    for (const entry of this.items) {
+      if (entry.kind !== "event") continue;
       if (batch.length >= maxEvents) break;
-      const encoded = utf8Length(event.serialized);
+      const encoded = utf8Length(entry.serialized);
       if (batch.length > 0 && bytes + encoded > maxBytes) break;
-      batch.push(event);
+      batch.push(entry);
       bytes += encoded;
     }
     return batch;
   }
 
-  /**
-   * Remove `count` events from the head (after a batch was delivered).
-   * The removed IDs become persistence tombstones so a shared-storage
-   * merge never resurrects a delivered event from another context's
-   * stale segment.
-   */
-  removeFirst(count: number): void {
-    const removed = this.items.splice(0, count);
-    for (const event of removed) {
-      this.removedIds.push(event.eventId);
+  /** Pending identify operations in FIFO order (delivered with the next batch). */
+  pendingOps(): QueuedEvent[] {
+    return this.items.filter((entry) => entry.kind === "identify");
+  }
+
+  /** Remove delivered identify operations (atomic with the batch success). */
+  removeOps(ids: string[]): void {
+    const idSet = new Set(ids);
+    const kept: QueuedEvent[] = [];
+    for (const entry of this.items) {
+      if (entry.kind === "identify" && idSet.has(entry.eventId)) {
+        this.removedIds.push(entry.eventId);
+      } else {
+        kept.push(entry);
+      }
     }
+    this.items.length = 0;
+    this.items.push(...kept);
+    this.trimRemovedIds();
+  }
+
+  /** Remove every pending identify operation (reset). */
+  removeAllOps(): void {
+    const kept: QueuedEvent[] = [];
+    for (const entry of this.items) {
+      if (entry.kind === "identify") {
+        this.removedIds.push(entry.eventId);
+      } else {
+        kept.push(entry);
+      }
+    }
+    this.items.length = 0;
+    this.items.push(...kept);
+    this.trimRemovedIds();
+  }
+
+  /**
+   * Remove the delivered BATCH entries by ID (after a batch was
+   * delivered). Identify ops can sit ahead of the event batch in the
+   * FIFO, so head-count removal is wrong — removal is id-based. The
+   * removed IDs become persistence tombstones so a shared-storage merge
+   * never resurrects a delivered event from another context's stale
+   * segment.
+   */
+  removeBatch(ids: string[]): void {
+    const idSet = new Set(ids);
+    const kept: QueuedEvent[] = [];
+    for (const entry of this.items) {
+      if (idSet.has(entry.eventId)) {
+        this.removedIds.push(entry.eventId);
+      } else {
+        kept.push(entry);
+      }
+    }
+    this.items.length = 0;
+    this.items.push(...kept);
     this.trimRemovedIds();
   }
 

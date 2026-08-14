@@ -43,7 +43,9 @@ export type DropReason =
   | "consent-pending"
   | "consent-denied"
   | "queue-full"
-  | "shutdown";
+  | "shutdown"
+  | "invalid-user-id"
+  | "invalid-traits";
 
 /**
  * Discriminated result of every `track()` call. Delivery is never part of
@@ -270,6 +272,78 @@ export type SessionEndResult =
  * The ready analytics client. All observed state is readonly; changes are
  * explicit commands.
  */
+/**
+ * Identity + global-property contract (task-10 §2). Terminology: person =
+ * Prism's resolved analytics subject; userId = the customer's external
+ * identifier; anonymousId = SDK-generated; traits = explicitly supplied
+ * profile attributes.
+ */
+export type GlobalPropertyScope = "memory" | "session" | "persistent";
+
+export type IdentifyResult =
+  | {
+      readonly status: "queued";
+      readonly opId: string;
+      readonly userId: string;
+      readonly anonymousId: string;
+    }
+  | { readonly status: "dropped"; readonly reason: DropReason };
+
+export type ResetResult =
+  | { readonly status: "ok"; readonly anonymousId: string }
+  | { readonly status: "blocked"; readonly reason: "shutdown" };
+
+export type GlobalPropertyResult =
+  | { readonly status: "ok" }
+  | {
+      readonly status: "blocked";
+      readonly reason: "shutdown" | "storage-failure";
+    };
+
+export interface PrismIdentityState {
+  /** The current SDK-generated anonymous identity (rotated on reset). */
+  readonly anonymousId: string;
+  /** The known external user ID after identify(), or null. */
+  readonly userId: string | null;
+  /** The last identify operation ID, or null. */
+  readonly lastOpId: string | null;
+}
+
+/**
+ * Identify operation carried in the batch envelope (wire v3). The project
+ * is derived from the authenticated key; opId makes retries idempotent.
+ */
+export interface WireIdentifyOp {
+  readonly opId: string;
+  readonly userId: string;
+  readonly anonymousId: string;
+  readonly traits?: JsonObject;
+  readonly occurredAt: number;
+}
+
+/** v3 batch: adds optional identity operations; events may carry userId. */
+export interface WireBatchV3 {
+  readonly schemaVersion: 3;
+  readonly sentAt: number;
+  readonly sdk: { name: string; version: string };
+  readonly identity?: readonly WireIdentifyOp[];
+  readonly events: readonly WireEventV3[];
+}
+
+/** v3 event: the v2 event plus an optional developer-supplied userId. */
+export interface WireEventV3 {
+  readonly schemaVersion: 3;
+  readonly eventId: string;
+  readonly type: "track";
+  readonly occurredAt: number;
+  readonly sessionId?: string;
+  readonly anonymousId?: string;
+  readonly userId?: string;
+  readonly name: string;
+  readonly properties?: JsonObject;
+  readonly context?: import("./limits").WireContext;
+}
+
 export interface PrismClient {
   readonly projectKey: string;
   /** Ingestion origin chosen at runtime. */
@@ -320,6 +394,49 @@ export interface PrismClient {
    * `{ status: "dropped", reason: "shutdown" }`.
    */
   shutdown(options?: { timeoutMs?: number }): Promise<void>;
+
+  /**
+   * Link the current anonymous identity to a developer-supplied external
+   * user ID (task-10). One ordered operation: queues the identify
+   * operation (with optional traits) AND switches this client's known
+   * identity so immediately-following track() calls attach to the new
+   * context. ASYNC: resolves only after the state is committed locally
+   * (queued + persisted when storage exists). Never merges two known
+   * people; an already-linked anonymous context rotates for a different
+   * userId. Repeated identical calls are idempotent (client-generated
+   * operation IDs).
+   */
+  identify(userId: string, traits?: JsonObject): Promise<IdentifyResult>;
+
+  /**
+   * Logout/reset: closes the active session, clears the known identity,
+   * ROTATES the anonymous ID, clears queued identify operations and ALL
+   * global-property scopes (memory/session/persistent) — the next user
+   * never inherits the previous user's context. Queued EVENTS keep their
+   * immutable identity context. Works regardless of consent state.
+   */
+  reset(): Promise<ResetResult>;
+
+  /**
+   * Set a global property (merged under per-event properties; event
+   * properties win for that event without mutating stored globals).
+   * Scope: memory (default) | session | persistent. ASYNC because
+   * persistent scope writes through the storage adapter.
+   */
+  setGlobalProperty(
+    key: string,
+    value: JsonValue,
+    scope?: GlobalPropertyScope,
+  ): Promise<GlobalPropertyResult>;
+
+  /** Remove one global property in the given scope. */
+  unsetGlobalProperty(key: string, scope?: GlobalPropertyScope): Promise<GlobalPropertyResult>;
+
+  /** Clear every global property in the given scope (or all scopes). */
+  clearGlobalProperties(scope?: GlobalPropertyScope): Promise<GlobalPropertyResult>;
+
+  /** Current identity state (anonymous + known). */
+  readonly identity: PrismIdentityState;
 
   /** Subscribe to diagnostics; returns an idempotent remove handle. */
   onDiagnostic(listener: (diagnostic: PrismDiagnostic) => void): PrismDiagnosticHandle;

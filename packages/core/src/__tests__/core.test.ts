@@ -1,12 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  createPrismClient,
-  INGEST_LIMITS,
-  type PrismClient,
-  type PrismRequest,
-  type PrismResponse,
-  type PrismRuntimeAdapter,
-} from "../index";
+import { createPrismClient, INGEST_LIMITS, type PrismClient, type PrismRequest, type PrismResponse, type PrismRuntimeAdapter } from "../index";
+import { base, fakeRuntime, memoryStorage, queueKey, ready } from "./helpers";
 
 /**
  * Core behavior tests (task-9 slice 2) — the v2 implementation behind the
@@ -14,60 +8,10 @@ import {
  * retries, and shutdown, on the capability-based fake runtime.
  */
 
-function fakeRuntime(name = "node-fake"): PrismRuntimeAdapter {
-  let id = 0;
-  return {
-    name,
-    now: () => Date.now(),
-    createId: () => `fake-id-${(id += 1)}`,
-    transport: {
-      post: async (_url: string, _request: PrismRequest): Promise<PrismResponse> => ({
-        status: 200,
-        headers: { "content-type": "application/json" },
-        text: async () => "",
-      }),
-    },
-    storage: {
-      getItem: async () => null,
-      setItem: async () => undefined,
-      removeItem: async () => undefined,
-    },
-    schedule: (delayMs: number, callback: () => void) => {
-      const handle = setTimeout(callback, delayMs);
-      return () => clearTimeout(handle);
-    },
-    context: { platform: "node", kind: "server" },
-  };
-}
-
-
 /** Parse the v2 batch envelope's events array from a delivered body. */
 function deliveredEvents(body: string | undefined): Array<Record<string, unknown>> {
   const parsed = JSON.parse(body ?? "{}") as { events?: Array<Record<string, unknown>> };
   return parsed.events ?? [];
-}
-
-const base = {
-  projectKey: "pr_0123456789abcdef0123456789abcdef",
-  endpoint: "https://analytics.example.com",
-};
-
-/** The storage key for `base` — mirrors the core's endpoint-hash djb2 (§15). */
-function queueKey(): string {
-  let hash = 5381;
-  for (let i = 0; i < base.endpoint.length; i += 1) {
-    hash = (hash * 33) ^ base.endpoint.charCodeAt(i);
-  }
-  return `prism:queue:v2:${hash >>> 0}:${base.projectKey}`;
-}
-
-async function ready(options: Partial<Parameters<typeof createPrismClient>[0]> = {}) {
-  return createPrismClient({
-    ...base,
-    runtime: fakeRuntime(),
-    collection: { initialState: "granted" },
-    ...options,
-  });
 }
 
 describe("consent and collection state", () => {
@@ -742,8 +686,8 @@ describe("queue persistence (slice 3)", () => {
     expect(prism.track("fresh").status).toBe("queued");
     await prism.shutdown({ timeoutMs: 50 });
     // the corrupt entry was quarantined; the final snapshot is a valid v3 state
-    const final = [...stored.values()].find((v) => v.includes('"v":3')) ?? "";
-    expect(final).toContain('"v":3');
+    const final = [...stored.values()].find((v) => v.includes('"v":4')) ?? "";
+    expect(final).toContain('"v":4');
   });
 });
 
@@ -873,18 +817,6 @@ function schedulableRuntime() {
   };
 }
 
-function memoryStorage(stored: Map<string, string>): PrismRuntimeAdapter["storage"] {
-  return {
-    getItem: async (key: string) => stored.get(key) ?? null,
-    setItem: async (key: string, value: string) => {
-      stored.set(key, value);
-    },
-    removeItem: async (key: string) => {
-      stored.delete(key);
-    },
-  };
-}
-
 describe("single removal owner (slice 3 corrections)", () => {
   it("delivers every event across multiple batches — no double removal", async () => {
     const posted: Array<Array<{ name: string }>> = [];
@@ -928,7 +860,7 @@ describe("consent-gated restore and delivery (slice 3 corrections)", () => {
   function seedStorage(stored: Map<string, string>): void {
     const occurredAt = Date.now();
     const serialized = JSON.stringify({
-      schemaVersion: 2,
+      schemaVersion: 3,
       eventId: "seed-1",
       type: "track",
       occurredAt,
@@ -939,9 +871,16 @@ describe("consent-gated restore and delivery (slice 3 corrections)", () => {
     stored.set(
       queueKey(),
       JSON.stringify({
-        v: 3,
+        v: 4,
         events: [
-          { owner: "other-context", eventId: "seed-1", name: "seeded", occurredAt, serialized },
+          {
+            owner: "other-context",
+            kind: "event",
+            eventId: "seed-1",
+            name: "seeded",
+            occurredAt,
+            serialized,
+          },
         ],
       }),
     );
@@ -1169,12 +1108,12 @@ describe("v2 wire envelope (slice 4)", () => {
       sdk: { name: string; version: string };
       events: Array<Record<string, unknown>>;
     };
-    expect(envelope.schemaVersion).toBe(2);
+    expect(envelope.schemaVersion).toBe(3);
     expect(typeof envelope.sentAt).toBe("number");
     expect(envelope.sdk).toEqual({ name: "@prism/core", version: "0.0.1" });
     expect(envelope.events).toHaveLength(1);
     const event = envelope.events[0] ?? {};
-    expect(event.schemaVersion).toBe(2);
+    expect(event.schemaVersion).toBe(3);
     expect(event.type).toBe("track");
     expect(typeof event.eventId).toBe("string");
     expect(typeof event.occurredAt).toBe("number");
