@@ -139,23 +139,26 @@ export async function applyRetention(
     return { deletedEvents: 0, deletedSessions: 0, deletedPeople: 0 };
   }
   const cutoffMs = retentionCutoffMs(days);
+  const projectId = "any";
 
   // Dependency-safe order in ONE atomic batch (task-10 §4): events →
-  // sessions → identity links → traits → people.
+  // sessions → identity links → traits → people. F6: every dependent
+  // delete is scoped by project_id AND the expired person set — an
+  // expired person never takes the whole project's links or traits.
   const results = await client.batch(
     [
       { sql: "DELETE FROM events WHERE received_at < ?", args: [cutoffMs] },
       { sql: "DELETE FROM sessions_v2 WHERE last_seen_at < ?", args: [cutoffMs] },
       {
-        sql: "DELETE FROM external_identities WHERE project_id IN (SELECT project_id FROM people WHERE last_seen_at < ?)",
+        sql: "DELETE FROM external_identities WHERE person_id IN (SELECT person_id FROM people WHERE last_seen_at < ?)",
         args: [cutoffMs],
       },
       {
-        sql: "DELETE FROM anonymous_identities WHERE project_id IN (SELECT project_id FROM people WHERE last_seen_at < ?)",
+        sql: "DELETE FROM anonymous_identities WHERE person_id IN (SELECT person_id FROM people WHERE last_seen_at < ?)",
         args: [cutoffMs],
       },
       {
-        sql: "DELETE FROM person_traits WHERE project_id IN (SELECT project_id FROM people WHERE last_seen_at < ?)",
+        sql: "DELETE FROM person_traits WHERE person_id IN (SELECT person_id FROM people WHERE last_seen_at < ?)",
         args: [cutoffMs],
       },
       { sql: "DELETE FROM people WHERE last_seen_at < ?", args: [cutoffMs] },

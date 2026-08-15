@@ -3,7 +3,10 @@ import type { Client } from "@libsql/client";
 import type { InStatement } from "@libsql/client";
 import TursoDatabaseManager from "../managers/TursoDatabaseManager.js";
 import { logger } from "../utils/logger.js";
-import { eventPersonId, buildIdentityStatements } from "../utils/identityResolution.js";
+import {
+  buildIdentityStatements,
+  resolveEventPerson,
+} from "../utils/identityResolution.js";
 import type {
   ValidatedEvent,
   ValidatedIdentityOp,
@@ -97,8 +100,23 @@ export class IngestRepository {
     sdk?: { name: string; version: string },
     identityOps: ValidatedIdentityOp[] = [],
     alreadyProcessedOpIds: ReadonlySet<string> = new Set(),
+    externalLinks: ReadonlyMap<string, string> = new Map(),
+    anonymousLinks: ReadonlyMap<string, string> = new Map(),
+    replacementPersonIds: ReadonlyMap<string, string> = new Map(),
   ): Promise<PersistedEventResult[]> {
-    const insertStatements: InStatement[] = events.map((event) => ({
+    // F7: event persons resolve against the DURABLE links (pre-read by the
+    // controller) — an explicit user link wins, then an active anonymous
+    // link, then a fresh anonymous person.
+    const resolvedPersons = events.map((event) =>
+      resolveEventPerson(
+        projectId,
+        event.userId,
+        event.anonymousId,
+        externalLinks,
+        anonymousLinks,
+      ),
+    );
+    const insertStatements: InStatement[] = events.map((event, index) => ({
       sql: INSERT_EVENT_SQL,
       args: [
         event.eventId,
@@ -111,7 +129,7 @@ export class IngestRepository {
         event.sessionId ?? null,
         event.anonymousId ?? null,
         event.userId ?? null,
-        eventPersonId(projectId, event.userId, event.anonymousId),
+        resolvedPersons[index] ?? null,
         JSON.stringify(event.properties),
         JSON.stringify(event.context ?? {}),
         sdk?.name ?? null,
@@ -126,11 +144,15 @@ export class IngestRepository {
     const identityStatements: InStatement[] = [];
     for (const op of identityOps) {
       if (alreadyProcessedOpIds.has(op.opId)) continue;
-      for (const statement of buildIdentityStatements(projectId, op, receivedAt)) {
+      for (const statement of buildIdentityStatements(
+        projectId,
+        op,
+        receivedAt,
+        replacementPersonIds,
+      )) {
         identityStatements.push(statement as InStatement);
       }
     }
-
     const insertResults = await this.client.batch(
       [...insertStatements, ...identityStatements],
       "write",
@@ -141,16 +163,37 @@ export class IngestRepository {
       return { event, duplicate };
     });
 
-    // Derived session state ONLY for newly inserted events — a duplicate
-    // replay changes nothing about the session.
+    // Derived state ONLY for newly inserted events — a duplicate replay
+    // changes nothing about the session or the person (F7: last_seen_at
+    // advances only for accepted events).
     const sessionStatements = outcomes
       .filter((outcome) => !outcome.duplicate)
       .map((outcome) => sessionStatement(outcome.event, projectId, receivedAt))
       .filter((statement): statement is InStatement => statement !== null);
+    const personUpserts: InStatement[] = outcomes
+      .filter((outcome) => !outcome.duplicate)
+      .map((outcome, outcomeIndex) => ({
+        event: outcome.event,
+        personId: resolvedPersons[outcomeIndex],
+      }))
+      .filter(
+        (entry): entry is { event: ValidatedEvent; personId: string } =>
+          entry.personId !== null && entry.personId !== undefined,
+      )
+      .map(({ event, personId }) => ({
+        sql: `INSERT INTO people (person_id, project_id, first_seen_at, last_seen_at)
+              VALUES (?, ?, ?, ?)
+              ON CONFLICT (project_id, person_id)
+              DO UPDATE SET last_seen_at = excluded.last_seen_at`,
+        args: [personId, projectId, event.occurredAt, receivedAt],
+      }));
 
-    if (sessionStatements.length > 0) {
+    if (sessionStatements.length > 0 || personUpserts.length > 0) {
       try {
-        await this.client.batch(sessionStatements, "write");
+        await this.client.batch(
+          [...sessionStatements, ...personUpserts],
+          "write",
+        );
       } catch (error) {
         // The events are committed — the response stays honest
         // ("accepted" is true for the events). The derived session state

@@ -594,3 +594,52 @@ describe("identity + global properties in the browser (task-10 §7)", () => {
     expect(keys).toHaveLength(2); // one per endpoint identity
   });
 });
+
+describe("shared-device reset/reload (task-10 review F1)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    window.sessionStorage.clear();
+    window.localStorage.clear();
+  });
+
+  it("a reload after logout never adopts the previous user's identity", async () => {
+    // user A identifies and queues an offline event
+    let offline = true;
+    const failTransport = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      if (offline) throw new TypeError("offline");
+      return new Response("", { status: 200, headers: { "content-type": "application/json" } });
+    });
+    const prismA = await createBrowserClient({
+      ...BASE,
+      collection: { initialState: "granted", anonymousPersistence: "persistent" },
+      queue: { maxRetries: 5 },
+    });
+    await prismA.identify("user-a");
+    prismA.track("offline_from_a");
+    await expect(prismA.flush()).rejects.toThrow(/batch delivery failed/);
+    await prismA.reset();
+    await prismA.shutdown({ timeoutMs: 100 });
+
+    // a fresh client on the same device must NOT adopt user A
+    const posted: string[] = [];
+    offline = false;
+    failTransport.mockImplementation(async (_input, init) => {
+      posted.push(String((init as RequestInit).body));
+      return new Response("", { status: 200, headers: { "content-type": "application/json" } });
+    });
+    const prismB = await createBrowserClient({
+      ...BASE,
+      collection: { initialState: "granted", anonymousPersistence: "persistent" },
+    });
+    expect(prismB.identity.userId).toBeNull(); // never inferred from the queue
+    prismB.track("anonymous_after_reset");
+    await prismB.flush();
+
+    const newEnvelope = JSON.parse(posted[posted.length - 1] ?? "{}") as {
+      events: Array<{ name: string; userId?: string }>;
+    };
+    const anonymousEvent = newEnvelope.events.find((e) => e.name === "anonymous_after_reset");
+    expect(anonymousEvent?.userId).toBeUndefined();
+    await prismB.shutdown({ timeoutMs: 100 });
+  });
+});

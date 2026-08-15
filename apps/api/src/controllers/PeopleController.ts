@@ -100,12 +100,18 @@ export class PeopleController {
     if (!(await personExists(PeopleController.store(ctx), project.id, personId))) {
       return ctx.json(new ErrorResponse("person_not_found").toJSON(), 404);
     }
-    const limit = Number(ctx.req.query("limit") ?? "200");
+    // F14: activity limits are clamped to a documented integer range —
+    // negative/fractional/huge values can never make the query unbounded.
+    const rawLimit = Number(ctx.req.query("limit") ?? "200");
+    const limit =
+      Number.isInteger(rawLimit) && rawLimit >= 1 && rawLimit <= 500
+        ? rawLimit
+        : 200;
     const events = await personActivity(
       PeopleController.store(ctx),
       project.id,
       personId,
-      Number.isFinite(limit) ? limit : 200,
+      limit,
     );
     return ctx.json(events);
   }

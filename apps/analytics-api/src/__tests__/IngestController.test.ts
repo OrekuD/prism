@@ -2,6 +2,7 @@ import "./testEnv.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IngestResponseBody } from "@prism/core";
 import { IngestController, eventLimiter } from "../controllers/IngestController.js";
+import { identityOpHash } from "../utils/identityResolution.js";
 
 vi.mock("../managers/NeonDatabaseManager.js", () => ({
   default: { instance: vi.fn() },
@@ -176,7 +177,9 @@ describe("IngestController.ingest (v2 batch ingestion)", () => {
     expect(body.ok).toBe(true);
     expect(body.results).toEqual([{ index: 0, id: "evt-0001", status: "accepted" }]);
 
-    expect(dbBatch).toHaveBeenCalledTimes(1);
+    // first batch: atomic event inserts; second batch: derived session +
+    // person state for the accepted event (F7)
+    expect(dbBatch).toHaveBeenCalledTimes(2);
     const [statements] = dbBatch.mock.calls[0];
     const { sql, args } = statements[0];
     expect(String(sql)).toContain("INSERT INTO events");
@@ -504,12 +507,13 @@ describe("release review — duplicate session safety", () => {
 
     const results = (result.__json as IngestResponseBody).results;
     expect(results[0]?.status).toBe("accepted");
-    expect(dbBatch).toHaveBeenCalledTimes(2); // events batch + session batch
+    expect(dbBatch).toHaveBeenCalledTimes(2); // events batch + derived-state batch
     const sessionStatements = dbBatch.mock.calls[1][0] as Array<{ sql: string }>;
-    expect(sessionStatements).toHaveLength(1);
-    expect(String((sessionStatements[0] as { sql: string }).sql)).toContain(
-      "INSERT INTO sessions_v2",
+    const sessionStatement = sessionStatements.find((s) =>
+      String(s.sql).includes("INSERT INTO sessions_v2"),
     );
+    expect(sessionStatement).toBeDefined();
+    expect(String(sessionStatement?.sql)).toContain("INSERT INTO sessions_v2");
   });
 
   it("rejects an oversized RAW event with unknown fields (measured pre-parse)", async () => {
@@ -601,14 +605,23 @@ describe("identity operations (task-10 §4)", () => {
     const firstCall = dbBatch.mock.calls[0][0] as Array<{ sql: string }>;
     expect(firstCall.some((s) => String(s.sql).includes("identity_ops"))).toBe(true);
 
-    // second pass: the op was already processed → skipped entirely
+    // second pass: the op was already processed with the SAME payload
+    // hash → duplicate, skipped entirely
     dbBatch.mockClear();
     const turso = (await import("../managers/TursoDatabaseManager.js")).default
       .instance as unknown as { execute: ReturnType<typeof vi.fn> };
+    const secondOp = {
+      opId: "op-dup",
+      userId: "user-123",
+      anonymousId: "anon-1",
+      occurredAt: Date.now(),
+    };
     turso.execute.mockImplementation(async (input: string | { sql: string }) => {
       const sql = String(typeof input === "string" ? input : input.sql);
       if (sql.includes("identity_ops")) {
-        return Promise.resolve({ rows: [{ op_id: "op-dup" }] });
+        return Promise.resolve({
+          rows: [{ op_id: "op-dup", payload_hash: identityOpHash(secondOp) }],
+        });
       }
       return Promise.resolve({ rows: [] });
     });
@@ -616,9 +629,7 @@ describe("identity operations (task-10 §4)", () => {
       JSON.stringify({
         schemaVersion: 3,
         sentAt: Date.now(),
-        identity: [
-          { opId: "op-dup", userId: "user-123", anonymousId: "anon-1", occurredAt: Date.now() },
-        ],
+        identity: [secondOp],
         events: [VALID_EVENT],
       }),
     );
@@ -661,5 +672,59 @@ describe("identity operations (task-10 §4)", () => {
     expect(event.args[1]).toBe(PROJECT_A); // key-derived, never "evil"
     expect(event.args[9]).toBe("user-123"); // user_id column
     expect(String(event.args[10])).toContain("u_"); // derived person_id
+  });
+});
+
+describe("identity-only envelopes (review F2)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dbBatch.mockResolvedValue([{ rows: [], rowsAffected: 1 }]);
+    eventLimiter.reset();
+    (
+      TursoDatabaseManager.instance.execute as unknown as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({ rows: [] });
+  });
+
+  it("accepts a v3 envelope with NO events when identity operations are present", async () => {
+    const ctx = makeContext(
+      JSON.stringify({
+        schemaVersion: 3,
+        sentAt: Date.now(),
+        identity: [
+          {
+            opId: "op-only",
+            userId: "user-only",
+            anonymousId: "anon-only",
+            traits: { plan: "pro" },
+            occurredAt: Date.now(),
+          },
+        ],
+        events: [],
+      }),
+    );
+
+    const result = await ingest(ctx);
+
+    expect(result.status).toBe(200);
+    const body = result.__json as IngestResponseBody;
+    expect(body.identity?.[0]).toMatchObject({
+      opId: "op-only",
+      status: "accepted",
+    });
+    // a single batch: the identity statements (no events → no derived
+    // session/person state)
+    expect(dbBatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects an envelope with neither events nor identity operations", async () => {
+    const ctx = makeContext(
+      JSON.stringify({ schemaVersion: 3, sentAt: Date.now(), events: [] }),
+    );
+
+    const result = await ingest(ctx);
+
+    expect(result.status).toBe(400);
+    const body = result.__json as { error: { code: string } };
+    expect(body.error.code).toBe("invalid-envelope");
   });
 });

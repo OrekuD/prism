@@ -144,7 +144,8 @@ describe("filters, breakdowns, totals", () => {
     expect(byPerson.length).toBe(2);
     const bySession = await filteredEvents(client, PROJECT, { sessionId: "sess-1" });
     expect(bySession.length).toBe(3);
-    const byDate = await filteredEvents(client, PROJECT, { from: now - 10, to: now });
+    // generous window: the seed's timestamps are relative to beforeAll
+    const byDate = await filteredEvents(client, PROJECT, { from: now - 60_000, to: now + 1 });
     expect(byDate.length).toBeGreaterThan(0);
   });
 
@@ -181,7 +182,9 @@ describe("filters, breakdowns, totals", () => {
   it("keeps the four totals distinct and honest", async () => {
     const totals = await honestTotals(client, PROJECT);
     expect(totals.events).toBe(10); // 5 + 2 + 1 + 1 (anon-2) + 1 (prop-ev)
-    expect(totals.people).toBe(3);
+    // F15: "people" counts KNOWN people (active external identities only);
+    // anonymous subjects are reported separately and never double-counted.
+    expect(totals.people).toBe(1); // only user-1 has an external identity
     expect(totals.sessions).toBe(5);
     expect(totals.anonymousIdentities).toBe(2); // anon-1 + anon-2
   });

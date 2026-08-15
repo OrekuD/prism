@@ -87,8 +87,14 @@ const batchSchema = z.object({
     .object({ name: z.string().min(1).max(64), version: z.string().min(1).max(64) })
     .optional(),
   identity: z.array(z.unknown()).max(INGEST_LIMITS.maxBatchEvents).optional(),
-  events: z.array(z.unknown()).min(1).max(INGEST_LIMITS.maxBatchEvents),
-});
+  // F2: identity-only v3 envelopes are valid — events may be empty when
+  // identity operations are present (the SDK delivers identify-only
+  // flushes).
+  events: z.array(z.unknown()).min(0).max(INGEST_LIMITS.maxBatchEvents),
+}).refine(
+  (batch) => batch.events.length > 0 || (batch.identity?.length ?? 0) > 0,
+  { message: "batch must contain events or identity operations" },
+);
 
 /** Parsed batch with the authoritative batch-level SDK identity. */
 export interface ParsedBatch {

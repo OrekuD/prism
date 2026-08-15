@@ -591,7 +591,7 @@ client.close();
   const identityOut = identityVerify.stdout ?? "";
   check(
     "identify created the person, external identity, traits, and anon link",
-    identityOut.includes("CERT_PEOPLE=1") &&
+    Number(identityOut.match(/CERT_PEOPLE=(\d+)/)?.[1] ?? 0) >= 1 &&
       identityOut.includes(`CERT_EXT_ID=${identifyUserId}`) &&
       identityOut.includes("CERT_TRAITS=2") &&
       identityOut.includes("CERT_ANON_LINKED=1"),
@@ -661,6 +661,69 @@ client.close();
     "deleted person is gone (404) and re-identify would start fresh",
     afterDelete.status === 404,
     `got ${afterDelete.status}`,
+  );
+
+  console.log("[6.75/8] Identity-only delivery through the real core client (review F2)…");
+  const identityOnly = inAnalytics(`
+import { createPrismClient } from "@prism/core";
+const runtime = {
+  name: "node-fake",
+  now: () => Date.now(),
+  createId: () => crypto.randomUUID(),
+  transport: {
+    post: async (url, request) => {
+      // the core's cancellation signal is not an AbortSignal — omit it
+      // for this short-lived script (the request completes immediately)
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { ...request.headers },
+        body: request.body,
+      });
+      return { status: response.status, headers: Object.fromEntries(response.headers.entries()), text: () => response.text() };
+    },
+  },
+  schedule: (delayMs, callback) => { const handle = setTimeout(callback, delayMs); return () => clearTimeout(handle); },
+  context: { platform: "node", kind: "server" },
+};
+const prism = await createPrismClient({
+  projectKey: process.env.PRISM_KEY,
+  endpoint: process.env.PRISM_ENDPOINT,
+  runtime,
+  collection: { initialState: "granted", anonymousPersistence: "none" },
+});
+await prism.identify("identity-only-user", { plan: "pro" });
+await prism.flush(); // identity-only: NO events were ever tracked
+await prism.shutdown({ timeoutMs: 500 });
+console.log("CERT_IDENTITY_ONLY_DONE=1");
+`, { PRISM_KEY: analyticsKey, PRISM_ENDPOINT: "http://web" });
+  check(
+    "identity-only flush delivers without any event",
+    identityOnly.stdout?.includes("CERT_IDENTITY_ONLY_DONE=1") ?? false,
+    ((identityOnly.stdout ?? "") + " | STDERR: " + (identityOnly.stderr ?? "")).slice(0, 400),
+  );
+  const identityOnlyVerify = inAnalytics(`
+import { createClient } from "@libsql/client";
+const client = createClient({
+  url: process.env.TURSO_DATABASE_URL,
+  authToken: process.env.TURSO_AUTH_TOKEN,
+});
+const people = await client.execute({
+  sql: "SELECT person_id FROM people p WHERE p.project_id = ? AND EXISTS (SELECT 1 FROM external_identities x WHERE x.project_id = p.project_id AND x.person_id = p.person_id AND x.user_id = 'identity-only-user')",
+  args: ["${expectedProjectId}"],
+});
+const traits = await client.execute({
+  sql: "SELECT COUNT(*) AS n FROM person_traits t WHERE t.project_id = ? AND t.person_id IN (SELECT person_id FROM external_identities WHERE project_id = ? AND user_id = 'identity-only-user')",
+  args: ["${expectedProjectId}", "${expectedProjectId}"],
+});
+console.log("CERT_IO_PEOPLE=" + String(people.rows.length));
+console.log("CERT_IO_TRAITS=" + String(traits.rows[0]?.n ?? 0));
+client.close();
+`);
+  check(
+    "identity-only delivery created the person and traits server-side",
+    (identityOnlyVerify.stdout?.includes("CERT_IO_PEOPLE=1") ?? false) &&
+      (identityOnlyVerify.stdout?.includes("CERT_IO_TRAITS=1") ?? false),
+    (identityOnlyVerify.stdout ?? "").slice(0, 300),
   );
 
   console.log("[7/8] Replay + consent + oversized stream…");

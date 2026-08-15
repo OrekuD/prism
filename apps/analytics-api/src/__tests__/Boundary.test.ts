@@ -183,7 +183,7 @@ describe("release review — readiness + dead route", () => {
     execute.mockImplementation((input: string | { sql: string }) => {
       const sql = String(typeof input === "string" ? input : input.sql);
       if (sql.includes("schema_migrations")) {
-        return Promise.resolve({ rows: [{ version: 5 }] });
+        return Promise.resolve({ rows: [{ version: 6 }] });
       }
       return Promise.resolve({ rows: [{}] }); // sessions_v2 exists
     });
@@ -213,7 +213,7 @@ describe("release review — readiness + dead route", () => {
     turso.execute.mockImplementation((input: string | { sql: string }) => {
       const sql = String(typeof input === "string" ? input : input.sql);
       if (sql.includes("schema_migrations")) {
-        return Promise.resolve({ rows: [{ version: 5 }] });
+        return Promise.resolve({ rows: [{ version: 6 }] });
       }
       return Promise.reject(new Error("no such table: sessions_v2"));
     });

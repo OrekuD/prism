@@ -129,6 +129,7 @@ export interface IngestResponseBody {
   readonly identity?: readonly {
     readonly index: number;
     readonly opId: string;
-    readonly status: "accepted" | "duplicate";
+    readonly status: "accepted" | "duplicate" | "rejected";
+    readonly reason?: string;
   }[];
 }

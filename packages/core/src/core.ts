@@ -53,6 +53,15 @@ const DEFAULT_QUEUE: Required<PrismQueueOptions> = {
 
 const ANONYMOUS_ID_KEY = "prism:anonymous_id";
 
+interface PersistedIdentityState {
+  v: 1;
+  anonymousId: string | null;
+  userId: string | null;
+  lastOpId: string | null;
+  /** Incremented on every reset — stale identity writes cannot win. */
+  generation: number;
+}
+
 // Retry policy (task-9 §6): exponential backoff with deterministic
 // jitter for client-computed delays; a valid server Retry-After is a
 // MINIMUM — never shortened, never jittered below, honored verbatim
@@ -198,6 +207,8 @@ class PrismClientImpl implements PrismClient {
     session: string;
     persistent: string;
   };
+  private identityStateKey: string;
+  private identityGeneration = 0;
   private readonly wireContext: WireContext;
   private persistChain: Promise<void> = Promise.resolve();
 
@@ -256,6 +267,7 @@ class PrismClientImpl implements PrismClient {
       session: scope("session"),
       persistent: scope("persistent"),
     };
+    this.identityStateKey = `prism:identity:${hashString(options.endpoint)}:${this.projectKey}`;
     this.runtime = runtime;
     this.state = options.collection.initialState;
     this.persistence = options.collection.anonymousPersistence ?? "none";
@@ -291,6 +303,7 @@ class PrismClientImpl implements PrismClient {
 
   /** Called by the factory before resolving — the client is fully ready. */
   async ready(): Promise<void> {
+    await this.restoreIdentityState();
     await this.restoreQueueState();
     await this.restoreGlobalProperties();
     await this.ensureAnonymousIdentity();
@@ -337,6 +350,7 @@ class PrismClientImpl implements PrismClient {
     }
     if (state === "granted") {
       // A queue snapshot deferred under pending is restored on grant.
+      await this.restoreIdentityState();
       await this.restoreQueueState();
       await this.restoreGlobalProperties();
       await this.ensureAnonymousIdentity();
@@ -636,8 +650,6 @@ class PrismClientImpl implements PrismClient {
       const rawTraits = traits as Record<string, unknown>;
       const unset = rawTraits["$unset"];
       if (unset !== undefined) {
-        // The reserved $unset convention: an array of valid trait keys to
-        // remove. It is validated, extracted, and never stored as a trait.
         if (
           !Array.isArray(unset) ||
           unset.length > 50 ||
@@ -664,32 +676,27 @@ class PrismClientImpl implements PrismClient {
       });
     }
 
-    // Conflict safety (ADR 0003): an anonymous context already linked to a
-    // DIFFERENT external user rotates to a fresh anonymous context — two
-    // known people are never merged over a shared device.
-    if (this.knownUserId !== null && this.knownUserId !== userId) {
-      this.anonymousId = this.runtime.createId();
-      if (this.persistence === "persistent") {
-        try {
-          await this.persistAnonymousIdentity();
-        } catch {
-          this.emit("warn", "identity_persist_failed", "could not persist the rotated anonymous id");
-        }
-      }
-    }
+    // STAGED identity transition (F9): nothing live changes until the
+    // operation is durably enqueued. Conflict safety (ADR 0003): an
+    // anonymous context already linked to a DIFFERENT external user
+    // rotates to a fresh anonymous context — two known people are never
+    // merged over a shared device. Under anonymousPersistence "none" a
+    // transient in-memory ID satisfies the wire contract (F10).
+    const stagedAnon =
+      this.knownUserId !== null && this.knownUserId !== userId
+        ? this.runtime.createId()
+        : this.anonymousId ?? this.runtime.createId();
 
     const opId = this.runtime.createId();
     const occurredAt = this.runtime.now();
     const op: WireIdentifyOp = {
       opId,
       userId,
-      anonymousId: this.anonymousId ?? "",
+      anonymousId: stagedAnon,
       ...(sanitizedTraits ? { traits: sanitizedTraits } : {}),
       ...(unsetKeys.length > 0 ? { unset: unsetKeys } : {}),
       occurredAt,
     };
-    this.knownUserId = userId;
-    this.lastIdentifyOpId = opId;
 
     const queued = this.queue.enqueue({
       owner: this.instanceId,
@@ -699,14 +706,41 @@ class PrismClientImpl implements PrismClient {
       serialized: JSON.stringify(op),
     });
     if (!queued) {
+      // Nothing changed: live identity and later event envelopes are
+      // untouched by the failed identify (F9).
       return { status: "dropped", reason: "queue-full" };
     }
+
+    // Commit the live state ONLY after the enqueue succeeded.
+    if (stagedAnon !== this.anonymousId) {
+      this.anonymousId = stagedAnon;
+      if (this.persistence === "persistent") {
+        try {
+          await this.persistAnonymousIdentity();
+        } catch {
+          this.emit("warn", "identity_persist_failed", "could not persist the rotated anonymous id");
+        }
+      }
+    }
+    this.knownUserId = userId;
+    this.lastIdentifyOpId = opId;
+
+    // F1: persist the identity state (known user, anon id, generation).
+    try {
+      await this.persistIdentityState();
+    } catch {
+      this.emit("warn", "identity_state_persist_failed", "could not persist identity state");
+    }
+    // F10: await the durable queue write before resolving — the caller's
+    // promise reflects the persistence attempt, with a diagnostic on
+    // failure (the op stays queued in memory).
+    await this.persistQueue();
     void this.afterEnqueue();
     return {
       status: "queued",
       opId,
       userId,
-      anonymousId: this.anonymousId ?? "",
+      anonymousId: stagedAnon,
     };
   }
 
@@ -740,6 +774,16 @@ class PrismClientImpl implements PrismClient {
     }
     this.knownUserId = null;
     this.lastIdentifyOpId = null;
+    // F1: persist the SIGNED-OUT identity state (generation advances) so
+    // a fresh client on the same device never adopts the previous user —
+    // and await it before resolving.
+    this.identityGeneration += 1;
+    try {
+      await this.persistIdentityState();
+    } catch {
+      this.emit("warn", "identity_state_persist_failed", "could not persist signed-out identity state");
+    }
+    await this.persistQueue();
     return { status: "ok", anonymousId: fresh };
   }
 
@@ -749,11 +793,8 @@ class PrismClientImpl implements PrismClient {
     scope: GlobalPropertyScope = "memory",
   ): Promise<GlobalPropertyResult> {
     if (this.closed) return { status: "blocked", reason: "shutdown" };
-    const validation = this.validateGlobalProperty(key, value);
-    if (!validation.ok) {
-      return { status: "blocked", reason: "storage-failure" };
-    }
-    // invalid keys/values are CALLER errors — throw the specific message
+    // Invalid keys/values are CALLER errors — a specific validation error
+    // is thrown (F13); "storage-failure" is reserved for adapter failures.
     this.assertGlobalProperty(key, value);
     this.globalProperties[scope].set(key, value);
     try {
@@ -819,18 +860,6 @@ class PrismClientImpl implements PrismClient {
     }
   }
 
-  private validateGlobalProperty(
-    key: string,
-    value: unknown,
-  ): { ok: boolean } {
-    try {
-      this.assertGlobalProperty(key, value);
-      return { ok: true };
-    } catch {
-      return { ok: false };
-    }
-  }
-
   private async doFlush(): Promise<void> {
     // Consent gate: pending/denied never transmit — restored events and
     // explicit, background, retry, and shutdown flushes are all covered.
@@ -848,7 +877,9 @@ class PrismClientImpl implements PrismClient {
         this.queueOptions.maxBatchEvents,
         this.queueOptions.maxBatchBytes,
       );
-      if (batch.length === 0) break;
+      // F2: identify-only delivery — pending operations flush even when
+      // there are no events (the v3 envelope may carry events: []).
+      if (batch.length === 0 && this.queue.pendingOps().length === 0) break;
       const signal = createSignal();
       this.inFlightSignal = signal;
       let outcome: Awaited<ReturnType<PrismClientImpl["deliver"]>>;
@@ -1156,6 +1187,79 @@ class PrismClientImpl implements PrismClient {
    * serialized on a chain so the final state is deterministic (the last
    * write reflects the last queue mutation).
    */
+  /**
+   * Persist the LIVE identity state (F1): known user, anonymous id, and a
+   * logout generation — stored separately from the immutable queue so a
+   * fresh client on a shared device never infers the previous user from
+   * queued events. The generation guard is a best-effort compare-and-swap
+   * against stale writers.
+   */
+  private async persistIdentityState(): Promise<void> {
+    const storage = this.runtime.storage;
+    if (!storage) return;
+    const state: PersistedIdentityState = {
+      v: 1,
+      anonymousId: this.anonymousId,
+      userId: this.knownUserId,
+      lastOpId: this.lastIdentifyOpId,
+      generation: this.identityGeneration,
+    };
+    // Best-effort stale-writer guard: never lower the generation.
+    try {
+      const raw = await storage.getItem(this.identityStateKey);
+      if (raw) {
+        const existing = JSON.parse(raw) as { generation?: number };
+        if (typeof existing.generation === "number" && existing.generation > state.generation) {
+          this.identityGeneration = existing.generation;
+          state.generation = existing.generation;
+          // The stored state belongs to a newer generation — keep it.
+          return;
+        }
+      }
+    } catch {
+      // unreadable state — write ours
+    }
+    await storage.setItem(this.identityStateKey, JSON.stringify(state));
+  }
+
+  /** Restore the LIVE identity state (F1) — never inferred from the queue. */
+  private async restoreIdentityState(): Promise<void> {
+    const storage = this.runtime.storage;
+    if (!storage) return;
+    try {
+      const raw = await storage.getItem(this.identityStateKey);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Partial<PersistedIdentityState>;
+      if (parsed?.v !== 1) return;
+      if (typeof parsed.generation === "number") {
+        this.identityGeneration = parsed.generation;
+      }
+      if (typeof parsed.anonymousId === "string" && parsed.anonymousId.length > 0) {
+        // canonical decode: the raw form; tolerate the legacy JSON-wrapped
+        // form and rewrite it canonically (F11)
+        let id = parsed.anonymousId;
+        if (id.startsWith('"')) {
+          try {
+            const decoded = JSON.parse(id) as unknown;
+            if (typeof decoded === "string") id = decoded;
+          } catch {
+            id = parsed.anonymousId;
+          }
+        }
+        if (id.length > 0 && id.length <= 128) {
+          this.anonymousId = id;
+        }
+      }
+      if (typeof parsed.userId === "string" && parsed.userId.length > 0) {
+        this.knownUserId = parsed.userId;
+        this.lastIdentifyOpId =
+          typeof parsed.lastOpId === "string" ? parsed.lastOpId : null;
+      }
+    } catch {
+      this.emit("warn", "identity_state_restore_failed", "could not restore identity state");
+    }
+  }
+
   /** Persist the current anonymous identity (persistent scope). */
   private async persistAnonymousIdentity(): Promise<void> {
     const storage = this.runtime.storage;
@@ -1164,7 +1268,9 @@ class PrismClientImpl implements PrismClient {
       await storage.removeItem(ANONYMOUS_ID_KEY);
       return;
     }
-    await storage.setItem(ANONYMOUS_ID_KEY, JSON.stringify(this.anonymousId));
+    // canonical encoding: the raw string (F11). The legacy JSON-wrapped
+    // format is tolerated on read and rewritten canonically.
+    await storage.setItem(ANONYMOUS_ID_KEY, this.anonymousId);
   }
 
   /** Persist the session + persistent global-property scopes. */
@@ -1182,7 +1288,12 @@ class PrismClientImpl implements PrismClient {
     }
   }
 
-  /** Restore the session + persistent global-property scopes (best-effort). */
+  /**
+   * Restore the session + persistent global-property scopes (best-effort).
+   * F13: the persisted globals are revalidated and redacted before
+   * adoption — hostile stored state (dangerous keys, oversized values,
+   * invalid shapes) is QUARANTINED, never merged into events.
+   */
   private async restoreGlobalProperties(): Promise<void> {
     const storage = this.runtime.storage;
     if (!storage) return;
@@ -1191,9 +1302,29 @@ class PrismClientImpl implements PrismClient {
         const raw = await storage.getItem(this.globalsStorageKeys[scope]);
         if (!raw) continue;
         const parsed = JSON.parse(raw) as Record<string, unknown>;
-        if (typeof parsed !== "object" || parsed === null) continue;
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+          // malformed persisted globals — quarantine the whole scope
+          await storage.removeItem(this.globalsStorageKeys[scope]).catch(() => undefined);
+          this.emit("warn", "globals_restore_failed", "quarantined malformed global properties");
+          continue;
+        }
         for (const [key, value] of Object.entries(parsed)) {
-          this.globalProperties[scope].set(key, value);
+          try {
+            this.assertGlobalProperty(key, value);
+          } catch {
+            // quarantine the invalid entry only — valid entries survive
+            continue;
+          }
+          // reapply the redaction policy to persisted values (F13)
+          const sanitized =
+            typeof value === "object" && value !== null && !Array.isArray(value)
+              ? sanitizeProperties(value as JsonObject, {
+                  denyList: this.denyList,
+                  maxDepth: this.maxDepth,
+                  maxStringLength: this.maxStringLength,
+                })
+              : value;
+          this.globalProperties[scope].set(key, sanitized);
         }
       } catch {
         this.emit("warn", "globals_restore_failed", "could not restore global properties");
@@ -1227,7 +1358,9 @@ class PrismClientImpl implements PrismClient {
           const raw = await storage.getItem(this.queueStorageKey);
           if (raw) {
             const parsed = JSON.parse(raw) as { v?: number; events?: unknown };
-            if (parsed?.v === 3 && Array.isArray(parsed.events)) {
+            // F4: preserve other-owner segments for the CURRENT v4 format
+            // (and legacy v3) — never overwrite another execution context.
+            if ((parsed?.v === 3 || parsed?.v === 4) && Array.isArray(parsed.events)) {
               // Keep only OTHER contexts' segments — this context's old
               // segment is fully replaced by `current` (delivered events
               // stay removed), and tombstoned IDs (delivered or consent-
@@ -1308,7 +1441,10 @@ class PrismClientImpl implements PrismClient {
         // it delivers it and its segment replaces the stale stored copy.
         adoptedIds.push(e.eventId);
         if (e.kind === "identify") {
-          const op = JSON.parse(e.serialized) as WireIdentifyOp;
+          // F3: the serialized payload is a WireIdentifyOp, not an event
+          // envelope — parsed for validation only; the entry is enqueued
+          // verbatim. LIVE identity is never inferred from queued ops (F1).
+          JSON.parse(e.serialized) as WireIdentifyOp;
           this.queue.enqueue({
             owner: this.instanceId,
             kind: "identify",
@@ -1316,12 +1452,8 @@ class PrismClientImpl implements PrismClient {
             timestamp: e.occurredAt,
             serialized: e.serialized,
           });
-          if (op.userId && !this.knownUserId) {
-            this.knownUserId = op.userId;
-            this.lastIdentifyOpId = op.opId;
-          }
         } else {
-          const envelope = JSON.parse(e.serialized) as WireEnvelope & { userId?: string };
+          const envelope = JSON.parse(e.serialized) as WireEnvelope;
           this.queue.enqueue({
             owner: this.instanceId,
             kind: "event",
@@ -1332,9 +1464,6 @@ class PrismClientImpl implements PrismClient {
             sessionId: envelope.sessionId,
             serialized: e.serialized,
           });
-          if (envelope.userId && !this.knownUserId) {
-            this.knownUserId = envelope.userId;
-          }
         }
       }
       // The adopted IDs tombstone the OTHER contexts' stale copies so the
@@ -1370,7 +1499,11 @@ class PrismClientImpl implements PrismClient {
     }
     const record = entry as Record<string, unknown>;
     const expectedKeys = ["owner", "kind", "eventId", "occurredAt", "serialized"];
-    if (Object.keys(record).length !== expectedKeys.length && !(record.name !== undefined && Object.keys(record).length === expectedKeys.length + 1)) {
+    const hasName = record.name !== undefined;
+    if (
+      Object.keys(record).length !==
+      expectedKeys.length + (hasName ? 1 : 0)
+    ) {
       throw new Error("queue entry has unknown fields");
     }
     for (const key of expectedKeys) {
@@ -1379,15 +1512,12 @@ class PrismClientImpl implements PrismClient {
     if (record.kind !== "event" && record.kind !== "identify") {
       throw new Error("queue entry has an invalid kind");
     }
-    const { owner, kind, eventId, name, occurredAt, serialized } = record;
+    const { owner, kind, eventId, occurredAt, serialized } = record;
     if (typeof owner !== "string" || owner.length === 0 || owner.length > 128) {
       throw new Error("queue entry has an invalid owner");
     }
     if (typeof eventId !== "string" || eventId.length === 0 || eventId.length > 128) {
       throw new Error("queue entry has an invalid event id");
-    }
-    if (!isValidEventName(name)) {
-      throw new Error("queue entry has an invalid event name");
     }
     if (typeof occurredAt !== "number" || !Number.isFinite(occurredAt)) {
       throw new Error("queue entry has an invalid timestamp");
@@ -1405,6 +1535,57 @@ class PrismClientImpl implements PrismClient {
     if (typeof serialized !== "string" || utf8Length(serialized) > INGEST_LIMITS.maxEventBytes) {
       throw new Error("queue entry exceeds the event size ceiling");
     }
+    // F3: branch by kind — identify entries carry a WireIdentifyOp and
+    // intentionally have no event name.
+    if (kind === "identify") {
+      if (hasName) throw new Error("identify entries must not carry an event name");
+      let op: WireIdentifyOp;
+      try {
+        op = JSON.parse(serialized) as WireIdentifyOp;
+      } catch {
+        throw new Error("queue identify entry has an unparsable payload");
+      }
+      if (
+        typeof op.opId !== "string" ||
+        op.opId.length === 0 ||
+        op.opId.length > 128 ||
+        op.opId !== eventId
+      ) {
+        throw new Error("queue identify entry has an invalid op id");
+      }
+      if (typeof op.userId !== "string" || op.userId.length === 0 || op.userId.length > 256) {
+        throw new Error("queue identify entry has an invalid user id");
+      }
+      if (
+        typeof op.anonymousId !== "string" ||
+        op.anonymousId.length === 0 ||
+        op.anonymousId.length > 128
+      ) {
+        throw new Error("queue identify entry has an invalid anonymous id");
+      }
+      if (typeof op.occurredAt !== "number" || !Number.isFinite(op.occurredAt)) {
+        throw new Error("queue identify entry has an invalid timestamp");
+      }
+      if (op.traits !== undefined) {
+        const result = validateJsonValue(op.traits, {
+          maxDepth: INGEST_LIMITS.maxPropertyDepth,
+          maxStringLength: INGEST_LIMITS.maxStringLength,
+          maxKeys: INGEST_LIMITS.maxPropertyKeys,
+          maxArrayElements: INGEST_LIMITS.maxArrayElements,
+        });
+        if (!result.ok) {
+          throw new Error(`queue identify entry has invalid traits (${result.reason})`);
+        }
+      }
+      if (op.unset !== undefined && (!Array.isArray(op.unset) || op.unset.length > 50)) {
+        throw new Error("queue identify entry has an invalid unset list");
+      }
+      return;
+    }
+    if (typeof record.name !== "string" || !isValidEventName(record.name)) {
+      throw new Error("queue entry has an invalid event name");
+    }
+    const name = record.name;
     let envelope: WireEnvelope;
     try {
       envelope = JSON.parse(serialized) as WireEnvelope;
@@ -1466,6 +1647,10 @@ class PrismClientImpl implements PrismClient {
       return null; // non-JSON body: status-only success
     }
     if (!Array.isArray(body.results)) return null;
+    // F2: an identity-only batch has no events to reconcile — the
+    // response's identity outcomes are fire-and-forget (delivery is
+    // retried by the op-id idempotency), so the empty results are fine.
+    if (batch.length === 0) return { kept: [], rejected: 0 };
     const terminal = new Set<string>();
     const seen = new Set<string>();
     let rejected = 0;
@@ -1527,6 +1712,7 @@ class PrismClientImpl implements PrismClient {
       }
       const fresh = this.runtime.createId();
       this.anonymousId = fresh;
+      // canonical encoding: the raw string (F11) — never JSON-wrapped
       await storage.setItem(ANONYMOUS_ID_KEY, fresh).catch(() => {
         this.emit(
           "warn",

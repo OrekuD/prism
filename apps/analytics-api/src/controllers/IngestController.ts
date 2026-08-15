@@ -11,7 +11,16 @@ import type { SessionResource } from "@prism/types";
 import WebSocketManager from "../managers/WebSocketManager.js";
 import TursoDatabaseManager from "../managers/TursoDatabaseManager.js";
 import { IngestRepository } from "../repositories/IngestRepository.js";
-import { validateIdentityOp, type ValidatedIdentityOp } from "../utils/ingestValidation.js";
+import {
+  validateIdentityOp,
+  type ValidatedIdentityOp,
+} from "../utils/ingestValidation.js";
+import {
+  identityOpHash,
+  personIdForUser,
+  resolveEventPerson,
+} from "../utils/identityResolution.js";
+import { randomUUID } from "node:crypto";
 import { RateLimiter } from "../utils/RateLimiter.js";
 import { logger } from "../utils/logger.js";
 import {
@@ -138,9 +147,13 @@ export class IngestController {
     const projectId = ctx.get("projectId") ?? "";
 
     // Event-weighted quota first — a big batch must not dodge the limit.
+    // Identity-only envelopes weight by their operation count (F2): a
+    // request with no events still carries a positive cost.
+    const ingestWeight =
+      parsed.batch.events.length + (parsed.batch.identity?.length ?? 0);
     const { allowed, retryAfterSeconds } = eventLimiter.hit(
       projectId,
-      parsed.batch.events.length,
+      Math.max(ingestWeight, 1),
     );
     if (!allowed) {
       ctx.header("Retry-After", String(retryAfterSeconds));
@@ -188,9 +201,13 @@ export class IngestController {
     }
 
     // Identity operations (task-10 §4): validated like events — rejected
-    // ops never enter the transaction. Duplicate op ids are skipped via
-    // the idempotency read (the identity_ops PK covers the race).
-    const validOps: Array<{ index: number; op: ValidatedIdentityOp }> = [];
+    // ops never enter the transaction (review F8/F12): op ids are
+    // deduplicated WITHIN the request; the idempotency read skips known
+    // ops; guarded statements make the claim transactional (a duplicate
+    // payload can never apply its side effects).
+    type IngestOp = { index: number; op: ValidatedIdentityOp; opHash: string; status?: string; reason?: string };
+    const validOps: IngestOp[] = [];
+    const seenOpIds = new Set<string>();
     for (const raw of parsed.batch.identity ?? []) {
       const validation = validateIdentityOp(raw);
       if (!validation.ok) {
@@ -199,17 +216,108 @@ export class IngestController {
         });
         continue;
       }
-      validOps.push({ index: validOps.length, op: validation.op });
+      const op = validation.op;
+      if (seenOpIds.has(op.opId)) {
+        logger.warn("analytics:ingest", "duplicate identity op within request", {
+          projectId,
+        });
+        continue;
+      }
+      seenOpIds.add(op.opId);
+      // F12: traits from DIRECT HTTP clients are sanitized server-side —
+      // the same dangerous-key, strict-JSON, and credential-redaction
+      // policy applied to event properties.
+      const sanitizedOp: ValidatedIdentityOp = {
+        ...op,
+        ...(op.traits !== undefined
+          ? {
+              traits: sanitizeProperties(op.traits as JsonObject, {
+                maxDepth: INGEST_LIMITS.maxPropertyDepth,
+                maxStringLength: INGEST_LIMITS.maxStringLength,
+              }),
+            }
+          : {}),
+      };
+      validOps.push({
+        index: validOps.length,
+        op: sanitizedOp,
+        opHash: identityOpHash({ ...sanitizedOp, occurredAt: sanitizedOp.occurredAt }),
+      });
     }
     let alreadyProcessed: ReadonlySet<string> = new Set();
+    // F7: durable link maps — resolved inside the persistence flow so
+    // linked anonymous identities never create separate projections.
+    let externalLinks: Map<string, string> = new Map();
+    let anonymousLinks: Map<string, string> = new Map();
+    // F5: deleted-person replacements — a deleted deterministic person is
+    // recreated with a FRESH id on re-identify.
+    const replacementPersonIds: Map<string, string> = new Map();
     if (validOps.length > 0) {
+      // F8: the idempotency read now carries the payload hash — a replay
+      // with the SAME payload is a duplicate; a replay with a DIFFERENT
+      // payload is REJECTED before any statement is built.
       const { rows } = await TursoDatabaseManager.instance.execute({
-        sql: `SELECT op_id FROM identity_ops WHERE project_id = ? AND op_id IN (${validOps.map(() => "?").join(",")})`,
+        sql: `SELECT op_id, payload_hash FROM identity_ops WHERE project_id = ? AND op_id IN (${validOps.map(() => "?").join(",")})`,
         args: [projectId, ...validOps.map((entry) => entry.op.opId)],
       });
       alreadyProcessed = new Set(
         rows.map((row) => String((row as { op_id?: unknown }).op_id ?? "")),
       );
+      const processedHashes = new Map(
+        rows.map((row) => [
+          String((row as { op_id?: unknown }).op_id ?? ""),
+          String((row as { payload_hash?: unknown }).payload_hash ?? ""),
+        ]),
+      );
+      const conflicting = validOps.filter((entry) => {
+        const stored = processedHashes.get(entry.op.opId);
+        return stored !== undefined && stored !== entry.opHash;
+      });
+      for (const entry of conflicting) {
+        entry.status = "rejected";
+        entry.reason = "conflicting-payload";
+      }
+      validOps.splice(0, validOps.length, ...validOps.filter((e) => e.status !== "rejected"));
+      const opUserIds = validOps.map((entry) => entry.op.userId);
+      const opAnonIds = validOps.map((entry) => entry.op.anonymousId);
+      const [links, anonLinks, deleted] = await Promise.all([
+        TursoDatabaseManager.instance.execute({
+          sql: `SELECT user_id, person_id FROM external_identities WHERE project_id = ? AND user_id IN (${opUserIds.map(() => "?").join(",")})`,
+          args: [projectId, ...opUserIds],
+        }),
+        TursoDatabaseManager.instance.execute({
+          sql: `SELECT anonymous_id, person_id FROM anonymous_identities WHERE project_id = ? AND anonymous_id IN (${opAnonIds.map(() => "?").join(",")})`,
+          args: [projectId, ...opAnonIds],
+        }),
+        TursoDatabaseManager.instance.execute({
+          sql: `SELECT person_id FROM deleted_people WHERE project_id = ? AND person_id IN (${opUserIds.map(() => "?").join(",")})`,
+          args: [projectId, ...opUserIds.map((userId) => personIdForUser(projectId, userId))],
+        }),
+      ]);
+      externalLinks = new Map(
+        links.rows.map((row) => [
+          String((row as { user_id?: unknown }).user_id ?? ""),
+          String((row as { person_id?: unknown }).person_id ?? ""),
+        ]),
+      );
+      anonymousLinks = new Map(
+        anonLinks.rows.map((row) => [
+          String((row as { anonymous_id?: unknown }).anonymous_id ?? ""),
+          String((row as { person_id?: unknown }).person_id ?? ""),
+        ]),
+      );
+      for (const row of deleted.rows) {
+        const deletedId = String((row as { person_id?: unknown }).person_id ?? "");
+        replacementPersonIds.set(deletedId, `u_${randomUUID()}`);
+      }
+      // The ops in THIS request create their links — fold them into the
+      // resolution maps so same-request events resolve to the op's person
+      // instead of spawning a stale anonymous projection (F7).
+      for (const entry of validOps) {
+        const opPersonId = replacementPersonIds.get(personIdForUser(projectId, entry.op.userId)) ?? personIdForUser(projectId, entry.op.userId);
+        externalLinks.set(entry.op.userId, opPersonId);
+        anonymousLinks.set(entry.op.anonymousId, opPersonId);
+      }
     }
 
     if (validEvents.length > 0 || validOps.length > 0) {
@@ -222,6 +330,9 @@ export class IngestController {
           parsed.batch.sdk,
           validOps.map((entry) => entry.op),
           alreadyProcessed,
+          externalLinks,
+          anonymousLinks,
+          replacementPersonIds,
         );
       } catch (error) {
         // One database outcome per request: nothing was committed. Coarse
@@ -262,10 +373,16 @@ export class IngestController {
     );
 
     const identityResults: NonNullable<IngestResponseBody["identity"]> =
-      validOps.map(({ index, op }) => ({
+      validOps.map(({ index, op, status, reason }) => ({
         index,
         opId: op.opId,
-        status: alreadyProcessed.has(op.opId) ? ("duplicate" as const) : ("accepted" as const),
+        status:
+          status === "rejected"
+            ? ("rejected" as const)
+            : alreadyProcessed.has(op.opId)
+              ? ("duplicate" as const)
+              : ("accepted" as const),
+        ...(reason ? { reason } : {}),
       }));
 
     const counts = {

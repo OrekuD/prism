@@ -342,3 +342,240 @@ describe("RN-shaped fake runtime (task-10 §2)", () => {
     await prism.shutdown({ timeoutMs: 100 });
   });
 });
+
+describe("task-10 review fixes (F1-F4, F9-F11, F13)", () => {
+  it("F1: reset → reload never restores the previous user's identity", async () => {
+    const stored = new Map<string, string>();
+    const runtime = (): PrismRuntimeAdapter => {
+      const r: PrismRuntimeAdapter = {
+        ...fakeRuntime(),
+        storage: memoryStorage(stored),
+      };
+      r.transport.post = async () => {
+        throw new TypeError("offline");
+      };
+      return r;
+    };
+    // user A identifies + queues an offline event
+    const prismA = await ready({
+      runtime: runtime(),
+      collection: { initialState: "granted", anonymousPersistence: "session" },
+      queue: { maxRetries: 5 },
+    });
+    await prismA.identify("user-a");
+    prismA.track("offline_from_a");
+    await expect(prismA.flush()).rejects.toThrow(/batch delivery failed/);
+    await prismA.reset();
+    await prismA.shutdown({ timeoutMs: 50 });
+
+    // a fresh client on the same device must NOT adopt user A
+    const posted: string[] = [];
+    const prismB = await ready({
+      runtime: {
+        ...runtime(),
+        transport: {
+          post: async (_url, request) => {
+            posted.push(request.body);
+            return { status: 200, headers: {}, text: async () => "" };
+          },
+        },
+      },
+      collection: { initialState: "granted", anonymousPersistence: "session" },
+    });
+    expect(prismB.identity.userId).toBeNull(); // never inferred from the queue
+    prismB.track("anonymous_after_reset");
+    await prismB.flush();
+
+    // the new anonymous event never carries user A; the OLD queued event
+    // keeps its immutable identity context
+    const newEnvelope = JSON.parse(posted[posted.length - 1] ?? "{}") as {
+      events: Array<{ userId?: string; name: string }>;
+    };
+    for (const event of newEnvelope.events) {
+      if (event.name === "anonymous_after_reset") {
+        expect(event.userId).toBeUndefined();
+      }
+    }
+    await prismB.shutdown({ timeoutMs: 50 });
+  });
+
+  it("F2: identify-only operations are delivered without any event", async () => {
+    const posted: string[] = [];
+    const runtime = fakeRuntime();
+    runtime.transport.post = async (_url, request) => {
+      posted.push(request.body);
+      return { status: 200, headers: {}, text: async () => "" };
+    };
+    const prism = await ready({ runtime, collection: { initialState: "granted" } });
+    await prism.identify("user-only", { plan: "pro" });
+    await prism.flush();
+
+    expect(posted.length).toBe(1);
+    const envelope = JSON.parse(posted[0] ?? "{}") as {
+      identity: Array<{ userId: string }>;
+      events: unknown[];
+    };
+    expect(envelope.identity[0]?.userId).toBe("user-only");
+    expect(envelope.events).toEqual([]); // identity-only envelope
+    await prism.shutdown({ timeoutMs: 50 });
+  });
+
+  it("F3: an offline identify survives a reload and delivers", async () => {
+    const stored = new Map<string, string>();
+    const runtime = (): PrismRuntimeAdapter => {
+      const r: PrismRuntimeAdapter = {
+        ...fakeRuntime(),
+        storage: memoryStorage(stored),
+      };
+      r.transport.post = async () => {
+        throw new TypeError("offline");
+      };
+      return r;
+    };
+    const prismA = await ready({
+      runtime: runtime(),
+      collection: { initialState: "granted", anonymousPersistence: "session" },
+      queue: { maxRetries: 5 },
+    });
+    await prismA.identify("offline-user", { plan: "pro" });
+    await expect(prismA.flush()).rejects.toThrow(/batch delivery failed/);
+    await prismA.shutdown({ timeoutMs: 50 });
+
+    // reload: the persisted identify op is NOT quarantined and delivers
+    const posted: string[] = [];
+    const prismB = await ready({
+      runtime: {
+        ...runtime(),
+        transport: {
+          post: async (_url, request) => {
+            posted.push(request.body);
+            return { status: 200, headers: {}, text: async () => "" };
+          },
+        },
+      },
+      collection: { initialState: "granted", anonymousPersistence: "session" },
+    });
+    await prismB.flush();
+    const delivered = posted.some((body) =>
+      JSON.parse(body).identity?.some((op: { userId: string }) => op.userId === "offline-user"),
+    );
+    expect(delivered).toBe(true);
+    await prismB.shutdown({ timeoutMs: 50 });
+  });
+
+  it("F10: identify works under anonymousPersistence none (transient id)", async () => {
+    const posted: string[] = [];
+    const runtime = fakeRuntime();
+    runtime.transport.post = async (_url, request) => {
+      posted.push(request.body);
+      return { status: 200, headers: {}, text: async () => "" };
+    };
+    const prism = await ready({
+      runtime,
+      collection: { initialState: "granted", anonymousPersistence: "none" },
+    });
+    const result = await prism.identify("none-user", { plan: "pro" });
+    expect(result.status).toBe("queued");
+    if (result.status === "queued") {
+      expect(result.anonymousId.length).toBeGreaterThan(0);
+    }
+    await prism.flush();
+    const envelope = JSON.parse(posted[0] ?? "{}") as {
+      identity: Array<{ anonymousId: string }>;
+    };
+    expect(envelope.identity[0]?.anonymousId.length).toBeGreaterThan(0);
+    await prism.shutdown({ timeoutMs: 50 });
+  });
+
+  it("F9: a queue-full identify leaves live identity untouched", async () => {
+    const prism = await ready({
+      queue: { maxQueueEvents: 1, maxBatchEvents: 50 },
+      collection: { initialState: "granted" },
+    });
+    prism.track("fills_the_queue");
+    const before = prism.identity;
+    const result = await prism.identify("should-not-commit");
+    expect(result.status).toBe("dropped");
+    if (result.status === "dropped") expect(result.reason).toBe("queue-full");
+    expect(prism.identity.userId).toBe(before.userId);
+    expect(prism.identity.anonymousId).toBe(before.anonymousId);
+    await prism.shutdown({ timeoutMs: 50 });
+  });
+
+  it("F11: anonymous identity survives create → reset → reload canonically", async () => {
+    const stored = new Map<string, string>();
+    const runtime = (): PrismRuntimeAdapter => {
+      const r: PrismRuntimeAdapter = {
+        ...fakeRuntime(),
+        storage: memoryStorage(stored),
+      };
+      r.transport.post = async () => ({ status: 200, headers: {}, text: async () => "" });
+      return r;
+    };
+    const prismA = await ready({
+      runtime: runtime(),
+      collection: { initialState: "granted", anonymousPersistence: "persistent" },
+    });
+    const created = prismA.identity.anonymousId;
+    expect(created.length).toBeGreaterThan(0);
+    // stored in the canonical RAW encoding
+    const raw = stored.get("prism:anonymous_id");
+    expect(raw).toBe(created);
+    await prismA.reset();
+    const rotated = prismA.identity.anonymousId;
+    expect(rotated).not.toBe(created);
+    expect(stored.get("prism:anonymous_id")).toBe(rotated);
+    await prismA.shutdown({ timeoutMs: 50 });
+
+    const prismB = await ready({
+      runtime: runtime(),
+      collection: { initialState: "granted", anonymousPersistence: "persistent" },
+    });
+    expect(prismB.identity.anonymousId).toBe(rotated); // stable across reload
+    await prismB.shutdown({ timeoutMs: 50 });
+  });
+
+  it("F13: hostile persisted global properties are quarantined, not merged", async () => {
+    const stored = new Map<string, string>();
+    const runtime = (): PrismRuntimeAdapter => {
+      const r: PrismRuntimeAdapter = {
+        ...fakeRuntime(),
+        storage: memoryStorage(stored),
+      };
+      r.transport.post = async () => ({ status: 200, headers: {}, text: async () => "" });
+      return r;
+    };
+    const prismA = await ready({ runtime: runtime() });
+    await prismA.setGlobalProperty("safe", "value", "persistent");
+    await prismA.shutdown({ timeoutMs: 50 });
+
+    // tamper: dangerous key + oversized value
+    const keys = [...stored.keys()].find((k) => k.includes(":globals:persistent:"));
+    stored.set(
+      keys ?? "",
+      JSON.stringify({ safe: "value", __proto__: { evil: true }, huge: "x".repeat(10_001) }),
+    );
+
+    const posted: string[] = [];
+    const prismB = await ready({
+      runtime: {
+        ...runtime(),
+        transport: {
+          post: async (_url, request) => {
+            posted.push(request.body);
+            return { status: 200, headers: {}, text: async () => "" };
+          },
+        },
+      },
+    });
+    prismB.track("after_restore", {});
+    await prismB.flush();
+    const envelope = JSON.parse(posted[0] ?? "{}") as {
+      events: Array<{ properties: Record<string, unknown> }>;
+    };
+    const props = envelope.events[0]?.properties ?? {};
+    expect(props.safe).toBe("value"); // valid entries survive
+    expect(props.huge).toBeUndefined(); // oversized entry quarantined
+    await prismB.shutdown({ timeoutMs: 50 });
+  });
+});

@@ -696,17 +696,17 @@ Task 12 — core product insights:
 
 ### Tier 2 — important and widely used
 
-- [x] privacy-masked web session replay;
-- [x] opt-in web autocapture;
-- [x] heatmaps, rage clicks, and dead clicks;
-- [x] exception/error ingestion, grouping, releases, and source maps;
-- [x] browser RUM, Web Vitals, network timing, and manual spans;
-- [x] breadcrumbs correlated with sessions, errors, and replay;
-- [x] feature flags and remote configuration;
-- [x] A/B experiments;
-- [x] alerts and anomaly notifications;
-- [x] webhooks, destinations, and warehouse/object-storage export;
-- [x] shared reports and dashboard collaboration.
+- [ ] Deferred: privacy-masked web session replay;
+- [ ] Deferred: opt-in web autocapture;
+- [ ] Deferred: heatmaps, rage clicks, and dead clicks;
+- [ ] Deferred: exception/error ingestion, grouping, releases, and source maps;
+- [ ] Deferred: browser RUM, Web Vitals, network timing, and manual spans;
+- [ ] Deferred: breadcrumbs correlated with sessions, errors, and replay;
+- [ ] Deferred: feature flags and remote configuration;
+- [ ] Deferred: A/B experiments;
+- [ ] Deferred: alerts and anomaly notifications;
+- [ ] Deferred: webhooks, destinations, and warehouse/object-storage export;
+- [ ] Deferred: shared reports and dashboard collaboration.
 
 Tier 2 ordering is product analytics first: replay after Task 12, then errors
 and performance, then flags and experiments. Features may use optional services
@@ -715,44 +715,44 @@ the same time as the hosted capability.
 
 ### Tier 3 — nice to have later
 
-- [x] AI analytics assistant and natural-language queries;
-- [x] automated anomaly/root-cause explanations;
-- [x] predictive churn, conversion, and correlation analysis;
-- [x] surveys, feedback, and in-app messaging;
-- [x] workflow automation;
-- [x] SQL/notebook analytics;
-- [x] visual autocapture event builder;
-- [x] synthetic browser/API monitoring;
-- [x] infrastructure monitoring, full log management, and profiling;
-- [x] plugin/extension marketplace;
-- [x] customer-support inbox connected to profiles and sessions;
-- [x] native Swift, Kotlin, Flutter, Unity, and Unreal SDKs;
-- [x] enterprise SSO, SCIM, advanced audit, and residency controls.
+- [ ] Deferred: AI analytics assistant and natural-language queries;
+- [ ] Deferred: automated anomaly/root-cause explanations;
+- [ ] Deferred: predictive churn, conversion, and correlation analysis;
+- [ ] Deferred: surveys, feedback, and in-app messaging;
+- [ ] Deferred: workflow automation;
+- [ ] Deferred: SQL/notebook analytics;
+- [ ] Deferred: visual autocapture event builder;
+- [ ] Deferred: synthetic browser/API monitoring;
+- [ ] Deferred: infrastructure monitoring, full log management, and profiling;
+- [ ] Deferred: plugin/extension marketplace;
+- [ ] Deferred: customer-support inbox connected to profiles and sessions;
+- [ ] Deferred: native Swift, Kotlin, Flutter, Unity, and Unreal SDKs;
+- [ ] Deferred: enterprise SSO, SCIM, advanced audit, and residency controls.
 
 ## React Native roadmap constraints
 
 The first React Native release begins only after the web identity and core
 insight stages are stable. It must include:
 
-- [x] `@prism/react-native` backed by `@prism/core`;
-- [x] Expo and bare React Native compatibility;
-- [x] AsyncStorage identity and queue adapter;
-- [x] AppState foreground/background session lifecycle;
-- [x] offline delivery and reconnect flushing;
-- [x] manual `track`, `identify`, `reset`, consent, and global properties;
-- [x] opt-in React Navigation screen tracking;
-- [x] app version/build, OS, and privacy-safe device-class context;
-- [x] no advertising IDs, contact data, or exact location by default;
-- [x] bounded background-transition flush;
-- [x] packed/installed consumer fixtures and a real example application.
+- [ ] Deferred: `@prism/react-native` backed by `@prism/core`;
+- [ ] Deferred: Expo and bare React Native compatibility;
+- [ ] Deferred: AsyncStorage identity and queue adapter;
+- [ ] Deferred: AppState foreground/background session lifecycle;
+- [ ] Deferred: offline delivery and reconnect flushing;
+- [ ] Deferred: manual `track`, `identify`, `reset`, consent, and global properties;
+- [ ] Deferred: opt-in React Navigation screen tracking;
+- [ ] Deferred: app version/build, OS, and privacy-safe device-class context;
+- [ ] Deferred: no advertising IDs, contact data, or exact location by default;
+- [ ] Deferred: bounded background-transition flush;
+- [ ] Deferred: packed/installed consumer fixtures and a real example application.
 
 Later React Native work may add:
 
-- [x] JavaScript exceptions and native crash symbolication;
-- [x] startup, screen-render, network, freeze/ANR, and frame performance;
-- [x] privacy-masked native session replay;
-- [x] mobile feature flags and experiments;
-- [x] push/deep-link attribution and OTA release metadata.
+- [ ] Deferred: JavaScript exceptions and native crash symbolication;
+- [ ] Deferred: startup, screen-render, network, freeze/ANR, and frame performance;
+- [ ] Deferred: privacy-masked native session replay;
+- [ ] Deferred: mobile feature flags and experiments;
+- [ ] Deferred: push/deep-link attribution and OTA release metadata.
 ## Implementation review feedback — 2026-08-14
 
 Review target: Task 10 through commit `45469e4`.
@@ -1067,6 +1067,70 @@ change the implementation.
   - Keep only genuinely delivered Task 9/Task 10 items checked.
   - Treat this checklist as the source of truth: a task summary or passing gate
     cannot close features that are absent from code.
+
+
+### Review round 2 — F1–F16 closed (2026-08-15)
+
+All 16 findings resolved with regression tests; the completion summary
+below is updated only after the full re-run:
+
+- **F1**: identity state (user, anon id, logout generation) persisted
+  separately from the immutable queue; queue restoration never infers
+  live identity; reset awaits the signed-out state. Regression: user A
+  queues offline → reset → reload → anonymous event carries no A (core +
+  browser shared-device tests).
+- **F2**: identity-only v3 envelopes delivered end-to-end — core flush
+  sends `events: []`, server accepts (refine), limiter weights ops, the
+  reconcile accepts empty results. Cert step: identity-only flush through
+  the real core client creates person + traits server-side.
+- **F3**: persisted-entry validation branches by kind; identify entries
+  validate against the WireIdentifyOp schema (ids, limits, timestamp
+  window, traits) — offline identify survives reload and delivers.
+- **F4**: the v4 merge preserves other-owner segments + tombstones
+  (v3 handled as legacy).
+- **F5**: deletion resolves anonymous ids and removes sessions_v2 in the
+  same atomic batch + records a deleted_people tombstone; re-identify
+  with the same external ID creates a FRESH person id (late stale events
+  resolve to the deleted id and never attach).
+- **F6**: retention dependents are scoped per-person (project_id AND the
+  expired-person set) — one active + one expired person in the same
+  project: active links/traits survive (real-sqld test).
+- **F7**: event persons resolve against the durable links inside the
+  persistence flow (ops' own links folded in for same-request events);
+  last_seen_at advances per accepted non-duplicate event via the derived
+  batch.
+- **F8**: op claims carry canonical payload hashes; replays with the same
+  hash are duplicates, conflicting payloads are REJECTED before any
+  statement; in-batch duplicates rejected; explicit per-op
+  accepted/duplicate/rejected results.
+- **F9**: identify stages the transition — a queue-full identify leaves
+  live identity and later envelopes untouched (tested).
+- **F10**: identify awaits the durable queue write; a transient in-memory
+  anonymous ID satisfies the wire under `anonymousPersistence: "none"`
+  (parity test).
+- **F11**: canonical raw-string anonymous ID encoding; legacy JSON-wrapped
+  values tolerated on read; create/reset/conflict → reload stability
+  test.
+- **F12**: identity traits from direct HTTP clients are server-sanitized
+  (dangerous-key/JSON/deny-list policy).
+- **F13**: restored globals are revalidated + redacted; hostile entries
+  quarantined; setGlobalProperty throws a specific caller-validation
+  error and reserves "storage-failure" for real adapter failures.
+- **F14**: person detail returns real project-scoped counts; activity
+  limits clamped to a documented integer range; export is EXHAUSTIVE via
+  internal pagination.
+- **F15**: totals count KNOWN people (active external identities);
+  anonymous subjects reported separately — never double-counted.
+- **F16**: 40 future-roadmap checkboxes (Task 11/12, Tier 2/3, React
+  Native) restored to `Deferred`.
+
+Re-review gate: regression tests added for every finding (real sqld for
+F5/F6/F8 + retention + deletion); browser shared-device reset/reload test;
+certification extended to identity-only delivery (34/34 PASS); full gates
+rerun — test 6/6, typecheck 9/9, lint 11/11, build 9/9, audit clean,
+docs drift OK; core 142, browser 30, react 13, analytics 98+3 opt-in,
+api 125+5 opt-in, web 30.
+
 
 ### Re-review gate
 

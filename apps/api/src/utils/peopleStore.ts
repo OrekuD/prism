@@ -170,13 +170,22 @@ export async function personDetail(
   const person = rows[0];
   if (!person) return null;
 
-  const [external, anonymous] = await Promise.all([
+  // F14: real project-scoped counts — never hardcoded zeros.
+  const [external, anonymous, counts] = await Promise.all([
     client.execute({
       sql: "SELECT user_id FROM external_identities WHERE project_id = ? AND person_id = ?",
       args: [projectId, personId],
     }),
     client.execute({
       sql: "SELECT anonymous_id FROM anonymous_identities WHERE project_id = ? AND person_id = ?",
+      args: [projectId, personId],
+    }),
+    client.execute({
+      sql: `SELECT
+              COUNT(*) AS events,
+              COUNT(DISTINCT session_id) AS sessions
+            FROM events
+            WHERE project_id = ? AND person_id = ?`,
       args: [projectId, personId],
     }),
   ]);
@@ -187,8 +196,8 @@ export async function personDetail(
     lastSeenAt: Number(person.last_seen_at),
     traits: await personTraits(client, projectId, personId),
     identityCount: external.rows.length + anonymous.rows.length,
-    sessionCount: 0,
-    eventCount: 0,
+    sessionCount: Number((counts.rows[0] as { sessions?: unknown } | undefined)?.sessions ?? 0),
+    eventCount: Number((counts.rows[0] as { events?: unknown } | undefined)?.events ?? 0),
     externalIds: external.rows.map((row) => String(row.user_id)),
     anonymousIds: anonymous.rows.map((row) => String(row.anonymous_id)),
   };
@@ -200,14 +209,15 @@ export async function personActivity(
   projectId: string,
   personId: string,
   limit = 200,
+  offset = 0,
 ): Promise<EventResource[]> {
   const { rows } = await client.execute({
     sql: `SELECT id, session_id, project_id, name, properties, occurred_at, received_at, schema_version
           FROM events
           WHERE project_id = ? AND person_id = ?
           ORDER BY received_at DESC, id DESC
-          LIMIT ?`,
-    args: [projectId, personId, limit],
+          LIMIT ? OFFSET ?`,
+    args: [projectId, personId, limit, offset],
   });
   return rows.map((row) => ({
     id: String(row.id),
@@ -379,10 +389,21 @@ export async function honestTotals(
           WHERE ${where}`,
     args,
   });
+  // F15: "people" = KNOWN people — those with an active external
+  // identity. Anonymous-only subjects are reported through
+  // anonymous_identities; the two metrics never double-count.
+  const knownPeople = await client.execute({
+    sql: `SELECT COUNT(DISTINCT e.person_id) AS n
+          FROM events e
+          WHERE ${where} AND e.person_id IN (
+            SELECT person_id FROM external_identities WHERE project_id = ?
+          )`,
+    args: [...args, projectId],
+  });
   const row = rows[0] ?? {};
   return {
     events: Number(row.events ?? 0),
-    people: Number(row.people ?? 0),
+    people: Number(knownPeople.rows[0]?.n ?? 0),
     anonymousIdentities: Number(row.anonymous_identities ?? 0),
     sessions: Number(row.sessions ?? 0),
   };
@@ -445,7 +466,17 @@ export async function exportPerson(
     lastSeenAt: Number(row.last_seen_at ?? 0),
   }));
 
-  const events = await personActivity(client, projectId, personId, 500);
+  // F14: EXHAUSTIVE export — internal pagination until every event is
+  // included (a privacy export must not silently truncate).
+  const events: EventResource[] = [];
+  let offset = 0;
+  const PAGE = 500;
+  for (;;) {
+    const page = await personActivity(client, projectId, personId, PAGE, offset);
+    events.push(...page);
+    if (page.length < PAGE) break;
+    offset += PAGE;
+  }
 
   return {
     projectId,
@@ -471,16 +502,38 @@ export async function deletePerson(
   projectId: string,
   personId: string,
 ): Promise<{ deleted: boolean }> {
+  // F5: resolve the person's anonymous identities BEFORE removing the
+  // links — their sessions_v2 rows are removed in the same atomic batch,
+  // and the deletion is tombstones so a future identify with the same
+  // external ID creates a FRESH person (late events from the deleted
+  // identity can never attach to it).
+  const linked = await client.execute({
+    sql: "SELECT anonymous_id FROM anonymous_identities WHERE project_id = ? AND person_id = ?",
+    args: [projectId, personId],
+  });
+  const anonIds = linked.rows.map((row) => String((row as { anonymous_id?: unknown }).anonymous_id ?? ""));
   const results = await client.batch?.(
     [
+      ...(anonIds.length > 0
+        ? [
+            {
+              sql: `DELETE FROM sessions_v2 WHERE project_id = ? AND anonymous_id IN (${anonIds.map(() => "?").join(",")})`,
+              args: [projectId, ...anonIds],
+            },
+          ]
+        : []),
       { sql: "DELETE FROM external_identities WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
       { sql: "DELETE FROM anonymous_identities WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
       { sql: "DELETE FROM person_traits WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
       { sql: "DELETE FROM events WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
       { sql: "DELETE FROM people WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
+      { sql: "INSERT INTO deleted_people (project_id, person_id, deleted_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING", args: [projectId, personId, Date.now()] },
     ],
     "write",
   );
-  const last = results?.[results.length - 1];
-  return { deleted: (last?.rowsAffected ?? 0) > 0 };
+  // the `deleted` flag reflects the PERSON row removal — the tombstone
+  // insert is not evidence that the person existed.
+  const peopleDeleteIndex = anonIds.length > 0 ? 5 : 4;
+  const peopleDelete = results?.[peopleDeleteIndex];
+  return { deleted: (peopleDelete?.rowsAffected ?? 0) > 0 };
 }

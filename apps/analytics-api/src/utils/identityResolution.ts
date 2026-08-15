@@ -35,6 +35,44 @@ export function eventPersonId(
   return null;
 }
 
+/**
+ * F7: resolve an event's person against the DURABLE identity links. The
+ * controller pre-reads the link maps inside the persistence flow:
+ * an explicit user link wins, then an active anonymous link, then a fresh
+ * anonymous person. Events carrying a userId whose person does not exist
+ * yet resolve deterministically (u_ hash — the identify op creates it).
+ */
+export function resolveEventPerson(
+  projectId: string,
+  userId: string | undefined,
+  anonymousId: string | undefined,
+  externalLinks: ReadonlyMap<string, string>,
+  anonymousLinks: ReadonlyMap<string, string>,
+): string | null {
+  if (userId) {
+    return externalLinks.get(userId) ?? personIdForUser(projectId, userId);
+  }
+  if (anonymousId) {
+    return anonymousLinks.get(anonymousId) ?? personIdForAnonymous(projectId, anonymousId);
+  }
+  return null;
+}
+
+/** Canonical payload hash for identity-op idempotency (F8). */
+export function identityOpHash(op: {
+  opId: string;
+  userId: string;
+  anonymousId: string;
+  traits?: Record<string, unknown>;
+  unset?: readonly string[];
+  occurredAt: number;
+}): string {
+  return createHash("sha256")
+    .update(JSON.stringify({ ...op, opId: undefined }))
+    .digest("hex")
+    .slice(0, 32);
+}
+
 export interface IdentityOpStatement {
   sql: string;
   args: unknown[];
@@ -54,10 +92,29 @@ export function buildIdentityStatements(
   projectId: string,
   op: { opId: string; userId: string; anonymousId: string; traits?: Record<string, unknown>; unset?: readonly string[] },
   receivedAt: number,
+  replacementPersonIds?: ReadonlyMap<string, string>,
 ): IdentityOpStatement[] {
-  const knownPersonId = personIdForUser(projectId, op.userId);
+  // F5: a DELETED person's deterministic id is replaced with a fresh id on
+  // re-identify — late events from the deleted identity (which resolve to
+  // the old deterministic id) can never attach to the new person.
+  const deterministic = personIdForUser(projectId, op.userId);
+  const knownPersonId = replacementPersonIds?.get(deterministic) ?? deterministic;
   const anonPersonId = personIdForAnonymous(projectId, op.anonymousId);
+
+  // F8: the claim record is written with the canonical payload hash FIRST
+  // (same transaction as the mutations). Every mutation is idempotent:
+  // links are first-wins, traits upsert to the same values for the same
+  // payload, and the person row converges. Conflicting-payload replays
+  // are detected by the controller's hash comparison and REJECTED before
+  // any statement is built.
   const statements: IdentityOpStatement[] = [
+    {
+      sql: `INSERT INTO identity_ops (project_id, op_id, person_id, user_id, processed_at, payload_hash)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT (project_id, op_id) DO NOTHING`,
+      args: [projectId, op.opId, knownPersonId, op.userId, receivedAt, identityOpHash({ ...op, occurredAt: receivedAt })],
+    },
+    // The person row is shared per external user — idempotent upsert.
     {
       sql: `INSERT INTO people (person_id, project_id, first_seen_at, last_seen_at)
             VALUES (?, ?, ?, ?)
@@ -105,17 +162,10 @@ export function buildIdentityStatements(
     });
   }
 
-  statements.push({
-    sql: `INSERT INTO identity_ops (project_id, op_id, person_id, user_id, processed_at)
-          VALUES (?, ?, ?, ?, ?)
-          ON CONFLICT (project_id, op_id) DO NOTHING`,
-    args: [projectId, op.opId, knownPersonId, op.userId, receivedAt],
-  });
-
   return statements;
 }
 
-/** Person id for the response/diagnostics — never the raw user id. */
+
 export function personLabel(projectId: string, userId: string): string {
   return personIdForUser(projectId, userId);
 }
