@@ -241,18 +241,32 @@ export class IngestController {
       validOps.push({
         index: validOps.length,
         op: sanitizedOp,
-        opHash: identityOpHash({ ...sanitizedOp, occurredAt: sanitizedOp.occurredAt }),
+        opHash: identityOpHash(sanitizedOp),
       });
     }
     let alreadyProcessed: ReadonlySet<string> = new Set();
-    // F7: durable link maps — resolved inside the persistence flow so
-    // linked anonymous identities never create separate projections.
+    // F7 + R3-F3: durable link maps are loaded for EVERY distinct user and
+    // anonymous ID in the batch — events and identity operations alike —
+    // so a later event-only request with an already-linked anonymous ID
+    // resolves to the same person.
     let externalLinks: Map<string, string> = new Map();
     let anonymousLinks: Map<string, string> = new Map();
-    // F5: deleted-person replacements — a deleted deterministic person is
-    // recreated with a FRESH id on re-identify.
+    // F5 + R3-F6: deleted-person replacements — a deleted deterministic
+    // person is recreated with a FRESH id, but ONLY when no ACTIVE link
+    // exists yet (active links win over tombstones so repeat identifies
+    // never fragment a new user).
     const replacementPersonIds: Map<string, string> = new Map();
-    if (validOps.length > 0) {
+    const batchUserIds = new Set<string>();
+    const batchAnonIds = new Set<string>();
+    for (const entry of validOps) {
+      batchUserIds.add(entry.op.userId);
+      batchAnonIds.add(entry.op.anonymousId);
+    }
+    for (const entry of validEvents) {
+      if (entry.event.userId) batchUserIds.add(entry.event.userId);
+      if (entry.event.anonymousId) batchAnonIds.add(entry.event.anonymousId);
+    }
+    if (batchUserIds.size > 0 || batchAnonIds.size > 0 || validOps.length > 0) {
       // F8: the idempotency read now carries the payload hash — a replay
       // with the SAME payload is a duplicate; a replay with a DIFFERENT
       // payload is REJECTED before any statement is built.
@@ -269,17 +283,17 @@ export class IngestController {
           String((row as { payload_hash?: unknown }).payload_hash ?? ""),
         ]),
       );
-      const conflicting = validOps.filter((entry) => {
+      // R3-F5: conflicting entries keep their rejected status IN the
+      // results — they are never spliced out of validOps.
+      for (const entry of validOps) {
         const stored = processedHashes.get(entry.op.opId);
-        return stored !== undefined && stored !== entry.opHash;
-      });
-      for (const entry of conflicting) {
-        entry.status = "rejected";
-        entry.reason = "conflicting-payload";
+        if (stored !== undefined && stored !== entry.opHash) {
+          entry.status = "rejected";
+          entry.reason = "conflicting-payload";
+        }
       }
-      validOps.splice(0, validOps.length, ...validOps.filter((e) => e.status !== "rejected"));
-      const opUserIds = validOps.map((entry) => entry.op.userId);
-      const opAnonIds = validOps.map((entry) => entry.op.anonymousId);
+      const opUserIds = [...batchUserIds];
+      const opAnonIds = [...batchAnonIds];
       const [links, anonLinks, deleted] = await Promise.all([
         TursoDatabaseManager.instance.execute({
           sql: `SELECT user_id, person_id FROM external_identities WHERE project_id = ? AND user_id IN (${opUserIds.map(() => "?").join(",")})`,
@@ -306,15 +320,29 @@ export class IngestController {
           String((row as { person_id?: unknown }).person_id ?? ""),
         ]),
       );
+      // R3-F6: the tombstone yields a fresh id ONLY when no ACTIVE
+      // external link exists for the user yet — repeat identifies after
+      // the first fresh link converge on that link instead of
+      // fragmenting (active links win over tombstones).
+      const activeLinkedPersons = new Set(externalLinks.values());
       for (const row of deleted.rows) {
         const deletedId = String((row as { person_id?: unknown }).person_id ?? "");
+        const userOf = [...batchUserIds].find(
+          (userId) => personIdForUser(projectId, userId) === deletedId,
+        );
+        const active = userOf ? externalLinks.get(userOf) : undefined;
+        if (active && activeLinkedPersons.has(active)) {
+          continue; // the user already has an active fresh link
+        }
         replacementPersonIds.set(deletedId, `u_${randomUUID()}`);
       }
       // The ops in THIS request create their links — fold them into the
       // resolution maps so same-request events resolve to the op's person
-      // instead of spawning a stale anonymous projection (F7).
+      // instead of spawning a stale anonymous projection (F7). Existing
+      // active links are never overwritten (R3-F6).
       for (const entry of validOps) {
-        const opPersonId = replacementPersonIds.get(personIdForUser(projectId, entry.op.userId)) ?? personIdForUser(projectId, entry.op.userId);
+        const deterministic = personIdForUser(projectId, entry.op.userId);
+        const opPersonId = externalLinks.get(entry.op.userId) ?? replacementPersonIds.get(deterministic) ?? deterministic;
         externalLinks.set(entry.op.userId, opPersonId);
         anonymousLinks.set(entry.op.anonymousId, opPersonId);
       }

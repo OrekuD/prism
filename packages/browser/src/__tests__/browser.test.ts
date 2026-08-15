@@ -643,3 +643,50 @@ describe("shared-device reset/reload (task-10 review F1)", () => {
     await prismB.shutdown({ timeoutMs: 100 });
   });
 });
+
+describe("round-3 review fixes (R3-F2 browser routing)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    window.sessionStorage.clear();
+    window.localStorage.clear();
+  });
+
+  it("session-scoped identity survives a reload in sessionStorage but not a launch", async () => {
+    const posted: string[] = [];
+    installFetchMock(async (_url, init) => {
+      posted.push(String(init.body));
+      return okResponse();
+    });
+    const prism = await createBrowserClient(BASE);
+    await prism.identify("session-user");
+    await prism.shutdown({ timeoutMs: 50 });
+
+    // session identity state lives in sessionStorage, NOT localStorage
+    const sessionKeys = Object.keys(window.sessionStorage).filter((k) =>
+      k.includes("prism:identity:session:"),
+    );
+    expect(sessionKeys).toHaveLength(1);
+    expect(
+      Object.keys(window.localStorage).some((k) => k.includes("prism:identity:")),
+    ).toBe(false);
+
+    // a reload (fresh client, same session storage) restores the identity
+    const prism2 = await createBrowserClient(BASE);
+    expect(prism2.identity.userId).toBe("session-user");
+    await prism2.shutdown({ timeoutMs: 50 });
+  });
+
+  it("persistent-scope identity lives in localStorage", async () => {
+    const prism = await createBrowserClient({
+      ...BASE,
+      collection: { initialState: "granted", anonymousPersistence: "persistent" },
+    });
+    await prism.identify("persistent-user");
+    await prism.shutdown({ timeoutMs: 50 });
+
+    const persistentKeys = Object.keys(window.localStorage).filter((k) =>
+      k.includes("prism:identity:persistent:"),
+    );
+    expect(persistentKeys).toHaveLength(1);
+  });
+});

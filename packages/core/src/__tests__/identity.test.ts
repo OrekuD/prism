@@ -579,3 +579,128 @@ describe("task-10 review fixes (F1-F4, F9-F11, F13)", () => {
     await prismB.shutdown({ timeoutMs: 50 });
   });
 });
+
+describe("round-3 review fixes (R3-F1, R3-F2)", () => {
+  it("R3-F1: consent denial persists signed-out identity; re-grant restores nothing", async () => {
+    const stored = new Map<string, string>();
+    const runtime = (): PrismRuntimeAdapter => {
+      const r: PrismRuntimeAdapter = {
+        ...fakeRuntime(),
+        storage: memoryStorage(stored),
+      };
+      r.transport.post = async () => ({ status: 200, headers: {}, text: async () => "" });
+      return r;
+    };
+    const prism = await ready({
+      runtime: runtime(),
+      collection: { initialState: "granted", anonymousPersistence: "persistent" },
+    });
+    await prism.identify("user-withdraw");
+    expect(prism.identity.userId).toBe("user-withdraw");
+
+    await prism.setCollectionState("denied");
+    expect(prism.identity.userId).toBeNull();
+
+    // re-grant on the SAME client must not restore the old user
+    await prism.setCollectionState("granted");
+    expect(prism.identity.userId).toBeNull();
+    await prism.shutdown({ timeoutMs: 50 });
+
+    // a FRESH client on the same storage must not restore it either
+    const prism2 = await ready({
+      runtime: runtime(),
+      collection: { initialState: "granted", anonymousPersistence: "persistent" },
+    });
+    expect(prism2.identity.userId).toBeNull();
+    await prism2.shutdown({ timeoutMs: 50 });
+  });
+
+  it("R3-F2: identity state is policy-scoped — none never persists, session uses its namespace, persistent is durable", async () => {
+    const stored = new Map<string, string>();
+    const runtime = (): PrismRuntimeAdapter => {
+      const r: PrismRuntimeAdapter = {
+        ...fakeRuntime(),
+        storage: memoryStorage(stored),
+      };
+      r.transport.post = async () => ({ status: 200, headers: {}, text: async () => "" });
+      return r;
+    };
+    // "none": identify() persists NO identity state
+    const noneClient = await ready({
+      runtime: runtime(),
+      collection: { initialState: "granted", anonymousPersistence: "none" },
+    });
+    await noneClient.identify("none-user");
+    const noneKeys = [...stored.keys()].filter((k) => k.includes("prism:identity:"));
+    expect(noneKeys).toHaveLength(0);
+    await noneClient.shutdown({ timeoutMs: 50 });
+
+    // "persistent": durable identity state exists under the persistent key
+    const persistentClient = await ready({
+      runtime: runtime(),
+      collection: { initialState: "granted", anonymousPersistence: "persistent" },
+    });
+    await persistentClient.identify("persistent-user");
+    const persistentKeys = [...stored.keys()].filter((k) =>
+      k.includes("prism:identity:persistent:"),
+    );
+    expect(persistentKeys).toHaveLength(1);
+    const saved = JSON.parse(stored.get(persistentKeys[0] ?? "") ?? "{}") as {
+      userId: string | null;
+    };
+    expect(saved.userId).toBe("persistent-user");
+    await persistentClient.shutdown({ timeoutMs: 50 });
+
+    // "session": identity state exists under the session key
+    const sessionClient = await ready({
+      runtime: runtime(),
+      collection: { initialState: "granted", anonymousPersistence: "session" },
+    });
+    await sessionClient.identify("session-user");
+    const sessionKeys = [...stored.keys()].filter((k) =>
+      k.includes("prism:identity:session:"),
+    );
+    expect(sessionKeys).toHaveLength(1);
+    const sessionState = JSON.parse(stored.get(sessionKeys[0] ?? "") ?? "{}") as {
+      userId: string | null;
+    };
+    expect(sessionState.userId).toBe("session-user");
+    await sessionClient.shutdown({ timeoutMs: 50 });
+  });
+});
+
+describe("round-3 review fixes (R3-F5 core reconciliation)", () => {
+  it("a rejected identity op is dropped with a diagnostic, not silently accepted", async () => {
+    const posted: string[] = [];
+    const runtime = fakeRuntime();
+    runtime.transport.post = async (_url, request) => {
+      posted.push(request.body);
+      const envelope = JSON.parse(request.body) as { identity?: Array<{ opId: string }> };
+      return {
+        status: 200,
+        headers: {},
+        text: async () =>
+          JSON.stringify({
+            ok: true,
+            results: [],
+            identity: (envelope.identity ?? []).map((op, index) => ({
+              index,
+              opId: op.opId,
+              status: "rejected",
+              reason: "conflicting-payload",
+            })),
+          }),
+      };
+    };
+    const codes: string[] = [];
+    const prism = await ready({ runtime, collection: { initialState: "granted" } });
+    prism.onDiagnostic((d) => codes.push(d.code));
+    await prism.identify("user-rejected", { plan: "pro" });
+    await prism.flush();
+    await prism.flush(); // second flush must NOT retry the rejected op
+
+    expect(posted.length).toBe(1); // the rejected op left the queue
+    expect(codes).toContain("identify_rejected");
+    await prism.shutdown({ timeoutMs: 50 });
+  });
+});

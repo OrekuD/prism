@@ -71,6 +71,7 @@ beforeAll(async () => {
       userId: "user-1",
       anonymousId: "anon-1",
       traits: { plan: "pro", company: "acme" },
+      occurredAt: now,
     }, now).map((s) => ({ sql: s.sql, args: s.args as never })) as never,
     "write",
   );

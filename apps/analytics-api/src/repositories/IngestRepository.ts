@@ -153,8 +153,26 @@ export class IngestRepository {
         identityStatements.push(statement as InStatement);
       }
     }
+    // R3-F7: person upserts join the SAME atomic write boundary as the
+    // accepted events, keyed by the ORIGINAL event indexes — last_seen_at
+    // can never land on the wrong person, and a second-stage failure
+    // cannot silently drop the projection update.
+    const personUpserts: InStatement[] = events
+      .map((event, index) => ({ event, personId: resolvedPersons[index] }))
+      .filter(
+        (entry): entry is { event: ValidatedEvent; personId: string } =>
+          entry.personId !== null && entry.personId !== undefined,
+      )
+      .map(({ event, personId }) => ({
+        sql: `INSERT INTO people (person_id, project_id, first_seen_at, last_seen_at)
+              VALUES (?, ?, ?, ?)
+              ON CONFLICT (project_id, person_id)
+              DO UPDATE SET last_seen_at = excluded.last_seen_at`,
+        args: [personId, projectId, event.occurredAt, receivedAt],
+      }));
+
     const insertResults = await this.client.batch(
-      [...insertStatements, ...identityStatements],
+      [...insertStatements, ...identityStatements, ...personUpserts],
       "write",
     );
 
@@ -170,30 +188,10 @@ export class IngestRepository {
       .filter((outcome) => !outcome.duplicate)
       .map((outcome) => sessionStatement(outcome.event, projectId, receivedAt))
       .filter((statement): statement is InStatement => statement !== null);
-    const personUpserts: InStatement[] = outcomes
-      .filter((outcome) => !outcome.duplicate)
-      .map((outcome, outcomeIndex) => ({
-        event: outcome.event,
-        personId: resolvedPersons[outcomeIndex],
-      }))
-      .filter(
-        (entry): entry is { event: ValidatedEvent; personId: string } =>
-          entry.personId !== null && entry.personId !== undefined,
-      )
-      .map(({ event, personId }) => ({
-        sql: `INSERT INTO people (person_id, project_id, first_seen_at, last_seen_at)
-              VALUES (?, ?, ?, ?)
-              ON CONFLICT (project_id, person_id)
-              DO UPDATE SET last_seen_at = excluded.last_seen_at`,
-        args: [personId, projectId, event.occurredAt, receivedAt],
-      }));
 
-    if (sessionStatements.length > 0 || personUpserts.length > 0) {
+    if (sessionStatements.length > 0) {
       try {
-        await this.client.batch(
-          [...sessionStatements, ...personUpserts],
-          "write",
-        );
+        await this.client.batch(sessionStatements, "write");
       } catch (error) {
         // The events are committed — the response stays honest
         // ("accepted" is true for the events). The derived session state

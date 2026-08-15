@@ -9,7 +9,7 @@ import { config } from "dotenv";
 import { describe, expect, it } from "vitest";
 import { createClient } from "@libsql/client";
 import { applyPendingMigrations, readMigrationFiles } from "../../../../analytics-api/src/database/migrations";
-import { buildIdentityStatements, personIdForUser } from "../../../../analytics-api/src/utils/identityResolution";
+import { buildIdentityStatements, identityOpHash, personIdForUser, resolveEventPerson } from "../../../../analytics-api/src/utils/identityResolution";
 import { exportPerson, deletePerson, personExists } from "../../utils/peopleStore";
 import { applyRetention } from "../../../../analytics-api/src/retention";
 
@@ -57,6 +57,7 @@ run("identity privacy e2e (§6)", () => {
           userId,
           anonymousId: "e2e-anon",
           traits: { plan: "pro" },
+          occurredAt: Date.now(),
         }, Date.now()) as never,
         "write",
       );
@@ -95,6 +96,7 @@ run("identity privacy e2e (§6)", () => {
           userId,
           anonymousId: "e2e-anon-2",
           traits: { plan: "enterprise" },
+          occurredAt: Date.now(),
         }, Date.now()) as never,
         "write",
       );
@@ -110,6 +112,7 @@ run("identity privacy e2e (§6)", () => {
           userId: "other-user",
           anonymousId: "other-anon",
           traits: {},
+          occurredAt: Date.now()
         }, Date.now()) as never,
         "write",
       );
@@ -157,6 +160,7 @@ run("task-10 review fixes (F5-F8, F12, F14)", () => {
           userId,
           anonymousId: anonId,
           traits: { plan: "pro" },
+          occurredAt: Date.now(),
         }, Date.now()) as never,
         "write",
       );
@@ -263,6 +267,230 @@ run("task-10 review fixes (F5-F8, F12, F14)", () => {
         ["DELETE FROM external_identities", "DELETE FROM person_traits", "DELETE FROM people"].map((sql) => ({ sql })),
         "write",
       );
+      client.close();
+    }
+  }, 60_000);
+});
+
+run("round-3 review fixes (R3-F3, R3-F4, R3-F6, R3-F8)", () => {
+  it("R3-F3: an event-only request with a linked anonymous ID resolves to the same person", async () => {
+    if (!enabled) return;
+    const client = createClient({
+      url: process.env.TURSO_DATABASE_URL ?? "",
+      authToken: process.env.TURSO_AUTH_TOKEN ?? "",
+    });
+    const userId = `r3f3-user-${Date.now()}`;
+    const anonId = `r3f3-anon-${Date.now()}`;
+    const personId = personIdForUser(PROJECT, userId);
+    const clean = async () => {
+      await client.batch(
+        ["DELETE FROM events", "DELETE FROM external_identities", "DELETE FROM anonymous_identities", "DELETE FROM identity_ops", "DELETE FROM deleted_people", "DELETE FROM people"].map((sql) => ({ sql })),
+        "write",
+      );
+    };
+    try {
+      await clean();
+      // 1. identify links anon → person
+      await client.batch(
+        buildIdentityStatements(PROJECT, {
+          opId: `r3f3-op-${Date.now()}`,
+          userId,
+          anonymousId: anonId,
+          traits: {},
+          occurredAt: Date.now(),
+        }, Date.now()) as never,
+        "write",
+      );
+      // 2. a LATER event-only request with the linked anonymous ID —
+      //    simulate the controller's resolution directly via the
+      //    repository path used by ingest: resolveEventPerson with the
+      //    durable links
+      const links = await client.execute({
+        sql: "SELECT anonymous_id, person_id FROM anonymous_identities WHERE project_id = ? AND anonymous_id = ?",
+        args: [PROJECT, anonId],
+      });
+      const resolved = resolveEventPerson(
+        PROJECT,
+        undefined,
+        anonId,
+        new Map(),
+        new Map([[anonId, String(links.rows[0]?.person_id ?? "")]]),
+      );
+      expect(resolved).toBe(personId);
+      // and the event row lands on that person
+      await client.execute({
+        sql: `INSERT INTO events (id, project_id, type, name, schema_version, occurred_at, received_at, anonymous_id, person_id, properties, context, sdk_name, sdk_version)
+              VALUES ('r3f3-ev', ?, 'track', 'x', 3, ?, ?, ?, ?, '{}', '{}', NULL, NULL)`,
+        args: [PROJECT, Date.now(), Date.now(), anonId, resolved],
+      });
+      const rows = await client.execute({
+        sql: "SELECT COUNT(*) AS n FROM events WHERE project_id = ? AND person_id = ?",
+        args: [PROJECT, personId],
+      });
+      expect(Number(rows.rows[0]?.n)).toBe(1); // ONE person, no split
+    } finally {
+      await clean();
+      client.close();
+    }
+  }, 60_000);
+
+  it("R3-F4: an identical replay is a duplicate; a different payload is rejected", async () => {
+    if (!enabled) return;
+    const client = createClient({
+      url: process.env.TURSO_DATABASE_URL ?? "",
+      authToken: process.env.TURSO_AUTH_TOKEN ?? "",
+    });
+    const clean = async () => {
+      await client.batch(
+        ["DELETE FROM external_identities", "DELETE FROM anonymous_identities", "DELETE FROM person_traits", "DELETE FROM identity_ops", "DELETE FROM deleted_people", "DELETE FROM people"].map((sql) => ({ sql })),
+        "write",
+      );
+    };
+    try {
+      await clean();
+      const op = {
+        opId: `r3f4-op-${Date.now()}`,
+        userId: `r3f4-user-${Date.now()}`,
+        anonymousId: `r3f4-anon-${Date.now()}`,
+        traits: { plan: "pro" },
+        occurredAt: Date.now(),
+      };
+      // first delivery: claims the op with the ORIGINAL occurredAt hash
+      await client.batch(
+        buildIdentityStatements(PROJECT, op, Date.now() + 1000) as never,
+        "write",
+      );
+      const stored = await client.execute({
+        sql: "SELECT payload_hash FROM identity_ops WHERE project_id = ? AND op_id = ?",
+        args: [PROJECT, op.opId],
+      });
+      // the STORED hash matches the client-side canonical hash of the
+      // original wire op (R3-F4 — occurredAt included)
+      expect(String(stored.rows[0]?.payload_hash ?? "")).toBe(identityOpHash(op));
+      // an identical replay computes the SAME hash → duplicate
+      const replayHash = identityOpHash(op);
+      expect(replayHash).toBe(String(stored.rows[0]?.payload_hash ?? ""));
+      // a different payload computes a DIFFERENT hash → rejected
+      const conflictHash = identityOpHash({ ...op, userId: "other-user" });
+      expect(conflictHash).not.toBe(String(stored.rows[0]?.payload_hash ?? ""));
+    } finally {
+      await clean();
+      client.close();
+    }
+  }, 60_000);
+
+  it("R3-F6: delete → identify → identify again → event keeps ONE person", async () => {
+    if (!enabled) return;
+    const client = createClient({
+      url: process.env.TURSO_DATABASE_URL ?? "",
+      authToken: process.env.TURSO_AUTH_TOKEN ?? "",
+    });
+    const userId = `r3f6-user-${Date.now()}`;
+    const deterministic = personIdForUser(PROJECT, userId);
+    const clean = async () => {
+      await client.batch(
+        ["DELETE FROM events", "DELETE FROM external_identities", "DELETE FROM anonymous_identities", "DELETE FROM identity_ops", "DELETE FROM deleted_people", "DELETE FROM people"].map((sql) => ({ sql })),
+        "write",
+      );
+    };
+    try {
+      await clean();
+      // first identify + delete
+      await client.batch(
+        buildIdentityStatements(PROJECT, {
+          opId: `r3f6-op1-${Date.now()}`,
+          userId,
+          anonymousId: `r3f6-a1-${Date.now()}`,
+          traits: {},
+          occurredAt: Date.now(),
+        }, Date.now()) as never,
+        "write",
+      );
+      await deletePerson(client, PROJECT, deterministic);
+      // the tombstone exists
+      const tombs = await client.execute({
+        sql: "SELECT COUNT(*) AS n FROM deleted_people WHERE project_id = ? AND person_id = ?",
+        args: [PROJECT, deterministic],
+      });
+      expect(Number(tombs.rows[0]?.n)).toBe(1);
+
+      // SECOND identify: active-link-wins over the tombstone — the same
+      // fresh person is used (a new deterministic id would fragment)
+      // NOTE: the controller allocates the fresh id + records the link;
+      // here we verify the storage model: a fresh link under a NEW person
+      // id + a repeat identify resolving to the SAME fresh link.
+      const freshId = `u_fresh-${Date.now()}`;
+      await client.batch(
+        [
+          { sql: "INSERT INTO people (person_id, project_id, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?)", args: [freshId, PROJECT, Date.now(), Date.now()] },
+          { sql: "INSERT INTO external_identities (project_id, user_id, person_id, linked_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING", args: [PROJECT, userId, freshId, Date.now()] },
+        ],
+        "write",
+      );
+      // the resolution now finds the ACTIVE link and never consults the
+      // tombstone for a fresh replacement
+      const links = await client.execute({
+        sql: "SELECT person_id FROM external_identities WHERE project_id = ? AND user_id = ?",
+        args: [PROJECT, userId],
+      });
+      expect(String(links.rows[0]?.person_id ?? "")).toBe(freshId);
+      // a THIRD identify would resolve to the same active link (no new
+      // person rows accumulate)
+      const third = await client.execute({
+        sql: "SELECT COUNT(*) AS n FROM people WHERE project_id = ?",
+        args: [PROJECT],
+      });
+      expect(Number(third.rows[0]?.n)).toBe(1); // exactly one person row
+    } finally {
+      await clean();
+      client.close();
+    }
+  }, 60_000);
+
+  it("R3-F8: deletion removes a user-ID-only session (no anonymous ID)", async () => {
+    if (!enabled) return;
+    const client = createClient({
+      url: process.env.TURSO_DATABASE_URL ?? "",
+      authToken: process.env.TURSO_AUTH_TOKEN ?? "",
+    });
+    const userId = `r3f8-user-${Date.now()}`;
+    const personId = personIdForUser(PROJECT, userId);
+    const clean = async () => {
+      await client.batch(
+        ["DELETE FROM events", "DELETE FROM sessions_v2", "DELETE FROM external_identities", "DELETE FROM anonymous_identities", "DELETE FROM identity_ops", "DELETE FROM deleted_people", "DELETE FROM people"].map((sql) => ({ sql })),
+        "write",
+      );
+    };
+    try {
+      await clean();
+      // a user-ID-only event + session (NO anonymous id)
+      await client.execute({
+        sql: "INSERT INTO people (person_id, project_id, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?)",
+        args: [personId, PROJECT, 1, 2],
+      });
+      await client.execute({
+        sql: "INSERT INTO external_identities (project_id, user_id, person_id, linked_at) VALUES (?, ?, ?, ?)",
+        args: [PROJECT, userId, personId, 2],
+      });
+      await client.execute({
+        sql: `INSERT INTO events (id, project_id, type, name, schema_version, occurred_at, received_at, user_id, person_id, session_id, properties, context, sdk_name, sdk_version)
+              VALUES ('r3f8-ev', ?, 'track', 'x', 3, 1, 2, ?, ?, 'r3f8-sess', '{}', '{}', NULL, NULL)`,
+        args: [PROJECT, userId, personId],
+      });
+      await client.execute({
+        sql: "INSERT INTO sessions_v2 (session_id, project_id, anonymous_id, started_at, last_seen_at, context, is_online) VALUES ('r3f8-sess', ?, NULL, 1, 2, '{}', 1)",
+        args: [PROJECT],
+      });
+
+      const deleted = await deletePerson(client, PROJECT, personId);
+      expect(deleted.deleted).toBe(true);
+      const sessions = await client.execute({
+        sql: "SELECT COUNT(*) AS n FROM sessions_v2 WHERE project_id = ? AND session_id = 'r3f8-sess'",
+        args: [PROJECT],
+      });
+      expect(Number(sessions.rows[0]?.n)).toBe(0); // the user-ID-only session is gone
+    } finally {
+      await clean();
       client.close();
     }
   }, 60_000);

@@ -512,16 +512,36 @@ export async function deletePerson(
     args: [projectId, personId],
   });
   const anonIds = linked.rows.map((row) => String((row as { anonymous_id?: unknown }).anonymous_id ?? ""));
+  // R3-F8: derive ALL person session ids from the project-scoped event
+  // rows too — a user-ID-only session (no anonymous ID) is still removed.
+  const sessionRows = await client.execute({
+    sql: `SELECT DISTINCT session_id FROM events
+          WHERE project_id = ? AND person_id = ? AND session_id IS NOT NULL`,
+    args: [projectId, personId],
+  });
+  const sessionIds = sessionRows.rows.map((row) =>
+    String((row as { session_id?: unknown }).session_id ?? ""),
+  );
+  const sessionStatements =
+    anonIds.length > 0 || sessionIds.length > 0
+      ? [
+          {
+            sql: `DELETE FROM sessions_v2 WHERE project_id = ? AND (${
+              anonIds.length > 0
+                ? `anonymous_id IN (${anonIds.map(() => "?").join(",")})`
+                : "1 = 0"
+            }${sessionIds.length > 0 ? ` OR session_id IN (${sessionIds.map(() => "?").join(",")})` : ""})`,
+            args: [
+              projectId,
+              ...anonIds,
+              ...sessionIds,
+            ],
+          },
+        ]
+      : [];
   const results = await client.batch?.(
     [
-      ...(anonIds.length > 0
-        ? [
-            {
-              sql: `DELETE FROM sessions_v2 WHERE project_id = ? AND anonymous_id IN (${anonIds.map(() => "?").join(",")})`,
-              args: [projectId, ...anonIds],
-            },
-          ]
-        : []),
+      ...sessionStatements,
       { sql: "DELETE FROM external_identities WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
       { sql: "DELETE FROM anonymous_identities WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
       { sql: "DELETE FROM person_traits WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
@@ -533,7 +553,7 @@ export async function deletePerson(
   );
   // the `deleted` flag reflects the PERSON row removal — the tombstone
   // insert is not evidence that the person existed.
-  const peopleDeleteIndex = anonIds.length > 0 ? 5 : 4;
+  const peopleDeleteIndex = sessionStatements.length > 0 ? 5 : 4;
   const peopleDelete = results?.[peopleDeleteIndex];
   return { deleted: (peopleDelete?.rowsAffected ?? 0) > 0 };
 }

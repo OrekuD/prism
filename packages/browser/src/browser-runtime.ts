@@ -42,7 +42,12 @@ export function createBrowserStorage(): PrismStorage | undefined {
     return undefined;
   }
   const storeFor = (key: string): Storage =>
-    key.startsWith("prism:queue:") || key.includes(":globals:session:")
+    // R3-F2: queue snapshots, session globals, and SESSION-scoped identity
+    // live in sessionStorage (per execution context); persistent-scope
+    // identity and globals live in localStorage (cross-launch).
+    key.startsWith("prism:queue:") ||
+    key.includes(":globals:session:") ||
+    key.includes("prism:identity:session:")
       ? window.sessionStorage
       : window.localStorage;
   return {

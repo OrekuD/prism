@@ -58,7 +58,7 @@ export function resolveEventPerson(
   return null;
 }
 
-/** Canonical payload hash for identity-op idempotency (F8). */
+/** Canonical payload hash for identity-op idempotency (F8 + R3-F4). */
 export function identityOpHash(op: {
   opId: string;
   userId: string;
@@ -90,7 +90,7 @@ export interface IdentityOpStatement {
  */
 export function buildIdentityStatements(
   projectId: string,
-  op: { opId: string; userId: string; anonymousId: string; traits?: Record<string, unknown>; unset?: readonly string[] },
+  op: { opId: string; userId: string; anonymousId: string; traits?: Record<string, unknown>; unset?: readonly string[]; occurredAt: number },
   receivedAt: number,
   replacementPersonIds?: ReadonlyMap<string, string>,
 ): IdentityOpStatement[] {
@@ -112,7 +112,9 @@ export function buildIdentityStatements(
       sql: `INSERT INTO identity_ops (project_id, op_id, person_id, user_id, processed_at, payload_hash)
             VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT (project_id, op_id) DO NOTHING`,
-      args: [projectId, op.opId, knownPersonId, op.userId, receivedAt, identityOpHash({ ...op, occurredAt: receivedAt })],
+      // R3-F4: the stored hash uses the ORIGINAL wire occurredAt — the
+      // same representation the controller compares on replay.
+      args: [projectId, op.opId, knownPersonId, op.userId, receivedAt, identityOpHash(op)],
     },
     // The person row is shared per external user — idempotent upsert.
     {

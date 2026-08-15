@@ -267,7 +267,11 @@ class PrismClientImpl implements PrismClient {
       session: scope("session"),
       persistent: scope("persistent"),
     };
-    this.identityStateKey = `prism:identity:${hashString(options.endpoint)}:${this.projectKey}`;
+    // R3-F2: the identity-state key is persistence-policy-scoped. The
+    // browser routes "session" keys to sessionStorage (per execution
+    // context) and "persistent" keys to localStorage (cross-launch);
+    // "none" never reads or writes identity state at all.
+    this.identityStateKey = `prism:identity:${options.collection.anonymousPersistence ?? "none"}:${hashString(options.endpoint)}:${this.projectKey}`;
     this.runtime = runtime;
     this.state = options.collection.initialState;
     this.persistence = options.collection.anonymousPersistence ?? "none";
@@ -303,7 +307,10 @@ class PrismClientImpl implements PrismClient {
 
   /** Called by the factory before resolving — the client is fully ready. */
   async ready(): Promise<void> {
-    await this.restoreIdentityState();
+    // R3-F2: "none" never restores identity state from storage.
+    if (this.persistence !== "none") {
+      await this.restoreIdentityState();
+    }
     await this.restoreQueueState();
     await this.restoreGlobalProperties();
     await this.ensureAnonymousIdentity();
@@ -347,10 +354,22 @@ class PrismClientImpl implements PrismClient {
       this.inFlightSignal?.abort();
       this.cancelRetry();
       await this.runtime.storage?.removeItem(ANONYMOUS_ID_KEY);
+      // R3-F1: persist the SIGNED-OUT identity state (generation advances)
+      // so a re-grant or a fresh client on the same storage can never
+      // restore the pre-withdrawal user.
+      this.identityGeneration += 1;
+      try {
+        await this.persistIdentityState();
+      } catch {
+        this.emit("warn", "identity_state_persist_failed", "could not persist signed-out identity state");
+      }
+      await this.persistQueue();
     }
     if (state === "granted") {
       // A queue snapshot deferred under pending is restored on grant.
-      await this.restoreIdentityState();
+      if (this.persistence !== "none") {
+        await this.restoreIdentityState();
+      }
       await this.restoreQueueState();
       await this.restoreGlobalProperties();
       await this.ensureAnonymousIdentity();
@@ -905,7 +924,46 @@ class PrismClientImpl implements PrismClient {
         throw outcome.error;
       }
       this.queue.removeBatch(batchIds);
-      this.queue.removeOps(this.queue.pendingOps().map((op) => op.eventId));
+      // R3-F5: identity-outcome reconciliation — accepted and duplicate
+      // ops leave the queue; rejected ops are dropped with a coarse
+      // diagnostic (a conflicting-payload replay can never be fixed by
+      // retrying it).
+      const pendingOpIds = this.queue.pendingOps().map((op) => op.eventId);
+      // R3-F5: when the server omits identity outcomes, a 2xx means the
+      // submitted operations were processed — remove them all. When it
+      // DOES return outcomes, remove accepted/duplicate ops and drop
+      // rejected ones with a coarse diagnostic.
+      let acceptedOpIds: Set<string>;
+      let rejectedOps: Array<{ opId: string; status: string }>;
+      if (outcome.identityOutcomes && outcome.identityOutcomes.length > 0) {
+        acceptedOpIds = new Set(
+          outcome.identityOutcomes
+            .filter(
+              (entry) => entry.status === "accepted" || entry.status === "duplicate",
+            )
+            .map((entry) => entry.opId),
+        );
+        rejectedOps = outcome.identityOutcomes.filter(
+          (entry) => entry.status === "rejected",
+        );
+      } else {
+        acceptedOpIds = new Set(pendingOpIds);
+        rejectedOps = [];
+      }
+      for (const entry of rejectedOps) {
+        this.emit(
+          "warn",
+          "identify_rejected",
+          "identity operation was rejected by the server",
+        );
+      }
+      // rejected ops are TERMINAL too — they leave the queue (retrying a
+      // conflicting-payload replay can never succeed).
+      this.queue.removeOps(
+        pendingOpIds.filter(
+          (id) => acceptedOpIds.has(id) || rejectedOps.some((entry) => entry.opId === id),
+        ),
+      );
       if (outcome.kind === "reconciled" && outcome.kept.length > 0) {
         this.queue.requeueAtHead(outcome.kept);
       }
@@ -991,7 +1049,7 @@ class PrismClientImpl implements PrismClient {
   private async deliver(
     batch: QueuedEvent[],
     signal: AbortableSignal,
-  ): Promise<DeliverOutcome> {
+  ): Promise<DeliverOutcome & { identityOutcomes?: Array<{ opId: string; status: string }> }> {
     const request = {
       // The v3 batch envelope (task-10): SDK identity at batch level, and
       // pending identify operations delivered with (and applied before)
@@ -1040,16 +1098,37 @@ class PrismClientImpl implements PrismClient {
     }
     if (response.status >= 200 && response.status < 300) {
       const reconciled = await this.reconcileResults(batch, response);
+      // R3-F5: identity-outcome reconciliation — the response's identity
+      // array is parsed once here so doFlush can remove only ACCEPTED ops
+      // and drop REJECTED ops with a diagnostic (never silently treated
+      // as accepted).
+      let identityOutcomes: Array<{ opId: string; status: string }> = [];
+      try {
+        const parsed = JSON.parse(await response.text()) as {
+          identity?: Array<{ opId?: unknown; status?: unknown }>;
+        };
+        if (Array.isArray(parsed.identity)) {
+          identityOutcomes = parsed.identity
+            .filter(
+              (entry): entry is { opId: string; status: string } =>
+                typeof entry.opId === "string" &&
+                typeof entry.status === "string",
+            )
+            .map((entry) => ({ opId: entry.opId, status: entry.status }));
+        }
+      } catch {
+        // non-JSON body: no identity outcomes
+      }
       if (reconciled === "malformed") {
         // Cannot trust the accounting — retry (server-side dedup by
         // eventId makes a resend safe).
         const error = new Error("ingest returned malformed batch results");
         const exhausted = this.handleFailure(batch, error);
-        return { ok: false, error, exhausted };
+        return { ok: false, error, exhausted, identityOutcomes };
       }
       if (reconciled === null) {
         // No results body: status-only success — the whole batch is done.
-        return { ok: true, kind: "accepted" };
+        return { ok: true, kind: "accepted", identityOutcomes };
       }
       if (reconciled.rejected > 0) {
         this.emit(
@@ -1063,6 +1142,7 @@ class PrismClientImpl implements PrismClient {
         kind: "reconciled",
         kept: reconciled.kept,
         rejected: reconciled.rejected,
+        identityOutcomes,
       };
     }
     // Permanent client errors are not retried: the batch leaves the queue
@@ -1196,7 +1276,9 @@ class PrismClientImpl implements PrismClient {
    */
   private async persistIdentityState(): Promise<void> {
     const storage = this.runtime.storage;
-    if (!storage) return;
+    // R3-F2: only "session" and "persistent" write identity state; "none"
+    // (documented as no identity) never touches storage for it.
+    if (!storage || this.persistence === "none") return;
     const state: PersistedIdentityState = {
       v: 1,
       anonymousId: this.anonymousId,

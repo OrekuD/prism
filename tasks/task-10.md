@@ -1132,6 +1132,231 @@ docs drift OK; core 142, browser 30, react 13, analytics 98+3 opt-in,
 api 125+5 opt-in, web 30.
 
 
+### Round-3 fixes — R3-F1..R3-F8 closed (2026-08-15)
+
+- **R3-F1**: consent denial now advances the identity generation and
+  persists an explicit signed-out identity state — re-grant and fresh
+  clients on the same storage can never restore the pre-withdrawal user
+  (same-client re-grant + fresh-client-after-denial tests).
+- **R3-F2**: identity-state storage is policy-scoped — "none" never
+  reads/writes it; "session" uses the session namespace (sessionStorage
+  in the browser — survives reloads, not launches); only "persistent"
+  uses durable storage (localStorage). Storage-spy tests for all three +
+  browser routing tests.
+- **R3-F3**: durable link maps are loaded for EVERY distinct user and
+  anonymous ID in the batch (events AND identity ops) — an event-only
+  request with a linked anonymous ID resolves to the same person
+  (real-store test: identify → event-only → one person).
+- **R3-F4**: the canonical op hash uses the ORIGINAL wire occurredAt on
+  both write and replay — identical replays are duplicates; different
+  payloads are rejected (real-store hash equality test).
+- **R3-F5**: rejected ops keep their outcome in the response (never
+  spliced out); the core reconciles identity outcomes — accepted and
+  duplicate ops leave the queue, REJECTED ops are dropped with a coarse
+  diagnostic (never silently accepted, never retried forever); the
+  no-outcomes fallback removes all submitted ops on 2xx (matching
+  pre-round-two behavior).
+- **R3-F6**: active external links WIN over tombstones — repeat
+  identifies after the first fresh link converge on it; same-request
+  events never attach to an unlinked replacement (real-store: delete →
+  identify → identify → one person row).
+- **R3-F7**: person upserts moved into the SAME atomic write boundary as
+  the accepted events, keyed by the ORIGINAL event indexes — no
+  filtered-index misassignment, no swallowed second-stage failure.
+- **R3-F8**: deletion derives ALL person session ids from the
+  project-scoped event rows (plus linked anonymous ids) — user-ID-only
+  sessions are removed (real-store test).
+
+Re-review gate: focused regression coverage for all eight (core 144,
+browser 32, analytics 99+3 opt-in, api 125+7 opt-in incl. the R3
+real-sqld suite); identity public-origin certification 34/34; gates
+test 6/6, typecheck 9/9, lint 11/11, build 9/9, audit clean, drift OK.
+
+
+### Review round 3 — feedback (2026-08-15)
+
+**Outcome: Task 10 is not accepted yet.** This was a targeted source review
+of the round-two changes only. No broad workspace checks were run. The issues
+below are regressions or gaps in the F1/F2/F5/F7/F8 fixes themselves.
+
+#### Release blockers
+
+- [x] **R3-F1 — Consent withdrawal leaves the persisted live identity intact.**
+
+  Evidence: `setCollectionState("denied")` clears only in-memory identity and
+  removes `prism:anonymous_id` (`packages/core/src/core.ts:331-350`). It does
+  not clear or overwrite `identityStateKey`, even though `identify()` persists
+  `knownUserId` and the anonymous ID there (`packages/core/src/core.ts:728-733`,
+  `1197-1223`). On re-grant, `restoreIdentityState()` runs again
+  (`packages/core/src/core.ts:351-356`) and restores the old user
+  (`1225-1257`).
+
+  Impact: withdrawing consent, then granting it again (or starting a fresh
+  granted client with the same storage) can restore a prior user's identity.
+  That violates the Task 10 consent guarantee and can relabel later events.
+
+  Required fix: on denial, atomically advance the identity generation and
+  persist an explicit signed-out state (or remove the identity-state key),
+  then ensure re-grant cannot restore an identity from before the withdrawal.
+  Add same-client re-grant and fresh-client-after-denial tests.
+
+- [x] **R3-F2 — The identity-state store ignores `anonymousPersistence`; the
+  browser default leaks identity across launches.**
+
+  Evidence: the factory always calls `restoreIdentityState()`
+  (`packages/core/src/core.ts:304-310`) and successful `identify()` always
+  calls `persistIdentityState()` when a storage adapter exists
+  (`packages/core/src/core.ts:714-737`). This occurs for both
+  `anonymousPersistence: "none"` and `"session"`. In the browser adapter,
+  every identity-state key is routed to `localStorage`; only queue and session
+  globals use `sessionStorage` (`packages/browser/src/browser-runtime.ts:44-47`).
+
+  Impact: `"none"`—documented as no identity—can persist `userId` and the
+  transient anonymous ID after `identify()`. The default browser
+  `"session"` mode can likewise persist them in local storage and restore them
+  after a browser restart. This is a privacy regression and contradicts the
+  documented persistence policy.
+
+  Required fix: make live identity-state storage explicitly policy-scoped:
+  `"none"` must never read/write it; `"session"` must be memory/session-store
+  only; only `"persistent"` may use durable cross-launch storage. Use the same
+  policy on restore, reset, and consent transitions. Add storage-spy tests for
+  `none`, browser default `session`, and `persistent` behavior.
+
+- [x] **R3-F3 — Normal event-only batches still do not resolve durable
+  identity links.**
+
+  Evidence: `externalLinks` and `anonymousLinks` are loaded only inside
+  `if (validOps.length > 0)` in
+  `apps/analytics-api/src/controllers/IngestController.ts:255-320`. An ordinary
+  event batch therefore passes empty maps to `resolveEventPerson()`
+  (`apps/analytics-api/src/repositories/IngestRepository.ts:107-118`), which
+  falls back to a new deterministic anonymous person for an event that has an
+  already-linked anonymous ID (`apps/analytics-api/src/utils/identityResolution.ts:45-59`).
+
+  Impact: the main post-identify/reload case remains broken: event-only traffic
+  can split an already linked anonymous history into a separate person. The F7
+  implementation currently covers only events sent in the *same request* as an
+  identify operation.
+
+  Required fix: read active external and anonymous links for every distinct
+  user/anonymous ID in valid events as well as identity operations, within the
+  same consistency boundary as persistence. Add a real-store test: identify →
+  later event-only request with the linked anonymous ID → one person/history.
+
+- [x] **R3-F4 — Identity-operation idempotency hashes different payloads on
+  write and replay, so valid retries are rejected.**
+
+  Evidence: the controller compares a hash containing the client's
+  `op.occurredAt` (`apps/analytics-api/src/controllers/IngestController.ts:241-245`),
+  while `buildIdentityStatements()` stores a hash after replacing that timestamp
+  with server `receivedAt` (`apps/analytics-api/src/utils/identityResolution.ts:112-115`).
+  These timestamps are normally different.
+
+  Impact: a genuine replay of the same operation will be treated as a
+  conflicting payload rather than a duplicate. The mocked unit test supplies a
+  precomputed matching database hash and therefore does not exercise the real
+  write/replay path.
+
+  Required fix: define one canonical payload representation using the original
+  wire operation (including its original `occurredAt`) and use it unchanged for
+  both the claim and comparison. Add a real-store first-delivery → identical
+  replay test that asserts `duplicate`, plus a differently-payloaded replay
+  that asserts `rejected`.
+
+- [x] **R3-F5 — The idempotency claim still does not guard its side effects,
+  and rejected operation outcomes are omitted.**
+
+  Evidence: the `identity_ops` insert uses `ON CONFLICT DO NOTHING`, but the
+  following people/link/trait statements are unconditional
+  (`apps/analytics-api/src/utils/identityResolution.ts:110-165`). Two concurrent
+  requests that both pre-read “not processed” can therefore still execute
+  mutations after one claim conflicts. In addition, conflicting entries are
+  removed from `validOps` before `identityResults` is constructed
+  (`apps/analytics-api/src/controllers/IngestController.ts:272-280`, `375-385`),
+  so the promised `rejected` result is not returned.
+
+  The SDK then parses only event `results` and removes *all* pending identity
+  operations after any successful response
+  (`packages/core/src/core.ts:1640-1679`, `907-913`), even if the server did
+  return an identity rejection.
+
+  Impact: conflicting or racing operations can mutate traits/links and the
+  caller cannot reliably learn that they were rejected. The client may discard
+  an operation as accepted when the server rejected it.
+
+  Required fix: make all side effects conditional on a successful transactional
+  claim (or use a transaction that returns the claim result before writes),
+  retain all submitted op outcomes in submitted order, and add identity-result
+  reconciliation in the core. Test same-request duplicates, concurrent
+  conflicts, server rejection, and retry behavior.
+
+- [x] **R3-F6 — Deleted-user re-identification fragments people on every
+  subsequent identify.**
+
+  Evidence: `deleted_people` tombstones are never consumed or superseded. Every
+  later identify sees the original deterministic ID in that table and allocates
+  a new random replacement (`apps/analytics-api/src/controllers/IngestController.ts:292-312`).
+  The following loop overwrites an existing external link in memory with that
+  new replacement (`316-320`), while SQL keeps the original link via
+  `ON CONFLICT DO NOTHING` (`apps/analytics-api/src/utils/identityResolution.ts:124-129`).
+
+  Impact: the second and later identify after deletion can create unlinked
+  person rows, attach same-request events to them, and split a single new user
+  across multiple person IDs. This invalidates the claimed fresh-person flow.
+
+  Required fix: model identity generations explicitly or mark the tombstone
+  consumed only when the first fresh external link is created. Existing active
+  links must win over tombstones during resolution. Add: delete → identify →
+  identify again → event, asserting one active person/link and no orphan row.
+
+#### High-priority correctness and privacy
+
+- [x] **R3-F7 — Person `last_seen_at` can be applied to the wrong person and
+  is not atomic with accepted events.**
+
+  Evidence: `personUpserts` filters duplicate outcomes and then indexes
+  `resolvedPersons` using the *filtered* array index
+  (`apps/analytics-api/src/repositories/IngestRepository.ts:169-189`). If the
+  first event is a duplicate and the second is accepted for a different person,
+  the accepted event uses the first event's person ID. The upserts also run in a
+  second batch whose failure is swallowed (`191-206`), after the event has
+  already been reported as accepted.
+
+  Impact: `last_seen_at` can advance for the wrong person or be absent entirely,
+  causing incorrect people ordering, retention decisions, and invisible event
+  history.
+
+  Required fix: preserve original event indexes while filtering outcomes, and
+  include people/projection updates in the same atomic write boundary as the
+  accepted events (or make the response honestly retryable if that boundary
+  fails). Add a mixed duplicate/accepted multi-person regression test and a
+  forced second-stage failure test.
+
+- [x] **R3-F8 — Privacy deletion still leaves sessions that have no linked
+  anonymous ID.**
+
+  Evidence: `deletePerson()` deletes `sessions_v2` only by linked
+  `anonymous_id` values (`apps/api/src/utils/peopleStore.ts:493-510`). A valid
+  direct/API client can create session events with `session_id` and `userId`
+  but no anonymous ID; those session rows are not selected for deletion.
+
+  Impact: a person deletion can leave session context and activity behind,
+  despite the dashboard/privacy claim that associated sessions are removed.
+
+  Required fix: derive all person-related session IDs from project-scoped event
+  rows (and linked anonymous IDs as needed), then delete those `sessions_v2`
+  rows in the same atomic operation. Test a user-ID-only session deletion.
+
+#### Re-review gate
+
+- [x] Resolve R3-F1–R3-F8 with focused regression coverage; do not merely
+  update the round-two completion narrative.
+- [x] Re-run only the affected core/browser/API/analytics tests and the
+  identity public-origin certification after the fixes, then request another
+  targeted review.
+
+
 ### Re-review gate
 
 Before Task 10 is marked complete again:

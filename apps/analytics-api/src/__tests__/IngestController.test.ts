@@ -177,9 +177,9 @@ describe("IngestController.ingest (v2 batch ingestion)", () => {
     expect(body.ok).toBe(true);
     expect(body.results).toEqual([{ index: 0, id: "evt-0001", status: "accepted" }]);
 
-    // first batch: atomic event inserts; second batch: derived session +
-    // person state for the accepted event (F7)
-    expect(dbBatch).toHaveBeenCalledTimes(2);
+    // R3-F7: ONE atomic batch — the event insert + its person upsert
+    // (session statements only exist for sessioned events)
+    expect(dbBatch).toHaveBeenCalledTimes(1);
     const [statements] = dbBatch.mock.calls[0];
     const { sql, args } = statements[0];
     expect(String(sql)).toContain("INSERT INTO events");
@@ -256,9 +256,10 @@ describe("IngestController.ingest (v2 batch ingestion)", () => {
       { index: 3, id: "evt-dangerous", status: "rejected", reason: "invalid-properties" },
       { index: 4, id: "evt-0001", status: "accepted" },
     ]);
-    // only the two valid events entered the transaction
+    // the two valid events entered the transaction with their person
+    // upserts (R3-F7 atomic projection)
     const [statements] = dbBatch.mock.calls[0];
-    expect(statements).toHaveLength(2);
+    expect(statements).toHaveLength(4);
   });
 
   it("rejects unsupported event types, non-finite numbers, and oversized events", async () => {
@@ -369,7 +370,8 @@ it("maintains sessions_v2 state and broadcasts session-started for accepted sess
     // two batches: the atomic event insert, then the derived session state
     expect(dbBatch).toHaveBeenCalledTimes(2);
     const [eventStatements] = dbBatch.mock.calls[0];
-    expect(eventStatements).toHaveLength(1);
+    // event insert + person upsert in the atomic first batch (R3-F7)
+    expect(eventStatements).toHaveLength(2);
     const sessionBatch = dbBatch.mock.calls[1][0] as Array<{ sql: string; args: unknown[] }>;
     const sessionStatement = sessionBatch[0] as { sql: string; args: unknown[] };
     expect(String(sessionStatement.sql)).toContain("INSERT INTO sessions_v2");
@@ -463,10 +465,11 @@ describe("release review — duplicate session safety", () => {
 
     const results = (result.__json as IngestResponseBody).results;
     expect(results[0]?.status).toBe("duplicate");
-    // only ONE batch call — the event insert; no session-state batch
+    // only ONE batch call — the event insert + its person upsert
+    // (R3-F7); no session-state batch for a duplicate
     expect(dbBatch).toHaveBeenCalledTimes(1);
     const [statements] = dbBatch.mock.calls[0];
-    expect(statements).toHaveLength(1);
+    expect(statements).toHaveLength(2);
     expect(String((statements[0] as { sql: string }).sql)).toContain("INSERT INTO events");
     expect(emitToClient).not.toHaveBeenCalled();
   });
@@ -479,9 +482,9 @@ describe("release review — duplicate session safety", () => {
 
     await ingest(ctx);
 
-    expect(dbBatch).toHaveBeenCalledTimes(1); // events only
+    expect(dbBatch).toHaveBeenCalledTimes(1); // event insert + person upsert only
     const [statements] = dbBatch.mock.calls[0];
-    expect(statements).toHaveLength(1);
+    expect(statements).toHaveLength(2);
   });
 
   it("a duplicate ordinary sessioned event does NOT bump last_seen_at", async () => {
@@ -492,9 +495,9 @@ describe("release review — duplicate session safety", () => {
 
     await ingest(ctx);
 
-    expect(dbBatch).toHaveBeenCalledTimes(1);
+    expect(dbBatch).toHaveBeenCalledTimes(1); // event insert + person upsert only
     const [statements] = dbBatch.mock.calls[0];
-    expect(statements).toHaveLength(1);
+    expect(statements).toHaveLength(2);
   });
 
   it("a NEWLY inserted session_started still mutates session state (second batch)", async () => {
@@ -726,5 +729,66 @@ describe("identity-only envelopes (review F2)", () => {
     expect(result.status).toBe(400);
     const body = result.__json as { error: { code: string } };
     expect(body.error.code).toBe("invalid-envelope");
+  });
+});
+
+describe("round-3 review fixes (R3-F4, R3-F5)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dbBatch.mockResolvedValue([{ rows: [], rowsAffected: 1 }]);
+    eventLimiter.reset();
+    (
+      TursoDatabaseManager.instance.execute as unknown as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({ rows: [] });
+  });
+
+  it("R3-F5: a conflicting-payload replay returns an explicit rejected outcome", async () => {
+    // first pass: the op was processed with a DIFFERENT payload hash
+    const firstOp = {
+      opId: "op-conflict",
+      userId: "user-a",
+      anonymousId: "anon-a",
+      traits: { plan: "pro" },
+      occurredAt: Date.now(),
+    };
+    dbBatch.mockClear();
+    (
+      TursoDatabaseManager.instance.execute as unknown as ReturnType<typeof vi.fn>
+    ).mockImplementation(async (input: string | { sql: string }) => {
+      const sql = String(typeof input === "string" ? input : input.sql);
+      if (sql.includes("identity_ops")) {
+        return Promise.resolve({
+          rows: [
+            {
+              op_id: "op-conflict",
+              payload_hash: identityOpHash({ ...firstOp, userId: "user-DIFFERENT" }),
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+    const ctx = makeContext(
+      JSON.stringify({
+        schemaVersion: 3,
+        sentAt: Date.now(),
+        identity: [firstOp],
+        events: [VALID_EVENT],
+      }),
+    );
+
+    const result = await ingest(ctx);
+
+    const body = result.__json as IngestResponseBody;
+    expect(body.identity?.[0]).toMatchObject({
+      opId: "op-conflict",
+      status: "rejected",
+      reason: "conflicting-payload",
+    });
+    // no identity statements were built for the rejected op
+    const [statements] = dbBatch.mock.calls[0];
+    expect(
+      statements.some((s: { sql: string }) => String(s.sql).includes("external_identities")),
+    ).toBe(false);
   });
 });
