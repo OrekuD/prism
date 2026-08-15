@@ -768,7 +768,7 @@ change the implementation.
 
 ### Release blockers
 
-- [ ] **F1 — Reset/reload can restore the previous known user on a shared
+- [x] **F1 — Reset/reload can restore the previous known user on a shared
   device.**
 
   Evidence: `reset()` clears `knownUserId` and queued identify operations at
@@ -794,7 +794,7 @@ change the implementation.
     from the same storage → track anonymously/as user B → verify no new event
     carries user A.
 
-- [ ] **F2 — Identify-only/profile-only operations are never delivered.**
+- [x] **F2 — Identify-only/profile-only operations are never delivered.**
 
   Evidence: `doFlush()` builds batches through `queue.peekBatch()`, which
   returns event entries only, then stops when the event batch is empty
@@ -816,7 +816,7 @@ change the implementation.
     batch succeeded.
   - Test identity-only success, retry, duplicate replay, rejection, and reload.
 
-- [ ] **F3 — Persisted offline identify operations are quarantined on reload.**
+- [x] **F3 — Persisted offline identify operations are quarantined on reload.**
 
   Evidence: restoration accepts `kind: "identify"`, but
   `validatePersistedEntry()` requires every entry to have an event name and
@@ -837,7 +837,7 @@ change the implementation.
   - Test offline identify → new client using the same storage → flush → stored
     person/link/traits.
 
-- [ ] **F4 — Current v4 queue persistence can erase other execution
+- [x] **F4 — Current v4 queue persistence can erase other execution
   contexts.**
 
   Evidence: `persistQueue()` writes `{ v: 4, events }` at
@@ -856,7 +856,7 @@ change the implementation.
   - Add interleaved two-owner persistence tests containing both events and
     identify operations.
 
-- [ ] **F5 — Person deletion is incomplete and deleted identities can
+- [x] **F5 — Person deletion is incomplete and deleted identities can
   reappear.**
 
   Evidence: `deletePerson()` removes links, traits, events, and the person row
@@ -880,7 +880,7 @@ change the implementation.
   - Test identify → session/event → delete → stale queued event → identify the
     same external ID again; old/stale data must not return.
 
-- [ ] **F6 — Retention can delete active identities and traits for an entire
+- [x] **F6 — Retention can delete active identities and traits for an entire
   project.**
 
   Evidence: retention deletes from `external_identities`,
@@ -899,7 +899,7 @@ change the implementation.
   - Add a real-store test with one expired and one active person in the same
     project; all active links and traits must survive.
 
-- [ ] **F7 — Event person resolution and `last_seen_at` do not honor the
+- [x] **F7 — Event person resolution and `last_seen_at` do not honor the
   durable identity model.**
 
   Evidence: `eventPersonId()` hashes `userId` or `anonymousId` directly
@@ -922,7 +922,7 @@ change the implementation.
   - Test linked anonymous events after reload, subsequent activity timestamps,
     duplicate events, and retention of active people.
 
-- [ ] **F8 — Identity-operation idempotency is race-prone and does not guard
+- [x] **F8 — Identity-operation idempotency is race-prone and does not guard
   side effects.**
 
   Evidence: processed op IDs are read before the write transaction at
@@ -945,7 +945,7 @@ change the implementation.
 
 ### High-priority correctness and privacy
 
-- [ ] **F9 — A queue-full identify changes live identity even though it
+- [x] **F9 — A queue-full identify changes live identity even though it
   reports failure.**
 
   Evidence: `identify()` rotates/persists anonymous state and assigns
@@ -957,7 +957,7 @@ change the implementation.
   then commit live state only on success. Test that a dropped identify leaves
   `client.identity` and all later event envelopes unchanged.
 
-- [ ] **F10 — `identify()` is not durably awaited and fails under
+- [x] **F10 — `identify()` is not durably awaited and fails under
   `anonymousPersistence: "none"`.**
 
   Evidence: successful identify calls `void this.afterEnqueue()` at
@@ -975,7 +975,7 @@ change the implementation.
     server.
   - Add crash-immediately-after-await and `"none"`-mode parity tests.
 
-- [ ] **F11 — Anonymous IDs use incompatible persistence encodings.**
+- [x] **F11 — Anonymous IDs use incompatible persistence encodings.**
 
   Evidence: initial creation stores the raw ID at
   `packages/core/src/core.ts:1522-1530`; reset/conflict rotation writes
@@ -986,7 +986,7 @@ change the implementation.
   format safely, reject malformed values, and test create/reset/conflict →
   reload identity stability.
 
-- [ ] **F12 — Direct HTTP identity traits bypass server-side redaction.**
+- [x] **F12 — Direct HTTP identity traits bypass server-side redaction.**
 
   Evidence: events are server-sanitized at
   `apps/analytics-api/src/controllers/IngestController.ts:150-187`, but
@@ -1000,7 +1000,7 @@ change the implementation.
   tests proving password/token/API-key fields are redacted and prototype keys
   are rejected.
 
-- [ ] **F13 — Restored global properties bypass the public validation and
+- [x] **F13 — Restored global properties bypass the public validation and
   redaction contract.**
 
   Evidence: `restoreGlobalProperties()` parses storage and writes every entry
@@ -1019,7 +1019,7 @@ change the implementation.
   - Test hostile stored state, oversized/deep values, dangerous keys, and a real
     storage failure separately.
 
-- [ ] **F14 — People detail/activity/export APIs are not bounded or honest.**
+- [x] **F14 — People detail/activity/export APIs are not bounded or honest.**
 
   Evidence:
 
@@ -1040,7 +1040,7 @@ change the implementation.
   - Test negative, fractional, huge, and invalid limits plus exports over 500
     events.
 
-- [ ] **F15 — The dashboard's “people” metric can double-count anonymous
+- [x] **F15 — The dashboard's “people” metric can double-count anonymous
   subjects.**
 
   Evidence: the total uses distinct event `person_id` values, including
@@ -1054,7 +1054,7 @@ change the implementation.
 
 ### Task tracking correction
 
-- [ ] **F16 — Future roadmap work is incorrectly checked as completed.**
+- [x] **F16 — Future roadmap work is incorrectly checked as completed.**
 
   Task 11, Task 12, Tier 2, Tier 3, and the React Native roadmap are marked
   `[x]` in this file, even though Task 10 lists those capabilities as future
@@ -1136,13 +1136,13 @@ api 125+5 opt-in, web 30.
 
 Before Task 10 is marked complete again:
 
-- [ ] Add focused unit and integration regression tests for F1–F16, using real
+- [x] Add focused unit and integration regression tests for F1–F16, using real
   libSQL/sqld coverage for retention, identity races, and privacy deletion.
-- [ ] Add a browser persistence test covering reset/logout and reload on a
+- [x] Add a browser persistence test covering reset/logout and reload on a
   shared device.
-- [ ] Extend certification to cover identity-only delivery, offline restore,
+- [x] Extend certification to cover identity-only delivery, offline restore,
   deletion with stale clients, multi-person retention, and complete export.
-- [ ] Re-run build, typecheck, lint, unit/integration tests, coverage, audit, and
+- [x] Re-run build, typecheck, lint, unit/integration tests, coverage, audit, and
   the public-origin certification.
-- [ ] Update the Task 10 completion summary and checklist only after the
+- [x] Update the Task 10 completion summary and checklist only after the
   regressions pass.
