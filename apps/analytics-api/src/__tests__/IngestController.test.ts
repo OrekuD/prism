@@ -25,12 +25,22 @@ const emitToClient = WebSocketManager.emitToClient as unknown as ReturnType<
 // transaction mock's execute records statements and drives rowsAffected
 // by SQL kind. Tests configure the event-insert outcomes explicitly.
 let eventInsertOutcomes: number[] = [1];
+// claim outcome + stored hash for the identity_ops paths (R5-F1): the
+// tests configure whether a claim wins and what hash the tx reads.
+let claimWins = true;
+let storedOpHash: string | null = null;
 const txExecute = vi.fn(async (statement: { sql?: string }) => {
   const sql = String(statement?.sql ?? "");
   if (sql.includes("INSERT INTO events")) {
     return { rows: [], rowsAffected: eventInsertOutcomes.shift() ?? 1 };
   }
-  // identity claims always win; projections always apply
+  if (sql.includes("INSERT INTO identity_ops")) {
+    return { rows: [], rowsAffected: claimWins ? 1 : 0 };
+  }
+  if (sql.includes("payload_hash")) {
+    return { rows: storedOpHash ? [{ payload_hash: storedOpHash }] : [] };
+  }
+  // projections always apply
   return { rows: [], rowsAffected: 1 };
 });
 const tx = {
@@ -120,6 +130,8 @@ describe("IngestController.ingest (v2 batch ingestion)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     eventInsertOutcomes = [1];
+    claimWins = true;
+    storedOpHash = null;
     eventLimiter.reset();
     // default: no identity ops were processed yet
     (
@@ -469,6 +481,8 @@ describe("release review — duplicate session safety", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     eventInsertOutcomes = [1];
+    claimWins = true;
+    storedOpHash = null;
     eventLimiter.reset();
   });
 
@@ -566,7 +580,12 @@ describe("identity operations (task-10 §4)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     eventInsertOutcomes = [1];
+    claimWins = true;
+    storedOpHash = null;
     eventLimiter.reset();
+    (
+      TursoDatabaseManager.instance.execute as unknown as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({ rows: [] });
   });
 
   it("accepts v3 batches with identity ops and reports accepted outcomes", async () => {
@@ -624,25 +643,17 @@ describe("identity operations (task-10 §4)", () => {
     expect(statementContaining("identity_ops")).toBeDefined();
 
     // second pass: the op was already processed with the SAME payload
-    // hash → duplicate, skipped entirely
+    // hash → the tx claim loses and the stored-hash read returns the same
+    // canonical hash → duplicate
     dbBatch.mockClear();
-    const turso = (await import("../managers/TursoDatabaseManager.js")).default
-      .instance as unknown as { execute: ReturnType<typeof vi.fn> };
+    claimWins = false;
     const secondOp = {
       opId: "op-dup",
       userId: "user-123",
       anonymousId: "anon-1",
       occurredAt: Date.now(),
     };
-    turso.execute.mockImplementation(async (input: string | { sql: string }) => {
-      const sql = String(typeof input === "string" ? input : input.sql);
-      if (sql.includes("identity_ops")) {
-        return Promise.resolve({
-          rows: [{ op_id: "op-dup", payload_hash: identityOpHash(secondOp) }],
-        });
-      }
-      return Promise.resolve({ rows: [] });
-    });
+    storedOpHash = identityOpHash(secondOp);
     const ctx2 = makeContext(
       JSON.stringify({
         schemaVersion: 3,
@@ -693,7 +704,12 @@ describe("identity-only envelopes (review F2)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     eventInsertOutcomes = [1];
+    claimWins = true;
+    storedOpHash = null;
     eventLimiter.reset();
+    (
+      TursoDatabaseManager.instance.execute as unknown as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({ rows: [] });
     (
       TursoDatabaseManager.instance.execute as unknown as ReturnType<typeof vi.fn>
     ).mockResolvedValue({ rows: [] });
@@ -746,7 +762,12 @@ describe("round-3 review fixes (R3-F4, R3-F5)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     eventInsertOutcomes = [1];
+    claimWins = true;
+    storedOpHash = null;
     eventLimiter.reset();
+    (
+      TursoDatabaseManager.instance.execute as unknown as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({ rows: [] });
     (
       TursoDatabaseManager.instance.execute as unknown as ReturnType<typeof vi.fn>
     ).mockResolvedValue({ rows: [] });
@@ -762,22 +783,8 @@ describe("round-3 review fixes (R3-F4, R3-F5)", () => {
       occurredAt: Date.now(),
     };
     dbBatch.mockClear();
-    (
-      TursoDatabaseManager.instance.execute as unknown as ReturnType<typeof vi.fn>
-    ).mockImplementation(async (input: string | { sql: string }) => {
-      const sql = String(typeof input === "string" ? input : input.sql);
-      if (sql.includes("identity_ops")) {
-        return Promise.resolve({
-          rows: [
-            {
-              op_id: "op-conflict",
-              payload_hash: identityOpHash({ ...firstOp, userId: "user-DIFFERENT" }),
-            },
-          ],
-        });
-      }
-      return Promise.resolve({ rows: [] });
-    });
+    claimWins = false;
+    storedOpHash = identityOpHash({ ...firstOp, userId: "user-DIFFERENT" });
     const ctx = makeContext(
       JSON.stringify({
         schemaVersion: 3,

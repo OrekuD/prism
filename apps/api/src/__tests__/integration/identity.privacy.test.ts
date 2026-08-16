@@ -615,18 +615,191 @@ run("round-4 review fixes (R4-F2, R4-F3, R4-F4)", () => {
         anonymousId: anonId,
         name: "x",
         properties: {},
-      }], Date.now(), undefined, [], new Set(), new Map(), new Map([[anonId, personId]]), new Map());
+      }], Date.now(), undefined, [], new Map(), new Map([[anonId, personId]]), new Map());
       const after = await client.execute({
         sql: "SELECT COUNT(*) AS n FROM events WHERE project_id = ? AND id = ?",
         args: [PROJECT, eventId],
       });
-      expect(outcomes[0]?.duplicate).toBe(true);
+      expect(outcomes.results[0]?.duplicate).toBe(true);
 
       const row = await client.execute({
         sql: "SELECT last_seen_at FROM people WHERE project_id = ? AND person_id = ?",
         args: [PROJECT, personId],
       });
       expect(Number(row.rows[0]?.last_seen_at)).toBe(firstAt); // unchanged
+    } finally {
+      await clean();
+      client.close();
+    }
+  }, 60_000);
+});
+
+run("round-5 review fixes (R5-F1, R5-F2, R5-F3)", () => {
+  it("R5-F1: a losing concurrent claim returns rejected and never steers events", async () => {
+    if (!enabled) return;
+    const client = createClient({
+      url: process.env.TURSO_DATABASE_URL ?? "",
+      authToken: process.env.TURSO_AUTH_TOKEN ?? "",
+    });
+    const userId = `r5f1-user-${Date.now()}`;
+    const anonId = `r5f1-anon-${Date.now()}`;
+    const clean = async () => {
+      await client.batch(
+        ["DELETE FROM events", "DELETE FROM external_identities", "DELETE FROM anonymous_identities", "DELETE FROM person_traits", "DELETE FROM identity_ops", "DELETE FROM deleted_people", "DELETE FROM people"].map((sql) => ({ sql })),
+        "write",
+      );
+    };
+    try {
+      await clean();
+      // request A (stale pre-read — claims + applies)
+      const repo = new IngestRepository(client);
+      const a = await repo.persistBatch(
+        PROJECT, [], Date.now(), undefined,
+        [{ index: 0, op: { opId: "r5f1-op", userId, anonymousId: anonId, traits: { plan: "pro" }, occurredAt: Date.now() } }],
+        new Map(), new Map(), new Map(),
+      );
+      expect(a.identity[0]?.status).toBe("accepted");
+
+      // request B: the SAME opId with a CONFLICTING payload + an event —
+      // the tx claim loses → rejected outcome + the event resolves to the
+      // DURABLE person (user A), never to the losing identity
+      const b = await repo.persistBatch(
+        PROJECT, [{
+          eventId: `r5f1-ev-${Date.now()}`,
+          type: "track",
+          schemaVersion: 3,
+          occurredAt: Date.now(),
+          anonymousId: anonId,
+          name: "x",
+          properties: {},
+        }], Date.now(), undefined,
+        [{ index: 0, op: { opId: "r5f1-op", userId: "r5f1-OTHER", anonymousId: "r5f1-other-anon", traits: { plan: "evil" }, occurredAt: Date.now() } }],
+        new Map(), new Map(), new Map(),
+      );
+      expect(b.identity[0]?.status).toBe("rejected");
+      expect(b.identity[0]?.reason).toBe("conflicting-payload");
+      const eventPerson = await client.execute({
+        sql: "SELECT person_id FROM events WHERE project_id = ? AND id = ?",
+        args: [PROJECT, b.results[0]?.eventId ?? ""],
+      });
+      expect(String(eventPerson.rows[0]?.person_id ?? "")).toBe(personIdForUser(PROJECT, userId));
+      // no OTHER user's person/link was created
+      const otherLinks = await client.execute({
+        sql: "SELECT COUNT(*) AS n FROM external_identities WHERE project_id = ? AND user_id = 'r5f1-OTHER'",
+        args: [PROJECT],
+      });
+      expect(Number(otherLinks.rows[0]?.n)).toBe(0);
+    } finally {
+      await clean();
+      client.close();
+    }
+  }, 60_000);
+
+  it("R5-F2: a valid identify never overwrites a durable anonymous mapping (first-wins)", async () => {
+    if (!enabled) return;
+    const client = createClient({
+      url: process.env.TURSO_DATABASE_URL ?? "",
+      authToken: process.env.TURSO_AUTH_TOKEN ?? "",
+    });
+    const userA = `r5f2-a-${Date.now()}`;
+    const userB = `r5f2-b-${Date.now()}`;
+    const sharedAnon = `r5f2-shared-${Date.now()}`;
+    const clean = async () => {
+      await client.batch(
+        ["DELETE FROM events", "DELETE FROM external_identities", "DELETE FROM anonymous_identities", "DELETE FROM identity_ops", "DELETE FROM deleted_people", "DELETE FROM people"].map((sql) => ({ sql })),
+        "write",
+      );
+    };
+    try {
+      await clean();
+      // anon already linked to A (durable)
+      const repo = new IngestRepository(client);
+      await repo.persistBatch(
+        PROJECT, [], Date.now(), undefined,
+        [{ index: 0, op: { opId: `r5f2-op1-${Date.now()}`, userId: userA, anonymousId: sharedAnon, traits: {}, occurredAt: Date.now() } }],
+        new Map(), new Map(), new Map(),
+      );
+      // identify(B) with the SHARED anon + a same-batch anonymous event
+      const outcome = await repo.persistBatch(
+        PROJECT, [{
+          eventId: `r5f2-ev-${Date.now()}`,
+          type: "track",
+          schemaVersion: 3,
+          occurredAt: Date.now(),
+          anonymousId: sharedAnon,
+          name: "x",
+          properties: {},
+        }], Date.now(), undefined,
+        [{ index: 0, op: { opId: `r5f2-op2-${Date.now()}`, userId: userB, anonymousId: sharedAnon, traits: {}, occurredAt: Date.now() } }],
+        new Map(), new Map([[sharedAnon, personIdForUser(PROJECT, userA)]]), new Map(),
+      );
+      // the durable anonymous mapping wins: the event resolves to A
+      const eventPerson = await client.execute({
+        sql: "SELECT person_id FROM events WHERE project_id = ? AND id = ?",
+        args: [PROJECT, outcome.results[0]?.eventId ?? ""],
+      });
+      expect(String(eventPerson.rows[0]?.person_id ?? "")).toBe(personIdForUser(PROJECT, userA));
+      // the anon link in storage stays A
+      const anonLink = await client.execute({
+        sql: "SELECT person_id FROM anonymous_identities WHERE project_id = ? AND anonymous_id = ?",
+        args: [PROJECT, sharedAnon],
+      });
+      expect(String(anonLink.rows[0]?.person_id ?? "")).toBe(personIdForUser(PROJECT, userA));
+      // a LATER event-only request still resolves to A
+      const later = await repo.persistBatch(
+        PROJECT, [{
+          eventId: `r5f2-later-${Date.now()}`,
+          type: "track",
+          schemaVersion: 3,
+          occurredAt: Date.now(),
+          anonymousId: sharedAnon,
+          name: "x",
+          properties: {},
+        }], Date.now(), undefined, [],
+        new Map(), new Map([[sharedAnon, personIdForUser(PROJECT, userA)]]), new Map(),
+      );
+      const laterPerson = await client.execute({
+        sql: "SELECT person_id FROM events WHERE project_id = ? AND id = ?",
+        args: [PROJECT, later.results[0]?.eventId ?? ""],
+      });
+      expect(String(laterPerson.rows[0]?.person_id ?? "")).toBe(personIdForUser(PROJECT, userA));
+    } finally {
+      await clean();
+      client.close();
+    }
+  }, 60_000);
+
+  it("R5-F3: an in-batch duplicate opId receives an explicit rejected outcome", async () => {
+    if (!enabled) return;
+    const client = createClient({
+      url: process.env.TURSO_DATABASE_URL ?? "",
+      authToken: process.env.TURSO_AUTH_TOKEN ?? "",
+    });
+    const clean = async () => {
+      await client.batch(
+        ["DELETE FROM events", "DELETE FROM external_identities", "DELETE FROM anonymous_identities", "DELETE FROM identity_ops", "DELETE FROM deleted_people", "DELETE FROM people"].map((sql) => ({ sql })),
+        "write",
+      );
+    };
+    try {
+      await clean();
+      const repo = new IngestRepository(client);
+      const outcome = await repo.persistBatch(
+        PROJECT, [], Date.now(), undefined, [
+          { index: 0, op: { opId: "r5f3-dup", userId: "r5f3-a", anonymousId: "r5f3-anon-a", traits: {}, occurredAt: Date.now() } },
+          { index: 1, op: { opId: "r5f3-dup", userId: "r5f3-b", anonymousId: "r5f3-anon-b", traits: {}, occurredAt: Date.now() }, status: "rejected", reason: "duplicate-op-id" },
+        ],
+        new Map(), new Map(), new Map(),
+      );
+      expect(outcome.identity).toHaveLength(2); // BOTH entries in submitted order
+      expect(outcome.identity[0]).toMatchObject({ index: 0, status: "accepted" });
+      expect(outcome.identity[1]).toMatchObject({ index: 1, status: "rejected", reason: "duplicate-op-id" });
+      // only the first op's side effects exist
+      const traits = await client.execute({
+        sql: "SELECT COUNT(*) AS n FROM person_traits",
+        args: [],
+      });
+      expect(Number(traits.rows[0]?.n)).toBe(0);
     } finally {
       await clean();
       client.close();

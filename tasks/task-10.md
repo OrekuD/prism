@@ -1500,3 +1500,114 @@ checks were run.
   coverage, including real-store concurrency and duplicate-projection tests.
 - [x] Re-run only those affected suites and the identity public-origin
   certification, then request another targeted source review.
+
+
+### Round-5 fixes — R5-F1..R5-F3 closed (2026-08-16)
+
+- **R5-F1**: the persistence transaction is now AUTHORITATIVE for every
+  identity op — a losing claim reads the stored person + payload hash IN
+  THE TRANSACTION and returns `duplicate` or `rejected` (never
+  accepted); the stored person folds into the effective link maps, and
+  an in-transaction durable-link re-read covers stale pre-reads — a
+  losing op can never steer same-request events. Real-sqld test: a
+  conflicting concurrent claim returns rejected, creates no OTHER
+  person/link, and the event resolves to the durable person.
+- **R5-F2**: the in-memory fold never replaces a durable anonymous
+  mapping (first-wins) — a valid identify with a shared anonymous ID
+  attaches same-batch anonymous events to the EXISTING person, and
+  later event-only traffic resolves identically. Real-sqld test with a
+  shared anon across two identifies + anonymous and user-ID events.
+- **R5-F3**: repeated opIds within one request keep their submitted
+  index and receive an explicit `rejected` (`duplicate-op-id`) outcome —
+  nothing disappears from the identity results. Controller + real-sqld
+  tests assert both entries in submitted order.
+
+Re-review gate: focused real-store concurrency + first-wins-link
+regression coverage (core 146, browser 32, analytics 99+3 opt-in, api
+125+12 opt-in incl. the R5 real-sqld suite); identity public-origin
+certification 34/34; gates test 6/6, typecheck 9/9, lint 11/11, build
+9/9, audit clean, drift OK.
+
+
+### Review round 5 — feedback (2026-08-16)
+
+**Outcome: Task 10 still needs focused identity-contract corrections.** This
+review inspected only the R4 implementation and its direct tests. No broad
+workspace checks were run.
+
+#### Release blocker
+
+- [x] **R5-F1 — A concurrent losing identity claim is reported as `accepted`,
+  and can still steer same-request events.**
+
+  The repository correctly skips mutations when its transactional claim has
+  `rowsAffected !== 1` (`apps/analytics-api/src/repositories/IngestRepository.ts:129-146`),
+  but returns only event results. The controller builds `identity` statuses from
+  the *pre-transaction* `alreadyProcessed` read (`apps/analytics-api/src/controllers/IngestController.ts:406-417`).
+  Two concurrent requests can both pre-read no row; the second then loses its
+  claim yet is returned as `accepted`, even if its payload conflicts with the
+  now-stored operation.
+
+  The same interleaving bypasses R4-F4's rejection check: before the losing
+  claim, that operation is not marked rejected and is folded into the in-memory
+  link maps (`IngestController.ts:339-350`). Its same-request events can thus be
+  projected to the losing operation's identity despite its claim failing.
+
+  Impact: the API lies about an identity operation's outcome; the core removes
+  it as accepted, while concurrent events can still produce a divergent person
+  projection. This leaves the R4-F2/R4-F4 race only partially fixed.
+
+  Required fix: have the transaction return an outcome for every identity op.
+  After a failed claim, read the canonical stored hash in that transaction and
+  return `duplicate` or `rejected`; use only successfully claimed/durable links
+  for event resolution. Add a real-store two-controller interleaving test with
+  identical and conflicting payloads plus events, asserting correct results and
+  no losing-person projection.
+
+#### High-priority correctness
+
+- [x] **R5-F2 — A valid identify can overwrite an existing anonymous link in
+  the request-local map, violating first-wins within that batch.**
+
+  After loading durable `anonymousLinks`, the controller unconditionally does
+  `anonymousLinks.set(entry.op.anonymousId, opPersonId)` for every non-rejected
+  op (`apps/analytics-api/src/controllers/IngestController.ts:339-350`). The SQL
+  write itself is first-wins (`ON CONFLICT DO NOTHING` in
+  `apps/analytics-api/src/utils/identityResolution.ts:128-133`), so storage
+  keeps the original link while events in this request resolve through the new
+  in-memory link.
+
+  Impact: if a shared/previous anonymous ID is already linked to person A, an
+  identify for user B with that ID can attach same-batch anonymous events to B;
+  later event-only traffic resolves back to A. One anonymous history therefore
+  splits based solely on request shape, contrary to the documented first-wins
+  policy.
+
+  Required fix: never replace an existing durable anonymous mapping in the
+  request-local map. Define the explicit user-ID precedence for such a batch
+  and test both anonymous-only and user-ID events after the conflicting link
+  attempt, across this and a later request.
+
+- [x] **R5-F3 — Duplicate identity operations inside one request disappear
+  instead of receiving the promised explicit rejection result.**
+
+  On a repeated `opId`, the controller only logs and `continue`s
+  (`apps/analytics-api/src/controllers/IngestController.ts:220-225`). It neither
+  adds a rejected outcome nor preserves the operation index; consequently the
+  response's `identity` array omits that submitted operation entirely.
+
+  Impact: the API violates Task 10's stated contract—“in-batch duplicates
+  rejected; explicit per-op accepted/duplicate/rejected results”—and SDKs or
+  direct clients cannot determine what happened to every submitted operation.
+
+  Required fix: retain a result entry in original submitted order for every
+  valid identity input, marking later same-`opId` entries `rejected` with a
+  coarse reason. Add controller and core reconciliation tests for one accepted
+  op followed by an in-batch duplicate.
+
+#### Re-review gate
+
+- [x] Resolve R5-F1–R5-F3 with focused real-store concurrency and
+  first-wins-link regression coverage.
+- [x] Re-run only the affected core/analytics tests and identity
+  public-origin certification, then request another targeted source review.

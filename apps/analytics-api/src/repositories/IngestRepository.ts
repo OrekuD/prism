@@ -6,6 +6,7 @@ import { logger } from "../utils/logger.js";
 import {
   identityClaimStatement,
   identityMutationStatements,
+  identityOpHash,
   personIdForUser,
   resolveEventPerson,
 } from "../utils/identityResolution.js";
@@ -38,6 +39,21 @@ import type {
 export interface PersistedEventResult {
   eventId: string;
   duplicate: boolean;
+}
+
+/** Identity-op outcome returned by the transaction (R5-F1): the claim
+ * result is authoritative — a losing claim reads the stored hash in the
+ * SAME transaction and returns duplicate or rejected, never accepted. */
+export interface PersistedIdentityOutcome {
+  index: number;
+  opId: string;
+  status: "accepted" | "duplicate" | "rejected";
+  reason?: string;
+}
+
+export interface PersistBatchOutcome {
+  results: PersistedEventResult[];
+  identity: PersistedIdentityOutcome[];
 }
 
 const INSERT_EVENT_SQL = `
@@ -101,55 +117,168 @@ export class IngestRepository {
     events: ValidatedEvent[],
     receivedAt: number,
     sdk?: { name: string; version: string },
-    identityOps: ValidatedIdentityOp[] = [],
-    alreadyProcessedOpIds: ReadonlySet<string> = new Set(),
+    identityOps: Array<{ index: number; op: ValidatedIdentityOp; status?: string; reason?: string }> = [],
     externalLinks: ReadonlyMap<string, string> = new Map(),
     anonymousLinks: ReadonlyMap<string, string> = new Map(),
     replacementPersonIds: ReadonlyMap<string, string> = new Map(),
-  ): Promise<PersistedEventResult[]> {
-    // R4-F2/R4-F3: ONE write transaction with sequential visibility —
-    // identity claims gate their mutations (rowsAffected = 1 wins), and
-    // person/session projections run only for events whose inserts won
-    // the idempotency conflict. A failure rolls back EVERYTHING.
+  ): Promise<PersistBatchOutcome> {
+    // R4-F2/R4-F3/R5-F1: ONE write transaction with sequential visibility —
+    // identity claims gate their mutations (rowsAffected = 1 wins), losing
+    // claims read the stored hash IN THE TRANSACTION and return
+    // duplicate/rejected (never accepted), and person/session projections
+    // run only for events whose inserts won the idempotency conflict.
     const tx = await this.client.transaction("write");
     try {
-      // F7: event persons resolve against the DURABLE links (pre-read by
-      // the controller) — an explicit user link wins, then an active
-      // anonymous link, then a fresh anonymous person.
-      const resolvedPersons = events.map((event) =>
-        resolveEventPerson(
-          projectId,
-          event.userId,
-          event.anonymousId,
-          externalLinks,
-          anonymousLinks,
-        ),
-      );
+      const identityOutcomes: PersistedIdentityOutcome[] = [];
+      // Effective link maps: durable links + ONLY successfully claimed
+      // ops' links (R5-F1: a losing op never steers events; R5-F2:
+      // first-wins — an existing durable anonymous mapping is never
+      // replaced in-memory).
+      const effectiveExternal = new Map(externalLinks);
+      const effectiveAnonymous = new Map(anonymousLinks);
 
-      // 1. Identity claims + claim-gated mutations (R4-F2).
-      for (const op of identityOps) {
-        if (alreadyProcessedOpIds.has(op.opId)) continue;
+      // 1. Identity claims (authoritative outcomes).
+      for (const entry of identityOps) {
+        const { op } = entry;
+        if (entry.status === "rejected") {
+          identityOutcomes.push({
+            index: entry.index,
+            opId: op.opId,
+            status: "rejected",
+            reason: entry.reason,
+          });
+          continue;
+        }
         const deterministic = personIdForUser(projectId, op.userId);
         const knownPersonId =
           replacementPersonIds.get(deterministic) ?? deterministic;
         const claim = await tx.execute(
           identityClaimStatement(projectId, op, receivedAt, knownPersonId) as InStatement,
         );
-        if (claim.rowsAffected !== 1) continue; // losing claim: NO side effects
-        for (const statement of identityMutationStatements(
-          projectId,
-          op,
-          receivedAt,
-          knownPersonId,
-        )) {
-          await tx.execute(statement as InStatement);
+        if (claim.rowsAffected === 1) {
+          identityOutcomes.push({
+            index: entry.index,
+            opId: op.opId,
+            status: "accepted",
+          });
+          for (const statement of identityMutationStatements(
+            projectId,
+            op,
+            receivedAt,
+            knownPersonId,
+          )) {
+            await tx.execute(statement as InStatement);
+          }
+          // Fold ONLY the claimed op's links — never replacing a durable
+          // mapping (R5-F2 first-wins).
+          if (!effectiveExternal.has(op.userId)) {
+            effectiveExternal.set(op.userId, knownPersonId);
+          }
+          if (!effectiveAnonymous.has(op.anonymousId)) {
+            effectiveAnonymous.set(op.anonymousId, knownPersonId);
+          }
+        } else {
+          // Losing claim: the stored row carries the DURABLE truth — its
+          // person folds into the effective maps (R5-F1: even a stale
+          // pre-read resolves same-request events to the stored person,
+          // never to the losing op's identity) and its hash decides
+          // duplicate vs rejected.
+          const stored = await tx.execute({
+            sql: "SELECT person_id, payload_hash FROM identity_ops WHERE project_id = ? AND op_id = ?",
+            args: [projectId, op.opId],
+          });
+          const storedRow = stored.rows[0] as
+            | { person_id?: unknown; payload_hash?: unknown }
+            | undefined;
+          const storedPerson = String(storedRow?.person_id ?? "");
+          if (storedPerson) {
+            if (!effectiveExternal.has(op.userId)) {
+              effectiveExternal.set(op.userId, storedPerson);
+            }
+            if (!effectiveAnonymous.has(op.anonymousId)) {
+              effectiveAnonymous.set(op.anonymousId, storedPerson);
+            }
+          }
+          const storedHash = String(storedRow?.payload_hash ?? "");
+          if (storedHash === identityOpHash(op)) {
+            identityOutcomes.push({
+              index: entry.index,
+              opId: op.opId,
+              status: "duplicate",
+            });
+          } else {
+            identityOutcomes.push({
+              index: entry.index,
+              opId: op.opId,
+              status: "rejected",
+              reason: "conflicting-payload",
+            });
+          }
         }
       }
 
+      // R5-F1: a stale pre-read may have missed durable links — re-read
+      // them inside the transaction for every batch id not yet resolved.
+      const missingAnon = [
+        ...new Set(
+          events
+            .map((event) => event.anonymousId)
+            .filter((id): id is string => !!id),
+        ),
+      ].filter((id) => !effectiveAnonymous.has(id));
+      const missingUsers = [
+        ...new Set(
+          events
+            .map((event) => event.userId)
+            .filter((id): id is string => !!id),
+        ),
+      ].filter((id) => !effectiveExternal.has(id));
+      if (missingAnon.length > 0 || missingUsers.length > 0) {
+        const [anonRows, userRows] = await Promise.all([
+          missingAnon.length > 0
+            ? tx.execute({
+                sql: `SELECT anonymous_id, person_id FROM anonymous_identities WHERE project_id = ? AND anonymous_id IN (${missingAnon.map(() => "?").join(",")})`,
+                args: [projectId, ...missingAnon],
+              })
+            : Promise.resolve({ rows: [] }),
+          missingUsers.length > 0
+            ? tx.execute({
+                sql: `SELECT user_id, person_id FROM external_identities WHERE project_id = ? AND user_id IN (${missingUsers.map(() => "?").join(",")})`,
+                args: [projectId, ...missingUsers],
+              })
+            : Promise.resolve({ rows: [] }),
+        ]);
+        for (const row of anonRows.rows) {
+          const anonId = String((row as { anonymous_id?: unknown }).anonymous_id ?? "");
+          if (anonId && !effectiveAnonymous.has(anonId)) {
+            effectiveAnonymous.set(anonId, String((row as { person_id?: unknown }).person_id ?? ""));
+          }
+        }
+        for (const row of userRows.rows) {
+          const userId = String((row as { user_id?: unknown }).user_id ?? "");
+          if (userId && !effectiveExternal.has(userId)) {
+            effectiveExternal.set(userId, String((row as { person_id?: unknown }).person_id ?? ""));
+          }
+        }
+      }
+
+      // F7: event persons resolve against the EFFECTIVE links (durable +
+      // claimed ops only).
+      const resolvedPersons = events.map((event) =>
+        resolveEventPerson(
+          projectId,
+          event.userId,
+          event.anonymousId,
+          effectiveExternal,
+          effectiveAnonymous,
+        ),
+      );
+
       // 2. Event inserts — outcomes captured per statement.
       const insertResults: Array<{ rowsAffected: number }> = [];
-      for (const event of events) {
-        const personId = resolvedPersons[events.indexOf(event)] ?? null;
+      for (let index = 0; index < events.length; index += 1) {
+        const event = events[index] ?? ({} as ValidatedEvent);
+        const personId = resolvedPersons[index] ?? null;
         const result = await tx.execute({
           sql: INSERT_EVENT_SQL,
           args: [
@@ -177,7 +306,7 @@ export class IngestRepository {
       // replay never advances last_seen_at or the session state.
       for (let index = 0; index < events.length; index += 1) {
         if ((insertResults[index]?.rowsAffected ?? 0) === 0) continue;
-        const event = events[index] ?? { occurredAt: receivedAt } as ValidatedEvent;
+        const event = events[index] ?? ({} as ValidatedEvent);
         const personId = resolvedPersons[index];
         if (personId) {
           await tx.execute({
@@ -194,10 +323,13 @@ export class IngestRepository {
 
       await tx.commit();
 
-      return events.map((event, index) => ({
-        eventId: event.eventId,
-        duplicate: (insertResults[index]?.rowsAffected ?? 0) === 0,
-      }));
+      return {
+        results: events.map((event, index) => ({
+          eventId: event.eventId,
+          duplicate: (insertResults[index]?.rowsAffected ?? 0) === 0,
+        })),
+        identity: identityOutcomes,
+      };
     } catch (error) {
       await tx.rollback().catch(() => undefined);
       throw error;

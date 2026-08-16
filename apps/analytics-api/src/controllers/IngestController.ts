@@ -16,7 +16,6 @@ import {
   type ValidatedIdentityOp,
 } from "../utils/ingestValidation.js";
 import {
-  identityOpHash,
   personIdForUser,
   resolveEventPerson,
 } from "../utils/identityResolution.js";
@@ -205,7 +204,7 @@ export class IngestController {
     // deduplicated WITHIN the request; the idempotency read skips known
     // ops; guarded statements make the claim transactional (a duplicate
     // payload can never apply its side effects).
-    type IngestOp = { index: number; op: ValidatedIdentityOp; opHash: string; status?: string; reason?: string };
+    type IngestOp = { index: number; op: ValidatedIdentityOp; status?: string; reason?: string };
     const validOps: IngestOp[] = [];
     const seenOpIds = new Set<string>();
     for (const raw of parsed.batch.identity ?? []) {
@@ -218,8 +217,16 @@ export class IngestController {
       }
       const op = validation.op;
       if (seenOpIds.has(op.opId)) {
+        // R5-F3: a repeated opId in ONE request keeps its submitted index
+        // and receives an explicit rejected outcome — it never disappears.
         logger.warn("analytics:ingest", "duplicate identity op within request", {
           projectId,
+        });
+        validOps.push({
+          index: validOps.length,
+          op,
+          status: "rejected",
+          reason: "duplicate-op-id",
         });
         continue;
       }
@@ -241,24 +248,22 @@ export class IngestController {
       validOps.push({
         index: validOps.length,
         op: sanitizedOp,
-        opHash: identityOpHash(sanitizedOp),
       });
     }
-    let alreadyProcessed: ReadonlySet<string> = new Set();
     // F7 + R3-F3: durable link maps are loaded for EVERY distinct user and
     // anonymous ID in the batch — events and identity operations alike —
     // so a later event-only request with an already-linked anonymous ID
-    // resolves to the same person.
+    // resolves to the same person. The identity-op outcomes are decided
+    // AUTHORITATIVELY by the persistence transaction (R5-F1): the
+    // claim's rowsAffected + the stored payload hash — never by this
+    // pre-read alone.
     let externalLinks: Map<string, string> = new Map();
     let anonymousLinks: Map<string, string> = new Map();
-    // F5 + R3-F6: deleted-person replacements — a deleted deterministic
-    // person is recreated with a FRESH id, but ONLY when no ACTIVE link
-    // exists yet (active links win over tombstones so repeat identifies
-    // never fragment a new user).
     const replacementPersonIds: Map<string, string> = new Map();
     const batchUserIds = new Set<string>();
     const batchAnonIds = new Set<string>();
     for (const entry of validOps) {
+      if (entry.status === "rejected") continue; // never folded (R4-F4)
       batchUserIds.add(entry.op.userId);
       batchAnonIds.add(entry.op.anonymousId);
     }
@@ -266,32 +271,7 @@ export class IngestController {
       if (entry.event.userId) batchUserIds.add(entry.event.userId);
       if (entry.event.anonymousId) batchAnonIds.add(entry.event.anonymousId);
     }
-    if (batchUserIds.size > 0 || batchAnonIds.size > 0 || validOps.length > 0) {
-      // F8: the idempotency read now carries the payload hash — a replay
-      // with the SAME payload is a duplicate; a replay with a DIFFERENT
-      // payload is REJECTED before any statement is built.
-      const { rows } = await TursoDatabaseManager.instance.execute({
-        sql: `SELECT op_id, payload_hash FROM identity_ops WHERE project_id = ? AND op_id IN (${validOps.map(() => "?").join(",")})`,
-        args: [projectId, ...validOps.map((entry) => entry.op.opId)],
-      });
-      alreadyProcessed = new Set(
-        rows.map((row) => String((row as { op_id?: unknown }).op_id ?? "")),
-      );
-      const processedHashes = new Map(
-        rows.map((row) => [
-          String((row as { op_id?: unknown }).op_id ?? ""),
-          String((row as { payload_hash?: unknown }).payload_hash ?? ""),
-        ]),
-      );
-      // R3-F5: conflicting entries keep their rejected status IN the
-      // results — they are never spliced out of validOps.
-      for (const entry of validOps) {
-        const stored = processedHashes.get(entry.op.opId);
-        if (stored !== undefined && stored !== entry.opHash) {
-          entry.status = "rejected";
-          entry.reason = "conflicting-payload";
-        }
-      }
+    if (batchUserIds.size > 0 || batchAnonIds.size > 0) {
       const opUserIds = [...batchUserIds];
       const opAnonIds = [...batchAnonIds];
       const [links, anonLinks, deleted] = await Promise.all([
@@ -332,39 +312,36 @@ export class IngestController {
         );
         const active = userOf ? externalLinks.get(userOf) : undefined;
         if (active && activeLinkedPersons.has(active)) {
-          continue; // the user already has an active fresh link
+          continue;
         }
         replacementPersonIds.set(deletedId, `u_${randomUUID()}`);
       }
-      // The ops in THIS request create their links — fold them into the
-      // resolution maps so same-request events resolve to the op's person
-      // instead of spawning a stale anonymous projection (F7). Existing
-      // active links are never overwritten (R3-F6), and REJECTED ops are
-      // excluded entirely (R4-F4): a conflicting replay must never steer
-      // same-request events to its altered identity.
-      for (const entry of validOps) {
-        if (entry.status === "rejected") continue;
-        const deterministic = personIdForUser(projectId, entry.op.userId);
-        const opPersonId = externalLinks.get(entry.op.userId) ?? replacementPersonIds.get(deterministic) ?? deterministic;
-        externalLinks.set(entry.op.userId, opPersonId);
-        anonymousLinks.set(entry.op.anonymousId, opPersonId);
-      }
+      // NOTE: the ops' OWN links are folded inside the persistence
+      // transaction, ONLY for successfully claimed ops, and never
+      // replacing a durable mapping (R5-F1/R5-F2).
     }
 
+    let persistedEvents: Array<{ eventId: string; duplicate: boolean }> = [];
+    let identityResults: Array<{
+      index: number;
+      opId: string;
+      status: "accepted" | "duplicate" | "rejected";
+      reason?: string;
+    }> = [];
     if (validEvents.length > 0 || validOps.length > 0) {
-      let persisted: Array<{ eventId: string; duplicate: boolean }>;
       try {
-        persisted = await new IngestRepository().persistBatch(
+        const persisted = await new IngestRepository().persistBatch(
           projectId,
           validEvents.map((entry) => entry.event),
           now,
           parsed.batch.sdk,
-          validOps.map((entry) => entry.op),
-          alreadyProcessed,
+          validOps,
           externalLinks,
           anonymousLinks,
           replacementPersonIds,
         );
+        persistedEvents = persisted.results;
+        identityResults = persisted.identity;
       } catch (error) {
         // One database outcome per request: nothing was committed. Coarse
         // retryable 503 — never SQL, database URLs, event content, or
@@ -378,7 +355,7 @@ export class IngestController {
           503,
         );
       }
-      for (const [position, outcome] of persisted.entries()) {
+      for (const [position, outcome] of persistedEvents.entries()) {
         const entry = validEvents[position];
         if (!entry) continue;
         results[entry.index] = {
@@ -402,19 +379,6 @@ export class IngestController {
     const orderedResults = results.filter(
       (result): result is IngestResult => result !== null,
     );
-
-    const identityResults: NonNullable<IngestResponseBody["identity"]> =
-      validOps.map(({ index, op, status, reason }) => ({
-        index,
-        opId: op.opId,
-        status:
-          status === "rejected"
-            ? ("rejected" as const)
-            : alreadyProcessed.has(op.opId)
-              ? ("duplicate" as const)
-              : ("accepted" as const),
-        ...(reason ? { reason } : {}),
-      }));
 
     const counts = {
       accepted: orderedResults.filter((r) => r.status === "accepted").length,
