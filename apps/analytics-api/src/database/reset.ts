@@ -74,6 +74,7 @@ const DROP_STATEMENTS = [
   "DROP TABLE IF EXISTS person_traits",
   "DROP TABLE IF EXISTS identity_ops",
   "DROP TABLE IF EXISTS deleted_people",
+  "DROP TABLE IF EXISTS deleted_identities",
   "DROP TABLE IF EXISTS schema_migrations",
 ];
 

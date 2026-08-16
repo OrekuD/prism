@@ -143,8 +143,17 @@ export function identityMutationStatements(
       args: [projectId, op.anonymousId, knownPersonId, receivedAt],
     },
     {
-      sql: 'UPDATE events SET person_id = ? WHERE project_id = ? AND person_id = ? AND user_id IS NULL',
-      args: [knownPersonId, projectId, anonPersonId],
+      // R7-F1: events accepted under a DELETED generation's anonymous
+      // credential are never reassigned into a later identity — the
+      // tombstone guard runs in the same transaction (sequential
+      // visibility).
+      sql: `UPDATE events SET person_id = ?
+            WHERE project_id = ? AND person_id = ? AND user_id IS NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM deleted_identities
+                WHERE project_id = ? AND kind = 'anonymous' AND credential = ?
+              )`,
+      args: [knownPersonId, projectId, anonPersonId, projectId, op.anonymousId],
     },
     {
       sql: 'DELETE FROM people WHERE project_id = ? AND person_id = ?',

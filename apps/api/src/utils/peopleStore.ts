@@ -539,8 +539,19 @@ export async function deletePerson(
           },
         ]
       : [];
+  // R7-F1: tombstone every linked credential so a stale post-deletion
+  // event can never be reassigned into a later identity generation.
+  const credentialTombstones = [
+    ...(anonIds.length > 0
+      ? anonIds.map((anonId) => ({
+          sql: "INSERT INTO deleted_identities (project_id, kind, credential, deleted_at) VALUES (?, 'anonymous', ?, ?) ON CONFLICT DO NOTHING",
+          args: [projectId, anonId, Date.now()],
+        }))
+      : []),
+  ];
   const results = await client.batch?.(
     [
+      ...credentialTombstones,
       ...sessionStatements,
       { sql: "DELETE FROM external_identities WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
       { sql: "DELETE FROM anonymous_identities WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
@@ -553,7 +564,8 @@ export async function deletePerson(
   );
   // the `deleted` flag reflects the PERSON row removal — the tombstone
   // insert is not evidence that the person existed.
-  const peopleDeleteIndex = sessionStatements.length > 0 ? 5 : 4;
+  const peopleDeleteIndex =
+    credentialTombstones.length + sessionStatements.length + 4;
   const peopleDelete = results?.[peopleDeleteIndex];
   return { deleted: (peopleDelete?.rowsAffected ?? 0) > 0 };
 }

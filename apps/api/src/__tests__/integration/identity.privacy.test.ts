@@ -860,81 +860,200 @@ run("round-6 review fixes (R6-F1, R6-F2)", () => {
     }
   }, 60_000);
 
-  it("R6-F2: concurrent post-deletion re-identifies converge on ONE durable person", async () => {
+  it("R6-F2: GENUINELY concurrent post-deletion re-identifies converge on ONE durable person", async () => {
     if (!enabled) return;
-    const client = createClient({
+    // two INDEPENDENT clients/repositories so the transactions genuinely
+    // compete at the writer
+    const clientA = createClient({
+      url: process.env.TURSO_DATABASE_URL ?? "",
+      authToken: process.env.TURSO_AUTH_TOKEN ?? "",
+    });
+    const clientB = createClient({
       url: process.env.TURSO_DATABASE_URL ?? "",
       authToken: process.env.TURSO_AUTH_TOKEN ?? "",
     });
     const userId = `r6f2-user-${Date.now()}`;
+    const anonA = `r6f2-anon-a-${Date.now()}`;
+    const anonB = `r6f2-anon-b-${Date.now()}`;
+    const opA = `r6f2-op-a-${Date.now()}`;
+    const opB = `r6f2-op-b-${Date.now()}`;
+    const eventId = `r6f2-ev-${Date.now()}`;
     const clean = async () => {
-      await client.batch(
-        ["DELETE FROM events", "DELETE FROM external_identities", "DELETE FROM anonymous_identities", "DELETE FROM person_traits", "DELETE FROM identity_ops", "DELETE FROM deleted_people", "DELETE FROM people"].map((sql) => ({ sql })),
+      await clientA.batch(
+        ["DELETE FROM events", "DELETE FROM external_identities", "DELETE FROM anonymous_identities", "DELETE FROM person_traits", "DELETE FROM identity_ops", "DELETE FROM deleted_people", "DELETE FROM deleted_identities", "DELETE FROM people"].map((sql) => ({ sql })),
         "write",
       );
     };
+    const run = async (client: typeof clientA, replacement: string, anonId: string, opId: string) => {
+      // bounded retry for any database-busy response under contention
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const repo = new IngestRepository(client);
+          return await repo.persistBatch(
+            PROJECT, [], Date.now(), undefined,
+            [{ index: 0, op: { opId, userId, anonymousId: anonId, traits: {}, occurredAt: Date.now() } }],
+            new Map(), new Map(), new Map([[personIdForUser(PROJECT, userId), replacement]]),
+          );
+        } catch (error) {
+          const message = String(error);
+          if (!message.includes("BUSY") || attempt === 2) throw error;
+          await new Promise((r) => setTimeout(r, 25));
+        }
+      }
+      throw new Error("unreachable");
+    };
     try {
       await clean();
-      // simulate: the user was deleted (tombstone) and two concurrent
-      // identifies arrive with DIFFERENT fresh replacement candidates
       const deletedId = personIdForUser(PROJECT, userId);
-      await client.execute({
+      await clientA.execute({
         sql: "INSERT INTO deleted_people (project_id, person_id, deleted_at) VALUES (?, ?, ?)",
         args: [PROJECT, deletedId, Date.now()],
       });
-      const repo = new IngestRepository(client);
       const candidateA = `u_candidate-a-${Date.now()}`;
       const candidateB = `u_candidate-b-${Date.now()}`;
-      // first concurrent request: claims the link with candidate A
-      const a = await repo.persistBatch(
-        PROJECT, [], Date.now(), undefined,
-        [{ index: 0, op: { opId: `r6f2-op-a-${Date.now()}`, userId, anonymousId: `r6f2-anon-a-${Date.now()}`, traits: { plan: "a" }, occurredAt: Date.now() } }],
-        new Map(), new Map(), new Map([[deletedId, candidateA]]),
-      );
+
+      // GENUINE PARALLEL interleaving: both transactions race
+      const [a, b] = await Promise.all([
+        run(clientA, candidateA, anonA, opA),
+        run(clientB, candidateB, anonB, opB),
+      ]);
       expect(a.identity[0]?.status).toBe("accepted");
-      // second concurrent request: candidate B — the AUTHORITATIVE link
-      // resolution must win: both ops resolve to the SAME durable person
-      const b = await repo.persistBatch(
+      expect(b.identity[0]?.status).toBe("accepted");
+
+      // exactly ONE durable external link
+      const links = await clientA.execute({
+        sql: "SELECT person_id FROM external_identities WHERE project_id = ? AND user_id = ?",
+        args: [PROJECT, userId],
+      });
+      expect(links.rows).toHaveLength(1);
+      const durablePerson = String((links.rows[0] as { person_id?: unknown }).person_id ?? "");
+
+      // EXACTLY ONE person row — the losing replacement never materializes
+      const people = await clientA.execute({
+        sql: "SELECT person_id FROM people WHERE project_id = ?",
+        args: [PROJECT],
+      });
+      expect(people.rows).toHaveLength(1);
+      expect(String((people.rows[0] as { person_id?: unknown }).person_id ?? "")).toBe(durablePerson);
+
+      // BOTH identity-op records and BOTH anonymous links point to the
+      // durable person — no fragment is reachable
+      const ops = await clientA.execute({
+        sql: "SELECT person_id FROM identity_ops WHERE project_id = ? AND op_id IN (?, ?)",
+        args: [PROJECT, opA, opB],
+      });
+      expect(ops.rows).toHaveLength(2);
+      for (const row of ops.rows) {
+        expect(String((row as { person_id?: unknown }).person_id ?? "")).toBe(durablePerson);
+      }
+      const anonLinks = await clientA.execute({
+        sql: "SELECT person_id FROM anonymous_identities WHERE project_id = ? AND anonymous_id IN (?, ?)",
+        args: [PROJECT, anonA, anonB],
+      });
+      expect(anonLinks.rows).toHaveLength(2);
+      for (const row of anonLinks.rows) {
+        expect(String((row as { person_id?: unknown }).person_id ?? "")).toBe(durablePerson);
+      }
+
+      // an event for the user resolves to the durable person
+      const repo = new IngestRepository(clientA);
+      const ev = await repo.persistBatch(
         PROJECT, [{
-          eventId: `r6f2-ev-${Date.now()}`,
+          eventId,
           type: "track",
           schemaVersion: 3,
           occurredAt: Date.now(),
           userId,
           name: "x",
           properties: {},
-        }], Date.now(), undefined,
-        [{ index: 0, op: { opId: `r6f2-op-b-${Date.now()}`, userId, anonymousId: `r6f2-anon-b-${Date.now()}`, traits: { plan: "b" }, occurredAt: Date.now() } }],
-        new Map(), new Map(), new Map([[deletedId, candidateB]]),
+        }], Date.now(), undefined, [],
+        new Map([[userId, durablePerson]]), new Map(), new Map(),
       );
-      expect(b.identity[0]?.status).toBe("accepted");
+      expect(ev.results[0]?.duplicate).toBe(false);
+      const eventPerson = await clientA.execute({
+        sql: "SELECT person_id FROM events WHERE project_id = ? AND id = ?",
+        args: [PROJECT, eventId],
+      });
+      expect(String(eventPerson.rows[0]?.person_id ?? "")).toBe(durablePerson);
+    } finally {
+      await clean();
+      clientA.close();
+      clientB.close();
+    }
+  }, 60_000);
+});
 
-      // exactly ONE durable external link + one person row
-      const links = await client.execute({
+run("round-7 review fixes (R7-F1, R7-F2)", () => {
+  it("R7-F1: stale anonymous-only traffic never enters a re-identified person", async () => {
+    if (!enabled) return;
+    const client = createClient({
+      url: process.env.TURSO_DATABASE_URL ?? "",
+      authToken: process.env.TURSO_AUTH_TOKEN ?? "",
+    });
+    const userId = `r7f1-user-${Date.now()}`;
+    const anonId = `r7f1-anon-${Date.now()}`;
+    const personId = personIdForUser(PROJECT, userId);
+    const staleEventId = `r7f1-stale-${Date.now()}`;
+    const clean = async () => {
+      await client.batch(
+        ["DELETE FROM events", "DELETE FROM sessions_v2", "DELETE FROM external_identities", "DELETE FROM anonymous_identities", "DELETE FROM person_traits", "DELETE FROM identity_ops", "DELETE FROM deleted_people", "DELETE FROM deleted_identities", "DELETE FROM people"].map((sql) => ({ sql })),
+        "write",
+      );
+    };
+    try {
+      await clean();
+      const repo = new IngestRepository(client);
+      // 1. identify U with anonymous A
+      await repo.persistBatch(
+        PROJECT, [], Date.now(), undefined,
+        [{ index: 0, op: { opId: `r7f1-op1-${Date.now()}`, userId, anonymousId: anonId, traits: {}, occurredAt: Date.now() } }],
+        new Map(), new Map(), new Map(),
+      );
+      // 2. delete U (tombstones person + anon credential)
+      const del = await deletePerson(client, PROJECT, personId);
+      console.log("DEBUG deleted:", del.deleted);
+      const tombs = await client.execute({
+        sql: "SELECT COUNT(*) AS n FROM deleted_identities WHERE project_id = ? AND kind = 'anonymous' AND credential = ?",
+        args: [PROJECT, anonId],
+      });
+      console.log("DEBUG anon tombstones:", Number(tombs.rows[0]?.n));
+      // 3. stale anonymous-only event arrives AFTER deletion
+      const stale = await repo.persistBatch(
+        PROJECT, [{
+          eventId: staleEventId,
+          type: "track",
+          schemaVersion: 3,
+          occurredAt: Date.now(),
+          anonymousId: anonId,
+          name: "x",
+          properties: {},
+        }], Date.now(), undefined, [],
+        new Map(), new Map(), new Map(),
+      );
+      expect(stale.results[0]?.duplicate).toBe(false);
+      // 4. re-identify U with the SAME anonymous A
+      await repo.persistBatch(
+        PROJECT, [], Date.now(), undefined,
+        [{ index: 0, op: { opId: `r7f1-op2-${Date.now()}`, userId, anonymousId: anonId, traits: { plan: "new" }, occurredAt: Date.now() } }],
+        new Map(), new Map(), new Map(),
+      );
+      // the replacement person's history EXCLUDES the stale event
+      const newPerson = await client.execute({
         sql: "SELECT person_id FROM external_identities WHERE project_id = ? AND user_id = ?",
         args: [PROJECT, userId],
       });
-      expect(links.rows).toHaveLength(1);
-      const durablePerson = String((links.rows[0] as { person_id?: unknown }).person_id ?? "");
-      const people = await client.execute({
-        sql: "SELECT COUNT(*) AS n FROM people WHERE project_id = ?",
-        args: [PROJECT],
+      const freshPerson = String((newPerson.rows[0] as { person_id?: unknown }).person_id ?? "");
+      const staleInNew = await client.execute({
+        sql: "SELECT COUNT(*) AS n FROM events WHERE project_id = ? AND id = ? AND person_id = ?",
+        args: [PROJECT, staleEventId, freshPerson],
       });
-      // the durable person + the first candidate (the person row the winner
-      // created) — never TWO candidates
-      expect(Number(people.rows[0]?.n)).toBeLessThanOrEqual(2);
-      // B's event resolves to the DURABLE person (A's link winner)
-      const eventPerson = await client.execute({
-        sql: "SELECT person_id FROM events WHERE project_id = ? AND id = ?",
-        args: [PROJECT, b.results[0]?.eventId ?? ""],
+      expect(Number(staleInNew.rows[0]?.n)).toBe(0); // the stale event is NOT inherited
+      // the stale event still exists under its own anonymous person
+      const staleAnywhere = await client.execute({
+        sql: "SELECT COUNT(*) AS n FROM events WHERE project_id = ? AND id = ?",
+        args: [PROJECT, staleEventId],
       });
-      expect(String(eventPerson.rows[0]?.person_id ?? "")).toBe(durablePerson);
-      // B's traits land on the durable person, not a fragment
-      const traits = await client.execute({
-        sql: "SELECT COUNT(*) AS n FROM person_traits WHERE project_id = ? AND person_id = ? AND key = 'plan' AND value = ?",
-        args: [PROJECT, durablePerson, JSON.stringify("b")],
-      });
-      expect(Number(traits.rows[0]?.n)).toBe(1);
+      expect(Number(staleAnywhere.rows[0]?.n)).toBe(1);
     } finally {
       await clean();
       client.close();

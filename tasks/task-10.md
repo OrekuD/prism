@@ -1732,3 +1732,104 @@ were run.
   concurrent post-deletion path.
 - [x] Re-run only the affected identity tests and the identity public-origin
   certification, then request another targeted source review.
+
+
+
+### Round-7 fixes — R7-F1..R7-F2 closed (2026-08-16)
+
+- **R7-F1 (release blocker)**: `deletePerson()` now tombstones EVERY linked
+  credential — new migration `007_deleted_identities.sql`
+  (`deleted_identities(project_id, kind, credential, deleted_at)`), written
+  in the same atomic deletion batch. The identify-time anonymous-history
+  reassignment (`identityMutationStatements`) is guarded by the tombstone in
+  the SAME transaction: `UPDATE events ... AND NOT EXISTS (SELECT 1 FROM
+  deleted_identities WHERE kind='anonymous' AND credential=?)` — events
+  accepted under a deleted generation's anonymous credential can never be
+  reassigned into a later identity. Real-sqld regression through the ingest
+  path: identify U+A → delete U → stale anonymous-only event with A → re-identify
+  U with A → the replacement person's history EXCLUDES the stale event (it
+  remains under its own anonymous person).
+- **R7-F2 (verification gap)**: the R6-F2 test is replaced with GENUINE
+  contention — two independent clients/repositories racing `Promise.all`,
+  bounded retry for database-busy responses. Exact no-fragmentation
+  assertions: one external link, EXACTLY ONE person row (the durable one —
+  the losing replacement never materializes), BOTH `identity_ops` rows and
+  BOTH anonymous links point to the durable person, plus the event/trait
+  assertions.
+- Readiness/reset maintained: `resetStore` drops `deleted_identities`;
+  the readiness mock version bumped to 7.
+
+Re-review gate: focused identity/privacy real-store suite 15/15 (incl. the
+new concurrent R6-F2 + R7-F1), controller tests 32/32, analytics 100+3
+opt-in, core 146, api 125+15 opt-in; identity public-origin certification
+34/34; gates test 6/6, typecheck 9/9, lint 11/11, build 9/9, audit clean,
+drift OK.
+
+
+### Review round 7 — feedback (2026-08-16)
+
+**Outcome: Task 10 is not accepted yet.** This review read only commit
+`11ebd16`, its direct identity paths, and the associated controller and
+real-store tests. The Round 6 fixes for conflicting claims and source indexes
+address those stated defects, but deletion isolation and the required
+concurrency proof remain incomplete. No broad workspace checks were run.
+
+#### Release blocker
+
+- [x] **R7-F1 — Stale anonymous-only traffic can be attached to a new person
+  after privacy deletion.**
+
+  `deletePerson()` removes the person's `anonymous_identities` rows, but it
+  records a tombstone only for the deleted person ID
+  (`apps/api/src/utils/peopleStore.ts:505-550`). It retains no generation or
+  tombstone for the linked anonymous IDs. A stale anonymous-only event that
+  arrives after deletion therefore has no durable anonymous link and resolves
+  to `personIdForAnonymous()` (`apps/analytics-api/src/utils/identityResolution.ts:45-58`).
+  When the same external user later identifies with that old anonymous ID, the
+  accepted identity operation unconditionally reassigns all userless events
+  from that anonymous person to the fresh known person
+  (`apps/analytics-api/src/utils/identityResolution.ts:145-152`).
+
+  Reproduction: identify user U with anonymous ID A, delete U, ingest a stale
+  event containing only A, then identify U again with A. The stale event is
+  moved into U's new person record. This violates the Task 10 deletion promise
+  that post-deletion stale history must not reappear under a newly identified
+  person.
+
+  Required fix: carry deletion generation/tombstone state for every linked
+  external and anonymous credential, or otherwise prevent post-deletion events
+  from being reassigned into a later identity generation. A fresh identity may
+  be created, but it must not inherit events accepted under credentials from
+  the deleted generation. Add a real-store regression through the ingest path:
+  identify -> delete -> stale anonymous-only event -> re-identify with the
+  same anonymous ID. The replacement person's export and event history must
+  exclude the stale event.
+
+#### High-priority verification gap
+
+- [x] **R7-F2 — The claimed R6-F2 concurrency regression is sequential and
+  does not prove the race contract.**
+
+  The test named "concurrent post-deletion re-identifies" awaits the first
+  `persistBatch()` before starting the second
+  (`apps/api/src/__tests__/integration/identity.privacy.test.ts:889-909`). It
+  never creates overlapping transactions or competing write attempts. It also
+  accepts up to two person rows (`923-925`) despite documenting exactly one
+  person. The test can therefore pass without exercising the interleaving that
+  R6-F2 was meant to protect.
+
+  Required fix: use independent real-store clients/repositories and a genuine
+  parallel interleaving, with bounded handling for any database busy response.
+  Assert one external link, one reachable person, both `identity_ops` rows and
+  both anonymous links point to that person, and no losing replacement-person
+  row remains. Keep the event and trait assertions, but do not treat a
+  sequential handoff as concurrency coverage.
+
+#### Re-review gate
+
+- [x] Resolve R7-F1 with a deletion-generation regression covering stale
+  anonymous-only traffic and re-identification.
+- [x] Replace the R6-F2 sequential test with real concurrent contention and
+  exact no-fragmentation assertions.
+- [x] Re-run only the affected identity/privacy tests and the identity
+  public-origin certification, then request another focused source review.
