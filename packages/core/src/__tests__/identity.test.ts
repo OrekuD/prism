@@ -704,3 +704,46 @@ describe("round-3 review fixes (R3-F5 core reconciliation)", () => {
     await prism.shutdown({ timeoutMs: 50 });
   });
 });
+
+describe("round-4 review fixes (R4-F1)", () => {
+  it("rejects are honored through a single-consumption response body (browser path)", async () => {
+    const posted: string[] = [];
+    const runtime = fakeRuntime();
+    runtime.transport.post = async (_url, request) => {
+      posted.push(request.body);
+      const envelope = JSON.parse(request.body) as { identity?: Array<{ opId: string }> };
+      const body = JSON.stringify({
+        ok: true,
+        results: [],
+        identity: (envelope.identity ?? []).map((op, index) => ({
+          index,
+          opId: op.opId,
+          status: "rejected",
+          reason: "conflicting-payload",
+        })),
+      });
+      // SINGLE-CONSUMPTION body — like a browser Response: the second
+      // text() call must not be needed (R4-F1).
+      let consumed = false;
+      return {
+        status: 200,
+        headers: {},
+        text: async () => {
+          if (consumed) throw new Error("body already consumed");
+          consumed = true;
+          return body;
+        },
+      };
+    };
+    const codes: string[] = [];
+    const prism = await ready({ runtime, collection: { initialState: "granted" } });
+    prism.onDiagnostic((d) => codes.push(d.code));
+    await prism.identify("user-single-body", { plan: "pro" });
+    await prism.flush();
+    await prism.flush(); // nothing to retry
+
+    expect(posted.length).toBe(1);
+    expect(codes).toContain("identify_rejected");
+    await prism.shutdown({ timeoutMs: 50 });
+  });
+});

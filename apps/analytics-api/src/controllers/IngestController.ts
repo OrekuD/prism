@@ -339,8 +339,11 @@ export class IngestController {
       // The ops in THIS request create their links — fold them into the
       // resolution maps so same-request events resolve to the op's person
       // instead of spawning a stale anonymous projection (F7). Existing
-      // active links are never overwritten (R3-F6).
+      // active links are never overwritten (R3-F6), and REJECTED ops are
+      // excluded entirely (R4-F4): a conflicting replay must never steer
+      // same-request events to its altered identity.
       for (const entry of validOps) {
+        if (entry.status === "rejected") continue;
         const deterministic = personIdForUser(projectId, entry.op.userId);
         const opPersonId = externalLinks.get(entry.op.userId) ?? replacementPersonIds.get(deterministic) ?? deterministic;
         externalLinks.set(entry.op.userId, opPersonId);

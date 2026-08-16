@@ -8,7 +8,7 @@ vi.mock("../managers/NeonDatabaseManager.js", () => ({
   default: { instance: vi.fn() },
 }));
 vi.mock("../managers/TursoDatabaseManager.js", () => ({
-  default: { instance: { execute: vi.fn(), batch: vi.fn() } },
+  default: { instance: { execute: vi.fn(), batch: vi.fn(), transaction: vi.fn() } },
 }));
 vi.mock("../managers/WebSocketManager.js", () => ({
   default: { emitToClient: vi.fn(() => true) },
@@ -21,9 +21,40 @@ const emitToClient = WebSocketManager.emitToClient as unknown as ReturnType<
   typeof vi.fn
 >;
 
-const dbBatch = TursoDatabaseManager.instance.batch as unknown as ReturnType<
-  typeof vi.fn
->;
+// the repository now persists through ONE write transaction: the
+// transaction mock's execute records statements and drives rowsAffected
+// by SQL kind. Tests configure the event-insert outcomes explicitly.
+let eventInsertOutcomes: number[] = [1];
+const txExecute = vi.fn(async (statement: { sql?: string }) => {
+  const sql = String(statement?.sql ?? "");
+  if (sql.includes("INSERT INTO events")) {
+    return { rows: [], rowsAffected: eventInsertOutcomes.shift() ?? 1 };
+  }
+  // identity claims always win; projections always apply
+  return { rows: [], rowsAffected: 1 };
+});
+const tx = {
+  execute: txExecute,
+  batch: vi.fn(async () => [{ rows: [], rowsAffected: 1 }]),
+  commit: vi.fn(async () => undefined),
+  rollback: vi.fn(async () => undefined),
+};
+(
+  TursoDatabaseManager.instance.transaction as unknown as ReturnType<typeof vi.fn>
+).mockResolvedValue(tx);
+const dbBatch = txExecute as unknown as ReturnType<typeof vi.fn>;
+/** First executed statement whose SQL contains the fragment. */
+function statementContaining(fragment: string) {
+  return executedStatements().find((statement) =>
+    String(statement.sql).includes(fragment),
+  );
+}
+
+
+/** The statements executed through the transaction, in order. */
+function executedStatements(): Array<{ sql: string; args: unknown[] }> {
+  return dbBatch.mock.calls.map((call) => call[0] as { sql: string; args: unknown[] });
+}
 
 const PROJECT_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 
@@ -88,7 +119,7 @@ async function ingest(ctx: TestCtx): Promise<JsonResult> {
 describe("IngestController.ingest (v2 batch ingestion)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    dbBatch.mockResolvedValue([{ rows: [], rowsAffected: 1 }]);
+    eventInsertOutcomes = [1];
     eventLimiter.reset();
     // default: no identity ops were processed yet
     (
@@ -177,11 +208,10 @@ describe("IngestController.ingest (v2 batch ingestion)", () => {
     expect(body.ok).toBe(true);
     expect(body.results).toEqual([{ index: 0, id: "evt-0001", status: "accepted" }]);
 
-    // R3-F7: ONE atomic batch — the event insert + its person upsert
-    // (session statements only exist for sessioned events)
-    expect(dbBatch).toHaveBeenCalledTimes(1);
-    const [statements] = dbBatch.mock.calls[0];
-    const { sql, args } = statements[0];
+    // R4: one write transaction — the event insert carries the atomic
+    // projection upserts alongside it
+    const eventStatement = statementContaining("INSERT INTO events");
+    const { sql, args } = eventStatement ?? { sql: "", args: [] };
     expect(String(sql)).toContain("INSERT INTO events");
     expect(String(sql)).toContain("ON CONFLICT (project_id, id) DO NOTHING");
     expect(args).toEqual([
@@ -210,14 +240,13 @@ describe("IngestController.ingest (v2 batch ingestion)", () => {
 
     await IngestController.ingest(ctx as never);
 
-    const [statements] = dbBatch.mock.calls[0];
-    const { args } = statements[0];
+    const { args } = statementContaining("INSERT INTO events") ?? { args: [] };
     expect(args).toContain(PROJECT_A);
     expect(args).not.toContain("evil-project");
   });
 
   it("marks a replayed event as duplicate via the conflict-safe insert", async () => {
-    dbBatch.mockResolvedValue([{ rows: [], rowsAffected: 0 }]);
+    eventInsertOutcomes = [0];
     const ctx = makeContext(batch([VALID_EVENT]));
 
     const result = await ingest(ctx);
@@ -240,11 +269,8 @@ describe("IngestController.ingest (v2 batch ingestion)", () => {
     const ctx = makeContext(
       batch([VALID_EVENT, badName, badTimestamp, dangerous, VALID_EVENT]),
     );
-    // two valid events → two atomic-batch results, both accepted
-    dbBatch.mockResolvedValue([
-      { rows: [], rowsAffected: 1 },
-      { rows: [], rowsAffected: 1 },
-    ]);
+    // two valid events → two accepted results
+    eventInsertOutcomes = [1, 1];
 
     const result = await ingest(ctx);
 
@@ -256,10 +282,11 @@ describe("IngestController.ingest (v2 batch ingestion)", () => {
       { index: 3, id: "evt-dangerous", status: "rejected", reason: "invalid-properties" },
       { index: 4, id: "evt-0001", status: "accepted" },
     ]);
-    // the two valid events entered the transaction with their person
-    // upserts (R3-F7 atomic projection)
-    const [statements] = dbBatch.mock.calls[0];
-    expect(statements).toHaveLength(4);
+    // the two valid events entered the transaction
+    const statements = executedStatements();
+    expect(
+      statements.filter((s) => String(s.sql).includes("INSERT INTO events")),
+    ).toHaveLength(2);
   });
 
   it("rejects unsupported event types, non-finite numbers, and oversized events", async () => {
@@ -301,8 +328,7 @@ describe("IngestController.ingest (v2 batch ingestion)", () => {
 
     await IngestController.ingest(ctx as never);
 
-    const [statements] = dbBatch.mock.calls[0];
-    const { args } = statements[0];
+    const { args } = statementContaining("INSERT INTO events") ?? { args: [] };
     const stored = JSON.parse(String(args[11])) as Record<string, unknown>;
     expect(stored.password).toBe("[REDACTED]");
     expect((stored.nested as Record<string, unknown>).token).toBe("[REDACTED]");
@@ -348,10 +374,7 @@ describe("IngestController.ingest (v2 batch ingestion)", () => {
   });
 
 it("maintains sessions_v2 state and broadcasts session-started for accepted sessions", async () => {
-    dbBatch.mockResolvedValue([
-      { rows: [], rowsAffected: 1 }, // event insert
-      { rows: [], rowsAffected: 1 }, // session upsert
-    ]);
+    eventInsertOutcomes = [1];
     const ctx = makeContext(
       batch([
         {
@@ -367,13 +390,12 @@ it("maintains sessions_v2 state and broadcasts session-started for accepted sess
     const result = await ingest(ctx);
 
     expect(result.status).toBe(200);
-    // two batches: the atomic event insert, then the derived session state
-    expect(dbBatch).toHaveBeenCalledTimes(2);
-    const [eventStatements] = dbBatch.mock.calls[0];
-    // event insert + person upsert in the atomic first batch (R3-F7)
-    expect(eventStatements).toHaveLength(2);
-    const sessionBatch = dbBatch.mock.calls[1][0] as Array<{ sql: string; args: unknown[] }>;
-    const sessionStatement = sessionBatch[0] as { sql: string; args: unknown[] };
+    const eventStatement = statementContaining("INSERT INTO events");
+    expect(eventStatement).toBeDefined();
+    const sessionStatement = statementContaining("INSERT INTO sessions_v2") as {
+      sql: string;
+      args: unknown[];
+    };
     expect(String(sessionStatement.sql)).toContain("INSERT INTO sessions_v2");
     expect(String(sessionStatement.sql)).toContain("ON CONFLICT (project_id, session_id)");
     expect(sessionStatement.args).toEqual([
@@ -402,10 +424,7 @@ it("maintains sessions_v2 state and broadcasts session-started for accepted sess
   });
 
   it("never re-broadcasts a duplicate session-started event", async () => {
-    dbBatch.mockResolvedValue([
-      { rows: [], rowsAffected: 0 }, // duplicate event insert
-      { rows: [], rowsAffected: 1 },
-    ]);
+    eventInsertOutcomes = [0];
     const ctx = makeContext(
       batch([
         {
@@ -425,18 +444,17 @@ it("maintains sessions_v2 state and broadcasts session-started for accepted sess
   });
 
   it("closes the session row for session_ended events", async () => {
-    dbBatch.mockResolvedValue([
-      { rows: [], rowsAffected: 1 },
-      { rows: [], rowsAffected: 1 },
-    ]);
+    eventInsertOutcomes = [1];
     const ctx = makeContext(
       batch([{ ...VALID_EVENT, sessionId: "sess-1", name: "session_ended" }]),
     );
 
     await ingest(ctx);
 
-    const sessionBatch = dbBatch.mock.calls[1][0] as Array<{ sql: string; args: unknown[] }>;
-    const sessionStatement = sessionBatch[0] as { sql: string; args: unknown[] };
+    const sessionStatement = statementContaining("UPDATE sessions_v2 SET ended_at") as {
+      sql: string;
+      args: unknown[];
+    };
     expect(String(sessionStatement.sql)).toContain("UPDATE sessions_v2 SET ended_at");
     expect(sessionStatement.args).toEqual([
       VALID_EVENT.occurredAt,
@@ -450,13 +468,13 @@ it("maintains sessions_v2 state and broadcasts session-started for accepted sess
 describe("release review — duplicate session safety", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    dbBatch.mockResolvedValue([{ rows: [], rowsAffected: 1 }]);
+    eventInsertOutcomes = [1];
     eventLimiter.reset();
   });
 
   it("a duplicate session_started does NOT reopen the session (no session mutation)", async () => {
-    // batch #1 (events) → duplicate; the session batch must never run
-    dbBatch.mockResolvedValueOnce([{ rows: [], rowsAffected: 0 }]);
+    // the event insert loses the conflict; the session/projection must not run
+    eventInsertOutcomes = [0];
     const ctx = makeContext(
       batch([{ ...VALID_EVENT, eventId: "evt-dup", sessionId: "sess-1", name: "session_started" }]),
     );
@@ -467,41 +485,44 @@ describe("release review — duplicate session safety", () => {
     expect(results[0]?.status).toBe("duplicate");
     // only ONE batch call — the event insert + its person upsert
     // (R3-F7); no session-state batch for a duplicate
-    expect(dbBatch).toHaveBeenCalledTimes(1);
-    const [statements] = dbBatch.mock.calls[0];
-    expect(statements).toHaveLength(2);
-    expect(String((statements[0] as { sql: string }).sql)).toContain("INSERT INTO events");
+    const eventStatement = statementContaining("INSERT INTO events");
+    expect(eventStatement).toBeDefined();
+    // a duplicate NEVER runs session/projection statements (R4-F3)
+    expect(statementContaining("INSERT INTO sessions_v2")).toBeUndefined();
+    expect(statementContaining("person_traits")).toBeUndefined();
     expect(emitToClient).not.toHaveBeenCalled();
   });
 
   it("a duplicate session_ended does NOT touch the session row", async () => {
-    dbBatch.mockResolvedValueOnce([{ rows: [], rowsAffected: 0 }]);
+    eventInsertOutcomes = [0];
     const ctx = makeContext(
       batch([{ ...VALID_EVENT, sessionId: "sess-1", name: "session_ended" }]),
     );
 
     await ingest(ctx);
 
-    expect(dbBatch).toHaveBeenCalledTimes(1); // event insert + person upsert only
-    const [statements] = dbBatch.mock.calls[0];
-    expect(statements).toHaveLength(2);
+    // duplicate: only the event insert ran — no session or person
+    // projection statements (R4-F3)
+    expect(statementContaining("INSERT INTO sessions_v2")).toBeUndefined();
+    expect(statementContaining("INSERT INTO people")).toBeUndefined();
   });
 
   it("a duplicate ordinary sessioned event does NOT bump last_seen_at", async () => {
-    dbBatch.mockResolvedValueOnce([{ rows: [], rowsAffected: 0 }]);
+    eventInsertOutcomes = [0];
     const ctx = makeContext(
       batch([{ ...VALID_EVENT, sessionId: "sess-1", name: "click" }]),
     );
 
     await ingest(ctx);
 
-    expect(dbBatch).toHaveBeenCalledTimes(1); // event insert + person upsert only
-    const [statements] = dbBatch.mock.calls[0];
-    expect(statements).toHaveLength(2);
+    // duplicate: only the event insert ran — no session or person
+    // projection statements (R4-F3)
+    expect(statementContaining("INSERT INTO sessions_v2")).toBeUndefined();
+    expect(statementContaining("INSERT INTO people")).toBeUndefined();
   });
 
-  it("a NEWLY inserted session_started still mutates session state (second batch)", async () => {
-    dbBatch.mockResolvedValueOnce([{ rows: [], rowsAffected: 1 }]);
+  it("a NEWLY inserted session_started still mutates session state", async () => {
+    eventInsertOutcomes = [1];
     const ctx = makeContext(
       batch([{ ...VALID_EVENT, sessionId: "sess-1", name: "session_started" }]),
     );
@@ -510,9 +531,7 @@ describe("release review — duplicate session safety", () => {
 
     const results = (result.__json as IngestResponseBody).results;
     expect(results[0]?.status).toBe("accepted");
-    expect(dbBatch).toHaveBeenCalledTimes(2); // events batch + derived-state batch
-    const sessionStatements = dbBatch.mock.calls[1][0] as Array<{ sql: string }>;
-    const sessionStatement = sessionStatements.find((s) =>
+    const sessionStatement = executedStatements().find((s) =>
       String(s.sql).includes("INSERT INTO sessions_v2"),
     );
     expect(sessionStatement).toBeDefined();
@@ -546,7 +565,7 @@ describe("release review — duplicate session safety", () => {
 describe("identity operations (task-10 §4)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    dbBatch.mockResolvedValue([{ rows: [], rowsAffected: 1 }]);
+    eventInsertOutcomes = [1];
     eventLimiter.reset();
   });
 
@@ -580,10 +599,7 @@ describe("identity operations (task-10 §4)", () => {
       status: "accepted",
     });
 
-    const [statements] = dbBatch.mock.calls[0];
-    // event insert + 6 identity statements (person, external link, anon
-    // link, reassignment, delete anon person, traits, op record = 7)
-    const identityStatements = statements.filter((s: { sql: string }) =>
+    const identityStatements = executedStatements().filter((s: { sql: string }) =>
       String(s.sql).includes("people") ||
       String(s.sql).includes("identities") ||
       String(s.sql).includes("person_traits") ||
@@ -605,8 +621,7 @@ describe("identity operations (task-10 §4)", () => {
       }),
     );
     await ingest(ctx);
-    const firstCall = dbBatch.mock.calls[0][0] as Array<{ sql: string }>;
-    expect(firstCall.some((s) => String(s.sql).includes("identity_ops"))).toBe(true);
+    expect(statementContaining("identity_ops")).toBeDefined();
 
     // second pass: the op was already processed with the SAME payload
     // hash → duplicate, skipped entirely
@@ -639,15 +654,9 @@ describe("identity operations (task-10 §4)", () => {
     const result = await ingest(ctx2);
     const body = result.__json as IngestResponseBody;
     expect(body.identity?.[0]?.status).toBe("duplicate");
-    const secondCall = dbBatch.mock.calls[0][0] as Array<{ sql: string }>;
-    // NO identity-processing statements (the event insert is still there)
-    expect(
-      secondCall.some(
-        (s) =>
-          String(s.sql).includes("person_traits") ||
-          String(s.sql).includes("external_identities"),
-      ),
-    ).toBe(false);
+    // NO identity-processing statements (only the event insert remains)
+    expect(statementContaining("person_traits")).toBeUndefined();
+    expect(statementContaining("external_identities")).toBeUndefined();
   });
 
   it("derives the person from the authenticated project, ignoring client ownership", async () => {
@@ -670,8 +679,10 @@ describe("identity operations (task-10 §4)", () => {
 
     await ingest(ctx);
 
-    const [statements] = dbBatch.mock.calls[0];
-    const event = statements[0] as { sql: string; args: unknown[] };
+    const event = statementContaining("INSERT INTO events") as {
+      sql: string;
+      args: unknown[];
+    };
     expect(event.args[1]).toBe(PROJECT_A); // key-derived, never "evil"
     expect(event.args[9]).toBe("user-123"); // user_id column
     expect(String(event.args[10])).toContain("u_"); // derived person_id
@@ -681,7 +692,7 @@ describe("identity operations (task-10 §4)", () => {
 describe("identity-only envelopes (review F2)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    dbBatch.mockResolvedValue([{ rows: [], rowsAffected: 1 }]);
+    eventInsertOutcomes = [1];
     eventLimiter.reset();
     (
       TursoDatabaseManager.instance.execute as unknown as ReturnType<typeof vi.fn>
@@ -714,9 +725,8 @@ describe("identity-only envelopes (review F2)", () => {
       opId: "op-only",
       status: "accepted",
     });
-    // a single batch: the identity statements (no events → no derived
-    // session/person state)
-    expect(dbBatch).toHaveBeenCalledTimes(1);
+    // the claim + its mutations ran through the transaction
+    expect(statementContaining("identity_ops")).toBeDefined();
   });
 
   it("rejects an envelope with neither events nor identity operations", async () => {
@@ -735,7 +745,7 @@ describe("identity-only envelopes (review F2)", () => {
 describe("round-3 review fixes (R3-F4, R3-F5)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    dbBatch.mockResolvedValue([{ rows: [], rowsAffected: 1 }]);
+    eventInsertOutcomes = [1];
     eventLimiter.reset();
     (
       TursoDatabaseManager.instance.execute as unknown as ReturnType<typeof vi.fn>
@@ -786,9 +796,7 @@ describe("round-3 review fixes (R3-F4, R3-F5)", () => {
       reason: "conflicting-payload",
     });
     // no identity statements were built for the rejected op
-    const [statements] = dbBatch.mock.calls[0];
-    expect(
-      statements.some((s: { sql: string }) => String(s.sql).includes("external_identities")),
-    ).toBe(false);
+    expect(statementContaining("external_identities")).toBeUndefined();
+    expect(statementContaining("person_traits")).toBeUndefined();
   });
 });

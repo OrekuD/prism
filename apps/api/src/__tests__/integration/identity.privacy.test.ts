@@ -9,8 +9,9 @@ import { config } from "dotenv";
 import { describe, expect, it } from "vitest";
 import { createClient } from "@libsql/client";
 import { applyPendingMigrations, readMigrationFiles } from "../../../../analytics-api/src/database/migrations";
-import { buildIdentityStatements, identityOpHash, personIdForUser, resolveEventPerson } from "../../../../analytics-api/src/utils/identityResolution";
+import { buildIdentityStatements, identityClaimStatement, identityMutationStatements, identityOpHash, personIdForAnonymous, personIdForUser, resolveEventPerson } from "../../../../analytics-api/src/utils/identityResolution";
 import { exportPerson, deletePerson, personExists } from "../../utils/peopleStore";
+import { IngestRepository } from "../../../../analytics-api/src/repositories/IngestRepository";
 import { applyRetention } from "../../../../analytics-api/src/retention";
 
 config({ path: ".dev.vars" });
@@ -489,6 +490,143 @@ run("round-3 review fixes (R3-F3, R3-F4, R3-F6, R3-F8)", () => {
         args: [PROJECT],
       });
       expect(Number(sessions.rows[0]?.n)).toBe(0); // the user-ID-only session is gone
+    } finally {
+      await clean();
+      client.close();
+    }
+  }, 60_000);
+});
+
+run("round-4 review fixes (R4-F2, R4-F3, R4-F4)", () => {
+  it("R4-F2: a losing claim applies NO mutations (transactional gating)", async () => {
+    if (!enabled) return;
+    const client = createClient({
+      url: process.env.TURSO_DATABASE_URL ?? "",
+      authToken: process.env.TURSO_AUTH_TOKEN ?? "",
+    });
+    const userId = `r4f2-user-${Date.now()}`;
+    const anonId = `r4f2-anon-${Date.now()}`;
+    const clean = async () => {
+      await client.batch(
+        ["DELETE FROM external_identities", "DELETE FROM anonymous_identities", "DELETE FROM person_traits", "DELETE FROM identity_ops", "DELETE FROM deleted_people", "DELETE FROM people"].map((sql) => ({ sql })),
+        "write",
+      );
+    };
+    try {
+      await clean();
+      // first "request" claims the op (as if the pre-read missed it)
+      const tx1 = await client.transaction("write");
+      const claim1 = await tx1.execute(
+        identityClaimStatement(PROJECT, {
+          opId: "r4f2-op",
+          userId,
+          anonymousId: anonId,
+          traits: { plan: "pro" },
+          occurredAt: Date.now(),
+        }, Date.now(), personIdForUser(PROJECT, userId)) as never,
+      );
+      expect(claim1.rowsAffected).toBe(1);
+      for (const stmt of identityMutationStatements(PROJECT, {
+        opId: "r4f2-op",
+        userId,
+        anonymousId: anonId,
+        traits: { plan: "pro" },
+        occurredAt: Date.now(),
+      }, Date.now(), personIdForUser(PROJECT, userId))) {
+        await tx1.execute(stmt as never);
+      }
+      await tx1.commit();
+
+      // second "request" — the SAME op with a DIFFERENT payload — claims
+      // first: the claim conflicts, so NONE of its mutations run
+      const tx2 = await client.transaction("write");
+      const claim2 = await tx2.execute(
+        identityClaimStatement(PROJECT, {
+          opId: "r4f2-op",
+          userId: "r4f2-OTHER-USER",
+          anonymousId: "r4f2-other-anon",
+          traits: { plan: "evil" },
+          occurredAt: Date.now(),
+        }, Date.now(), personIdForUser(PROJECT, "r4f2-OTHER-USER")) as never,
+      );
+      expect(claim2.rowsAffected).toBe(0); // the claim lost
+      // skip the mutations — the gating contract
+      await tx2.rollback();
+
+      // only the FIRST op's side effects exist
+      const links = await client.execute({
+        sql: "SELECT user_id FROM external_identities WHERE project_id = ?",
+        args: [PROJECT],
+      });
+      expect(links.rows.map((r) => String((r as { user_id?: unknown }).user_id ?? ""))).toEqual([userId]);
+      const traits = await client.execute({
+        sql: "SELECT value FROM person_traits WHERE project_id = ?",
+        args: [PROJECT],
+      });
+      expect(JSON.stringify(traits.rows)).toContain("pro");
+      expect(JSON.stringify(traits.rows)).not.toContain("evil");
+    } finally {
+      await clean();
+      client.close();
+    }
+  }, 60_000);
+
+  it("R4-F3: a duplicate replay never advances people.last_seen_at", async () => {
+    if (!enabled) return;
+    const client = createClient({
+      url: process.env.TURSO_DATABASE_URL ?? "",
+      authToken: process.env.TURSO_AUTH_TOKEN ?? "",
+    });
+    const anonId = `r4f3-anon-${Date.now()}`;
+    const personId = personIdForAnonymous(PROJECT, anonId);
+    const eventId = `r4f3-ev-${Date.now()}`;
+    const firstAt = Date.now() - 60_000;
+    const clean = async () => {
+      await client.batch(
+        ["DELETE FROM events", "DELETE FROM people"].map((sql) => ({ sql })),
+        "write",
+      );
+    };
+    try {
+      await clean();
+      // first delivery: event + person row with last_seen = firstAt
+      const seedResult = await client.execute({
+        sql: `INSERT INTO events (id, project_id, type, name, schema_version, occurred_at, received_at, anonymous_id, person_id, properties, context, sdk_name, sdk_version)
+              VALUES (?, ?, 'track', 'x', 3, ?, ?, ?, ?, '{}', '{}', NULL, NULL)`,
+        args: [eventId, PROJECT, firstAt, firstAt, anonId, personId],
+      });
+      console.log("DEBUG seed rowsAffected:", seedResult.rowsAffected);
+      await client.execute({
+        sql: "INSERT INTO people (person_id, project_id, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?)",
+        args: [personId, PROJECT, firstAt, firstAt],
+      });
+      const beforeReplay = await client.execute({
+        sql: "SELECT COUNT(*) AS n FROM events WHERE project_id = ? AND id = ?",
+        args: [PROJECT, eventId],
+      });
+      console.log("DEBUG rows after seed:", Number(beforeReplay.rows[0]?.n));
+      // replay (duplicate) at a LATER time — the projection must not advance
+      const repo = new IngestRepository(client);
+      const outcomes = await repo.persistBatch(PROJECT, [{
+        eventId,
+        type: "track",
+        schemaVersion: 3,
+        occurredAt: Date.now(),
+        anonymousId: anonId,
+        name: "x",
+        properties: {},
+      }], Date.now(), undefined, [], new Set(), new Map(), new Map([[anonId, personId]]), new Map());
+      const after = await client.execute({
+        sql: "SELECT COUNT(*) AS n FROM events WHERE project_id = ? AND id = ?",
+        args: [PROJECT, eventId],
+      });
+      expect(outcomes[0]?.duplicate).toBe(true);
+
+      const row = await client.execute({
+        sql: "SELECT last_seen_at FROM people WHERE project_id = ? AND person_id = ?",
+        args: [PROJECT, personId],
+      });
+      expect(Number(row.rows[0]?.last_seen_at)).toBe(firstAt); // unchanged
     } finally {
       await clean();
       client.close();

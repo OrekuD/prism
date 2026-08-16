@@ -1371,3 +1371,132 @@ Before Task 10 is marked complete again:
   the public-origin certification.
 - [x] Update the Task 10 completion summary and checklist only after the
   regressions pass.
+
+
+### Round-4 fixes — R4-F1..R4-F4 closed (2026-08-16)
+
+- **R4-F1**: `deliver()` reads + parses the ingest response body EXACTLY
+  ONCE — event and identity outcomes derive from the same parsed value
+  (the browser transport's Response body is single-consumption).
+  Regression: a single-consumption transport (the browser path) with a
+  rejected op emits `identify_rejected` and never retries.
+- **R4-F2**: persistence now runs through ONE write transaction with
+  sequential visibility — the `identity_ops` claim is executed FIRST and
+  its `rowsAffected` (1 = claimed) gates every following person/link/
+  trait/reassignment statement. A losing claim applies NO side effects.
+  Real-sqld test: a second conflicting request claims 0 and changes
+  nothing.
+- **R4-F3**: person upserts (and session projections) execute only for
+  events whose inserts WON the idempotency conflict — a duplicate replay
+  never advances `people.last_seen_at`. Real-sqld test: replay at a later
+  time leaves `last_seen_at` unchanged.
+- **R4-F4**: rejected identity operations are excluded from the link-map
+  folding and the replacement calculation — same-request events follow
+  only the durable identity policy.
+
+Re-review gate: focused core/browser/analytics regression coverage
+(core 145, browser 32, analytics 99+3 opt-in, api 125+9 opt-in incl. the
+R4 real-sqld suite); identity public-origin certification 34/34; gates
+test 6/6, typecheck 9/9, lint 11/11, build 9/9, audit clean, drift OK.
+
+
+### Review round 4 — feedback (2026-08-16)
+
+**Outcome: Task 10 needs another focused correction pass.** This review read
+only the R3 implementation paths and their direct tests. No broad workspace
+checks were run.
+
+#### Release blockers
+
+- [x] **R4-F1 — Browser identity-result reconciliation reads the response body
+  twice, so rejected identity operations are discarded as accepted.**
+
+  `deliver()` first passes the response to `reconcileResults()`, which calls
+  `response.text()` (`packages/core/src/core.ts:1100`, `1721-1729`), then calls
+  `response.text()` again to parse `identity` (`1105-1121`). The browser
+  adapter delegates directly to Fetch's `Response.text()`
+  (`packages/browser/src/browser-runtime.ts:196-200`), whose body can only be
+  consumed once. The second call rejects, is caught as a "non-JSON body", and
+  produces no identity outcomes. `doFlush()` then uses its no-outcomes fallback
+  and removes every pending identity op (`core.ts:924-969`).
+
+  Impact: an actual browser client silently drops a server-rejected identify
+  operation—the precise behavior R3-F5 was intended to prevent. The added core
+  test masks this because its fake `text()` creates a fresh string on every
+  call (`packages/core/src/__tests__/identity.test.ts:672-704`).
+
+  Required fix: read and parse the response body exactly once, deriving both
+  event and identity outcomes from that parsed value. Add a regression using a
+  single-consumption `Response`/transport (the browser adapter path) and assert
+  that a rejected op emits `identify_rejected` before it leaves the queue.
+
+- [x] **R4-F2 — The identity-operation claim still does not conditionally
+  guard the writes it is meant to authorize.**
+
+  `buildIdentityStatements()` inserts the `identity_ops` claim with
+  `ON CONFLICT DO NOTHING`, but unconditionally follows it with person, link,
+  event-reassignment, deletion, and trait statements
+  (`apps/analytics-api/src/utils/identityResolution.ts:108-165`). Two requests
+  that both complete the pre-read before either write can still run those side
+  effects after the losing claim conflicts. The R3 commit changed the canonical
+  hash but did not make mutations depend on a successful claim.
+
+  Impact: concurrent conflicting/replayed identify operations can alter traits
+  and derived identity projections even though only one operation was claimed.
+  This is an idempotency and identity-integrity failure.
+
+  Required fix: use a transactional claim whose success gates every following
+  mutation (for example, claim first and branch from its returned row/count),
+  then return a per-operation duplicate/rejected outcome. Add a real-libSQL
+  concurrent race test that proves the losing operation changes no links,
+  traits, people, or event projection.
+
+#### High-priority correctness
+
+- [x] **R4-F3 — Duplicate events still advance `people.last_seen_at`.**
+
+  `IngestRepository` builds `personUpserts` for *all* submitted events before
+  it knows which event inserts won the idempotency conflict
+  (`apps/analytics-api/src/repositories/IngestRepository.ts:160-176`). Each
+  upsert unconditionally executes `DO UPDATE SET last_seen_at`, including when
+  the corresponding event insert later reports `rowsAffected: 0`
+  (`179-186`).
+
+  Impact: replaying an old event changes person activity/retention data, even
+  though the event result is `duplicate`. The new test named “does NOT bump
+  last_seen_at” only asserts that two SQL statements were issued
+  (`apps/analytics-api/src/__tests__/IngestController.test.ts:490-504`); it
+  never asserts the persisted person value.
+
+  Required fix: make the person update conditional on the event insert winning
+  in the same SQL transaction (or obtain insert outcomes before the projection
+  write without losing atomicity). Add a real-store duplicate replay assertion
+  that `last_seen_at` is unchanged.
+
+- [x] **R4-F4 — A rejected identity operation can still influence same-request
+  event person resolution.**
+
+  Conflicting ops are marked `rejected` (`IngestController.ts:286-293`) but are
+  still folded into `externalLinks` and `anonymousLinks`
+  (`339-348`) before events are persisted. The repository skips the existing
+  op's identity statements via `alreadyProcessedOpIds`
+  (`IngestRepository.ts:145-155`), but event resolution uses the overwritten
+  in-memory maps and creates/updates the resulting person projection.
+
+  Impact: a client can replay one of its own op IDs with altered identities and
+  send events in that batch; the API reports the identify as rejected while the
+  events can still be assigned to an unlinked or incorrect person. This defeats
+  the first-wins identity guarantee in a partial-batch case.
+
+  Required fix: exclude rejected operations from every downstream identity
+  map, replacement calculation, and persistence input; preserve only the
+  durable links read from storage. Add a real-store test for a conflicting
+  replay with changed user/anonymous IDs plus an event, asserting no new person
+  or link is created and the event follows the durable identity policy.
+
+#### Re-review gate
+
+- [x] Resolve R4-F1–R4-F4 with focused core/browser/analytics regression
+  coverage, including real-store concurrency and duplicate-projection tests.
+- [x] Re-run only those affected suites and the identity public-origin
+  certification, then request another targeted source review.

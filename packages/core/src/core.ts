@@ -1097,27 +1097,34 @@ class PrismClientImpl implements PrismClient {
       return { ok: false, error: coarse, exhausted };
     }
     if (response.status >= 200 && response.status < 300) {
-      const reconciled = await this.reconcileResults(batch, response);
-      // R3-F5: identity-outcome reconciliation — the response's identity
-      // array is parsed once here so doFlush can remove only ACCEPTED ops
-      // and drop REJECTED ops with a diagnostic (never silently treated
-      // as accepted).
-      let identityOutcomes: Array<{ opId: string; status: string }> = [];
+      // R4-F1: read + parse the response body EXACTLY ONCE — the browser
+      // transport's Response body is single-consumption. Event and
+      // identity outcomes derive from the same parsed value.
+      let bodyText: string | null = null;
       try {
-        const parsed = JSON.parse(await response.text()) as {
-          identity?: Array<{ opId?: unknown; status?: unknown }>;
-        };
-        if (Array.isArray(parsed.identity)) {
-          identityOutcomes = parsed.identity
-            .filter(
-              (entry): entry is { opId: string; status: string } =>
-                typeof entry.opId === "string" &&
-                typeof entry.status === "string",
-            )
-            .map((entry) => ({ opId: entry.opId, status: entry.status }));
-        }
+        bodyText = await response.text();
       } catch {
-        // non-JSON body: no identity outcomes
+        bodyText = null;
+      }
+      const reconciled = await this.reconcileResults(batch, bodyText);
+      let identityOutcomes: Array<{ opId: string; status: string }> = [];
+      if (bodyText !== null) {
+        try {
+          const parsed = JSON.parse(bodyText) as {
+            identity?: Array<{ opId?: unknown; status?: unknown }>;
+          };
+          if (Array.isArray(parsed.identity)) {
+            identityOutcomes = parsed.identity
+              .filter(
+                (entry): entry is { opId: string; status: string } =>
+                  typeof entry.opId === "string" &&
+                  typeof entry.status === "string",
+              )
+              .map((entry) => ({ opId: entry.opId, status: entry.status }));
+          }
+        } catch {
+          // non-JSON body: no identity outcomes
+        }
       }
       if (reconciled === "malformed") {
         // Cannot trust the accounting — retry (server-side dedup by
@@ -1720,11 +1727,12 @@ class PrismClientImpl implements PrismClient {
    */
   private async reconcileResults(
     batch: QueuedEvent[],
-    response: { text(): Promise<string> },
+    bodyText: string | null,
   ): Promise<{ kept: QueuedEvent[]; rejected: number } | "malformed" | null> {
+    if (bodyText === null) return null; // unreadable body: status-only success
     let body: { results?: unknown };
     try {
-      body = JSON.parse(await response.text()) as { results?: unknown };
+      body = JSON.parse(bodyText) as { results?: unknown };
     } catch {
       return null; // non-JSON body: status-only success
     }

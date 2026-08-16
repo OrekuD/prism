@@ -4,7 +4,9 @@ import type { InStatement } from "@libsql/client";
 import TursoDatabaseManager from "../managers/TursoDatabaseManager.js";
 import { logger } from "../utils/logger.js";
 import {
-  buildIdentityStatements,
+  identityClaimStatement,
+  identityMutationStatements,
+  personIdForUser,
   resolveEventPerson,
 } from "../utils/identityResolution.js";
 import type {
@@ -84,7 +86,8 @@ function sessionStatement(
 
 export class IngestRepository {
   constructor(
-    private readonly client: Pick<Client, "batch"> = TursoDatabaseManager.instance,
+    private readonly client: Pick<Client, "batch" | "transaction"> =
+      TursoDatabaseManager.instance,
   ) {}
 
   /**
@@ -104,109 +107,101 @@ export class IngestRepository {
     anonymousLinks: ReadonlyMap<string, string> = new Map(),
     replacementPersonIds: ReadonlyMap<string, string> = new Map(),
   ): Promise<PersistedEventResult[]> {
-    // F7: event persons resolve against the DURABLE links (pre-read by the
-    // controller) — an explicit user link wins, then an active anonymous
-    // link, then a fresh anonymous person.
-    const resolvedPersons = events.map((event) =>
-      resolveEventPerson(
-        projectId,
-        event.userId,
-        event.anonymousId,
-        externalLinks,
-        anonymousLinks,
-      ),
-    );
-    const insertStatements: InStatement[] = events.map((event, index) => ({
-      sql: INSERT_EVENT_SQL,
-      args: [
-        event.eventId,
-        projectId,
-        event.type,
-        event.name,
-        event.schemaVersion,
-        event.occurredAt,
-        receivedAt,
-        event.sessionId ?? null,
-        event.anonymousId ?? null,
-        event.userId ?? null,
-        resolvedPersons[index] ?? null,
-        JSON.stringify(event.properties),
-        JSON.stringify(event.context ?? {}),
-        sdk?.name ?? null,
-        sdk?.version ?? null,
-      ],
-    }));
-
-    // Identity operations join the SAME atomic batch (task-10 §4): person
-    // rows, links, traits, and idempotency records commit with the events
-    // or not at all. Already-processed op ids (idempotency reads) are
-    // skipped.
-    const identityStatements: InStatement[] = [];
-    for (const op of identityOps) {
-      if (alreadyProcessedOpIds.has(op.opId)) continue;
-      for (const statement of buildIdentityStatements(
-        projectId,
-        op,
-        receivedAt,
-        replacementPersonIds,
-      )) {
-        identityStatements.push(statement as InStatement);
-      }
-    }
-    // R3-F7: person upserts join the SAME atomic write boundary as the
-    // accepted events, keyed by the ORIGINAL event indexes — last_seen_at
-    // can never land on the wrong person, and a second-stage failure
-    // cannot silently drop the projection update.
-    const personUpserts: InStatement[] = events
-      .map((event, index) => ({ event, personId: resolvedPersons[index] }))
-      .filter(
-        (entry): entry is { event: ValidatedEvent; personId: string } =>
-          entry.personId !== null && entry.personId !== undefined,
-      )
-      .map(({ event, personId }) => ({
-        sql: `INSERT INTO people (person_id, project_id, first_seen_at, last_seen_at)
-              VALUES (?, ?, ?, ?)
-              ON CONFLICT (project_id, person_id)
-              DO UPDATE SET last_seen_at = excluded.last_seen_at`,
-        args: [personId, projectId, event.occurredAt, receivedAt],
-      }));
-
-    const insertResults = await this.client.batch(
-      [...insertStatements, ...identityStatements, ...personUpserts],
-      "write",
-    );
-
-    const outcomes = events.map((event, index) => {
-      const duplicate = (insertResults[index]?.rowsAffected ?? 0) === 0;
-      return { event, duplicate };
-    });
-
-    // Derived state ONLY for newly inserted events — a duplicate replay
-    // changes nothing about the session or the person (F7: last_seen_at
-    // advances only for accepted events).
-    const sessionStatements = outcomes
-      .filter((outcome) => !outcome.duplicate)
-      .map((outcome) => sessionStatement(outcome.event, projectId, receivedAt))
-      .filter((statement): statement is InStatement => statement !== null);
-
-    if (sessionStatements.length > 0) {
-      try {
-        await this.client.batch(sessionStatements, "write");
-      } catch (error) {
-        // The events are committed — the response stays honest
-        // ("accepted" is true for the events). The derived session state
-        // is recoverable: the next sessioned event refreshes it, and a
-        // diagnostic records the gap. Never fail the request here.
-        logger.error("analytics:ingest", "session state update failed", {
-          message: error instanceof Error ? error.message : "unknown",
+    // R4-F2/R4-F3: ONE write transaction with sequential visibility —
+    // identity claims gate their mutations (rowsAffected = 1 wins), and
+    // person/session projections run only for events whose inserts won
+    // the idempotency conflict. A failure rolls back EVERYTHING.
+    const tx = await this.client.transaction("write");
+    try {
+      // F7: event persons resolve against the DURABLE links (pre-read by
+      // the controller) — an explicit user link wins, then an active
+      // anonymous link, then a fresh anonymous person.
+      const resolvedPersons = events.map((event) =>
+        resolveEventPerson(
           projectId,
-        });
-      }
-    }
+          event.userId,
+          event.anonymousId,
+          externalLinks,
+          anonymousLinks,
+        ),
+      );
 
-    return outcomes.map((outcome) => ({
-      eventId: outcome.event.eventId,
-      duplicate: outcome.duplicate,
-    }));
+      // 1. Identity claims + claim-gated mutations (R4-F2).
+      for (const op of identityOps) {
+        if (alreadyProcessedOpIds.has(op.opId)) continue;
+        const deterministic = personIdForUser(projectId, op.userId);
+        const knownPersonId =
+          replacementPersonIds.get(deterministic) ?? deterministic;
+        const claim = await tx.execute(
+          identityClaimStatement(projectId, op, receivedAt, knownPersonId) as InStatement,
+        );
+        if (claim.rowsAffected !== 1) continue; // losing claim: NO side effects
+        for (const statement of identityMutationStatements(
+          projectId,
+          op,
+          receivedAt,
+          knownPersonId,
+        )) {
+          await tx.execute(statement as InStatement);
+        }
+      }
+
+      // 2. Event inserts — outcomes captured per statement.
+      const insertResults: Array<{ rowsAffected: number }> = [];
+      for (const event of events) {
+        const personId = resolvedPersons[events.indexOf(event)] ?? null;
+        const result = await tx.execute({
+          sql: INSERT_EVENT_SQL,
+          args: [
+            event.eventId,
+            projectId,
+            event.type,
+            event.name,
+            event.schemaVersion,
+            event.occurredAt,
+            receivedAt,
+            event.sessionId ?? null,
+            event.anonymousId ?? null,
+            event.userId ?? null,
+            personId,
+            JSON.stringify(event.properties),
+            JSON.stringify(event.context ?? {}),
+            sdk?.name ?? null,
+            sdk?.version ?? null,
+          ],
+        });
+        insertResults.push({ rowsAffected: result.rowsAffected });
+      }
+
+      // 3. Projections for the WINNING events only (R4-F3): a duplicate
+      // replay never advances last_seen_at or the session state.
+      for (let index = 0; index < events.length; index += 1) {
+        if ((insertResults[index]?.rowsAffected ?? 0) === 0) continue;
+        const event = events[index] ?? { occurredAt: receivedAt } as ValidatedEvent;
+        const personId = resolvedPersons[index];
+        if (personId) {
+          await tx.execute({
+            sql: `INSERT INTO people (person_id, project_id, first_seen_at, last_seen_at)
+                  VALUES (?, ?, ?, ?)
+                  ON CONFLICT (project_id, person_id)
+                  DO UPDATE SET last_seen_at = excluded.last_seen_at`,
+            args: [personId, projectId, event.occurredAt, receivedAt],
+          });
+        }
+        const session = sessionStatement(event, projectId, receivedAt);
+        if (session) await tx.execute(session);
+      }
+
+      await tx.commit();
+
+      return events.map((event, index) => ({
+        eventId: event.eventId,
+        duplicate: (insertResults[index]?.rowsAffected ?? 0) === 0,
+      }));
+    } catch (error) {
+      await tx.rollback().catch(() => undefined);
+      throw error;
+    }
   }
+
 }
