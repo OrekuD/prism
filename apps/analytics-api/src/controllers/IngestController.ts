@@ -204,14 +204,22 @@ export class IngestController {
     // deduplicated WITHIN the request; the idempotency read skips known
     // ops; guarded statements make the claim transactional (a duplicate
     // payload can never apply its side effects).
-    type IngestOp = { index: number; op: ValidatedIdentityOp; status?: string; reason?: string };
+    type IngestOp = { index: number; op?: ValidatedIdentityOp; status?: string; reason?: string };
     const validOps: IngestOp[] = [];
     const seenOpIds = new Set<string>();
-    for (const raw of parsed.batch.identity ?? []) {
+    // R6-F3: iterate with the SOURCE index — every submitted identity entry
+    // keeps its position, and malformed entries receive a coarse
+    // per-operation rejection instead of vanishing.
+    for (const [sourceIndex, raw] of (parsed.batch.identity ?? []).entries()) {
       const validation = validateIdentityOp(raw);
       if (!validation.ok) {
         logger.warn("analytics:ingest", "rejected identity op", {
           projectId,
+        });
+        validOps.push({
+          index: sourceIndex,
+          status: "rejected",
+          reason: "invalid-op",
         });
         continue;
       }
@@ -223,7 +231,7 @@ export class IngestController {
           projectId,
         });
         validOps.push({
-          index: validOps.length,
+          index: sourceIndex,
           op,
           status: "rejected",
           reason: "duplicate-op-id",
@@ -246,7 +254,7 @@ export class IngestController {
           : {}),
       };
       validOps.push({
-        index: validOps.length,
+        index: sourceIndex,
         op: sanitizedOp,
       });
     }
@@ -263,7 +271,7 @@ export class IngestController {
     const batchUserIds = new Set<string>();
     const batchAnonIds = new Set<string>();
     for (const entry of validOps) {
-      if (entry.status === "rejected") continue; // never folded (R4-F4)
+      if (entry.status === "rejected" || !entry.op) continue; // never folded (R4-F4)
       batchUserIds.add(entry.op.userId);
       batchAnonIds.add(entry.op.anonymousId);
     }
@@ -335,13 +343,30 @@ export class IngestController {
           validEvents.map((entry) => entry.event),
           now,
           parsed.batch.sdk,
-          validOps,
+          validOps.filter(
+            (entry): entry is { index: number; op: ValidatedIdentityOp; status?: string; reason?: string } =>
+              entry.op !== undefined,
+          ),
           externalLinks,
           anonymousLinks,
           replacementPersonIds,
         );
         persistedEvents = persisted.results;
         identityResults = persisted.identity;
+        // R6-F3: malformed and no-op duplicate entries never reach the
+        // transaction — their coarse rejected outcomes are merged back in
+        // submitted order.
+        const preTxRejected = validOps
+          .filter((entry) => entry.status === "rejected" && !entry.op)
+          .map((entry) => ({
+            index: entry.index,
+            opId: "",
+            status: "rejected" as const,
+            reason: entry.reason ?? "invalid-op",
+          }));
+        identityResults = [...preTxRejected, ...identityResults].sort(
+          (a, b) => a.index - b.index,
+        );
       } catch (error) {
         // One database outcome per request: nothing was committed. Coarse
         // retryable 503 — never SQL, database URLs, event content, or

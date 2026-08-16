@@ -156,6 +156,30 @@ export class IngestRepository {
           identityClaimStatement(projectId, op, receivedAt, knownPersonId) as InStatement,
         );
         if (claim.rowsAffected === 1) {
+          // R6-F2: after the claim wins, the EXTERNAL-IDENTITY link is the
+          // authoritative resolution — claim it (first-wins) and read the
+          // winner so concurrent re-identifications can never fragment one
+          // user across replacement people.
+          await tx.execute({
+            sql: `INSERT INTO external_identities (project_id, user_id, person_id, linked_at)
+                  VALUES (?, ?, ?, ?)
+                  ON CONFLICT (project_id, user_id) DO NOTHING`,
+            args: [projectId, op.userId, knownPersonId, receivedAt],
+          });
+          const authoritative = await tx.execute({
+            sql: "SELECT person_id FROM external_identities WHERE project_id = ? AND user_id = ?",
+            args: [projectId, op.userId],
+          });
+          const resolvedPerson = String(
+            (authoritative.rows[0] as { person_id?: unknown } | undefined)?.person_id ?? "",
+          );
+          const authoritativePerson = resolvedPerson || knownPersonId;
+          // Keep the identity-op record consistent with the durable link.
+          await tx.execute({
+            sql: "UPDATE identity_ops SET person_id = ? WHERE project_id = ? AND op_id = ?",
+            args: [authoritativePerson, projectId, op.opId],
+          });
+
           identityOutcomes.push({
             index: entry.index,
             opId: op.opId,
@@ -165,24 +189,25 @@ export class IngestRepository {
             projectId,
             op,
             receivedAt,
-            knownPersonId,
+            authoritativePerson,
           )) {
             await tx.execute(statement as InStatement);
           }
           // Fold ONLY the claimed op's links — never replacing a durable
           // mapping (R5-F2 first-wins).
           if (!effectiveExternal.has(op.userId)) {
-            effectiveExternal.set(op.userId, knownPersonId);
+            effectiveExternal.set(op.userId, authoritativePerson);
           }
           if (!effectiveAnonymous.has(op.anonymousId)) {
-            effectiveAnonymous.set(op.anonymousId, knownPersonId);
+            effectiveAnonymous.set(op.anonymousId, authoritativePerson);
           }
         } else {
-          // Losing claim: the stored row carries the DURABLE truth — its
-          // person folds into the effective maps (R5-F1: even a stale
-          // pre-read resolves same-request events to the stored person,
-          // never to the losing op's identity) and its hash decides
-          // duplicate vs rejected.
+          // Losing claim: compare the stored hash FIRST (R6-F1) — the
+          // stored person folds ONLY for an exact duplicate. A conflicting
+          // payload returns rejected and leaves both maps unchanged so the
+          // in-transaction durable-link re-read resolves the event IDs
+          // themselves — fresh incoming IDs can never be routed to the
+          // original operation's person.
           const stored = await tx.execute({
             sql: "SELECT person_id, payload_hash FROM identity_ops WHERE project_id = ? AND op_id = ?",
             args: [projectId, op.opId],
@@ -190,17 +215,17 @@ export class IngestRepository {
           const storedRow = stored.rows[0] as
             | { person_id?: unknown; payload_hash?: unknown }
             | undefined;
-          const storedPerson = String(storedRow?.person_id ?? "");
-          if (storedPerson) {
-            if (!effectiveExternal.has(op.userId)) {
-              effectiveExternal.set(op.userId, storedPerson);
-            }
-            if (!effectiveAnonymous.has(op.anonymousId)) {
-              effectiveAnonymous.set(op.anonymousId, storedPerson);
-            }
-          }
           const storedHash = String(storedRow?.payload_hash ?? "");
           if (storedHash === identityOpHash(op)) {
+            const storedPerson = String(storedRow?.person_id ?? "");
+            if (storedPerson) {
+              if (!effectiveExternal.has(op.userId)) {
+                effectiveExternal.set(op.userId, storedPerson);
+              }
+              if (!effectiveAnonymous.has(op.anonymousId)) {
+                effectiveAnonymous.set(op.anonymousId, storedPerson);
+              }
+            }
             identityOutcomes.push({
               index: entry.index,
               opId: op.opId,

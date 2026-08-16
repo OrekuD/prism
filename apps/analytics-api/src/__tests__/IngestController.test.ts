@@ -807,3 +807,40 @@ describe("round-3 review fixes (R3-F4, R3-F5)", () => {
     expect(statementContaining("person_traits")).toBeUndefined();
   });
 });
+
+describe("round-6 review fixes (R6-F3)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    eventInsertOutcomes = [1];
+    claimWins = true;
+    storedOpHash = null;
+    eventLimiter.reset();
+    (
+      TursoDatabaseManager.instance.execute as unknown as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({ rows: [] });
+  });
+
+  it("preserves SOURCE indexes and rejects malformed ops with their position", async () => {
+    const ctx = makeContext(
+      JSON.stringify({
+        schemaVersion: 3,
+        sentAt: Date.now(),
+        identity: [
+          { opId: 42 }, // malformed — must receive a coarse rejection
+          { opId: "r6f3-valid", userId: "user-x", anonymousId: "anon-x", occurredAt: Date.now() },
+          { opId: "r6f3-valid", userId: "user-y", anonymousId: "anon-y", occurredAt: Date.now() }, // in-batch duplicate
+        ],
+        events: [],
+      }),
+    );
+
+    const result = await ingest(ctx);
+
+    const body = result.__json as IngestResponseBody;
+    // ALL three entries present, in submitted order, with SOURCE indexes
+    expect(body.identity).toHaveLength(3);
+    expect(body.identity?.[0]).toMatchObject({ index: 0, status: "rejected", reason: "invalid-op" });
+    expect(body.identity?.[1]).toMatchObject({ index: 1, status: "accepted" });
+    expect(body.identity?.[2]).toMatchObject({ index: 2, status: "rejected", reason: "duplicate-op-id" });
+  });
+});

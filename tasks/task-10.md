@@ -1611,3 +1611,124 @@ workspace checks were run.
   first-wins-link regression coverage.
 - [x] Re-run only the affected core/analytics tests and identity
   public-origin certification, then request another targeted source review.
+
+
+
+### Round-6 fixes — R6-F1..R6-F3 closed (2026-08-16)
+
+- **R6-F1**: the losing-claim branch compares the stored payload hash
+  FIRST — the stored person folds into the effective maps ONLY for an
+  exact duplicate; a conflicting payload returns `rejected` and leaves
+  the maps unchanged, so the in-transaction durable-link re-read resolves
+  the event IDs themselves. Real-sqld test: an existing op for person A
+  + a conflicting op with FRESH B ids + a B event — the event resolves
+  to B's own person, never A.
+- **R6-F2**: after a successful claim, the EXTERNAL-IDENTITY link is
+  claimed (first-wins) and the authoritative winner is read in the same
+  transaction; every mutation, event resolution, and the identity-ops
+  record use that person — concurrent post-deletion re-identifications
+  converge on ONE durable person. Real-sqld test: two concurrent
+  identifies with different replacement candidates → one durable link,
+  B's traits/events on the durable person, no fragmentation.
+- **R6-F3**: the controller iterates the identity array by SOURCE index;
+  every submitted entry keeps its position, malformed entries receive a
+  coarse per-operation `rejected` (`invalid-op`) outcome, and the
+  pre-transaction rejections merge back into the response in submitted
+  order. Controller test: malformed + valid + in-batch duplicate →
+  indexes 0/1/2 with the correct statuses.
+
+Re-review gate: focused controller + real-store regression coverage
+(core 146, browser 32, analytics 100+3 opt-in, api 125+14 opt-in incl.
+the R6 real-sqld suite); identity public-origin certification 34/34;
+gates test 6/6, typecheck 9/9, lint 11/11, build 9/9, audit clean,
+drift OK.
+
+
+### Review round 6 — feedback (2026-08-16)
+
+**Outcome: Task 10 is not accepted yet.** This was a focused source review of
+commit `33eeaab` and its direct identity tests only. No broad workspace checks
+were run.
+
+#### Release blocker
+
+- [x] **R6-F1 — A rejected conflicting claim still poisons same-request
+  identity resolution.**
+
+  On a lost identity-op claim, the repository loads the stored person and puts
+  it into `effectiveExternal` and `effectiveAnonymous` using the *incoming*
+  operation's `userId` and `anonymousId`
+  (`apps/analytics-api/src/repositories/IngestRepository.ts:186-200`). It only
+  compares the stored and incoming payload hashes afterwards (`202-216`). A
+  conflicting op is therefore returned as `rejected`, but its new IDs remain
+  mapped to the stored person's ID when events resolve (`265-276`). The later
+  durable-link re-read skips those IDs because they are no longer missing
+  (`228`, `235`).
+
+  Impact: an operation using an existing `opId` with a different user or
+  anonymous ID can attach same-batch events for those new IDs to the person
+  named by the original operation. This is the R4-F4 identity-steering problem
+  again, despite the `rejected` response, and can contaminate a person's event
+  history.
+
+  Required fix: compare the stored hash before mutating either effective map.
+  Fold the stored person only for an exact duplicate. For a conflicting payload,
+  return `rejected` and leave both maps unchanged so the in-transaction
+  durable-link read resolves the event IDs themselves. Add a real-store test
+  with an existing op for person A, a conflicting op carrying fresh B IDs, and
+  an event for B; the event must never resolve to A.
+
+#### High-priority correctness
+
+- [x] **R6-F2 — Concurrent re-identification after deletion can fragment the
+  replacement person.**
+
+  The controller creates a fresh random replacement person ID per request when
+  it sees a deletion tombstone and no pre-read external link
+  (`apps/analytics-api/src/controllers/IngestController.ts:303-318`). Two
+  concurrent new `opId`s for that user can both win their independent
+  `identity_ops` claims. Each then applies mutations using its own replacement
+  ID (`IngestRepository.ts:152-179`), while `external_identities` silently keeps
+  only the first ID through `ON CONFLICT DO NOTHING`
+  (`apps/analytics-api/src/utils/identityResolution.ts:133-143`). The second
+  accepted operation can still write traits, anonymous links, events, and its
+  `identity_ops.person_id` for a person that is not the durable user link.
+
+  Impact: one re-created user can split across replacement people depending on
+  request timing. Later user-ID events follow the durable external link, while
+  same-request events and a future lost-claim lookup can use the other person.
+
+  Required fix: after an identity-op claim succeeds, atomically claim or read
+  the authoritative external-identity link and use that resolved person ID for
+  every remaining mutation, event resolution, and stored identity-op record.
+  Add a real-store concurrent post-deletion test with two distinct op IDs and
+  anonymous IDs for the same user; it must leave exactly one durable person and
+  link, with both batches resolving to it.
+
+- [x] **R6-F3 — The response does not preserve source indexes after an invalid
+  identity operation.**
+
+  The identity loop iterates raw operations without their source index and
+  assigns each retained operation `validOps.length`
+  (`apps/analytics-api/src/controllers/IngestController.ts:210-251`). An invalid
+  first operation is skipped, so a valid second operation is reported with
+  `index: 0`, not its submitted index. The R5-F3 real-store test constructs
+  repository inputs with indexes already assigned and the controller test suite
+  has no `duplicate-op-id` case, so neither exercises this path.
+
+  Impact: direct clients cannot reliably correlate the per-operation response
+  with the submitted `identity` array. This breaks the stated submitted-order
+  contract and leaves the actual controller behavior untested.
+
+  Required fix: iterate `identity.entries()` and retain the original index for
+  every valid operation. Define whether malformed operations also receive a
+  coarse per-operation rejection, then test an invalid operation followed by a
+  valid op and an in-batch duplicate through `IngestController` itself.
+
+#### Re-review gate
+
+- [x] Resolve R6-F1–R6-F3 with focused controller and real-store regression
+  coverage. Include conflicting op IDs with fresh incoming identities and the
+  concurrent post-deletion path.
+- [x] Re-run only the affected identity tests and the identity public-origin
+  certification, then request another targeted source review.
