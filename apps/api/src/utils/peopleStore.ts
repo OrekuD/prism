@@ -5,7 +5,7 @@ import type {
   PeopleResource,
   PersonDetailResource,
   TotalsResource,
-} from "@prism/types";
+} from "@prism-analytics/types";
 
 /**
  * People + baseline query store (task-10 §5): bounded, parameterized,

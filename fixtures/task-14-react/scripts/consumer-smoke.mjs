@@ -4,9 +4,9 @@
  * the fixture relies on. This is not a monorepo test — it runs against
  * the installed tarballs in this fixture's node_modules.
  */
-import { createPrismClient } from "@prism/core";
-import { createBrowserClient, capturePageContext } from "@prism/browser";
-import { PrismProvider, usePrism } from "@prism/react";
+import { createPrismClient } from "@prism-analytics/core";
+import { createBrowserClient, capturePageContext } from "@prism-analytics/browser";
+import { PrismProvider, usePrism } from "@prism-analytics/react";
 import { readFileSync } from "node:fs";
 
 const failures = [];
@@ -21,16 +21,16 @@ check("browser exports capturePageContext", typeof capturePageContext === "funct
 check("react exports PrismProvider", typeof PrismProvider === "function");
 check("react exports usePrism", typeof usePrism === "function");
 
-// The installed @prism/core public option is sourceKey — the old
+// The installed @prism-analytics/core public option is sourceKey — the old
 // projectKey name must NOT exist anywhere in the packed artifacts.
 const coreDts = readFileSync(
-  new URL("../node_modules/@prism/core/dist/index.d.ts", import.meta.url),
+  new URL("../node_modules/@prism-analytics/core/dist/index.d.ts", import.meta.url),
   "utf8",
 );
 check("packed core types use sourceKey only", coreDts.includes("sourceKey") && !coreDts.includes("projectKey"));
 
 const browserDts = readFileSync(
-  new URL("../node_modules/@prism/browser/dist/index.d.ts", import.meta.url),
+  new URL("../node_modules/@prism-analytics/browser/dist/index.d.ts", import.meta.url),
   "utf8",
 );
 check("packed browser types use sourceKey only", browserDts.includes("sourceKey") && !browserDts.includes("projectKey"));

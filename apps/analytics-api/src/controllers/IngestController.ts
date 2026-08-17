@@ -4,10 +4,10 @@ import {
   type IngestResponseBody,
   type IngestResult,
   type JsonObject,
-} from "@prism/core";
+} from "@prism-analytics/core";
 import type { Context } from "hono";
 import { config } from "dotenv";
-import type { SessionResource } from "@prism/types";
+import type { SessionResource } from "@prism-analytics/types";
 import WebSocketManager from "../managers/WebSocketManager.js";
 import TursoDatabaseManager from "../managers/TursoDatabaseManager.js";
 import { IngestRepository } from "../repositories/IngestRepository.js";

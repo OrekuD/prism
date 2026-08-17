@@ -1,5 +1,5 @@
 {
-  "name": "@prism/jest-presets",
+  "name": "@prism-analytics/jest-presets",
   "version": "0.0.0",
   "private": true,
   "license": "MIT",

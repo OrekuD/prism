@@ -1,5 +1,5 @@
 import { axiosInstance } from "@/utils/axiosInstance";
-import type { UserResource } from "@prism/types";
+import type { UserResource } from "@prism-analytics/types";
 import { useQuery } from "@tanstack/react-query";
 
 async function currentUser() {

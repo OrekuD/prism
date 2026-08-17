@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createBrowserClient, capturePageContext } from "../index";
 import { createBrowserRuntime, createBrowserStorage } from "../browser-runtime";
-import type { PrismClient, PrismRequest, PrismResponse } from "@prism/core";
+import type { PrismClient, PrismRequest, PrismResponse } from "@prism-analytics/core";
 
 /**
- * @prism/browser tests (task-9 §11): the minimal browser adapter — thin
+ * @prism-analytics/browser tests (task-9 §11): the minimal browser adapter — thin
  * runtime seams over the core engine. Covers the approved context
  * capture, storage strategies, lifecycle flush, consent, offline
  * behavior, and deterministic cleanup.

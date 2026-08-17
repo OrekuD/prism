@@ -12,7 +12,7 @@ import type {
 
 /**
  * Contract tests (task-9 slice 1 + review corrections) — the frozen public
- * API surface of `@prism/core` v2 (ADR 0002). These tests currently FAIL on
+ * API surface of `@prism-analytics/core` v2 (ADR 0002). These tests currently FAIL on
  * purpose: the declarations in src/contract.ts are the review surface and
  * the runtime implementation lands in slice 2. Do not delete or weaken
  * them; they become the passing contract suite once `createPrismClient`

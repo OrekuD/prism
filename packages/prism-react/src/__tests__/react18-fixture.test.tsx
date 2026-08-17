@@ -61,13 +61,13 @@ describe("React 18 peer compatibility", () => {
         const reactVersion = (requireFromFixture("react/package.json") as { version: string }).version;
         expect(reactVersion.startsWith("18.")).toBe(true);
 
-        // render through react-dom 18 with a REAL @prism/core client
+        // render through react-dom 18 with a REAL @prism-analytics/core client
         const React = requireFromFixture("react") as typeof import("react");
         const { createRoot } = requireFromFixture("react-dom/client") as typeof import("react-dom/client");
-        const { PrismProvider } = requireFromFixture("@prism/react") as {
+        const { PrismProvider } = requireFromFixture("@prism-analytics/react") as {
           PrismProvider: typeof import("../index").PrismProvider;
         };
-        const { createPrismClient } = requireFromFixture("@prism/core") as typeof import("@prism/core");
+        const { createPrismClient } = requireFromFixture("@prism-analytics/core") as typeof import("@prism-analytics/core");
 
         const client = await createPrismClient({
           sourceKey: "pr_0123456789abcdef0123456789abcdef",

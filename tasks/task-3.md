@@ -223,7 +223,7 @@ and no user migration layer is required.
       ALLOW_PUBLIC_SIGNUP, callbacks), README security model rewritten.
 - [x] Run an unused-dependency and dead-code pass after removal.
       → removed jsonwebtoken, bcryptjs, ulidx, old web auth mutations/stores,
-      obsolete @prism/types auth types; zod 4 + astro 7 upgrades landed.
+      obsolete @prism-analytics/types auth types; zod 4 + astro 7 upgrades landed.
       date-fns remains in use (team invites).
 
 ## Acceptance criteria

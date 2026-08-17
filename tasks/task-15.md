@@ -107,11 +107,11 @@ searchable and auditable; it does not silently discard future occurrences.
 Prism already separates a runtime-neutral Core from browser and React adapters.
 Error capture follows the same architecture:
 
-- `@prism/core` gains the runtime-neutral error payload types, validation,
+- `@prism-analytics/core` gains the runtime-neutral error payload types, validation,
   sanitization, bounded error delivery lifecycle, and diagnostic seam.
-- `@prism/browser` owns browser-only normalization and explicit global error/
+- `@prism-analytics/browser` owns browser-only normalization and explicit global error/
   unhandled-rejection installation.
-- `@prism/react` owns the React error boundary and hooks over a ready browser
+- `@prism-analytics/react` owns the React error boundary and hooks over a ready browser
   reporter. It never creates a second client/queue during render.
 - A future Node package/adapter owns server capture and framework integration.
   It is not bundled into the browser/React release.

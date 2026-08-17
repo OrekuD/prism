@@ -1,6 +1,6 @@
 // v2 contract: the async factory + the public analytics types (ADR 0002 §7).
 // The package-level `PrismClient` name is the v2 interface — `import type
-// { PrismClient } from "@prism/core"` resolves to the frozen contract.
+// { PrismClient } from "@prism-analytics/core"` resolves to the frozen contract.
 export { createPrismClient } from "./core";
 export { INGEST_LIMITS, SDK_NAME, SDK_VERSION, WIRE_SCHEMA_VERSION } from "./limits";
 export type {

@@ -33,7 +33,7 @@ import { user as userTable } from "../database/schema/auth";
 import { buildAuthOptions } from "../auth/options";
 import { provisionUserResources } from "../auth/provision";
 import { createPostgresProductDb } from "../database/db";
-import { Roles } from "@prism/types";
+import { Roles } from "@prism-analytics/types";
 import { logger } from "../utils/logger";
 
 // .env first (self-hosted Node operators), then .dev.vars (local wrangler

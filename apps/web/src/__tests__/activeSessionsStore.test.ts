@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useActiveSessionsStore } from "@/store/activeSessionsStore";
-import type { SessionResource } from "@prism/types";
+import type { SessionResource } from "@prism-analytics/types";
 
 /**
  * Project-scoped live sessions (release review): sessions never leak

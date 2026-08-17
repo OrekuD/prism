@@ -73,7 +73,7 @@ run("analytics database integration (v2)", () => {
       const body = JSON.stringify({
         schemaVersion: 2,
         sentAt: Date.now(),
-        sdk: { name: "@prism/core", version: "0.0.1" },
+        sdk: { name: "@prism-analytics/core", version: "0.0.1" },
         events: [
           {
             schemaVersion: 2,
@@ -116,7 +116,7 @@ run("analytics database integration (v2)", () => {
       expect(row.name).toBe("integration_flow");
       expect(row.schema_version).toBe(2);
       // SDK identity derived from the batch envelope → explicit columns
-      expect(row.sdk_name).toBe("@prism/core");
+      expect(row.sdk_name).toBe("@prism-analytics/core");
       expect(row.sdk_version).toBe("0.0.1");
       // server-side sanitization applies to direct HTTP clients too
       const stored = JSON.parse(row.properties) as { source: string; password: string };
@@ -161,7 +161,7 @@ run("analytics database integration (v2)", () => {
       const startBody = JSON.stringify({
         schemaVersion: 2,
         sentAt: Date.now(),
-        sdk: { name: "@prism/core", version: "0.0.1" },
+        sdk: { name: "@prism-analytics/core", version: "0.0.1" },
         events: [
           {
             schemaVersion: 2,
@@ -201,7 +201,7 @@ run("analytics database integration (v2)", () => {
       const endBody = JSON.stringify({
         schemaVersion: 2,
         sentAt: Date.now(),
-        sdk: { name: "@prism/core", version: "0.0.1" },
+        sdk: { name: "@prism-analytics/core", version: "0.0.1" },
         events: [
           {
             schemaVersion: 2,
@@ -241,7 +241,7 @@ run("release review — duplicate session replay", () => {
       JSON.stringify({
         schemaVersion: 2,
         sentAt: Date.now(),
-        sdk: { name: "@prism/core", version: "0.0.1" },
+        sdk: { name: "@prism-analytics/core", version: "0.0.1" },
         events: [
           {
             schemaVersion: 2,

@@ -1,4 +1,4 @@
-import type { ProfilePictureResource } from "@prism/types";
+import type { ProfilePictureResource } from "@prism-analytics/types";
 
 export class ProfilePictureResponse {
   private profilePicture: string;

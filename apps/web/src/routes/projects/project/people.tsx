@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Link, useParams } from "react-router-dom";
 import { usePeopleQuery, useTotalsQuery } from "@/network/queries/usePeopleQueries";
-import type { PeopleResource } from "@prism/types";
+import type { PeopleResource } from "@prism-analytics/types";
 
 /**
  * People list (task-10 §8): paginated, project-scoped, honest identity

@@ -13,7 +13,7 @@ import {
 
 import { useDeleteProjectMutation } from "@/network/mutations/useDeleteProjectMutation";
 import { useProjectQuery } from "@/network/queries/useProjectQuery";
-import type { ProjectDetailedRequest } from "@prism/types";
+import type { ProjectDetailedRequest } from "@prism-analytics/types";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 export function DeleteProject(props: React.PropsWithChildren) {

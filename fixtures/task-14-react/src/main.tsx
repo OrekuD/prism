@@ -1,8 +1,8 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { createBrowserClient } from "@prism/browser";
-import { PrismProvider } from "@prism/react";
-import type { PrismClient } from "@prism/core";
+import { createBrowserClient } from "@prism-analytics/browser";
+import { PrismProvider } from "@prism-analytics/react";
+import type { PrismClient } from "@prism-analytics/core";
 import { App } from "./App";
 import "./styles.css";
 

@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { axiosInstance } from "@/utils/axiosInstance";
 import { toast } from "sonner";
-import type { ErrorResource, OkResource } from "@prism/types";
+import type { ErrorResource, OkResource } from "@prism-analytics/types";
 import type { AxiosError } from "axios";
 import type { SourceResource } from "@/network/queries/useSourcesQuery";
 

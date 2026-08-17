@@ -1,6 +1,6 @@
 import type { PrismUser } from "../../models/User";
 import type { Profile } from "../../models/Profile";
-import type { UserResource } from "@prism/types";
+import type { UserResource } from "@prism-analytics/types";
 import { ProfileResponse } from "./ProfileResponse";
 
 export class UserResponse {

@@ -5,7 +5,7 @@ import type {
   CreateProjectRequest,
   ErrorResource,
   OkResource,
-} from "@prism/types";
+} from "@prism-analytics/types";
 import type { AxiosError } from "axios";
 
 async function createProject(payload: CreateProjectRequest) {

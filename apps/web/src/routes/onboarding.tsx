@@ -523,7 +523,7 @@ export function Onboarding() {
                   </p>
                 </div>
                 <div className="grid gap-2">
-                  <CodeCopyRow command="yarn add @prism/core @prism/browser" />
+                  <CodeCopyRow command="yarn add @prism-analytics/core @prism-analytics/browser" />
                   <CodeCopyRow
                     command={`const prism = await createBrowserClient({
   sourceKey: "psk_…",

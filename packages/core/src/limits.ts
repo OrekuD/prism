@@ -17,7 +17,7 @@ import type { JsonObject } from "./contract";
 export const WIRE_SCHEMA_VERSION = 3;
 
 /** SDK identity sent with every batch (batch-level, not per event). */
-export const SDK_NAME = "@prism/core";
+export const SDK_NAME = "@prism-analytics/core";
 /** Keep in sync with packages/core/package.json version. */
 export const SDK_VERSION = "0.0.1";
 

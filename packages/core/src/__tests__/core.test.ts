@@ -1110,7 +1110,7 @@ describe("v2 wire envelope (slice 4)", () => {
     };
     expect(envelope.schemaVersion).toBe(3);
     expect(typeof envelope.sentAt).toBe("number");
-    expect(envelope.sdk).toEqual({ name: "@prism/core", version: "0.0.1" });
+    expect(envelope.sdk).toEqual({ name: "@prism-analytics/core", version: "0.0.1" });
     expect(envelope.events).toHaveLength(1);
     const event = envelope.events[0] ?? {};
     expect(event.schemaVersion).toBe(3);

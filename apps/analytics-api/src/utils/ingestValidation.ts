@@ -1,4 +1,4 @@
-import { INGEST_LIMITS, isValidEventName, validateJsonValue, type WireContext } from "@prism/core";
+import { INGEST_LIMITS, isValidEventName, validateJsonValue, type WireContext } from "@prism-analytics/core";
 import { z } from "zod";
 
 /**
@@ -6,7 +6,7 @@ import { z } from "zod";
  * slice-4 review F3/F4).
  *
  * TypeScript types are NOT a trust boundary: every field is validated at
- * runtime against the SHARED limits and validators from @prism/core (the
+ * runtime against the SHARED limits and validators from @prism-analytics/core (the
  * same implementation the SDK uses), so an official-SDK event can never be
  * rejected for name, property, or context rules while direct HTTP clients
  * are rejected at the same ceilings.

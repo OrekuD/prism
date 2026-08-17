@@ -3,7 +3,7 @@ import type { HonoConfig } from "../types/types";
 import {
   type UpdateUserInformationRequest,
   UpdateUserInformationRequestSchema,
-} from "@prism/types";
+} from "@prism-analytics/types";
 import { validateData } from "../utils/validateData";
 import { DatabaseManager } from "../managers/DatabaseManager";
 import { ErrorResponse } from "../network/responses/ErrorResponse";

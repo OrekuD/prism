@@ -264,7 +264,7 @@ async function main() {
     body: JSON.stringify({
       schemaVersion: 2,
       sentAt: Date.now(),
-      sdk: { name: "@prism/core", version: "0.0.1" },
+      sdk: { name: "@prism-analytics/core", version: "0.0.1" },
       events: [
         {
           schemaVersion: 2,

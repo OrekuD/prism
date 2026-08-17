@@ -5,7 +5,7 @@ import type {
   ErrorResource,
   OkResource,
   RenameProjectRequest,
-} from "@prism/types";
+} from "@prism-analytics/types";
 import type { AxiosError } from "axios";
 
 async function renameProject(payload: RenameProjectRequest & { projectId: string }) {

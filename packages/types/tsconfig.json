@@ -1,5 +1,5 @@
 {
-  "extends": "@prism/typescript-config/react-library.json",
+  "extends": "@prism-analytics/typescript-config/react-library.json",
   "compilerOptions": {
     "outDir": "dist"
   },

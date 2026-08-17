@@ -8,8 +8,8 @@
  * the 1200x630 Open Graph image (logo + PRISM wordmark with the Geist font
  * embedded as base64 @font-face), so exports are identical on any machine.
  *
- *   yarn workspace @prism/brand export   # regenerate + copy to consumers
- *   yarn workspace @prism/brand check    # fail if committed copies drifted
+ *   yarn workspace @prism-analytics/brand export   # regenerate + copy to consumers
+ *   yarn workspace @prism-analytics/brand check    # fail if committed copies drifted
  *
  * Source asset: packages/brand/assets/prism-logo.png (canonical).
  * Generated outputs: packages/brand/generated/ + the consumer copies.
@@ -135,7 +135,7 @@ async function checkDrift() {
     }
   }
   if (drifted) {
-    console.error("\nRegenerate with: yarn workspace @prism/brand export");
+    console.error("\nRegenerate with: yarn workspace @prism-analytics/brand export");
     process.exit(1);
   }
 }

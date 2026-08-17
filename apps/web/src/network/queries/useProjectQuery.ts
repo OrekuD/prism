@@ -3,7 +3,7 @@ import {
   type ProjectDetailedRequest,
   type ProjectDetailedResource,
   ProjectResource,
-} from "@prism/types";
+} from "@prism-analytics/types";
 import { useQuery } from "@tanstack/react-query";
 
 async function project(payload: ProjectDetailedRequest) {

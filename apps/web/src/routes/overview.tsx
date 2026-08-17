@@ -164,7 +164,7 @@ export function Overview() {
               </Link>
             </div>
             <div className="mt-5 grid gap-2">
-              <CodeCopyRow command="yarn add @prism/core" />
+              <CodeCopyRow command="yarn add @prism-analytics/core" />
               <CodeCopyRow command={'const prism = new PrismClient("pr_…")'} />
               <CodeCopyRow command={'await prism.logEvent("app_opened", { source: "overview" })'} />
             </div>

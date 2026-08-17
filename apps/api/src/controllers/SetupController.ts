@@ -8,7 +8,7 @@ import { createProductDb } from "../database/db";
 import { clientIpFrom, RateLimiter } from "../utils/RateLimiter";
 import type { Bindings, HonoConfig } from "../types/types";
 import * as authSchema from "../database/schema/auth";
-import { Roles } from "@prism/types";
+import { Roles } from "@prism-analytics/types";
 import { ErrorResponse } from "../network/responses/ErrorResponse";
 import { logger } from "../utils/logger";
 

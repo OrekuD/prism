@@ -1,21 +1,21 @@
 ---
-title: React SDK (@prism/react)
+title: React SDK (@prism-analytics/react)
 description: The thin provider/hook layer over an already-created v2 client.
 audience: Developer
 scope: Both
 lastReviewed: "2026-08-13"
 ---
 
-<SectionLabel label="PACKAGE: @prism/react" />
+<SectionLabel label="PACKAGE: @prism-analytics/react" />
 
-`@prism/react` is a THIN adapter over an already-created, READY client. It
+`@prism-analytics/react` is a THIN adapter over an already-created, READY client. It
 never creates a second queue, session, envelope, consent store, or retry
 policy — ownership stays with whoever called `createBrowserClient` (or
 `createPrismClient`), which keeps non-React ownership and cleanup explicit.
 
 ```tsx
 // client.ts — create it ONCE, outside React
-import { createBrowserClient } from "@prism/browser";
+import { createBrowserClient } from "@prism-analytics/browser";
 export const prism = await createBrowserClient({
   sourceKey: "psk_xxx",
   endpoint: window.location.origin,
@@ -23,7 +23,7 @@ export const prism = await createBrowserClient({
 });
 
 // App.tsx
-import { PrismProvider, usePrism } from "@prism/react";
+import { PrismProvider, usePrism } from "@prism-analytics/react";
 
 root.render(
   <PrismProvider client={prism}>
@@ -55,4 +55,4 @@ across renders — no recreated callbacks. Throws a specific error outside a
 provider.
 
 Automatic route/page tracking is a later task; capture page identity
-explicitly with `capturePageContext()` from `@prism/browser`.
+explicitly with `capturePageContext()` from `@prism-analytics/browser`.

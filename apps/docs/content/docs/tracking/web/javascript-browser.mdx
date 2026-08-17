@@ -1,18 +1,18 @@
 ---
-title: JavaScript SDK (@prism/core)
+title: JavaScript SDK (@prism-analytics/core)
 description: "The v2 runtime-neutral core: createPrismClient, consent, sessions, events, and delivery."
 audience: Developer
 scope: Both
 lastReviewed: "2026-08-13"
 ---
 
-<SectionLabel label="PACKAGE: @prism/core" />
+<SectionLabel label="PACKAGE: @prism-analytics/core" />
 
 The core is runtime-neutral: no DOM, Node, or framework globals. It is built
 as CJS + ESM with TypeScript declarations (`tsup`).
 
 ```ts
-import { createPrismClient } from "@prism/core";
+import { createPrismClient } from "@prism-analytics/core";
 ```
 
 ## `createPrismClient(options)`
@@ -28,7 +28,7 @@ positional arguments:
 | `collection.initialState` | `"pending" \| "granted" \| "denied"` | Consent state machine |
 
 The [Node example](../../start/overview) shows a complete fake runtime. Browser
-apps use the runtime adapter from `@prism/browser` (or a small inline runtime
+apps use the runtime adapter from `@prism-analytics/browser` (or a small inline runtime
 until it ships).
 
 Invalid caller input throws a specific validation error. Consent, shutdown,

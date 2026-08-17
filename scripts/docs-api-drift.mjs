@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Declaration/docs drift test (task-9 §14): extracts every exported name
- * from @prism/core's built declarations and asserts the API reference
+ * from @prism-analytics/core's built declarations and asserts the API reference
  * page mentions each one — the docs can never silently fall behind the
  * contract.
  *

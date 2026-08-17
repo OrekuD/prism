@@ -1,4 +1,4 @@
-import type { SessionResource } from "@prism/types";
+import type { SessionResource } from "@prism-analytics/types";
 import { create } from "zustand";
 
 /**

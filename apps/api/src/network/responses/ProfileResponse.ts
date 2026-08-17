@@ -1,4 +1,4 @@
-import type { ProfileResource } from "@prism/types";
+import type { ProfileResource } from "@prism-analytics/types";
 import type { Profile } from "../../models/Profile";
 
 export class ProfileResponse {

@@ -9,7 +9,7 @@ import {
   type EventResource,
   type RenameProjectRequest,
   RenameProjectRequestSchema,
-} from "@prism/types";
+} from "@prism-analytics/types";
 import { validateData } from "../utils/validateData";
 import { ErrorResponse } from "../network/responses/ErrorResponse";
 import { OkResponse } from "../network/responses/OkResponse";

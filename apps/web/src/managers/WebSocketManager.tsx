@@ -1,7 +1,7 @@
 import { useActiveSessionsStore } from "@/store/activeSessionsStore";
 import { WS_BASE_URL } from "@/lib/api";
 import { authClient, getServiceToken } from "@/lib/authClient";
-import type { SocketConnectProject, SocketMessageTypes } from "@prism/types";
+import type { SocketConnectProject, SocketMessageTypes } from "@prism-analytics/types";
 import React from "react";
 
 type Props = {

@@ -2,13 +2,13 @@ import React, { StrictMode, useEffect, useRef, useState } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PrismProvider, usePrism, PrismContext, type PrismReactFacade } from "../index";
-import type { JsonObject, PrismClient } from "@prism/core";
+import type { JsonObject, PrismClient } from "@prism-analytics/core";
 
 /**
- * @prism/react tests (task-9 §12): the provider is a ZERO-effect context
+ * @prism-analytics/react tests (task-9 §12): the provider is a ZERO-effect context
  * wrapper around an already-ready client. Strict Mode double-mounting,
  * unmount cleanup, stable references, and error surfaces are all proven
- * with a mocked client (the real engine is covered by @prism/core).
+ * with a mocked client (the real engine is covered by @prism-analytics/core).
  */
 
 function makeClient(): PrismClient & { calls: Record<string, number> } {

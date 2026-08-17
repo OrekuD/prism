@@ -15,7 +15,7 @@ tracking, performance monitoring, or additional framework SDKs.
 The implementation order is mandatory:
 
 1. public contract and architecture decisions;
-2. `@prism/core` runtime-neutral implementation;
+2. `@prism-analytics/core` runtime-neutral implementation;
 3. ingestion contract, storage, and migrations;
 4. minimal browser runtime adapter;
 5. existing product/read-path compatibility;
@@ -30,7 +30,7 @@ sanitization, session semantics, retries, or wire-format construction.
 Planned. Task 8's Fumadocs site is the documentation target for this work.
 
 npm account recovery is independent: keep the repository's existing
-`@prism/*` names while recovery of the original scope is pending. Do not
+`@prism-analytics/*` names while recovery of the original scope is pending. Do not
 publish, reserve placeholders, or rename the package family during this task
 unless the project owner records a final npm-scope decision.
 
@@ -40,7 +40,7 @@ unless the project owner records a final npm-scope decision.
   observability, but those capabilities will be added incrementally.
 - Explicit tracking is the default. Every autocapture category must be
   individually enabled in a later task.
-- The main analytics behavior belongs in `@prism/core`.
+- The main analytics behavior belongs in `@prism-analytics/core`.
 - React, Vue, React Native, Node, and other packages are adapters over the same
   imperative core rather than parallel SDK implementations.
 - React Native is a first-class future target. The core and event envelope
@@ -64,7 +64,7 @@ The current implementation is useful recovery-era functionality but is not a
 safe base for the next product stages:
 
 - `packages/core/src/prism-client.ts` directly accesses `window`, `document`,
-  `navigator`, `Blob`, and global `fetch`, so `@prism/core` is a browser SDK in
+  `navigator`, `Blob`, and global `fetch`, so `@prism-analytics/core` is a browser SDK in
   practice.
 - Constructing `PrismClient` immediately starts asynchronous work and installs
   global listeners before the caller can configure lifecycle or privacy.
@@ -92,13 +92,13 @@ safe base for the next product stages:
   length as an event metric. Session rows are loaded into application memory
   for aggregation and are labeled as visitors even though they are not unique
   visitor counts.
-- `@prism/core` and `@prism/react` have no focused SDK unit-test suites.
+- `@prism-analytics/core` and `@prism-analytics/react` have no focused SDK unit-test suites.
 
 ## Required end state
 
 At completion:
 
-- `@prism/core` imports and runs without DOM, React, React Native, Node-specific,
+- `@prism-analytics/core` imports and runs without DOM, React, React Native, Node-specific,
   Cloudflare-specific, or provider-specific globals.
 - A caller can create a ready client with an explicit project key, endpoint,
   runtime adapter, and collection state.
@@ -168,7 +168,7 @@ methods must not claim that unimplemented features work.
       of v1 and v2 SDK calls. Decided (ADR §2): remove v1 endpoints and all
       v1 examples in the same release.
 - [x] Record that public analytics TypeScript types are exported by
-      `@prism/core`. Consumers must not need to install `@prism/types` merely
+      `@prism-analytics/core`. Consumers must not need to install `@prism-analytics/types` merely
       to use the SDK. Shared internal wire schemas may remain in a private
       workspace package if both services need them. Decided (ADR §7).
 - [x] Mark build-only/internal packages (`brand`, TypeScript config, email
@@ -177,7 +177,7 @@ methods must not claim that unimplemented features work.
       Verified: types, email-templates, brand, jest-presets, and
       config-typescript are `private: true`; core + prism-react stay
       non-private as the SDK family.
-- [x] Keep the names `@prism/core`, `@prism/browser`, and `@prism/react` in the
+- [x] Keep the names `@prism-analytics/core`, `@prism-analytics/browser`, and `@prism-analytics/react` in the
       source tree until npm recovery is resolved. Put the scope decision in one
       documented release checklist rather than scattering fallback names.
       Decided (ADR §8); no publish or rename during this task.
@@ -261,7 +261,7 @@ This sketch records intended ergonomics; declaration review may refine names
 without weakening the semantics:
 
 ```ts
-import { createPrismClient } from "@prism/core";
+import { createPrismClient } from "@prism-analytics/core";
 
 const prism = await createPrismClient({
   projectKey: "pr_example",
@@ -292,7 +292,7 @@ Browser consumers should eventually receive the runtime through a small
 adapter rather than constructing low-level primitives:
 
 ```ts
-import { createBrowserClient } from "@prism/browser";
+import { createBrowserClient } from "@prism-analytics/browser";
 
 const prism = await createBrowserClient({
   projectKey: "pr_example",
@@ -412,7 +412,7 @@ Do not add console output to the SDK itself; examples may inspect results.
 
 - [x] Remove all direct `window`, `document`, `navigator`, `Blob`,
       `process.env`, Worker binding, and unconditional global `fetch` access
-      from `@prism/core`. The v2 implementation (core/queue/validation/
+      from `@prism-analytics/core`. The v2 implementation (core/queue/validation/
       contract) has zero platform globals (verified by grep); the legacy v1
       prism-client.ts still references navigator/document/window and is
       removed in the browser slice (ADR 0002 §2). The baked
@@ -437,7 +437,7 @@ Do not add console output to the SDK itself; examples may inspect results.
       The factory validates config and resolves to a ready client; anonymous
       identity is loaded/persisted through the storage adapter. Queue
       persistence itself lands in the delivery slice (section 6 item).
-- [x] Ensure importing `@prism/core` has no side effects, timers, listeners,
+- [x] Ensure importing `@prism-analytics/core` has no side effects, timers, listeners,
       network requests, or environment reads. The barrel + modules are
       side-effect free (timers only start inside the ready client).
 - [x] Keep `src/index.ts` as a barrel of direct exports. Split client, config,
@@ -451,7 +451,7 @@ Do not add console output to the SDK itself; examples may inspect results.
 - [x] Keep dependencies minimal and runtime-portable. Justify every runtime
       dependency with bundle-size, browser, Node, and React Native compatibility
       evidence; prefer owned small utilities for the narrow core behaviors.
-      Zero runtime dependencies in @prism/core (tsup/vitest are dev-only).
+      Zero runtime dependencies in @prism-analytics/core (tsup/vitest are dev-only).
 - [x] Export both ESM and supported compatibility output with correct
       `exports`, `types`, tree-shaking metadata, and source maps. Test package
       consumption from a clean fixture rather than only workspace resolution.
@@ -652,13 +652,13 @@ Do not add console output to the SDK itself; examples may inspect results.
 
 ## 11. Add the minimal browser runtime after core passes
 
-- [x] Create `@prism/browser` only after the core contract, core tests, and
+- [x] Create `@prism-analytics/browser` only after the core contract, core tests, and
       Node-without-DOM import test are green.
 - [x] Implement browser transport, clock/ID adapters where required, runtime
       context, session/local/memory storage strategies, and lifecycle cleanup
       without copying core queue/session/privacy logic.
 - [x] Require a runtime `endpoint` option; remove `API_URL` build substitution
-      from `@prism/core` and its build scripts.
+      from `@prism-analytics/core` and its build scripts.
 - [x] Capture only the currently approved minimal context: sanitized path,
       safe referrer, locale/timezone, viewport/device classification, and
       browser/OS data needed for existing reports. Query strings, hashes, DOM
@@ -682,7 +682,7 @@ Do not add console output to the SDK itself; examples may inspect results.
 
 ## 12. Adapt React only after core and browser are complete
 
-- [x] Keep `@prism/react` a thin adapter over an already-created browser/core
+- [x] Keep `@prism-analytics/react` a thin adapter over an already-created browser/core
       client. It must not create a second queue, session, event envelope,
       consent store, or retry policy.
 - [x] Replace the class provider's `MutationObserver` pathname logger and
@@ -699,7 +699,7 @@ Do not add console output to the SDK itself; examples may inspect results.
 - [x] Add React Strict Mode tests proving one client/session, no duplicate
       events, deterministic cleanup, and no updates after unmount.
 - [x] Test React 18 and React 19 peer compatibility using the existing peer
-      range; do not import React from `@prism/core` or `@prism/browser`.
+      range; do not import React from `@prism-analytics/core` or `@prism-analytics/browser`.
 - [x] Update `usePrism` to return the stable client or a focused typed facade.
       Remove `logCustomEvent` unless contract review finds a distinct semantic
       reason to keep it; prefer the industry-familiar `track` command.
@@ -712,10 +712,10 @@ Do not add console output to the SDK itself; examples may inspect results.
 - [x] Use TDD for core state machines, queue/retry behavior, ingestion
       validation, deduplication, privacy transitions, and migrations: failing
       test first, minimal implementation, refactor with gates green.
-- [x] Add a dedicated test script and coverage gate for `@prism/core`; enforce
+- [x] Add a dedicated test script and coverage gate for `@prism-analytics/core`; enforce
       at least 80% statements, branches, functions, and lines for the new core
       rather than hiding it inside repository-wide averages.
-- [x] Add `@prism/browser` and `@prism/react` tests with at least 80% coverage
+- [x] Add `@prism-analytics/browser` and `@prism-analytics/react` tests with at least 80% coverage
       for changed behavior and all privacy/lifecycle branches.
 - [x] Unit-test JSON validation, immutable cloning, redaction, ID/session
       generation, timestamp handling, consent transitions, queue overflow,
@@ -730,8 +730,8 @@ Do not add console output to the SDK itself; examples may inspect results.
       current schema, fresh bootstrap, idempotent migration, batch insert,
       deduplication, partial rejection, aggregate reads, retention, and restore.
 - [x] Add a no-DOM Node smoke test and a fake-native runtime contract test.
-      These are architecture gates even though `@prism/node` and
-      `@prism/react-native` are not implemented yet.
+      These are architecture gates even though `@prism-analytics/node` and
+      `@prism-analytics/react-native` are not implemented yet.
 - [x] Update the existing end-to-end smoke journey: create owner/account,
       create team/project, initialize SDK with explicit endpoint/collection
       state, record session/event, read it in the dashboard, and confirm
@@ -836,7 +836,7 @@ Task 9 is complete only when all of the following are true:
 
 - [x] The reviewed SDK/ingestion ADR and public TypeScript contract are checked
       in and match the implementation.
-- [x] `@prism/core` has no platform globals or import-time side effects.
+- [x] `@prism-analytics/core` has no platform globals or import-time side effects.
 - [x] The ready client supports explicit track, observable capture outcomes,
       consent transitions, sessions/sessionless operation, diagnostics, flush,
       and deterministic shutdown.
@@ -937,11 +937,11 @@ from git).
 
 ### Call-site examples (contract review surface, slice 1)
 
-1. **Modern browser app** (via the future `@prism/browser` adapter — the
+1. **Modern browser app** (via the future `@prism-analytics/browser` adapter — the
    core receives a runtime injected by the adapter):
 
    ```ts
-   import { createBrowserClient } from "@prism/browser";
+   import { createBrowserClient } from "@prism-analytics/browser";
 
    const prism = await createBrowserClient({
      projectKey: "pr_0123456789abcdef0123456789abcdef",
@@ -957,7 +957,7 @@ from git).
    session and no DOM:
 
    ```ts
-   import { createPrismClient, type PrismRuntimeAdapter } from "@prism/core";
+   import { createPrismClient, type PrismRuntimeAdapter } from "@prism-analytics/core";
 
    const runtime: PrismRuntimeAdapter = {
      name: "node-fake",
@@ -991,7 +991,7 @@ from git).
 3. **Consent-aware page** — pending state drops visibly, never queues:
 
    ```ts
-   import { createPrismClient, type PrismRuntimeAdapter } from "@prism/core";
+   import { createPrismClient, type PrismRuntimeAdapter } from "@prism-analytics/core";
 
    const prism = await createPrismClient({
      projectKey: "pr_0123456789abcdef0123456789abcdef",
@@ -1125,7 +1125,7 @@ mandatory end-to-end certification:
 15. **Mandatory e2e certification** (`scripts/certify-v2-ingest.mjs`,
     21/21 PASS): disposable Compose stack (product API + analytics API +
     sqld + nginx), safety guards (disposable project/volumes, loopback
-    ports, refusal on hosted Neon/Turso envs); a REAL @prism/core client
+    ports, refusal on hosted Neon/Turso envs); a REAL @prism-analytics/core client
     posts through the public nginx origin; routing verified (v2 ingest
     reaches analytics, never the product API); bearer key derives the
     project server-side; the event is stored once with event ID,
@@ -1262,8 +1262,8 @@ lint 10/10, build 8/8.
   the browser/OS/mobile-detection utils are gone; the analytics app serves
   only `/api/v2/ingest` + the authorized WebSocket. The v1 request schemas,
   `SocketUserConnected`, `CreateNewSessionResource`, and `IpInfoResponse`
-  left @prism/types; the legacy `PrismClientV1` (core `prism-client.ts`/
-  `types.ts`) and @prism/react's v1 bindings were removed (the react
+  left @prism-analytics/types; the legacy `PrismClientV1` (core `prism-client.ts`/
+  `types.ts`) and @prism-analytics/react's v1 bindings were removed (the react
   package is an empty shell until slice 8). Migration 004 drops the legacy
   `sessions` table; retention no longer has a legacy path.
 - **Sessions v2 + realtime**: the ingestion repository maintains
@@ -1306,8 +1306,8 @@ gates: test 4/4, typecheck 7/7, lint 10/10, build 8/8. Certification:
 
 ### Slice 7 — browser (completed 2026-08-13)
 
-- **`@prism/browser`** (new workspace package): `createBrowserClient({…})`
-  is a THIN runtime seam over @prism/core — the core owns every queueing,
+- **`@prism-analytics/browser`** (new workspace package): `createBrowserClient({…})`
+  is a THIN runtime seam over @prism-analytics/core — the core owns every queueing,
   consent, sanitization, session, authentication, and retry semantic; the
   package only translates browser primitives. Explicit runtime `endpoint`
   required (no compiled-in host, no API_URL substitution anywhere); fails
@@ -1338,11 +1338,11 @@ gates: test 4/4, typecheck 7/7, lint 10/10, build 8/8. Certification:
   persistence via localStorage; two tabs; Node-without-DOM import +
   loud failure; branch coverage 82.9%.
 - **Package-consumer smoke**: real pack+install fixture (owned npm
-  cache) installing @prism/browser AND its unpublished @prism/core
+  cache) installing @prism-analytics/browser AND its unpublished @prism-analytics/core
   dependency from workspace tarballs, consumed via public exports against
   an explicit self-hosted endpoint.
 - **Web product**: the interim inline runtime in lib/prism.ts is replaced
-  by @prism/browser (first production consumer); the web Dockerfile
+  by @prism-analytics/browser (first production consumer); the web Dockerfile
   builds and ships the package.
 - **Analytics readiness (§8)**: /health/live (process) + /health/ready
   (store ping — the migrated schema must exist; enrichment is never a
@@ -1354,7 +1354,7 @@ lint 11/11, build 9/9.
 
 ### Slice 8 — React (completed 2026-08-13)
 
-- **`@prism/react` rebuilt as a thin binding** (§12): `PrismProvider`
+- **`@prism-analytics/react` rebuilt as a thin binding** (§12): `PrismProvider`
   accepts an ALREADY-CREATED, READY client (never an initialization
   config — non-React ownership and cleanup stay explicit); the provider
   registers NO effects, listeners, or timers (Strict Mode double-mounting
@@ -1514,7 +1514,7 @@ audit clean, docs build + drift green. Certification 23/23.
 
 ## Context
 
-The current SDK (`@prism/core`) is browser-coupled, best-effort, and bakes a
+The current SDK (`@prism-analytics/core`) is browser-coupled, best-effort, and bakes a
 hosted ingestion URL into the build (`API_URL` env in the package build
 script). Sessions are server-owned, events carry no client-generated ID, and
 there is no consent/collection state, queue, batching, or deterministic
@@ -1529,15 +1529,15 @@ foundation instead of per-framework SDK reimplementations.
 
 ### 1. Core/runtime boundary
 
-- `@prism/core` is the runtime-neutral engine. It must import and run without
+- `@prism-analytics/core` is the runtime-neutral engine. It must import and run without
   DOM, React, React Native, Node-specific, Cloudflare-specific, or
   provider-specific globals, and have zero import-time side effects.
 - Runtime capabilities (transport, storage, time, ID generation, lifecycle
   hooks) arrive through an injected **runtime adapter**. No framework package
   owns queueing, identity generation, consent, sanitization, session
   semantics, retries, or wire-format construction.
-- Adapters: `@prism/browser` (thin), `@prism/react` (thin provider/hook),
-  future `@prism/react-native`, `@prism/node` — all over the same core.
+- Adapters: `@prism-analytics/browser` (thin), `@prism-analytics/react` (thin provider/hook),
+  future `@prism-analytics/react-native`, `@prism-analytics/node` — all over the same core.
 
 ### 2. Versioning strategy
 
@@ -1591,9 +1591,9 @@ foundation instead of per-framework SDK reimplementations.
 
 ### 7. Public contract and types ownership
 
-- Public analytics TypeScript types are exported by `@prism/core`; consumers
-  never need `@prism/types`.
-- `@prism/types` stays private and internal (shared wire schemas between
+- Public analytics TypeScript types are exported by `@prism-analytics/core`; consumers
+  never need `@prism-analytics/types`.
+- `@prism-analytics/types` stays private and internal (shared wire schemas between
   services). Internal packages (`brand`, `config-typescript`,
   `email-templates`, `jest-presets`, `types`) are `private: true` — already
   the case; verified in slice 1.
@@ -1607,7 +1607,7 @@ foundation instead of per-framework SDK reimplementations.
 
 ### 8. Package names and npm scope
 
-- Keep `@prism/core`, `@prism/browser`, `@prism/react` names in the source
+- Keep `@prism-analytics/core`, `@prism-analytics/browser`, `@prism-analytics/react` names in the source
   tree until npm scope recovery is resolved. No publish, placeholder
   reservation, or rename during this task. The scope decision lives in one
   documented release checklist.
@@ -1690,7 +1690,7 @@ legacy removal.
 5. **Public type**: the package root exports the v2 `PrismClient` interface;
    the legacy class is re-exported as `PrismClientV1` (deprecated) and the
    web/prism-react callers were updated; the built declarations verify
-   `import type { PrismClient } from "@prism/core"` resolves to the v2
+   `import type { PrismClient } from "@prism-analytics/core"` resolves to the v2
    contract.
 6. **Property sanitizer** (contract option `sanitize`): credential keys
    (password/passcode/token/authorization/cookie/secret/api key/
@@ -1830,7 +1830,7 @@ Suite: 78 tests green (3 files); coverage 96.1% lines / 90.8% functions
   mirrors occurredAt as timestamp; restore maps occurredAt with a
   defensive fallback for pre-envelope persisted snapshots.
 - **Shared limits** (`packages/core/src/limits.ts`, exported from
-  @prism/core): WIRE_SCHEMA_VERSION, SDK_NAME/SDK_VERSION, INGEST_LIMITS
+  @prism-analytics/core): WIRE_SCHEMA_VERSION, SDK_NAME/SDK_VERSION, INGEST_LIMITS
   (50 events/batch, 512 KiB/request, 32 KiB/event, 128 name chars, depth
   12, string 10 000, future skew 5 min, past window 30 days) + wire types
   (WireEnvelope/WireBatch/IngestResult/IngestResponseBody). New
@@ -1850,7 +1850,7 @@ Suite: 78 tests green (3 files); coverage 96.1% lines / 90.8% functions
   own `__proto__` keys; partial-batch policy: 200 with per-event results
   `{ index, id, status, reason? }`, never echoing properties/values/keys.
 - **Server-side sanitization**: direct HTTP clients are untrusted — the
-  shared @prism/core sanitizer runs on every accepted event before
+  shared @prism-analytics/core sanitizer runs on every accepted event before
   persistence ([REDACTED] marker, same limits as the SDK).
 - **Idempotency**: `events_v2` table with PRIMARY KEY (project_id, id) +
   `ON CONFLICT (project_id, id) DO NOTHING` — transport retries become
@@ -1867,7 +1867,7 @@ Suite: 78 tests green (3 files); coverage 96.1% lines / 90.8% functions
 - **Security/logging**: coarse error codes only; ingestion logs counts +
   ids (never properties); responses never echo payloads, keys, write
   keys, SQL, or provider errors.
-- **Deploy**: analytics-api now depends on @prism/core; the Dockerfile
+- **Deploy**: analytics-api now depends on @prism-analytics/core; the Dockerfile
   builds and ships packages/core/dist; tsconfig baseUrl/paths removed
   (TS 6 deprecation surfaced by the cache-cold rebuild).
 - Tests: 17 IngestController unit tests (envelope, per-event, partial

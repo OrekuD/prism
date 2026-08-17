@@ -1,5 +1,5 @@
 /**
- * Frozen public contract for `@prism/core` (task-9 slice 1 + review
+ * Frozen public contract for `@prism-analytics/core` (task-9 slice 1 + review
  * corrections, ADR 0002).
  *
  * This file is the review surface for the v2 analytics SDK contract. It is

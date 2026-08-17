@@ -15,9 +15,9 @@ API with WebSockets, a React dashboard, and a browser SDK.
 | `apps/api` (`prism-api`) | Cloudflare Worker product API (auth, teams, projects) | http://localhost:8787 |
 | `apps/analytics-api` (`prism-analytics-api`) | Node/Hono analytics API + WebSocket server | http://localhost:8080 |
 | `apps/docs` (`prism-docs`) | Astro Starlight docs | http://localhost:4321 |
-| `packages/core` (`@prism/core`) | Runtime-neutral v2 analytics SDK (`createPrismClient`) | — |
-| `packages/prism-react` (`@prism/react`) | React bindings for the SDK | — |
-| `packages/types` (`@prism/types`) | Shared request/response types & schemas | — |
+| `packages/core` (`@prism-analytics/core`) | Runtime-neutral v2 analytics SDK (`createPrismClient`) | — |
+| `packages/prism-react` (`@prism-analytics/react`) | React bindings for the SDK | — |
+| `packages/types` (`@prism-analytics/types`) | Shared request/response types & schemas | — |
 
 ## Prerequisites
 
@@ -98,7 +98,7 @@ yarn workspace prism-analytics-api dev  # analytics API + WS on :8080
 yarn workspace prism-web dev          # dashboard on :5173
 ```
 
-`@prism/core` and `@prism/react` build in watch mode as part of `yarn dev`; the
+`@prism-analytics/core` and `@prism-analytics/react` build in watch mode as part of `yarn dev`; the
 SDK's development build targets `http://localhost:8080`.
 
 ### Smoke flow
@@ -109,11 +109,11 @@ SDK's development build targets `http://localhost:8080`.
 3. In the browser console, start a session with the SDK:
 
    ```js
-   import { createPrismClient } from "@prism/core";
+   import { createPrismClient } from "@prism-analytics/core";
    const prism = await createPrismClient({
      projectKey: "YOUR_API_KEY",
      endpoint: window.location.origin, // runtime choice — never compiled in
-     runtime, // browser runtime (or @prism/browser once it lands)
+     runtime, // browser runtime (or @prism-analytics/browser once it lands)
      collection: { initialState: "granted" },
    });
    prism.startSession();
@@ -234,5 +234,5 @@ Security regression tests live in:
   (see engineering/dependency-security.md).
 - `apps/api` has no dedicated build output — `wrangler deploy` bundles the
   worker; the `build` script runs the type check.
-- `@prism/email-templates` `build`/`export` renders templates with
+- `@prism-analytics/email-templates` `build`/`export` renders templates with
   `react-email`; the preview server (`email dev`) is dev-only tooling.

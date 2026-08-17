@@ -1,6 +1,6 @@
 ---
 title: Writing a runtime adapter
-description: Framework-author guidance for reproducing the thin-binding pattern over @prism/core.
+description: Framework-author guidance for reproducing the thin-binding pattern over @prism-analytics/core.
 audience: Developer
 scope: Both
 lastReviewed: "2026-08-13"
@@ -8,7 +8,7 @@ lastReviewed: "2026-08-13"
 
 <SectionLabel label="ADAPTER AUTHORING" />
 
-`@prism/core` is runtime-neutral: no DOM, Node, React Native, or provider
+`@prism-analytics/core` is runtime-neutral: no DOM, Node, React Native, or provider
 globals, and zero import-time side effects. Every platform reaches it
 through ONE injected seam — the `PrismRuntimeAdapter`:
 
@@ -50,7 +50,7 @@ interface PrismRuntimeAdapter {
    treats a lifecycle flush as a bounded request, and stale-session
    handling stays authoritative server-side.
 
-The reference implementations are `@prism/browser` (platform seam) and
-`@prism/react` (framework binding — a zero-effect provider over an
+The reference implementations are `@prism-analytics/browser` (platform seam) and
+`@prism-analytics/react` (framework binding — a zero-effect provider over an
 already-created client). Vue/React Native/Node adapters follow the same
 pattern: translate platform primitives, delegate semantics.

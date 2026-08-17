@@ -1,9 +1,9 @@
-import { createBrowserClient } from "@prism/browser";
-import type { PrismClient } from "@prism/core";
+import { createBrowserClient } from "@prism-analytics/browser";
+import type { PrismClient } from "@prism-analytics/core";
 
 /**
  * v2 telemetry wiring for the Prism web product (task-9 slice 7): the
- * thin @prism/browser adapter over the @prism/core engine. The core owns
+ * thin @prism-analytics/browser adapter over the @prism-analytics/core engine. The core owns
  * all queueing/consent/sanitization/authentication semantics; the browser
  * package supplies the runtime seam.
  *

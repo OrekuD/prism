@@ -11,7 +11,7 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { useProjectQuery } from "@/network/queries/useProjectQuery";
-import type { ProjectDetailedRequest } from "@prism/types";
+import type { ProjectDetailedRequest } from "@prism-analytics/types";
 import { ValueNoneIcon } from "@radix-ui/react-icons";
 import { Skeleton } from "../ui/skeleton";
 import {

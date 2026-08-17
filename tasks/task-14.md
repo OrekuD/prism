@@ -31,7 +31,7 @@ Create/sign in to hosted Prism
   -> create a project for one logical product + environment
   -> create a Web source and allow the test app's exact HTTPS origin
   -> reveal its publishable source key once
-  -> install packed @prism/core, @prism/browser, and @prism/react in a
+  -> install packed @prism-analytics/core, @prism-analytics/browser, and @prism-analytics/react in a
      separate React app
   -> load the React app and generate sessions, events, identity changes
   -> sign in to Prism and inspect the same data in Overview, Events, People,
@@ -84,7 +84,7 @@ That name is misleading and must not become the public contract for the first
 real integration.
 
 - [x] Rename the public SDK configuration field from `projectKey` to
-      `sourceKey` across `@prism/core`, `@prism/browser`, `@prism/react`
+      `sourceKey` across `@prism-analytics/core`, `@prism-analytics/browser`, `@prism-analytics/react`
       documentation, setup snippets, error messages, tests, and types.
 - [x] Because Prism has not launched, remove the misleading public option
       rather than carrying a permanent compatibility alias. Record any
@@ -124,7 +124,7 @@ explicit shutdown path for an app that owns the client lifecycle.
 
 In scope:
 
-- `@prism/core`, `@prism/browser`, and `@prism/react` as usable, packed
+- `@prism-analytics/core`, `@prism-analytics/browser`, and `@prism-analytics/react` as usable, packed
   prerelease artifacts.
 - A real React/Vite fixture application outside the workspace dependency
   resolution path.
@@ -274,7 +274,7 @@ request is loading.
 
 ### 3. Produce installable package artifacts
 
-- [x] Build `@prism/core`, `@prism/browser`, and `@prism/react` from clean
+- [x] Build `@prism-analytics/core`, `@prism-analytics/browser`, and `@prism-analytics/react` from clean
       workspaces and inspect each package's published-file manifest/exports.
 - [x] Pack the three packages and install those tarballs into a separate React
       fixture directory. The fixture must not resolve source files through
@@ -422,7 +422,7 @@ request is loading.
 ### 2026-08-17 - Deploy-independent implementation landed; hosted pass deferred
 
 - **§2 SDK contract (done):** `projectKey` → `sourceKey` renamed across
-  `@prism/core`, `@prism/browser`, `@prism/react`, web setup snippets,
+  `@prism-analytics/core`, `@prism-analytics/browser`, `@prism-analytics/react`, web setup snippets,
   onboarding, docs site (5 pages), the certification script, and every test
   fixture. No compatibility alias is carried (pre-launch). Deliberately
   retained internal names: storage-key derivation still embeds the key value

@@ -24,7 +24,7 @@ import { Label } from "@/components/ui/label";
 
 import { useProjectQuery } from "@/network/queries/useProjectQuery";
 import { useRenameProjectMutation } from "@/network/mutations/useRenameProjectMutation";
-import type { ProjectDetailedRequest } from "@prism/types";
+import type { ProjectDetailedRequest } from "@prism-analytics/types";
 import React from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 

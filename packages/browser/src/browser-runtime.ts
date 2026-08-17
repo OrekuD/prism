@@ -4,10 +4,10 @@ import type {
   PrismRuntimeAdapter,
   PrismRuntimeContext,
   PrismStorage,
-} from "@prism/core";
+} from "@prism-analytics/core";
 
 /**
- * Browser runtime internals for @prism/browser (task-9 §11). Every
+ * Browser runtime internals for @prism-analytics/browser (task-9 §11). Every
  * platform primitive is accessed INSIDE these functions — importing this
  * module in Node never touches `window`, and the factory fails loudly
  * outside a browser instead of half-working.

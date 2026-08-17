@@ -1,7 +1,7 @@
 import "./testEnv.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
-import { Roles } from "@prism/types";
+import { Roles } from "@prism-analytics/types";
 import WebSocketManager from "../managers/WebSocketManager.js";
 
 /**

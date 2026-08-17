@@ -14,7 +14,7 @@ import { tooltip } from "@tanstack/charts/tooltip";
 import { Chart } from "@tanstack/charts/react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useProjectQuery } from "@/network/queries/useProjectQuery";
-import type { ProjectDetailedRequest } from "@prism/types";
+import type { ProjectDetailedRequest } from "@prism-analytics/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 

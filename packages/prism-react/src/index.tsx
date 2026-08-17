@@ -11,10 +11,10 @@ import type {
   PrismDiagnosticHandle,
   PrismSessionHandle,
   ResetResult,
-} from "@prism/core";
+} from "@prism-analytics/core";
 
 /**
- * @prism/react — the thin provider/hook layer over @prism/core (task-9
+ * @prism-analytics/react — the thin provider/hook layer over @prism-analytics/core (task-9
  * §12). It must NOT create a second queue, session, event envelope,
  * consent store, or retry policy — the provider wraps an ALREADY-CREATED,
  * READY client so ownership and lifecycle stay explicit and non-React

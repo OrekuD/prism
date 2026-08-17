@@ -14,15 +14,15 @@ performance tracing, feature flags, or experiments.
 
 The first delivery target is the web stack:
 
-1. runtime-neutral behavior in `@prism/core`;
+1. runtime-neutral behavior in `@prism-analytics/core`;
 2. ingestion, identity storage, and read APIs;
-3. `@prism/browser` integration;
-4. thin `@prism/react` bindings;
+3. `@prism-analytics/browser` integration;
+4. thin `@prism-analytics/react` bindings;
 5. hosted and self-hosted dashboard support.
 
 React Native is a first-class future target, but no React Native package should
 be implemented in this task. Every public contract and storage decision must be
-compatible with a later `@prism/react-native` adapter for both Expo and bare
+compatible with a later `@prism-analytics/react-native` adapter for both Expo and bare
 React Native.
 
 ## Status
@@ -53,7 +53,7 @@ still use ordered migrations and the existing guarded reset procedure.
 - Every baseline and major product-analytics feature must work in self-hosted
   mode from its first release.
 - Framework packages are adapters. Queueing, identity transitions, traits,
-  consent, sanitization, and event construction remain in `@prism/core`.
+  consent, sanitization, and event construction remain in `@prism-analytics/core`.
 - Task 9's forward reference provisionally grouped account analytics into Task
   10. This action sheet supersedes that routing: Task 10 establishes the person
   identity primitives, while full group/account reports belong to Task 12 with
@@ -98,7 +98,7 @@ At completion:
   state;
 - hosted and self-hosted deployments expose the same SDK, API, dashboard, data
   deletion, and export behavior;
-- `@prism/browser` and `@prism/react` expose the new core capabilities without
+- `@prism-analytics/browser` and `@prism-analytics/react` expose the new core capabilities without
   implementing their semantics;
 - changed code meets the repository's 80% coverage floor, and critical identity
   transitions have integration and browser certification.
@@ -303,9 +303,9 @@ from git.)
 - Core suite: 135 tests green (122 task-9 + 13 identity).
 
 
-## 3. Implement identity and global properties in `@prism/core`
+## 3. Implement identity and global properties in `@prism-analytics/core`
 
-- [x] Implement the approved identity state machine in `@prism/core` only.
+- [x] Implement the approved identity state machine in `@prism-analytics/core` only.
 - [x] Validate external user IDs with documented length and character ceilings.
       Treat IDs as opaque strings; do not require email-shaped values.
 - [x] Apply the shared strict-JSON, dangerous-key, depth, size, and redaction
@@ -486,9 +486,9 @@ from git.)
 - React tests: 13 (facade surface + live identity getter).
 
 
-## 7. Integrate `@prism/browser` and `@prism/react`
+## 7. Integrate `@prism-analytics/browser` and `@prism-analytics/react`
 
-- [x] Extend `@prism/browser` storage/runtime support for the approved identity
+- [x] Extend `@prism-analytics/browser` storage/runtime support for the approved identity
       and global-property scopes without duplicating core state transitions.
 - [x] Namespace stored state by endpoint origin and project identity so changing
       instances cannot move profiles or queued data across deployments.
@@ -583,7 +583,7 @@ from git.)
       types and keep the API-reference drift test green.
 - [x] Add self-hosted migration, retention, export, deletion, backup, and
       restore guidance.
-- [x] Add a packed `@prism/core` consumer fixture using a fake native/runtime
+- [x] Add a packed `@prism-analytics/core` consumer fixture using a fake native/runtime
       adapter and a packed browser/React fixture using a real endpoint.
 - [x] Certify the public-origin flow: anonymous events, identify with explicit
       traits, linked historical activity, subsequent identified events,
@@ -734,7 +734,7 @@ the same time as the hosted capability.
 The first React Native release begins only after the web identity and core
 insight stages are stable. It must include:
 
-- [ ] Deferred: `@prism/react-native` backed by `@prism/core`;
+- [ ] Deferred: `@prism-analytics/react-native` backed by `@prism-analytics/core`;
 - [ ] Deferred: Expo and bare React Native compatibility;
 - [ ] Deferred: AsyncStorage identity and queue adapter;
 - [ ] Deferred: AppState foreground/background session lifecycle;

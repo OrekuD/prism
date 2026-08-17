@@ -6,7 +6,7 @@ import type {
   ErrorResource,
   ProfilePictureResource,
   UpdateProfilePictureRequest,
-} from "@prism/types";
+} from "@prism-analytics/types";
 import type { AxiosError } from "axios";
 
 async function updateProfile(payload: UpdateProfilePictureRequest) {

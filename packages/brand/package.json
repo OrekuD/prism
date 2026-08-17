@@ -1,5 +1,5 @@
 {
-  "name": "@prism/brand",
+  "name": "@prism-analytics/brand",
   "version": "0.1.0",
   "private": true,
   "description": "Canonical Prism logo assets and deterministic export pipeline (task-7).",

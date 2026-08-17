@@ -53,12 +53,12 @@ describe("packaged consumption", () => {
           { cwd: fixture, stdio: "pipe" },
         );
         const pkg = JSON.parse(
-          readFileSync(join(fixture, "node_modules", "@prism", "browser", "package.json"), "utf8"),
+          readFileSync(join(fixture, "node_modules", "@prism-analytics", "browser", "package.json"), "utf8"),
         ) as { name: string };
-        expect(pkg.name).toBe("@prism/browser");
+        expect(pkg.name).toBe("@prism-analytics/browser");
 
         const requireFromFixture = createRequire(join(fixture, "package.json"));
-        const installed = requireFromFixture("@prism/browser") as {
+        const installed = requireFromFixture("@prism-analytics/browser") as {
           createBrowserClient: (options: unknown) => Promise<{
             track: (name: string) => { status: string };
             flush: () => Promise<void>;

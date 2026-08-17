@@ -50,7 +50,7 @@ Prism currently supports the following user and developer journeys.
   external ID search, data export, and person deletion.
 - Project summaries, recent events, honest totals, safe API-level breakdowns,
   and live session delivery over WebSockets.
-- A runtime-neutral `@prism/core` package, a browser runtime adapter, and thin
+- A runtime-neutral `@prism-analytics/core` package, a browser runtime adapter, and thin
   React bindings. React is the only framework integration shipped today.
 - Explicit consent states, bounded queues, retry, deduplication, offline
   persistence, diagnostics, flush, and shutdown behavior.
@@ -156,10 +156,10 @@ SELF-HOST PRISM
 
 API AND SDK REFERENCE
 ├── SDK reference
-│   ├── @prism/core                               Move + update
-│   ├── @prism/browser                            New
+│   ├── @prism-analytics/core                               Move + update
+│   ├── @prism-analytics/browser                            New
 │   ├── Framework SDKs
-│   │   └── @prism/react                          New
+│   │   └── @prism-analytics/react                          New
 │   └── Runtime adapter interface                 New
 ├── HTTP and realtime reference
 │   ├── Ingestion API                             Move + update
@@ -215,7 +215,7 @@ procedure must use the current package API and the following sequence.
 2. Create or select a team.
 3. Create a project.
 4. Copy the project's analytics key.
-5. Install `@prism/core` and `@prism/browser`.
+5. Install `@prism-analytics/core` and `@prism-analytics/browser`.
 6. Create a browser client with an explicit endpoint and collection state.
 7. Start a session and call `track()`.
 8. Verify the event and session in the project dashboard.
@@ -318,18 +318,18 @@ The overview introduces the package roles, identifies React as the only shipped
 framework SDK, and recommends the correct starting point for a browser or React
 application.
 
-- `@prism/core` owns event construction, identity, consent, queueing, retry,
+- `@prism-analytics/core` owns event construction, identity, consent, queueing, retry,
   diagnostics, and delivery.
-- `@prism/browser` supplies browser transport, storage, lifecycle, and context.
-- `@prism/react` supplies a provider and hook over an existing client.
+- `@prism-analytics/browser` supplies browser transport, storage, lifecycle, and context.
+- `@prism-analytics/react` supplies a provider and hook over an existing client.
 
 It must also state that Prism uses explicit tracking and does not currently
 autocapture routes, page views, clicks, forms, or DOM content.
 
 ### JavaScript and browser
 
-This new guide shows the normal browser setup with `@prism/core` and
-`@prism/browser`. It must include package installation, project key lookup,
+This new guide shows the normal browser setup with `@prism-analytics/core` and
+`@prism-analytics/browser`. It must include package installation, project key lookup,
 runtime endpoint selection, initial consent choice, client creation, first
 session, first event, diagnostics, and cleanup.
 
@@ -413,23 +413,23 @@ are ready.
 The package and documentation model follows this shape.
 
 ```text
-@prism/core                                      Shipped
+@prism-analytics/core                                      Shipped
 ├── Runtime adapters
-│   ├── @prism/browser                           Shipped
-│   ├── @prism/react-native                      Future
+│   ├── @prism-analytics/browser                           Shipped
+│   ├── @prism-analytics/react-native                      Future
 │   │   ├── Expo
 │   │   └── Bare React Native
 │   └── Server runtimes                          Future
 │       ├── Node.js
 │       └── Server-framework adapters
 └── Framework bindings
-    ├── @prism/react                             Shipped
+    ├── @prism-analytics/react                             Shipped
     ├── Vue                                      Future
     ├── Svelte                                   Future
     └── Angular                                  Future
 ```
 
-All framework SDKs must remain thin bindings over `@prism/core`. They can add
+All framework SDKs must remain thin bindings over `@prism-analytics/core`. They can add
 framework-specific setup, lifecycle integration, and ergonomic hooks or
 plugins, but they cannot create separate implementations of identity, consent,
 event construction, queueing, retry, sanitization, or delivery.
@@ -455,7 +455,7 @@ React Native belongs under a new **Track data → Mobile SDKs** group when the
 package ships. The first documentation release must support both Expo and bare
 React Native and cover the following behavior.
 
-- Configure a React Native client over the same `@prism/core` contracts.
+- Configure a React Native client over the same `@prism-analytics/core` contracts.
 - Persist identity and queued events with an asynchronous storage adapter.
 - Map `AppState` foreground and background transitions to session lifecycle.
 - Support offline delivery and reconnect flushing.
@@ -476,7 +476,7 @@ A future SDK becomes visible in the published sidebar only after it meets a
 consistent release gate.
 
 - The package exists and exports a stable public contract.
-- The adapter delegates shared analytics behavior to `@prism/core`.
+- The adapter delegates shared analytics behavior to `@prism-analytics/core`.
 - Installation and minimal example applications work from packed packages.
 - Supported runtime or framework versions are explicit.
 - Identity, consent, offline behavior, lifecycle cleanup, and failure handling
@@ -725,11 +725,11 @@ or conceptual explanations that belong in task-based guides.
 The SDK subtree must be generated or drift-checked against public package
 declarations wherever possible.
 
-- **`@prism/core`** lists the factory, client methods, results, options,
+- **`@prism-analytics/core`** lists the factory, client methods, results, options,
   diagnostics, constants, validation, limits, and public types.
-- **`@prism/browser`** lists the browser client or runtime factory, storage and
+- **`@prism-analytics/browser`** lists the browser client or runtime factory, storage and
   lifecycle behavior, context capture, and browser-only requirements.
-- **`@prism/react`** lists `PrismProvider`, `usePrism()`, the returned facade,
+- **`@prism-analytics/react`** lists `PrismProvider`, `usePrism()`, the returned facade,
   peer versions, and lifecycle ownership.
 - **Runtime adapter interface** lists transport, storage, clock, ID, scheduler,
   context, and lifecycle contracts.

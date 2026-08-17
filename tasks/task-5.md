@@ -87,7 +87,7 @@ Design dials:
       that leads to deployment documentation rather than a cloud registration wall.
 - [x] Show the actual setup journey: install SDK, initialize with a project key,
       send an event, and see the session in realtime. Real SDK rows
-      (yarn add @prism/core, new PrismClient with redacted key, logEvent)
+      (yarn add @prism-analytics/core, new PrismClient with redacted key, logEvent)
       with copy controls; JavaScript/React tabs.
 - [x] Use a real Prism dashboard capture or functioning embedded preview after
       the dashboard styling is stable. Do not manufacture a fake product UI.

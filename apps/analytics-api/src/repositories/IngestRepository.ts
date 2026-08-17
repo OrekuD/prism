@@ -1,4 +1,4 @@
-import { INGEST_LIMITS } from "@prism/core";
+import { INGEST_LIMITS } from "@prism-analytics/core";
 import type { Client } from "@libsql/client";
 import type { InStatement } from "@libsql/client";
 import TursoDatabaseManager from "../managers/TursoDatabaseManager.js";

@@ -318,7 +318,7 @@ a standalone deployment.
       analytics store, and setup closure all survived the restart).
       The certification run also surfaced and fixed latent deploy-artifact
       gaps (all now in the images CI builds): Dockerfiles build the
-      workspace packages (@prism/types + config-typescript manifest) before
+      workspace packages (@prism-analytics/types + config-typescript manifest) before
       app builds and copy the built dists + drizzle migration assets into
       runtime stages; analytics source imports carry .js extensions (tsc
       ESM); analytics db:setup resolves db/schema.sql robustly in both

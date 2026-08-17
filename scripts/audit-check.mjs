@@ -6,7 +6,7 @@
  * non-zero only when a high/critical advisory is reachable from a production
  * workspace and is not explicitly allowlisted below.
  *
- * Findings in build-time-only tooling (prism-docs, @prism/email-templates)
+ * Findings in build-time-only tooling (prism-docs, @prism-analytics/email-templates)
  * are reported but do not fail the build; they are tracked in
  * engineering/dependency-security.md.
  */
@@ -16,9 +16,9 @@ const PRODUCTION_ROOTS = new Set([
   "prism-web",
   "prism-api",
   "prism-analytics-api",
-  "@prism/core",
-  "@prism/react",
-  "@prism/types",
+  "@prism-analytics/core",
+  "@prism-analytics/react",
+  "@prism-analytics/types",
 ]);
 
 /**

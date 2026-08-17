@@ -9,7 +9,7 @@ import type {
   EventResource,
   ProjectDetailedResource,
   ProjectResource,
-} from "@prism/types";
+} from "@prism-analytics/types";
 
 const STORAGE_KEY = "prism.onboarding";
 

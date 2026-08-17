@@ -88,7 +88,7 @@ Avoid mixing visual redesign bugs with upgrade regressions.
       Peer-blocked packages bumped (next-themes 0.4, input-otp 1.4, sonner 2,
       cmdk 1.1, react-day-picker 9, RHF 7.85, resolvers 5, zustand 5, radix
       latest); calendar rewritten for day-picker 9; stale @types/react-day-picker
-      removed; the @prism/react react-18 bundling hazard resolved (see the
+      removed; the @prism-analytics/react react-18 bundling hazard resolved (see the
       production-build item).
 - [x] Do not mechanically remove `forwardRef` from app components until their
       consumers and underlying primitive support are verified. No app
@@ -101,7 +101,7 @@ Avoid mixing visual redesign bugs with upgrade regressions.
       Mapbox fallback untestable without a token (deferred with the Mapbox
       config in Task 2).
 - [x] Run a production build and inspect bundle/chunk warnings after the upgrade.
-      This caught a production-only crash: @prism/react's devDependencies
+      This caught a production-only crash: @prism-analytics/react's devDependencies
       pinned react 18, so yarn nested react@18.3.1 and rolldown bundled it —
       PrismProvider created elements with the React 18 runtime and the root
       unmounted (React #525). devDeps aligned to react 19; prod build boots
@@ -138,7 +138,7 @@ Avoid mixing visual redesign bugs with upgrade regressions.
       separators when v4 selector changes alter behavior. No divide-* usage;
       space-* behaves identically under v4 (margins on :not(:last-child)).
 - [x] Verify content detection covers every workspace source that emits classes.
-      @tailwindcss/vite scans apps/web; @prism/react emits no tailwind classes.
+      @tailwindcss/vite scans apps/web; @prism-analytics/react emits no tailwind classes.
 
 ## 4. Establish the Prism token system
 

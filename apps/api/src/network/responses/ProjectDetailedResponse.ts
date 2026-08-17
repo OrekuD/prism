@@ -1,4 +1,4 @@
-import type { ProjectDetailedResource } from "@prism/types";
+import type { ProjectDetailedResource } from "@prism-analytics/types";
 import type { Project } from "../../models/Project";
 
 export class ProjectDetailedResponse {

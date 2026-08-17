@@ -1,6 +1,6 @@
 import "./testEnv.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { IngestResponseBody } from "@prism/core";
+import type { IngestResponseBody } from "@prism-analytics/core";
 import { IngestController, eventLimiter } from "../controllers/IngestController.js";
 import { identityOpHash } from "../utils/identityResolution.js";
 
@@ -610,7 +610,7 @@ describe("identity operations (task-10 §4)", () => {
       JSON.stringify({
         schemaVersion: 3,
         sentAt: Date.now(),
-        sdk: { name: "@prism/core", version: "0.0.1" },
+        sdk: { name: "@prism-analytics/core", version: "0.0.1" },
         identity: [
           {
             opId: "op-1",

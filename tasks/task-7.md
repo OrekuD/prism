@@ -185,7 +185,7 @@ work.
       a third-party asset host.
 - [x] Add the approved logo/lockup to the root `README.md` without making the
       document unreadable in GitHub dark or light mode.
-- [x] Review package READMEs for `@prism/core` and `@prism/react`; use a modest
+- [x] Review package READMEs for `@prism-analytics/core` and `@prism-analytics/react`; use a modest
       shared brand header only where it improves package identity. Neither
       package ships a README; brand identity lives in the root README +
       engineering/brand/logo.md (no action needed).

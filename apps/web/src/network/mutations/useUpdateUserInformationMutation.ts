@@ -6,7 +6,7 @@ import type {
   ErrorResource,
   ProfileResource,
   UpdateUserInformationRequest,
-} from "@prism/types";
+} from "@prism-analytics/types";
 import type { AxiosError } from "axios";
 
 async function updateUserInformation(payload: UpdateUserInformationRequest) {

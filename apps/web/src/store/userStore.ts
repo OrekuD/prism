@@ -3,7 +3,7 @@ import type {
   ProfilePictureResource,
   ProfileResource,
   UserResource,
-} from "@prism/types";
+} from "@prism-analytics/types";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 

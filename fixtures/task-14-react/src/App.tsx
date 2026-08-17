@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { usePrism } from "@prism/react";
+import { usePrism } from "@prism-analytics/react";
 
 const TEST_PROPERTIES = {
   fixture: "task-14-react",

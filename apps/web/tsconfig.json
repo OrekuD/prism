@@ -1,6 +1,6 @@
 {
   "exclude": ["node_modules"],
-  "extends": "@prism/typescript-config/vite.json",
+  "extends": "@prism-analytics/typescript-config/vite.json",
   "compilerOptions": {
     "rootDir": ".",
     "outDir": "dist",

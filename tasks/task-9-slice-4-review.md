@@ -25,7 +25,7 @@ to protect disposable test data.
 
 The following gates were reproduced during review:
 
-- `@prism/core`: 81 tests passed when run with an isolated npm cache;
+- `@prism-analytics/core`: 81 tests passed when run with an isolated npm cache;
 - `prism-analytics-api`: 74 tests passed and 3 environment-dependent
   integration tests were skipped;
 - core and analytics API builds passed;
@@ -73,7 +73,7 @@ changes remain auditable.
 
 The future browser adapter could close over a project key when it constructs a
 transport, but the current core contract does not express that requirement.
-Direct `@prism/core` usage—already documented as the future Node/service
+Direct `@prism-analytics/core` usage—already documented as the future Node/service
 surface—cannot implement the contract correctly from the example or types.
 
 **Required fix**
@@ -748,7 +748,7 @@ certification script that exercises the actual deployed contract:
 
 1. start disposable product API, analytics API, database, and nginx services;
 2. create or seed a project and valid project write key;
-3. create a real `@prism/core` client using the public nginx origin;
+3. create a real `@prism-analytics/core` client using the public nginx origin;
 4. grant collection and capture an event containing safe properties/context;
 5. reach the batch threshold or call `flush()`;
 6. verify nginx routes the request to analytics;

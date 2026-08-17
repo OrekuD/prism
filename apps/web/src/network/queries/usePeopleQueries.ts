@@ -4,7 +4,7 @@ import type {
   PeopleListResource,
   PersonDetailResource,
   TotalsResource,
-} from "@prism/types";
+} from "@prism-analytics/types";
 import { useQuery } from "@tanstack/react-query";
 
 /**

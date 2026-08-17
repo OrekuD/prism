@@ -9,7 +9,7 @@ const VITE_DOCS_URL: string = import.meta.env.VITE_DOCS_URL ?? "http://localhost
 /** Redacted example key: never a real secret (design-system.md 9.6). */
 const EXAMPLE_KEY = "pr_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
 
-const installCommand = "yarn add @prism/core";
+const installCommand = "yarn add @prism-analytics/core";
 const initializeCommand = `const prism = await createPrismClient({
   sourceKey: "${EXAMPLE_KEY}",
   endpoint: "https://your-prism-instance.example", // runtime choice, never compiled in

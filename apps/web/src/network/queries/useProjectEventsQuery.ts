@@ -1,5 +1,5 @@
 import { axiosInstance } from "@/utils/axiosInstance";
-import type { EventResource } from "@prism/types";
+import type { EventResource } from "@prism-analytics/types";
 import { useQuery } from "@tanstack/react-query";
 
 async function projectEvents(slug: string | undefined) {

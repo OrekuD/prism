@@ -10,9 +10,9 @@
     "smoke": "node scripts/consumer-smoke.mjs"
   },
   "dependencies": {
-    "@prism/browser": "file:../.artifacts/task-14/prism-browser-0.0.1.tgz",
-    "@prism/core": "file:../.artifacts/task-14/prism-core-0.0.1.tgz",
-    "@prism/react": "file:../.artifacts/task-14/prism-react-0.0.1.tgz",
+    "@prism-analytics/browser": "file:../.artifacts/task-14/prism-analytics-browser-0.0.1.tgz",
+    "@prism-analytics/core": "file:../.artifacts/task-14/prism-analytics-core-0.0.1.tgz",
+    "@prism-analytics/react": "file:../.artifacts/task-14/prism-analytics-react-0.0.1.tgz",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

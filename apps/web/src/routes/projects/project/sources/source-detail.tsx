@@ -45,7 +45,7 @@ function sdkSnippet(
   endpoint: string,
 ): string {
   if (platform === "server") {
-    return `import { PrismClient } from "@prism/core";
+    return `import { PrismClient } from "@prism-analytics/core";
 
 const prism = new PrismClient({
   sourceKey: "${key}", // secret server key — keep it out of client bundles
@@ -56,12 +56,12 @@ await prism.track("order_completed", { value: 129.0 });`;
   }
   const packageName =
     platform === "web"
-      ? "@prism/browser"
+      ? "@prism-analytics/browser"
       : platform === "react-native"
-        ? "@prism/react-native"
+        ? "@prism-analytics/react-native"
         : platform === "ios"
-          ? "@prism/ios"
-          : "@prism/android";
+          ? "@prism-analytics/ios"
+          : "@prism-analytics/android";
   return `import { createBrowserClient } from "${packageName}";
 
 const prism = await createBrowserClient({

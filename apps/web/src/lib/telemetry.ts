@@ -18,7 +18,7 @@ export const TELEMETRY_EVENTS = {
 export type TelemetryEvent =
   (typeof TELEMETRY_EVENTS)[keyof typeof TELEMETRY_EVENTS];
 
-import type { JsonObject } from "@prism/core";
+import type { JsonObject } from "@prism-analytics/core";
 import { telemetryClient } from "./prism";
 
 /**

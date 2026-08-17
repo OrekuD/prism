@@ -319,7 +319,7 @@ structure, and developer-focused presentation.
 - [x] Add a real quickstart command frame showing the current installation,
       `PrismClient` initialization, and first event call. All examples must be
       copied from verified source behavior. Three `Command` rows
-      (`npm install @prism/core`, `new PrismClient("YOUR_PROJECT_KEY")`,
+      (`npm install @prism-analytics/core`, `new PrismClient("YOUR_PROJECT_KEY")`,
       `await prism.logEvent(...)`) verified against `packages/core/src`.
 - [x] Add a framed `Choose your path` split comparing hosted and self-hosted
       ownership without marketing distortion or invented limitations.
@@ -438,13 +438,13 @@ structure, and developer-focused presentation.
 - [x] Split the quickstart into a short verified path and deeper concept pages;
       keep the first successful event achievable without reading architecture.
       `hosted/quickstart` (7 steps to first event) + `start/concepts`.
-- [x] Document `@prism/core` from exported types and implementation, including
+- [x] Document `@prism-analytics/core` from exported types and implementation, including
       constructor behavior, session lifecycle, events, errors, browser unload
       behavior, and public write-key security model. `sdks/javascript`
       (build-time `API_URL` documented with the self-hosted rebuild command;
       no-op-without-session; keepalive/beacon fallback; no-op error
       listeners).
-- [x] Add `@prism/react` installation and provider/hook usage only after its
+- [x] Add `@prism-analytics/react` installation and provider/hook usage only after its
       current public API is verified from source and tests. `sdks/react`
       (PrismProvider error boundary, usePrism contract, no auto-endSession —
       documented as not-yet).

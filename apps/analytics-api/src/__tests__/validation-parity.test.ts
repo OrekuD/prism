@@ -1,6 +1,6 @@
 import "./testEnv.js";
 import { describe, expect, it } from "vitest";
-import { isValidEventName, validateJsonValue } from "@prism/core";
+import { isValidEventName, validateJsonValue } from "@prism-analytics/core";
 import { NAME_CORPUS, PROPERTY_CORPUS, depthCase } from "./validation-corpus.js";
 import { validateEvent } from "../utils/ingestValidation.js";
 

@@ -1,5 +1,5 @@
 {
-  "name": "@prism/email-templates",
+  "name": "@prism-analytics/email-templates",
   "version": "0.0.1",
   "private": true,
   "scripts": {

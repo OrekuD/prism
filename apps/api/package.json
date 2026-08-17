@@ -28,7 +28,7 @@
     "@hono/zod-validator": "^0.9.0",
     "@libsql/client": "^0.17.4",
     "@neondatabase/serverless": "^1.1.0",
-    "@prism/types": "*",
+    "@prism-analytics/types": "*",
     "@tsndr/cloudflare-worker-jwt": "^3.2.2",
     "better-auth": "^1.6.26",
     "date-fns": "^3.6.0",

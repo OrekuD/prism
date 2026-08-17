@@ -2,7 +2,7 @@ import type { WSContext } from "hono/ws";
 import type {
   SocketConnectProject,
   SocketMessageTypes,
-} from "@prism/types";
+} from "@prism-analytics/types";
 import NeonDatabaseManager from "./NeonDatabaseManager.js";
 import { JwtVerifier } from "../services/JwtVerifier.js";
 import { config } from "dotenv";

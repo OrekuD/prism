@@ -121,12 +121,12 @@ describe("migration runner", () => {
     const rows = [];
     for (let i = 0; i < 40; i += 1) {
       rows.push(
-        `('ev-${i}', 'p1', 'track', 'page_viewed', 2, ${now - i}, ${now - i}, 'sess-1', 'anon-1', '{}', '{}', '@prism/core', '0.0.1')`,
+        `('ev-${i}', 'p1', 'track', 'page_viewed', 2, ${now - i}, ${now - i}, 'sess-1', 'anon-1', '{}', '{}', '@prism-analytics/core', '0.0.1')`,
       );
     }
     for (let i = 0; i < 10; i += 1) {
       rows.push(
-        `('ev-other-${i}', 'p2', 'track', 'signup', 2, ${now}, ${now}, 'sess-2', 'anon-2', '{}', '{}', '@prism/core', '0.0.1')`,
+        `('ev-other-${i}', 'p2', 'track', 'signup', 2, ${now}, ${now}, 'sess-2', 'anon-2', '{}', '{}', '@prism-analytics/core', '0.0.1')`,
       );
     }
     await client.execute(

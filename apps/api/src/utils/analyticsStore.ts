@@ -1,4 +1,4 @@
-import type { EventResource, ProjectDetailedRequest, ProjectDetailedResource } from "@prism/types";
+import type { EventResource, ProjectDetailedRequest, ProjectDetailedResource } from "@prism-analytics/types";
 
 /**
  * Bounded v2 analytics reads (task-9 slice 6): all dashboard aggregates

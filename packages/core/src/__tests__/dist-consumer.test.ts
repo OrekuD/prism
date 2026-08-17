@@ -38,7 +38,7 @@ function packAndInstallFixture(): { fixture: string; cleanup(): void } {
     const packed = JSON.parse(packJson) as Array<{ filename: string; name: string; version: string }>;
     if (packed.length === 0) throw new Error("npm pack produced no tarball");
     const tarball = packed[0] as { filename: string; name: string; version: string };
-    expect(tarball.name).toBe("@prism/core");
+    expect(tarball.name).toBe("@prism-analytics/core");
     expect(tarball.version).toBe("0.0.1");
     execSync(
       "npm install --no-audit --no-fund --ignore-scripts --cache " +
@@ -56,12 +56,12 @@ function packAndInstallFixture(): { fixture: string; cleanup(): void } {
 
 describe("clean installed-package consumption", () => {
   it(
-    "packs, installs, and consumes @prism/core through its package metadata",
+    "packs, installs, and consumes @prism-analytics/core through its package metadata",
     () => {
       const { fixture, cleanup } = packAndInstallFixture();
       try {
         const pkg = JSON.parse(
-          readFileSync(join(fixture, "node_modules", "@prism", "core", "package.json"), "utf8"),
+          readFileSync(join(fixture, "node_modules", "@prism-analytics", "core", "package.json"), "utf8"),
         ) as {
           name: string;
           version: string;
@@ -72,7 +72,7 @@ describe("clean installed-package consumption", () => {
           files?: string[];
         };
         // package metadata is intact after the install
-        expect(pkg.name).toBe("@prism/core");
+        expect(pkg.name).toBe("@prism-analytics/core");
         expect(pkg.main).toBe("./dist/index.js");
         expect(pkg.module).toBe("./dist/index.mjs");
         expect(pkg.types).toBe("./dist/index.d.ts");
@@ -81,7 +81,7 @@ describe("clean installed-package consumption", () => {
 
         // require() resolves through the exports map (or main fallback)
         const requireFromFixture = createRequire(join(fixture, "package.json"));
-        const installed = requireFromFixture("@prism/core") as {
+        const installed = requireFromFixture("@prism-analytics/core") as {
           createPrismClient: (options: unknown) => Promise<{
             track: (name: string, properties?: Record<string, unknown>) => { status: string };
             shutdown: (options?: { timeoutMs?: number }) => Promise<void>;

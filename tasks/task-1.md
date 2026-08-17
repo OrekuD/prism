@@ -37,7 +37,7 @@ Steps:
    ```
 
 4. Do not upgrade dependencies during this first pass. Record install warnings separately so compatibility problems are not mixed with dependency migrations.
-5. Confirm that workspace packages resolve: `@prism/types`, `@prism/core`, and `@prism/react`.
+5. Confirm that workspace packages resolve: `@prism-analytics/types`, `@prism-analytics/core`, and `@prism-analytics/react`.
 
 Expected output: a reproducible install with no lockfile changes, or a short list of blockers explaining why that is not yet possible.
 
@@ -62,7 +62,7 @@ The dependencies were last updated in July 2024 and should be modernized as part
 Upgrade related packages together while keeping independent changes separate:
 
 1. Build tooling and shared configuration: TypeScript, Turbo, tsup, Vite, Biome, and type packages.
-2. Shared Prism packages: `@prism/types`, `@prism/core`, and `@prism/react`.
+2. Shared Prism packages: `@prism-analytics/types`, `@prism-analytics/core`, and `@prism-analytics/react`.
 3. Main API stack: Hono, Wrangler, Drizzle, Neon/Postgres clients, JWT, validation, and mail/upload dependencies.
 4. Analytics API stack: Hono Node/WebSocket packages, Turso/libSQL, Postgres, JWT, and IP enrichment dependencies.
 5. Web stack: React and React DOM first, followed by router, query/state, UI, charts, maps, and styling packages.
@@ -184,7 +184,7 @@ yarn workspace prism-analytics-api dev
 yarn workspace prism-web dev
 ```
 
-Also ensure the shared packages build or run in watch mode before the web app consumes them. Confirm that the development build of `@prism/core` targets `http://localhost:8080`, not the old Render production URL.
+Also ensure the shared packages build or run in watch mode before the web app consumes them. Confirm that the development build of `@prism-analytics/core` targets `http://localhost:8080`, not the old Render production URL.
 
 Perform a minimal smoke flow:
 
@@ -211,7 +211,7 @@ Known issues to investigate:
 
 - `apps/api` has no `build`, `lint`, or `typecheck` scripts.
 - `apps/analytics-api` has no lint, typecheck-only, or test script.
-- The API TypeScript alias points at `packages/@prism/types`, while the actual workspace is `packages/types`.
+- The API TypeScript alias points at `packages/@prism-analytics/types`, while the actual workspace is `packages/types`.
 - `packages/email-templates` has empty `build` and `dev` scripts.
 - The current test suite contains no meaningful Prism application tests.
 - Some root Turbo checks therefore do not cover every workspace.

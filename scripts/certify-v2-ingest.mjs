@@ -4,7 +4,7 @@
  * mandatory end-to-end correction test).
  *
  * Boots a DISPOSABLE Compose project (product API + analytics API + sqld +
- * nginx), seeds a project + write key, then runs a REAL @prism/core client
+ * nginx), seeds a project + write key, then runs a REAL @prism-analytics/core client
  * against the PUBLIC nginx origin and verifies the full journey:
  *
  *   1. nginx routes /api/v2/ingest to the analytics service (not the
@@ -143,7 +143,7 @@ const request = (path, { method = "GET", body, cookie, headers = [] } = {}) => {
   return { status, data, cookie: cookieMatch?.[1] ?? "" };
 };
 
-/** Run a JS snippet inside the analytics container (has node + @prism/core). */
+/** Run a JS snippet inside the analytics container (has node + @prism-analytics/core). */
 const inAnalytics = (script, env = {}) => {
   const args = [
     "compose", "-p", PROJECT, "-f", COMPOSE_FILE, "--env-file", ENV_FILE,
@@ -231,7 +231,7 @@ writeFileSync(COMPOSE_FILE, normalizedOut.join("\n"));
 
 // ---- the real core client, run inside the analytics container ----
 const CORE_CLIENT_SCRIPT = `
-import { createPrismClient } from "@prism/core";
+import { createPrismClient } from "@prism-analytics/core";
 
 const bodies = [];
 const runtime = {
@@ -290,7 +290,7 @@ console.log("CERT_BODY=" + (bodies[0] ?? ""));
 `;
 
 const CONSENT_SCRIPT = `
-import { createPrismClient } from "@prism/core";
+import { createPrismClient } from "@prism-analytics/core";
 
 let posts = 0;
 let release = null;
@@ -436,7 +436,7 @@ async function main() {
   });
   check("wrong key → 401", wrong.status === 401, `got ${wrong.status}`);
 
-  console.log("[5/8] Real @prism/core client through the public origin…");
+  console.log("[5/8] Real @prism-analytics/core client through the public origin…");
   const client = inAnalytics(CORE_CLIENT_SCRIPT, {
     PRISM_KEY: analyticsKey,
     PRISM_ENDPOINT: "http://web",
@@ -515,7 +515,7 @@ client.close();
   check("properties sanitized server-side", rowRedacted === "[REDACTED]", `got "${rowRedacted}"`);
   check(
     "SDK metadata derived from the batch (authoritative)",
-    rowSdk.includes('"name":"@prism/core"') && rowSdk.includes('"version":"0.0.1"'),
+    rowSdk.includes('"name":"@prism-analytics/core"') && rowSdk.includes('"version":"0.0.1"'),
     `got ${rowSdk}`,
   );
 
@@ -529,7 +529,7 @@ client.close();
   const identityBatch = JSON.stringify({
     schemaVersion: 3,
     sentAt: Date.now(),
-    sdk: { name: "@prism/core", version: "0.0.1" },
+    sdk: { name: "@prism-analytics/core", version: "0.0.1" },
     identity: [
       {
         opId: identifyOpId,
@@ -690,7 +690,7 @@ client.close();
 
   console.log("[6.75/8] Identity-only delivery through the real core client (review F2)…");
   const identityOnly = inAnalytics(`
-import { createPrismClient } from "@prism/core";
+import { createPrismClient } from "@prism-analytics/core";
 const runtime = {
   name: "node-fake",
   now: () => Date.now(),

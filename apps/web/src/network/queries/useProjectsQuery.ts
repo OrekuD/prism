@@ -1,5 +1,5 @@
 import { axiosInstance } from "@/utils/axiosInstance";
-import type { ProjectResource } from "@prism/types";
+import type { ProjectResource } from "@prism-analytics/types";
 import { useQuery } from "@tanstack/react-query";
 import { useActiveWorkspace } from "@/lib/workspace";
 

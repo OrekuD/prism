@@ -10,19 +10,19 @@ Prism tracks data through three packages with strict ownership
 boundaries. The framework packages never reimplement analytics behavior —
 they adapt the runtime and bind the UI.
 
-- **`@prism/core`** — the runtime-neutral engine. It owns event
+- **`@prism-analytics/core`** — the runtime-neutral engine. It owns event
   construction, identity, consent, queueing, retry, diagnostics, and
   delivery. It has no DOM, Node, or framework globals.
-- **`@prism/browser`** — the browser runtime adapter. It supplies
+- **`@prism-analytics/browser`** — the browser runtime adapter. It supplies
   transport, storage, lifecycle, and context capture.
-- **`@prism/react`** — a thin provider and hook over an already-created
+- **`@prism-analytics/react`** — a thin provider and hook over an already-created
   client. React is the only framework SDK shipped today.
 
 ## Choose your starting point
 
 - Browser application: follow [JavaScript and browser](/docs/tracking/web/javascript-browser).
 - React application: follow [React SDK](/docs/tracking/web/react).
-- Server or service: use `@prism/core` with a runtime adapter you
+- Server or service: use `@prism-analytics/core` with a runtime adapter you
   provide — see [Write a runtime adapter](/docs/tracking/runtime-adapters).
 
 ## Explicit tracking only

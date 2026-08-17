@@ -1,5 +1,5 @@
 {
-  "name": "@prism/core",
+  "name": "@prism-analytics/core",
   "version": "0.0.1",
   "license": "MIT",
   "scripts": {
@@ -21,7 +21,7 @@
     }
   },
   "devDependencies": {
-    "@prism/types": "*",
+    "@prism-analytics/types": "*",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "@vitest/coverage-v8": "^3.2.7",

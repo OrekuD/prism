@@ -98,11 +98,11 @@ export default function HomePage() {
         </div>
         <div className="grid md:grid-cols-[1.4fr_1fr]">
           <div className="space-y-6 border-b border-fd-border p-6 md:border-b-0 md:border-r">
-            <CommandRow label="sh" caption="Install" code="npm install @prism/core" />
+            <CommandRow label="sh" caption="Install" code="npm install @prism-analytics/core" />
             <CommandRow
               label="ts"
               caption="Initialize"
-              code={['import { PrismClient } from "@prism/core";', 'const prism = new PrismClient("pr_xxx");']}
+              code={['import { PrismClient } from "@prism-analytics/core";', 'const prism = new PrismClient("pr_xxx");']}
             />
             <CommandRow
               label="ts"

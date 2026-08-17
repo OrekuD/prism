@@ -5,7 +5,7 @@ import {
   type PrismClient,
   type PrismQueueOptions,
   type SanitizeOptions,
-} from "@prism/core";
+} from "@prism-analytics/core";
 import { createBrowserRuntime } from "./browser-runtime";
 
 export { capturePageContext } from "./browser-runtime";
@@ -29,7 +29,7 @@ export interface BrowserClientOptions {
 
 /**
  * Create the minimal browser client (task-9 §11): a thin runtime adapter
- * over the @prism/core engine. The core owns ALL queueing, consent,
+ * over the @prism-analytics/core engine. The core owns ALL queueing, consent,
  * sanitization, session, authentication, and retry semantics — this
  * package only translates browser primitives (fetch transport, local
  * storage, timers, lifecycle events) into the runtime seam.
@@ -46,7 +46,7 @@ export async function createBrowserClient(
 ): Promise<PrismClient> {
   if (typeof window === "undefined") {
     throw new Error(
-      "@prism/browser requires a browser environment (window is undefined)",
+      "@prism-analytics/browser requires a browser environment (window is undefined)",
     );
   }
   if (!options.endpoint || options.endpoint.trim().length === 0) {
