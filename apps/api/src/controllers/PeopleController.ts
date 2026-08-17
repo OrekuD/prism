@@ -14,10 +14,9 @@ import {
 } from "../utils/peopleStore";
 import { TursoDatabaseManager } from "../managers/TursoDatabaseManager";
 import { DatabaseManager } from "../managers/DatabaseManager";
-import type { Team } from "../models/Team";
-import type { TeamMember } from "../models/TeamMember";
 import type { Project } from "../models/Project";
 import { ErrorResponse } from "../network/responses/ErrorResponse";
+import { getWorkspaceRole } from "../utils/workspaceAuth";
 
 /**
  * People + baseline query APIs (task-10 §5): authenticated,
@@ -31,24 +30,22 @@ export class PeopleController {
     ctx: Context,
     slug: string,
   ): Promise<Project | null> {
+    // Task 13: authorization derives the project's Better Auth organization
+    // and proves membership on the canonical member table. A valid session
+    // from another workspace is a non-member: 404, non-disclosing.
     const user = ctx.get("user");
     if (!user) return null;
     const project = (
-      (await DatabaseManager.getInstance(ctx)`SELECT id, team_id, slug
+      (await DatabaseManager.getInstance(ctx)`SELECT id, organization_id, slug
         FROM projects WHERE slug = ${slug}`) as Array<Project>
     )[0];
     if (!project) return null;
-    const team = (
-      (await DatabaseManager.getInstance(ctx)`SELECT owner_id, id FROM teams
-        WHERE id = ${project.team_id}`) as Array<Team>
-    )[0];
-    if (!team) return null;
-    if (user.id === team.owner_id) return project;
-    const member = (
-      (await DatabaseManager.getInstance(ctx)`SELECT id FROM team_members
-        WHERE user_id = ${user.id} AND team_id = ${team.id}`) as Array<TeamMember>
-    )[0];
-    return member ? project : null;
+    const role = await getWorkspaceRole(
+      ctx,
+      user.id,
+      String(project.organization_id),
+    );
+    return role ? project : null;
   }
 
   private static store(ctx: Context) {

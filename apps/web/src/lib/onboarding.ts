@@ -48,17 +48,23 @@ export function isOnboardingComplete(totalSteps = 6): boolean {
   return (loadProgress()?.step ?? 0) >= totalSteps;
 }
 
-/** POST /api/v1/projects/:teamId — create the first project. */
+/**
+ * Task 13: create the first project inside the current workspace
+ * (POST /projects with the organizationId — membership is proven
+ * server-side). Projects do not carry keys; sources do, so the first
+ * source is created right after and its publishable key is what the SDK
+ * step shows.
+ */
 export async function createFirstProject(
-  teamId: string,
+  organizationId: string,
   name: string,
 ): Promise<ProjectResource> {
   let response: import("axios").AxiosResponse<{ message: string }>;
   try {
-    response = await axiosInstance.post<{ message: string }>(
-      `/projects/${teamId}`,
-      { teamId, name },
-    );
+    response = await axiosInstance.post<{ message: string }>("/projects", {
+      organizationId,
+      name,
+    });
   } catch (err) {
     if (
       axios.isAxiosError(err) &&
@@ -75,16 +81,32 @@ export async function createFirstProject(
   if (response.status !== 200) {
     throw new Error("Could not create the project.");
   }
-  // The create response carries no key; fetch the detailed resource.
   const projects = await axiosInstance.get<Array<ProjectResource>>(
-    `/teams/${teamId}/projects`,
+    `/projects?organizationId=${encodeURIComponent(organizationId)}`,
   );
   const project = projects.data.find((entry) => entry.name === name);
   if (!project) throw new Error("Project created but not found.");
   return project;
 }
 
-/** GET /api/v1/projects/:slug — includes the analytics key. */
+/** Creates the first WEB source for the project; its publishable key is
+ * what the install snippet needs. */
+export async function createFirstSource(
+  slug: string,
+  name: string,
+): Promise<{ id: string; initialKey?: string }> {
+  const response = await axiosInstance.post<{
+    id: string;
+    initialKey?: string;
+  }>(`/projects/${slug}/sources`, {
+    name,
+    platform: "web",
+    allowedOrigins: [window.location.origin],
+  });
+  return response.data;
+}
+
+/** GET /api/v1/projects/:slug — project details. */
 export async function fetchProjectForOnboarding(
   slug: string,
 ): Promise<ProjectDetailedResource> {

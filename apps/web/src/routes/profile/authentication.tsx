@@ -110,7 +110,7 @@ export function AccountAuthentication() {
           <CardHeader className="gap-1">
             <CardTitle>Verify your email</CardTitle>
             <CardDescription>
-              A verified email is required to create teams, projects, and
+              A verified email is required to create workspaces, projects, and
               invite members.
             </CardDescription>
           </CardHeader>

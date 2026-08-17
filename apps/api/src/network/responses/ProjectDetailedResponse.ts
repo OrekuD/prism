@@ -1,8 +1,4 @@
-import {
-  type ProjectDetailedResource,
-  ProjectResource,
-  TeamResource,
-} from "@prism/types";
+import type { ProjectDetailedResource } from "@prism/types";
 import type { Project } from "../../models/Project";
 
 export class ProjectDetailedResponse {
@@ -22,8 +18,7 @@ export class ProjectDetailedResponse {
       id: this.project.id,
       name: this.project.name,
       slug: this.project.slug,
-      apiKey: this.project.api_key,
-      teamId: this.project.team_id,
+      organizationId: this.project.organization_id,
       analytics: this.analytics,
     };
   }

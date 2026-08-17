@@ -3,17 +3,13 @@ import { axiosInstance } from "@/utils/axiosInstance";
 import { toast } from "sonner";
 import type {
   CreateProjectRequest,
-  CreateTeamRequest,
   ErrorResource,
   OkResource,
-  TeamResource,
 } from "@prism/types";
 import type { AxiosError } from "axios";
 
 async function createProject(payload: CreateProjectRequest) {
-  const url = `/projects/${payload.teamId}`;
-
-  const response = await axiosInstance.post(url, payload);
+  const response = await axiosInstance.post("/projects", payload);
 
   if (response.status === 200) {
     return response.data;
@@ -26,9 +22,9 @@ export function useCreateProjectMutation() {
   return useMutation({
     mutationFn: createProject,
     onSuccess: (data: OkResource, variables) => {
-      toast("Project created succesfully");
+      toast("Project created successfully");
       queryClient.invalidateQueries({
-        queryKey: ["projects", variables.teamId],
+        queryKey: ["projects", variables.organizationId],
       });
     },
     onError: (error: AxiosError<ErrorResource>) => {
@@ -41,7 +37,7 @@ export function useCreateProjectMutation() {
         switch (error.response.data.errors[0]) {
           case "cannot_create_project":
             toast(
-              "You do not have permission to create a project for this team.",
+              "You do not have permission to create a project in this workspace.",
             );
             break;
           default:

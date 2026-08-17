@@ -243,7 +243,12 @@ const runtime = {
       bodies.push(request.body);
       const response = await fetch(url, {
         method: "POST",
-        headers: { ...request.headers },
+        headers: {
+          ...request.headers,
+          // A browser would add the Origin automatically; the Node
+          // harness supplies it so the origin policy sees it.
+          ...(process.env.PRISM_ORIGIN ? { origin: process.env.PRISM_ORIGIN } : {}),
+        },
         body: request.body,
       });
       return {
@@ -261,7 +266,7 @@ const runtime = {
 };
 
 const prism = await createPrismClient({
-  projectKey: process.env.PRISM_KEY,
+  sourceKey: process.env.PRISM_KEY,
   endpoint: process.env.PRISM_ENDPOINT,
   runtime,
   collection: { initialState: "granted", anonymousPersistence: "session" },
@@ -313,7 +318,7 @@ const runtime = {
 };
 
 const prism = await createPrismClient({
-  projectKey: process.env.PRISM_KEY,
+  sourceKey: process.env.PRISM_KEY,
   endpoint: process.env.PRISM_ENDPOINT,
   runtime,
   collection: { initialState: "granted", anonymousPersistence: "session" },
@@ -369,7 +374,7 @@ async function main() {
   console.log("[2/8] Waiting for readiness…");
   check("health/ready", await waitForReady());
 
-  console.log("[3/8] Seeding owner, team, project, analytics key…");
+  console.log("[3/8] Seeding owner, workspace, project, source key…");
   const owner = await request("/api/v1/setup/owner", {
     method: "POST",
     body: JSON.stringify({ email: EMAIL, password: PASSWORD, name: "V2 Cert Owner" }),
@@ -384,27 +389,39 @@ async function main() {
   const cookie = signIn.cookie;
   check("owner sign-in", signIn.status === 200 && !!cookie, `got ${signIn.status}`);
 
-  const team = await request("/api/v1/teams", {
-    method: "POST",
-    body: JSON.stringify({ name: "V2 Cert Team" }),
-    cookie,
-  });
-  const teamId = team.data?.team?.id ?? team.data?.id;
-  check("team created", team.status === 200 && !!teamId, `got ${team.status}`);
+  // Task 13: the personal workspace is a Better Auth organization,
+  // provisioned through the server API (the first authenticated request
+  // ensures it). Its active organization comes from the session.
+  const orgList = await request("/api/auth/organization/list", { cookie });
+  const organizationId = orgList.data?.organizations?.[0]?.id ?? orgList.data?.[0]?.id;
+  check("personal workspace provisioned", orgList.status === 200 && !!organizationId, JSON.stringify(orgList.data).slice(0, 200));
 
-  const project = await request(`/api/v1/projects/${teamId}`, {
+  const project = await request("/api/v1/projects", {
     method: "POST",
-    body: JSON.stringify({ teamId, name: "V2 Cert Project" }),
+    body: JSON.stringify({ organizationId, name: "V2 Cert Project" }),
     cookie,
   });
   check("project created", project.status === 200, `got ${project.status}`);
 
-  const projects = await request(`/api/v1/teams/${teamId}/projects`, { cookie });
+  const projects = await request(`/api/v1/projects?organizationId=${encodeURIComponent(organizationId)}`, { cookie });
   const slug = projects.data?.[0]?.slug;
   const expectedProjectId = projects.data?.[0]?.id;
-  const projectInfo = await request(`/api/v1/projects/${slug}`, { cookie });
-  const analyticsKey = projectInfo.data?.apiKey;
-  check("analytics key retrieved", !!analyticsKey, "no key in project payload");
+  check("project listed in workspace", !!slug && !!expectedProjectId, JSON.stringify(projects.data).slice(0, 200));
+
+  // Source-first key resolution (task-13): the ingest key belongs to a
+  // WEB source; the seed request carries the browser origin so the
+  // origin policy accepts the SDK requests that follow.
+  const source = await request(`/api/v1/projects/${slug}/sources`, {
+    method: "POST",
+    body: JSON.stringify({
+      name: "Cert Web",
+      platform: "web",
+      allowedOrigins: ["http://web", "http://localhost:3020"],
+    }),
+    cookie,
+  });
+  const analyticsKey = source.data?.initialKey;
+  check("source key retrieved (publishable web)", !!analyticsKey && String(analyticsKey).startsWith("psk_"), "no key in source payload");
 
   console.log("[4/8] Invalid keys through nginx (analytics 401 contract)…");
   const missing = await request("/api/v2/ingest", {
@@ -423,6 +440,7 @@ async function main() {
   const client = inAnalytics(CORE_CLIENT_SCRIPT, {
     PRISM_KEY: analyticsKey,
     PRISM_ENDPOINT: "http://web",
+    PRISM_ORIGIN: "http://web",
     PRISM_EVENT_NAME: EVENT_NAME,
   });
   const clientOut = client.stdout ?? "";
@@ -442,7 +460,7 @@ const client = createClient({
   authToken: process.env.TURSO_AUTH_TOKEN,
 });
 const rows = await client.execute({
-  sql: "SELECT id, project_id, name, occurred_at, anonymous_id, properties, context, schema_version, sdk_name, sdk_version FROM events WHERE id = ?",
+  sql: "SELECT id, project_id, source_id, platform, name, occurred_at, anonymous_id, properties, context, schema_version, sdk_name, sdk_version FROM events WHERE id = ?",
   args: ["${eventId}"],
 });
 if (rows.rows.length === 1) {
@@ -450,6 +468,8 @@ if (rows.rows.length === 1) {
   const props = JSON.parse(row.properties);
   const ctx = JSON.parse(row.context);
   console.log("CERT_ROW_PROJECT=" + row.project_id);
+  console.log("CERT_ROW_SOURCE=" + String(row.source_id ?? ""));
+  console.log("CERT_ROW_PLATFORM=" + String(row.platform ?? ""));
   console.log("CERT_ROW_NAME=" + row.name);
   console.log("CERT_ROW_ANON=" + String(row.anonymous_id ?? ""));
   console.log("CERT_ROW_OCCURRED=" + String(row.occurred_at));
@@ -464,6 +484,8 @@ client.close();
   const verify = inAnalytics(verifyScript);
   const verifyOut = verify.stdout ?? "";
   const rowProject = verifyOut.match(/CERT_ROW_PROJECT=(\S+)/)?.[1] ?? "";
+  const rowSource = verifyOut.match(/CERT_ROW_SOURCE=(\S+)/)?.[1] ?? "";
+  const rowPlatform = verifyOut.match(/CERT_ROW_PLATFORM=(\S+)/)?.[1] ?? "";
   const rowOccurred = verifyOut.match(/CERT_ROW_OCCURRED=(\S+)/)?.[1] ?? "";
   const rowRedacted = verifyOut.match(/CERT_ROW_REDACTED=(\S+)/)?.[1] ?? "";
   const rowSdk = verifyOut.match(/CERT_ROW_SDK=(\{.*\}|null)/)?.[1] ?? "";
@@ -487,6 +509,9 @@ client.close();
     !!expectedProjectId && rowProject === expectedProjectId,
     `expected=${expectedProjectId} got=${rowProject}`,
   );
+  check("source_id persisted from the key (trusted context)", !!rowSource && rowSource.length > 0, `got "${rowSource}"`);
+  check("platform persisted from the source", rowPlatform === "web", `got "${rowPlatform}"`);
+
   check("properties sanitized server-side", rowRedacted === "[REDACTED]", `got "${rowRedacted}"`);
   check(
     "SDK metadata derived from the batch (authoritative)",
@@ -539,7 +564,7 @@ client.close();
   const identityPost = await request("/api/v2/ingest", {
     method: "POST",
     body: identityBatch,
-    headers: [`authorization: Bearer ${analyticsKey}`],
+    headers: [`authorization: Bearer ${analyticsKey}`, "origin: http://web"],
   });
   check(
     "v3 identity batch accepted through the public origin",
@@ -686,7 +711,7 @@ const runtime = {
   context: { platform: "node", kind: "server" },
 };
 const prism = await createPrismClient({
-  projectKey: process.env.PRISM_KEY,
+  sourceKey: process.env.PRISM_KEY,
   endpoint: process.env.PRISM_ENDPOINT,
   runtime,
   collection: { initialState: "granted", anonymousPersistence: "none" },
@@ -730,7 +755,7 @@ client.close();
   const replay = await request("/api/v2/ingest", {
     method: "POST",
     body: sentBody,
-    headers: [`authorization: Bearer ${analyticsKey}`],
+    headers: [`authorization: Bearer ${analyticsKey}`, "origin: http://web"],
   });
   const replayStatus = replay.data?.results?.[0]?.status;
   check("replayed envelope → duplicate", replay.status === 200 && replayStatus === "duplicate", JSON.stringify(replay.data));
@@ -776,7 +801,7 @@ client.close();
   const ctxPost = await request("/api/v2/ingest", {
     method: "POST",
     body: ctxBody,
-    headers: [`authorization: Bearer ${analyticsKey}`],
+    headers: [`authorization: Bearer ${analyticsKey}`, "origin: http://web"],
   });
   const ctxVerify = inAnalytics(`
 import { createClient } from "@libsql/client";
@@ -806,7 +831,7 @@ client.close();
   const stillOnce = await request("/api/v2/ingest", {
     method: "POST",
     body: sentBody,
-    headers: [`authorization: Bearer ${analyticsKey}`],
+    headers: [`authorization: Bearer ${analyticsKey}`, "origin: http://web"],
   });
   const stillDuplicate = stillOnce.data?.results?.[0]?.status === "duplicate";
   check("replay never creates a second row (still duplicate)", stillDuplicate);

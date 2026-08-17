@@ -58,11 +58,6 @@ const ProjectSettingsLayout = lazy(() =>
     default: m.ProjectSettingsLayout,
   })),
 );
-const ProjectSettingsApiKeys = lazy(() =>
-  import("./routes/projects/project/settings/api-keys").then((m) => ({
-    default: m.ProjectSettingsApiKeys,
-  })),
-);
 const ProjectSettingsGeneral = lazy(() =>
   import("./routes/projects/project/settings/general").then((m) => ({
     default: m.ProjectSettingsGeneral,
@@ -83,9 +78,19 @@ const AccountAuthentication = lazy(() =>
     default: m.AccountAuthentication,
   })),
 );
-const AccountTeams = lazy(() =>
-  import("./routes/profile/teams").then((m) => ({
-    default: m.AccountTeams,
+const AccountWorkspaces = lazy(() =>
+  import("./routes/profile/workspace").then((m) => ({
+    default: m.AccountWorkspaces,
+  })),
+);
+const ProjectSources = lazy(() =>
+  import("./routes/projects/project/sources").then((m) => ({
+    default: m.ProjectSources,
+  })),
+);
+const SourceDetail = lazy(() =>
+  import("./routes/projects/project/sources/source-detail").then((m) => ({
+    default: m.SourceDetail,
   })),
 );
 const AccountLayout = lazy(() =>
@@ -98,9 +103,6 @@ const Onboarding = lazy(() =>
 );
 const Overview = lazy(() =>
   import("./routes/overview").then((m) => ({ default: m.Overview })),
-);
-const JoinTeam = lazy(() =>
-  import("./routes/teams/join-team").then((m) => ({ default: m.JoinTeam })),
 );
 
 import { Index } from "./routes/index";
@@ -121,7 +123,6 @@ const router = createBrowserRouter(
           product shell below handles every other path. */}
       <Route path="/" element={<PublicLayout />}>
         <Route path="" element={<Index />} />
-        <Route path="join" element={<JoinTeam />} />
         {/* Anonymous first boot (self-hosted): renders the OwnerSetup
             branch of the onboarding page. Signed-in visitors are
             redirected to the product shell by the page itself. */}
@@ -152,10 +153,11 @@ const router = createBrowserRouter(
             <Route path="realtime" element={<ProjectRealtime />} />
             <Route path="people" element={<ProjectPeople />} />
             <Route path="people/:personId" element={<PersonDetail />} />
+            <Route path="sources" element={<ProjectSources />} />
+            <Route path="sources/:sourceId" element={<SourceDetail />} />
             <Route path="settings" element={<ProjectSettingsLayout />}>
               <Route path="" element={<Navigate to="general" />} />
               <Route path="general" element={<ProjectSettingsGeneral />} />
-              <Route path="api-keys" element={<ProjectSettingsApiKeys />} />
             </Route>
           </Route>
         </Route>
@@ -164,7 +166,7 @@ const router = createBrowserRouter(
           <Route path="general" element={<AccountGeneral />} />
           <Route path="security" element={<AccountSecurity />} />
           <Route path="authentication" element={<AccountAuthentication />} />
-          <Route path="teams" element={<AccountTeams />} />
+          <Route path="workspace" element={<AccountWorkspaces />} />
         </Route>
       </Route>
       {/* Everyone gets the full public 404 experience. */}

@@ -19,7 +19,8 @@ import {
 } from "@/lib/onboarding";
 import { useProjectsQuery } from "@/network/queries/useProjectsQuery";
 import { TELEMETRY_EVENTS, trackTelemetry } from "@/lib/telemetry";
-import { useTeamsQuery } from "@/network/queries/useTeamsQuery";
+import { useCurrentWorkspace } from "@/lib/workspace";
+import { createFirstSource } from "@/lib/onboarding";
 import { cn } from "@/lib/utils";
 
 const BASE_STEPS = [
@@ -92,7 +93,7 @@ function Checklist({ current, steps }: { current: number; steps: readonly string
 export function Onboarding() {
   const navigate = useNavigate();
   const { data: sessionData } = authClient.useSession();
-  const teamsQuery = useTeamsQuery();
+  const { workspace } = useCurrentWorkspace();
   const projectsQuery = useProjectsQuery();
   const [config, setConfig] = React.useState<RuntimeConfig | null>(null);
 
@@ -135,15 +136,17 @@ export function Onboarding() {
     setCreateError(null);
     setIsCreating(true);
     try {
-      const team = teamsQuery.data?.find((entry) => entry.isPersonal);
-      if (!team) throw new Error("No personal team found.");
-      const project = await createFirstProject(team.id, projectName.trim());
+      if (!workspace) throw new Error("No workspace found.");
+      const project = await createFirstProject(workspace.id, projectName.trim());
+      // Task 13: the project's first source creates the publishable key
+      // that the install snippet uses.
+      const source = await createFirstSource(project.slug, "Web");
       const detail = await fetchProjectForOnboarding(project.slug);
       const updated = {
         step: 4 + offset,
         projectId: project.id,
         projectSlug: project.slug,
-        apiKey: detail.apiKey ?? undefined,
+        apiKey: source.initialKey ?? undefined,
       };
       setProgress(updated);
       saveProgress(updated);
@@ -242,7 +245,6 @@ export function Onboarding() {
 
   const email = sessionData.user.email;
   const name = sessionData.user.name;
-  const personalTeam = teamsQuery.data?.find((entry) => entry.isPersonal);
 
   return (
     <div className="mx-auto w-full max-w-[1500px] px-4 py-10 md:px-6 md:py-12">
@@ -377,16 +379,16 @@ export function Onboarding() {
                     Your workspace
                   </h2>
                   <p className="mt-1.5 text-[13px] text-text-muted">
-                    A personal team was created for your account.
+                    A personal workspace was created for your account.
                   </p>
                 </div>
                 <dl className="grid gap-4 text-[14px]">
                   <div className="grid gap-1">
                     <dt className="font-mono text-[11px] uppercase tracking-[0.09em] text-text-subtle">
-                      Team
+                      Workspace
                     </dt>
                     <dd className="text-text">
-                      {personalTeam?.name ?? "Personal team"}
+                      {workspace?.name ?? "Personal workspace"}
                     </dd>
                   </div>
                 </dl>
@@ -524,7 +526,7 @@ export function Onboarding() {
                   <CodeCopyRow command="yarn add @prism/core @prism/browser" />
                   <CodeCopyRow
                     command={`const prism = await createBrowserClient({
-  projectKey: "pr_…",
+  sourceKey: "psk_…",
   endpoint: window.location.origin,
   collection: { initialState: "granted" },
 });`}

@@ -9,8 +9,8 @@
  * The database instance is injected so each runtime can use its own driver
  * (neon-http on the Worker, postgres-js for the CLI and Node tooling).
  */
-import type { BetterAuthOptions } from "better-auth";
-import { jwt } from "better-auth/plugins";
+import type { BetterAuthOptions, GenericEndpointContext } from "better-auth";
+import { jwt, organization } from "better-auth/plugins";
 import { logger } from "../utils/logger";
 import { github, google } from "better-auth/social-providers";
 import { provisionUserResources } from "./provision.js";
@@ -145,19 +145,23 @@ export function buildAuthOptions(
     databaseHooks: {
       user: {
         create: {
-          after: async (user) => {
+          after: async (user, context) => {
             // Idempotent: retries cannot create duplicate profiles/teams.
             // Provisioning failure must not break signup; it is retried on
             // the next login via the idempotent check.
             try {
-              await provisionUserResources(db as never, user as never);
+              await provisionUserResources(
+                db as never,
+                user as never,
+                context as GenericEndpointContext | null,
+              );
             } catch (error) {
               // Provisioning is part of the signup contract: under vitest
               // a failure must fail the test, not be swallowed.
               if (typeof process !== "undefined" && process.env.VITEST === "true") {
                 throw error;
               }
-              logger.warn("auth", "profile/team provisioning failed", {
+              logger.warn("auth", "profile/workspace provisioning failed", {
                 message: error instanceof Error ? error.message : error,
               });
             }
@@ -166,6 +170,24 @@ export function buildAuthOptions(
       },
     },
     plugins: [
+      // Task 13: Better Auth Organizations are the SINGLE authority for Prism
+      // workspaces — membership, roles, invitations, active workspace, and
+      // profile metadata all live in the plugin's canonical tables.
+      //
+      // Default roles match the product matrix without an override: owner
+      // (org update/delete, member+invite management), admin (org update,
+      // member+invite management — never org delete), member (read-only).
+      // Product actions (project create/rename/delete, key management) are
+      // mapped from these roles server-side; no shadow permission_id system.
+      //
+      // The nested Teams plugin stays disabled: an Organization IS a Prism
+      // workspace, and Prism has no nested workgroups.
+      organization({
+        allowUserToCreateOrganization: true,
+        allowMultipleOrganizations: true,
+        creatorRole: "owner",
+        membershipLimit: 100,
+      }),
       jwt({
         jwt: {
           issuer: "prism",

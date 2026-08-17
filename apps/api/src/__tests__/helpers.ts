@@ -29,6 +29,7 @@ export function makeCtx(
       param: (key: string) => params[key],
       json: vi.fn(async () => body),
       header: vi.fn(() => undefined),
+      query: vi.fn(() => undefined),
       raw: { headers: new Headers() },
     },
     json: vi.fn((value: unknown, status?: number) => ({

@@ -16,15 +16,10 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
-import { useInviteTeamMembersMutation } from "@/network/mutations/useInviteTeamMembersMutation";
-
-import { useTeamsQuery } from "@/network/queries/useTeamsQuery";
-import { useUserStore } from "@/store/userStore";
-import { useTeamInviteLinkQuery } from "@/network/queries/useTeamInviteLinkQuery";
 import { toast } from "sonner";
 import { useCreateProjectMutation } from "@/network/mutations/useCreateProjectMutation";
 import { Label } from "../ui/label";
-import { useActiveTeamStore } from "@/store/activeTeamStore";
+import { useCurrentWorkspace } from "@/lib/workspace";
 
 const createProjectFormSchema = z.object({
 	name: z.string(),
@@ -33,7 +28,7 @@ const createProjectFormSchema = z.object({
 export function CreateNewProject(props: React.PropsWithChildren) {
 	const [open, setOpen] = React.useState(false);
 	const createProjectMutation = useCreateProjectMutation();
-	const { teamId } = useActiveTeamStore();
+	const { workspace } = useCurrentWorkspace();
 
 	const createNewProjectForm = useForm({
 		resolver: zodResolver(createProjectFormSchema),
@@ -43,9 +38,9 @@ export function CreateNewProject(props: React.PropsWithChildren) {
 	});
 
 	async function onSubmit(values: z.infer<typeof createProjectFormSchema>) {
-		if (!teamId) return;
+		if (!workspace) return;
 		const { message } = await createProjectMutation.mutateAsync({
-			teamId,
+			organizationId: workspace.id,
 			name: values.name,
 		});
 

@@ -43,7 +43,7 @@ run("product database integration", () => {
     await db()`SELECT 1 FROM "user" LIMIT 1`;
   });
 
-  it("signup creates a user, profile, and personal team atomically", async () => {
+  it("signup provisions a profile + Better Auth workspace (organization/member), and projects tenant to it", async () => {
     if (!enabled) return;
     const mail = email();
 
@@ -56,19 +56,45 @@ run("product database integration", () => {
     const profile = await db()`
       INSERT INTO profiles (user_id, first_name, last_name)
       VALUES (${userId}, 'Integration', 'Test') RETURNING id`;
-    const team = await db()`
-      INSERT INTO teams (owner_id, name, is_personal)
-      VALUES (${userId}, 'Integration Test\'s team', TRUE) RETURNING id`;
+
+    // Task 13: the personal workspace is a Better Auth organization —
+    // owner membership comes from the plugin's canonical tables (created
+    // through the supported server API in production; the fixture here
+    // mirrors the plugin's exact rows).
+    const org = await db()`
+      INSERT INTO organization (id, name, slug, created_at)
+      VALUES (gen_random_uuid(), ${`Integration Test's workspace`}, ${`personal-${userId}`}, NOW())
+      RETURNING id`;
+    const orgId = org[0].id;
+    const member = await db()`
+      INSERT INTO member (id, organization_id, user_id, role, created_at)
+      VALUES (gen_random_uuid(), ${orgId}, ${userId}, 'owner', NOW())
+      RETURNING id`;
 
     expect(profile.length).toBe(1);
-    expect(team.length).toBe(1);
+    expect(member.length).toBe(1);
 
-    // The authenticated user owns exactly one personal team.
-    const owned = await db()`
-      SELECT id FROM teams WHERE owner_id = ${userId} AND is_personal = TRUE`;
-    expect(owned.length).toBe(1);
+    // A project tenants to the organization and its source + key chain.
+    const project = await db()`
+      INSERT INTO projects (id, creator_id, organization_id, name, slug)
+      VALUES (gen_random_uuid(), ${userId}, ${orgId}, 'Integration Project', ${`proj-${userId}`})
+      RETURNING id`;
+    const source = await db()`
+      INSERT INTO project_sources (id, project_id, name, platform)
+      VALUES (gen_random_uuid(), ${project[0].id}, 'Web', 'web') RETURNING id`;
+    const key = await db()`
+      INSERT INTO project_api_keys (id, source_id, name, key, key_type)
+      VALUES (gen_random_uuid(), ${source[0].id}, 'Initial key', ${`psk_test_${userId}`}, 'publishable') RETURNING id`;
 
-    await db()`DELETE FROM teams WHERE owner_id = ${userId}`;
+    expect(project.length).toBe(1);
+    expect(source.length).toBe(1);
+    expect(key.length).toBe(1);
+
+    await db()`DELETE FROM project_api_keys WHERE source_id = ${source[0].id}`;
+    await db()`DELETE FROM project_sources WHERE project_id = ${project[0].id}`;
+    await db()`DELETE FROM projects WHERE id = ${project[0].id}`;
+    await db()`DELETE FROM member WHERE id = ${member[0].id}`;
+    await db()`DELETE FROM organization WHERE id = ${orgId}`;
     await db()`DELETE FROM profiles WHERE user_id = ${userId}`;
     await db()`DELETE FROM "user" WHERE id = ${userId}`;
   });

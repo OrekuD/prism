@@ -14,15 +14,22 @@ import type { HonoConfig } from "../types/types";
 const mocks = vi.hoisted(() => ({
   signUpEmail: vi.fn(),
   provisionUserResources: vi.fn(),
+  createPersonalWorkspace: vi.fn(),
 }));
 vi.mock("better-auth", () => ({
-  betterAuth: vi.fn(() => ({ api: { signUpEmail: mocks.signUpEmail } })),
+  betterAuth: vi.fn(() => ({
+    api: {
+      signUpEmail: mocks.signUpEmail,
+      createOrganization: vi.fn(async () => ({ id: "org-1" })),
+    },
+  })),
 }));
 vi.mock("better-auth/adapters/drizzle", () => ({
   drizzleAdapter: (db: unknown) => db,
 }));
 vi.mock("../auth/provision", () => ({
   provisionUserResources: mocks.provisionUserResources,
+  createPersonalWorkspace: mocks.createPersonalWorkspace,
 }));
 
 type QueryCall = { sql: string; values: unknown[] };

@@ -1,18 +1,11 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { axiosInstance } from "@/utils/axiosInstance";
 import { toast } from "sonner";
-import type {
-  DeleteProjectRequest,
-  OkResource,
-  ProjectResource,
-} from "@prism/types";
-import type { AxiosResponse } from "axios";
+import type { OkResource } from "@prism/types";
 
-async function deleteProject(payload: DeleteProjectRequest) {
-  const url = `/projects/${payload.projectId}`;
-
+async function deleteProject(projectId: string) {
   const response = await axiosInstance.delete<OkResource>(
-    url,
+    `/projects/${projectId}`,
   );
 
   if (response.status === 200) {
@@ -20,22 +13,16 @@ async function deleteProject(payload: DeleteProjectRequest) {
   }
 }
 
-export function useDeleteProjectMutation() {
+export function useDeleteProjectMutation(slug?: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: deleteProject,
-    onSuccess: (_, { teamId, projectId, slug }) => {
+    onSuccess: () => {
       toast("Project deleted successfully");
       queryClient.setQueryData(["project", slug], () => null);
-      const queryData: Array<ProjectResource> | undefined =
-        queryClient.getQueryData(["teams", teamId]);
-      if (queryData) {
-        queryClient.setQueryData(["teams", teamId], () =>
-          queryData.filter(({ id }) => id !== projectId),
-        );
-      }
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
     },
-    onError: (error) => {
+    onError: () => {
       toast("Something went wrong");
     },
   });

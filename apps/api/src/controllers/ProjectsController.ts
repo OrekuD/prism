@@ -9,21 +9,69 @@ import {
   type EventResource,
   type RenameProjectRequest,
   RenameProjectRequestSchema,
-  TeamMemberPermissions,
 } from "@prism/types";
 import { validateData } from "../utils/validateData";
 import { ErrorResponse } from "../network/responses/ErrorResponse";
-import type { Team } from "../models/Team";
-import type { TeamMember } from "../models/TeamMember";
 import { OkResponse } from "../network/responses/OkResponse";
 import type { Project } from "../models/Project";
 import { ProjectResponse } from "../network/responses/ProjectResponse";
 import { ProjectDetailedResponse } from "../network/responses/ProjectDetailedResponse";
-import { generateApiKey } from "../utils/generateApiKey";
-import { projectAnalytics, projectEvents } from "../utils/analyticsStore";
+import {
+  dailySessionSummary,
+  projectAnalytics,
+  projectEvents,
+} from "../utils/analyticsStore";
 import { TursoDatabaseManager } from "../managers/TursoDatabaseManager";
+import {
+  getProjectRole,
+  getWorkspaceRole,
+  isAdminRole,
+} from "../utils/workspaceAuth";
 
 export class ProjectsController {
+  /**
+   * Lists the projects of the caller's workspace (Task 13): membership is
+   * proven against the canonical member table for the requested
+   * organization — never the client's word alone. Any member may list.
+   */
+  public static async listProjects(ctx: Context<HonoConfig>) {
+    const user = ctx.get("user");
+    if (!user) {
+      return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+    }
+    const organizationId = ctx.req.query("organizationId") ?? "";
+
+    if (
+      !(await getWorkspaceRole(ctx, user.id, organizationId))
+    ) {
+      // Non-disclosing: same response for unknown and unauthorized orgs.
+      return ctx.json(new ErrorResponse("organization_not_found").toJSON(), 404);
+    }
+
+    const db = DatabaseManager.getInstance(ctx);
+    const projects = (await db`
+      SELECT id, name, slug FROM projects
+      WHERE organization_id = ${organizationId}
+      ORDER BY created_at ASC`) as Array<{
+      id: string;
+      name: string;
+      slug: string;
+    }>;
+
+    const summaries = await dailySessionSummary(
+      TursoDatabaseManager.getInstance(ctx),
+      projects.map((project) => project.id),
+      Date.now() - 7 * 86_400_000,
+    );
+
+    return ctx.json(
+      projects.map((project, index) => ({
+        ...project,
+        summary: summaries[index]?.days ?? [],
+      })),
+    );
+  }
+
   public static async createProject(ctx: Context<HonoConfig>) {
     const body = await ctx.req.json<CreateProjectRequest>();
 
@@ -40,33 +88,29 @@ export class ProjectsController {
 
     const db = DatabaseManager.getInstance(ctx);
 
-    const team =
-      (await db`SELECT id, owner_id FROM teams WHERE id = ${data.teamId}`) as Array<Team>;
-
-    if (team.length === 0) {
-      return ctx.json(new ErrorResponse("team_not_found").toJSON(), 404);
+    // Task 13: the workspace comes from the client ONLY as a target — the
+    // authorization is a canonical membership check, never the client's
+    // word. Restricted actions (create project) need owner/admin.
+    const role = await getWorkspaceRole(ctx, user.id, data.organizationId);
+    if (role === null) {
+      // Non-disclosing: never reveal whether the workspace exists.
+      return ctx.json(new ErrorResponse("cannot_create_project").toJSON(), 400);
     }
-
-    const hasPermission = await ProjectsController._hasAdminPermission(
-      ctx,
-      team[0],
-    );
-
-    if (!hasPermission) {
+    if (!isAdminRole(role)) {
       return ctx.json(new ErrorResponse("cannot_create_project").toJSON(), 400);
     }
 
     const projectSlug = generateProjectSlug();
 
     const project =
-      (await db`INSERT INTO projects (name, team_id, creator_id, slug) VALUES (${data.name}, ${data.teamId}, ${user.id}, ${projectSlug}) RETURNING id`) as Array<Project>;
+      (await db`INSERT INTO projects (name, organization_id, creator_id, slug) VALUES (${data.name}, ${data.organizationId}, ${user.id}, ${projectSlug}) RETURNING id`) as Array<Project>;
 
     if (project.length === 0) {
       return ctx.json(new ErrorResponse("db_error").toJSON(), 500);
     }
 
-    await db`INSERT INTO project_api_keys (team_id, project_id, key) VALUES (${data.teamId}, ${project[0].id}, ${generateApiKey()})`;
-
+    // Task 13: projects do NOT create ingestion keys — sources do. The
+    // Sources page walks the user through the first source + key.
     return ctx.json(new OkResponse().toJSON());
   }
 
@@ -81,32 +125,21 @@ export class ProjectsController {
     if (!user) {
       return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
     }
-    const db = DatabaseManager.getInstance(ctx);
 
-    const project =
-      (await db`SELECT id, team_id FROM projects WHERE id = ${projectId}`) as Array<Project>;
-
-    if (project.length === 0) {
+    // Non-disclosing: a missing project and a non-member get the same 404.
+    const role = await getProjectRole(ctx, user.id, projectId);
+    if (role === null) {
       return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
     }
-
-    const team =
-      (await db`SELECT id, owner_id FROM teams WHERE id = ${project[0].team_id}`) as Array<Team>;
-
-    if (team.length === 0) {
-      return ctx.json(new ErrorResponse("team_not_found").toJSON(), 404);
-    }
-
-    const hasPermission = await ProjectsController._hasAdminPermission(
-      ctx,
-      team[0],
-    );
-
-    if (!hasPermission) {
+    if (!isAdminRole(role)) {
       return ctx.json(new ErrorResponse("cannot_delete_project").toJSON(), 404);
     }
 
-    await db`DELETE FROM projects WHERE id = ${projectId}`;
+    // The project's analytics are removed by the cascade cleanup in the
+    // analytics store (project deletion cleans its Turso data).
+    await DatabaseManager.getInstance(
+      ctx,
+    )`DELETE FROM projects WHERE id = ${projectId}`;
 
     return ctx.json(new OkResponse().toJSON());
   }
@@ -131,29 +164,12 @@ export class ProjectsController {
       return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
     }
 
-    const project =
-      (await DatabaseManager.getInstance(
-        ctx,
-      )`SELECT id, team_id FROM projects WHERE id = ${projectId}`) as Array<Project>;
-
-    if (project.length === 0) {
+    // Non-member: 404 (non-disclosing). Member without admin: 403.
+    const role = await getProjectRole(ctx, user.id, projectId);
+    if (role === null) {
       return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
     }
-
-    const team =
-      (await DatabaseManager.getInstance(
-        ctx,
-      )`SELECT id, owner_id FROM teams WHERE id = ${project[0].team_id}`) as Array<Team>;
-
-    if (team.length === 0) {
-      return ctx.json(new ErrorResponse("team_not_found").toJSON(), 404);
-    }
-
-    const hasPermission = await ProjectsController._hasAdminPermission(
-      ctx,
-      team[0],
-    );
-    if (!hasPermission) {
+    if (!isAdminRole(role)) {
       return ctx.json(new ErrorResponse("cannot_rename_project").toJSON(), 403);
     }
 
@@ -176,10 +192,15 @@ export class ProjectsController {
       return ctx.json(new ErrorResponse("slug_not_found").toJSON(), 404);
     }
 
+    const user = ctx.get("user");
+    if (!user) {
+      return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+    }
+
     const project = (await DatabaseManager.getInstance(ctx)`
       SELECT
         projects.id as id,
-        projects.team_id as team_id,
+        projects.organization_id as organization_id,
         projects.slug as slug
       FROM projects
       WHERE projects.slug = ${slug}`) as Array<Project>;
@@ -188,12 +209,14 @@ export class ProjectsController {
       return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
     }
 
-    const hasPermission = await ProjectsController._hasPermission(
+    // Read access: any workspace member (owner/admin/member). A valid
+    // session from another workspace is a non-member: 404, non-disclosing.
+    const role = await getWorkspaceRole(
       ctx,
-      project[0].team_id,
+      user.id,
+      String(project[0].organization_id),
     );
-
-    if (!hasPermission) {
+    if (!role) {
       return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
     }
 
@@ -217,28 +240,30 @@ export class ProjectsController {
       return ctx.json(new ErrorResponse("slug_not_found").toJSON(), 404);
     }
 
+    const user = ctx.get("user");
+    if (!user) {
+      return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+    }
+
     const project = (await DatabaseManager.getInstance(ctx)`
       SELECT
         projects.id as id,
         projects.name as name,
-        projects.team_id as team_id,
-        projects.slug as slug,
-        project_api_keys.key as api_key
+        projects.organization_id as organization_id,
+        projects.slug as slug
       FROM projects
-      LEFT JOIN project_api_keys
-      ON projects.id = project_api_keys.project_id
       WHERE projects.slug = ${slug}`) as Array<Project>;
 
     if (project.length === 0) {
       return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
     }
 
-    const hasPermission = await ProjectsController._hasPermission(
+    const role = await getWorkspaceRole(
       ctx,
-      project[0].team_id,
+      user.id,
+      String(project[0].organization_id),
     );
-
-    if (!hasPermission) {
+    if (!role) {
       return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
     }
 
@@ -254,65 +279,5 @@ export class ProjectsController {
     return ctx.json(
       new ProjectDetailedResponse(project[0], analytics).toJSON(),
     );
-  }
-
-  private static async _hasPermission(
-    ctx: Context<HonoConfig>,
-    teamId: string,
-  ): Promise<boolean> {
-    const user = ctx.get("user");
-    if (!user) {
-      return false;
-    }
-
-    const team = (await DatabaseManager.getInstance(
-      ctx,
-    )`SELECT owner_id, id FROM teams WHERE id = ${teamId}`) as Array<Team>;
-
-    if (team.length === 0) {
-      return false;
-    }
-
-    if (user.id === team[0].owner_id) {
-      return true;
-    }
-
-    const teamMember = (await DatabaseManager.getInstance(
-      ctx,
-    )`SELECT id FROM team_members WHERE user_id = ${user.id} AND team_id = ${team[0].id}`) as Array<TeamMember>;
-
-    if (teamMember.length === 0) {
-      return false;
-    }
-
-    return true;
-  }
-
-  private static async _hasAdminPermission(
-    ctx: Context<HonoConfig>,
-    team: Team,
-  ): Promise<boolean> {
-    const user = ctx.get("user");
-    if (!user) {
-      return false;
-    }
-
-    if (user.id === team.owner_id) {
-      return true;
-    }
-
-    const teamMember = (await DatabaseManager.getInstance(
-      ctx,
-    )`SELECT permission_id FROM team_members WHERE user_id = ${user.id} AND team_id = ${team.id}`) as Array<TeamMember>;
-
-    if (teamMember.length === 0) {
-      return false;
-    }
-
-    if (teamMember[0].permission_id === TeamMemberPermissions.ADMIN) {
-      return true;
-    }
-
-    return false;
   }
 }

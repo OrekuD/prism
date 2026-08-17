@@ -1,26 +1,27 @@
-import { useActiveTeamStore } from "@/store/activeTeamStore";
 import { axiosInstance } from "@/utils/axiosInstance";
 import type { ProjectResource } from "@prism/types";
 import { useQuery } from "@tanstack/react-query";
+import { useActiveWorkspace } from "@/lib/workspace";
 
-async function projects(teamId: string) {
-  const response = await axiosInstance.get(`/teams/${teamId}/projects`);
+async function projects(organizationId: string) {
+  const response = await axiosInstance.get(`/projects?organizationId=${encodeURIComponent(organizationId)}`);
 
   if (response.status === 200) {
     return response.data;
   }
 }
 export function useProjectsQuery() {
-  const { teamId } = useActiveTeamStore();
+  const { data: activeWorkspace } = useActiveWorkspace();
+  const organizationId = (activeWorkspace as { id?: string } | null)?.id;
   return useQuery<Array<ProjectResource>>({
-    queryKey: ["projects", teamId],
+    queryKey: ["projects", organizationId],
     queryFn: () => {
-      if (!teamId) {
-        return Promise.reject(new Error("No active team selected"));
+      if (!organizationId) {
+        return Promise.reject(new Error("No active workspace selected"));
       }
-      return projects(teamId);
+      return projects(organizationId);
     },
-    enabled: Boolean(teamId),
+    enabled: Boolean(organizationId),
     refetchOnWindowFocus: false,
   });
 }

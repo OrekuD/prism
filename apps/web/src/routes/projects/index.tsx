@@ -8,9 +8,7 @@ import { CreateNewProject } from "@/components/projects/create-new-project";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProjectsQuery } from "@/network/queries/useProjectsQuery";
-import { useTeamsQuery } from "@/network/queries/useTeamsQuery";
-import { useActiveTeamStore } from "@/store/activeTeamStore";
-import { useUserStore } from "@/store/userStore";
+import { useActiveWorkspace } from "@/lib/workspace";
 import { Search } from "lucide-react";
 import React from "react";
 import { Link } from "react-router-dom";
@@ -19,26 +17,8 @@ const placeholders = Array(3).fill(null);
 
 export function Projects() {
   const projectsQuery = useProjectsQuery();
-  const teamsQuery = useTeamsQuery();
   const { refetch } = projectsQuery;
-  const activeTeamStore = useActiveTeamStore();
-  const userStore = useUserStore();
-
-  const activeTeam = React.useMemo(() => {
-    if (!teamsQuery.data) return null;
-
-    if (!activeTeamStore.teamId)
-      return teamsQuery.data.filter(({ isPersonal }) => isPersonal)[0];
-
-    return teamsQuery.data.find(({ id }) => id === activeTeamStore.teamId);
-  }, [teamsQuery.data, activeTeamStore.teamId]);
-
-  const hasSettingsPermission = React.useMemo(
-    () => activeTeam?.ownerId === userStore.user?.id,
-    [activeTeam, userStore.user?.id]
-  );
-
-  // throw new Error("S");
+  const { data: activeWorkspace } = useActiveWorkspace();
 
   return (
     <div className="flex flex-1 flex-col py-4">
@@ -55,9 +35,8 @@ export function Projects() {
         </form>
         <div className="flex gap-3">
           <CreateNewProject>
-            <Button>New App</Button>
+            <Button>New Project</Button>
           </CreateNewProject>
-          {hasSettingsPermission ? <Button>Team Settings</Button> : null}
         </div>
       </div>
       <div className="flex flex-1 flex-col py-4">
@@ -105,8 +84,12 @@ export function Projects() {
             ) : (
               <EmptyState
                 label="No projects"
-                title="You do not have any projects yet"
-                description="Create your first project to get an analytics key, then install the SDK and verify your first event."
+                title={
+                  activeWorkspace
+                    ? `No projects in ${(activeWorkspace as { name?: string }).name ?? "this workspace"}`
+                    : "No projects"
+                }
+                description="Create your first project, add a source, then install the SDK and verify your first event."
                 action={
                   <Link
                     to="/onboarding"

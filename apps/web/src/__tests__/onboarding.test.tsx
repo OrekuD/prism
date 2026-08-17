@@ -31,8 +31,12 @@ vi.mock("@/network/queries/useProjectsQuery", () => ({
   useProjectsQuery: () => ({ data: null, isPending: true }),
 }));
 
-vi.mock("@/network/queries/useTeamsQuery", () => ({
-  useTeamsQuery: () => ({ data: [], isPending: true }),
+vi.mock("@/lib/workspace", () => ({
+  useCurrentWorkspace: () => ({ workspace: null, isLoading: true }),
+  useWorkspaces: () => ({ data: [], isPending: true }),
+  useActiveWorkspace: () => ({ data: null, isPending: true }),
+  useActiveMember: () => ({ data: null }),
+  WORKSPACE_PLATFORMS: ["web", "ios", "android", "react-native", "server"],
 }));
 
 vi.mock("@/lib/session", () => ({

@@ -1,5 +1,5 @@
 import React from "react";
-import { TeamSwitcher } from "./team-switcher";
+import { WorkspaceSwitcher } from "./workspace-switcher";
 import { UserNav } from "./user-nav";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -43,7 +43,7 @@ export function Nav() {
 				>
 					<PrismLogo size={20} />
 				</Link>
-				<TeamSwitcher />
+				<WorkspaceSwitcher />
 			</div>
 			<div className="flex h-full items-center gap-4 lg:gap-6">
 				<Dialog>

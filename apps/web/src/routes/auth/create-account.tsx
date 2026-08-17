@@ -137,7 +137,7 @@ export function CreateAccount() {
         <div className="grid gap-6">
           <AuthHeading
             title={selfHosted ? `Create an account on ${config?.instanceName ?? "this instance"}.` : "Create your account."}
-            description="A personal team and workspace are created for you automatically."
+            description="A personal workspace is created for you automatically."
           />
           <div className="grid gap-4">
             {oauthError ? <AuthAlert>{oauthError}</AuthAlert> : null}

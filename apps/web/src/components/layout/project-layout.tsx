@@ -40,6 +40,10 @@ const tabs = [
     url: "people",
   },
   {
+    label: "Sources",
+    url: "sources",
+  },
+  {
     label: "Settings",
     url: "settings",
   },

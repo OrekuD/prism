@@ -22,6 +22,13 @@
       "when": 1786422824050,
       "tag": "0002_setup_claim",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786858798043,
+      "tag": "0003_mushy_clea",
+      "breakpoints": true
     }
   ]
 }

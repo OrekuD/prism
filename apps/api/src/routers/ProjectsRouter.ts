@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { PeopleController } from "../controllers/PeopleController";
 import { ProjectsController } from "../controllers/ProjectsController";
+import { SourcesController } from "../controllers/SourcesController";
 import {
   AuthenticationMiddleware,
   RequireVerifiedEmailMiddleware,
@@ -9,6 +10,10 @@ import {
 const router = new Hono();
 
 router.use(AuthenticationMiddleware);
+// The list route must precede /:slug so "projects" is never parsed as a
+// slug. Empty-path patterns ("" not "/") match the sub-router mount
+// /projects exactly — Hono does not normalize the stripped path.
+router.get("", ProjectsController.listProjects);
 router.get("/:slug", ProjectsController.getProjectBySlug);
 router.get("/:slug/events", ProjectsController.getProjectEvents);
 // People + baseline query APIs (task-10 §5)
@@ -20,6 +25,22 @@ router.delete("/:slug/people/:personId", PeopleController.remove);
 router.get("/:slug/events/filtered", PeopleController.events);
 router.get("/:slug/breakdown", PeopleController.breakdown);
 router.get("/:slug/totals", PeopleController.totals);
+// Task 13: source + source-key management (SDK setup and rotation live in
+// source detail).
+router.get("/:slug/sources", SourcesController.list);
+router.post("/:slug/sources", SourcesController.create);
+router.get("/:slug/sources/:sourceId", SourcesController.detail);
+router.patch("/:slug/sources/:sourceId", SourcesController.update);
+router.delete("/:slug/sources/:sourceId", SourcesController.remove);
+router.post("/:slug/sources/:sourceId/keys", SourcesController.createKey);
+router.post(
+  "/:slug/sources/:sourceId/keys/:keyId/revoke",
+  SourcesController.revokeKey,
+);
+router.post(
+  "/:slug/sources/:sourceId/keys/:keyId/reveal",
+  SourcesController.revealKey,
+);
 router.post(
   "/:teamId",
   RequireVerifiedEmailMiddleware,

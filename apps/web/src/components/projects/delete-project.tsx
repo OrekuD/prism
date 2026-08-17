@@ -11,7 +11,6 @@ import {
 	DialogTrigger,
 } from "../ui/dialog";
 
-import { useDeleteTeamMutation } from "@/network/mutations/useDeleteTeamMutation";
 import { useDeleteProjectMutation } from "@/network/mutations/useDeleteProjectMutation";
 import { useProjectQuery } from "@/network/queries/useProjectQuery";
 import type { ProjectDetailedRequest } from "@prism/types";
@@ -59,11 +58,9 @@ export function DeleteProject(props: React.PropsWithChildren) {
 						}
 						onClick={async () => {
 							if (!projectQuery.data) return;
-							const response = await deleteProjectMutation.mutateAsync({
-								teamId: projectQuery.data.teamId,
-								projectId: projectQuery.data.id,
-								slug: projectQuery.data.slug,
-							});
+							const response = await deleteProjectMutation.mutateAsync(
+								projectQuery.data.id,
+							);
 							if (response?.message) {
 								setOpen(false);
 								navigate("/projects");

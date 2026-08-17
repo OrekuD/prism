@@ -1,4 +1,3 @@
-import { useActiveTeamStore } from "@/store/activeTeamStore";
 import { axiosInstance } from "@/utils/axiosInstance";
 import {
   type ProjectDetailedRequest,

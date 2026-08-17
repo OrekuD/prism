@@ -9,7 +9,7 @@ import { useProjectEventsQuery } from "@/network/queries/useProjectEventsQuery";
 
 /**
  * Workspace overview (design-system.md 13.1): welcome heading, usage
- * summary across the team's projects, quick links, and the GET STARTED
+ * summary across the workspace's projects, quick links, and the GET STARTED
  * panel until the first project has data.
  */
 export function Overview() {

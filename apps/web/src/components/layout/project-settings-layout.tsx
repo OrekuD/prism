@@ -4,10 +4,10 @@ import { Link, Outlet, useLocation } from "react-router-dom";
 import { buttonVariants } from "../ui/button";
 import { cn } from "@/lib/utils";
 
-const links = [
-  { label: "General", url: "general" },
-  { label: "API Keys", url: "api-keys" },
-];
+// Task 13: the ingestion-key workflow lives in the project's Sources
+// tab (source detail owns SDK setup + rotation) — no standalone API
+// keys page.
+const links = [{ label: "General", url: "general" }];
 
 export function ProjectSettingsLayout() {
   const { pathname } = useLocation();

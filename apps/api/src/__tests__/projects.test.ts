@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { TeamsController } from "../controllers/TeamsController";
+import { ProjectsController } from "../controllers/ProjectsController";
 import { makeMockDb, makeCtx } from "./helpers";
 
 vi.mock("../managers/DatabaseManager", () => ({
@@ -16,29 +16,64 @@ const getInstance = vi.mocked(DatabaseManager.getInstance);
 const getTursoInstance = vi.mocked(TursoDatabaseManager.getInstance);
 
 const USER_ID = "11111111-1111-1111-1111-111111111111";
-const OWNER_ID = "22222222-2222-2222-2222-222222222222";
 const STRANGER_ID = "33333333-3333-3333-3333-333333333333";
-const TEAM_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
-const PROJECT_A = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
-const PROJECT_B = "cccccccc-cccc-cccc-cccc-cccccccccccc";
+const ORG_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+const OTHER_ORG_ID = "dddddddd-dddd-dddd-dddd-dddddddddddd";
+const PROJECT_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+const SLUG = "alpha";
 
-function ctxFor(userId: string) {
-  return makeCtx({ teamId: TEAM_ID }, {}, { user: { id: userId } });
+function ctxFor(userId: string | null, params: Record<string, string>, body?: unknown) {
+  return makeCtx(
+    params,
+    body ?? {},
+    userId ? { user: { id: userId } } : {},
+  );
 }
 
-function defaultNeon(projects: Array<{ id: string; slug: string; name: string }>) {
+/**
+ * Mock store shaped like the Task 13 schema: projects carry
+ * organization_id; membership lives in the canonical `member` table with
+ * Better Auth's owner/admin/member roles.
+ */
+function makeStore(role: "owner" | "admin" | "member" | null) {
   return makeMockDb((sql) => {
-    if (sql.includes("SELECT owner_id FROM teams")) {
-      return [{ owner_id: OWNER_ID }];
+    if (sql.includes("SELECT role FROM member")) {
+      return role ? [{ role }] : [];
     }
-    if (sql.includes("SELECT id FROM team_members")) {
-      return [{ id: "m1" }];
+    if (sql.includes("SELECT organization_id FROM projects")) {
+      return [{ organization_id: ORG_ID }];
     }
-    if (sql.includes("SELECT id, slug, name FROM projects")) {
-      return projects;
+    if (
+      sql.includes("SELECT") &&
+      sql.includes("FROM projects") &&
+      sql.includes("WHERE projects.slug")
+    ) {
+      return [{ id: PROJECT_ID, organization_id: ORG_ID, slug: SLUG, name: "Alpha" }];
+    }
+    if (sql.startsWith("INSERT INTO projects")) {
+      return [{ id: PROJECT_ID }];
+    }
+    if (sql.startsWith("INSERT INTO project_api_keys")) {
+      return [];
+    }
+    if (sql.startsWith("UPDATE projects")) {
+      return [{ id: PROJECT_ID, name: "New Name" }];
+    }
+    if (sql.startsWith("DELETE FROM projects")) {
+      return [];
     }
     return [];
   });
+}
+
+type MockResult = { __json?: { errors?: string[]; error?: string }; __status?: number };
+
+function statusOf(result: unknown): number | undefined {
+  return (result as MockResult).__status;
+}
+
+function errorsOf(result: unknown): string[] {
+  return (result as MockResult).__json?.errors ?? [];
 }
 
 function makeTurso(rows: Array<Record<string, unknown>> = []) {
@@ -49,75 +84,192 @@ function makeTurso(rows: Array<Record<string, unknown>> = []) {
   return execute;
 }
 
-describe("TeamsController.projects (canonical analytics store)", () => {
+describe("ProjectsController (organization-bound authorization)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("reads session summaries from Turso, not the legacy D1 binding", async () => {
-    const neon = defaultNeon([
-      { id: PROJECT_A, slug: "alpha", name: "Alpha" },
-      { id: PROJECT_B, slug: "beta", name: "Beta" },
-    ]);
-    getInstance.mockReturnValue(neon as never);
-    const turso = makeTurso([
-      { project_id: PROJECT_A, day: "2026-08-01", mobile: 1, desktop: 0 },
-    ]);
+  describe("createProject", () => {
+    it("owner can create a project in their workspace", async () => {
+      const neon = makeStore("owner");
+      getInstance.mockReturnValue(neon as never);
 
-    await TeamsController.projects(ctxFor(USER_ID));
+      const result = await ProjectsController.createProject(
+        ctxFor(USER_ID, {}, { organizationId: ORG_ID, name: "App" }),
+      );
 
-    expect(turso).toHaveBeenCalledTimes(1);
-    const call = turso.mock.calls[0]?.[0] as unknown as {
-      sql: string;
-      args: unknown[];
-    };
-    // ONE bounded aggregate over all projects, session_started only,
-    // 7-day epoch-ms window — never a full session-row load
-    expect(String(call.sql)).toMatch(
-      /project_id\s+IN\s*\(\s*\?\s*,\s*\?\s*\)/i,
-    );
-    expect(String(call.sql)).toMatch(/session_started/i);
-    expect(String(call.sql)).toMatch(/GROUP BY project_id, day/i);
-    expect(call.args).toHaveLength(3);
-    expect(call.args[0]).toBe(PROJECT_A);
-    expect(call.args[1]).toBe(PROJECT_B);
-    const sinceMs = call.args[2] as number;
-    expect(sinceMs).toBeGreaterThan(Date.now() - 8 * 86_400_000);
-    expect(sinceMs).toBeLessThan(Date.now() - 6 * 86_400_000);
-  });
-
-  it("does not build an invalid IN () query for a team without projects", async () => {
-    const neon = defaultNeon([]);
-    getInstance.mockReturnValue(neon as never);
-    const turso = makeTurso();
-
-    const result = await TeamsController.projects(ctxFor(USER_ID));
-
-    expect(turso).not.toHaveBeenCalled();
-    expect(result).toMatchObject({ __json: [] });
-  });
-
-  it("denies non-members and non-owners", async () => {
-    const neon = defaultNeon([{ id: PROJECT_A, slug: "alpha", name: "Alpha" }]);
-    getInstance.mockReturnValue(neon as never);
-    const turso = makeTurso();
-
-    // The team owner is OWNER_ID; USER_ID is a stranger (no team_members row).
-    const strangerNeon = makeMockDb((sql) => {
-      if (sql.includes("SELECT owner_id FROM teams")) {
-        return [{ owner_id: OWNER_ID }];
-      }
-      if (sql.includes("SELECT id FROM team_members")) return [];
-      if (sql.includes("SELECT id, slug, name FROM projects")) {
-        return [{ id: PROJECT_A, slug: "alpha", name: "Alpha" }];
-      }
-      return [];
+      expect(statusOf(result) ?? 200).toBe(200);
+      // ONLY the project row is created — sources create keys (task-13)
+      const inserts = neon.mock.calls.filter(([sql]) =>
+        String((sql as TemplateStringsArray).join("?")).includes("INSERT"),
+      );
+      expect(inserts).toHaveLength(1);
+      expect(String((inserts[0]?.[0] as TemplateStringsArray).join("?"))).toMatch(
+        /INSERT INTO projects \(name, organization_id, creator_id, slug\)/i,
+      );
     });
-    getInstance.mockReturnValue(strangerNeon as never);
 
-    const result = await TeamsController.projects(ctxFor(STRANGER_ID));
+    it("admin can create a project", async () => {
+      const neon = makeStore("admin");
+      getInstance.mockReturnValue(neon as never);
+      const result = await ProjectsController.createProject(
+        ctxFor(USER_ID, {}, { organizationId: ORG_ID, name: "App" }),
+      );
+      expect(statusOf(result) ?? 200).toBe(200);
+    });
 
-    expect(result).toMatchObject({ __json: [] });
-    expect(turso).not.toHaveBeenCalled();
+    it("member is denied project creation", async () => {
+      const neon = makeStore("member");
+      getInstance.mockReturnValue(neon as never);
+      const result = await ProjectsController.createProject(
+        ctxFor(USER_ID, {}, { organizationId: ORG_ID, name: "App" }),
+      );
+      expect(statusOf(result)).toBe(400);
+      expect(errorsOf(result)).toEqual(["cannot_create_project"]);
+    });
+
+    it("non-member is denied without disclosing the workspace", async () => {
+      const neon = makeStore(null);
+      getInstance.mockReturnValue(neon as never);
+      const result = await ProjectsController.createProject(
+        ctxFor(STRANGER_ID, {}, { organizationId: ORG_ID, name: "App" }),
+      );
+      expect(statusOf(result)).toBe(400);
+    });
+
+    it("unauthenticated is rejected", async () => {
+      const result = await ProjectsController.createProject(
+        ctxFor(null, {}, { organizationId: ORG_ID, name: "App" }),
+      );
+      expect(statusOf(result)).toBe(401);
+    });
+  });
+
+  describe("renameProject", () => {
+    it("admin can rename a project", async () => {
+      const neon = makeStore("admin");
+      getInstance.mockReturnValue(neon as never);
+      const result = await ProjectsController.renameProject(
+        ctxFor(USER_ID, { projectId: PROJECT_ID }, { name: "New Name" }),
+      );
+      expect(statusOf(result) ?? 200).toBe(200);
+    });
+
+    it("member cannot rename (restricted action)", async () => {
+      const neon = makeStore("member");
+      getInstance.mockReturnValue(neon as never);
+      const result = await ProjectsController.renameProject(
+        ctxFor(USER_ID, { projectId: PROJECT_ID }, { name: "New Name" }),
+      );
+      expect(statusOf(result)).toBe(403);
+    });
+
+    it("non-member receives project_not_found (non-disclosing)", async () => {
+      const neon = makeStore(null);
+      getInstance.mockReturnValue(neon as never);
+      const result = await ProjectsController.renameProject(
+        ctxFor(STRANGER_ID, { projectId: PROJECT_ID }, { name: "New Name" }),
+      );
+      expect(statusOf(result)).toBe(404);
+      expect(errorsOf(result)).toEqual(["project_not_found"]);
+    });
+  });
+
+  describe("deleteProject", () => {
+    it("owner can delete a project", async () => {
+      const neon = makeStore("owner");
+      getInstance.mockReturnValue(neon as never);
+      const result = await ProjectsController.deleteProject(
+        ctxFor(USER_ID, { projectId: PROJECT_ID }),
+      );
+      expect(statusOf(result) ?? 200).toBe(200);
+      const deleteCall = neon.mock.calls.find(([sql]) =>
+        String((sql as TemplateStringsArray).join("?")).startsWith("DELETE"),
+      );
+      expect(deleteCall).toBeDefined();
+    });
+
+    it("member cannot delete (404, non-disclosing)", async () => {
+      const neon = makeStore("member");
+      getInstance.mockReturnValue(neon as never);
+      const result = await ProjectsController.deleteProject(
+        ctxFor(USER_ID, { projectId: PROJECT_ID }),
+      );
+      expect(statusOf(result)).toBe(404);
+    });
+  });
+
+  describe("getProjectBySlug", () => {
+    it("a member can read project analytics", async () => {
+      const neon = makeStore("member");
+      getInstance.mockReturnValue(neon as never);
+      const turso = makeTurso([
+        { date: "2026-08-01", desktop: 2, mobile: 1 },
+      ]);
+      void turso;
+
+      const result = await ProjectsController.getProjectBySlug(
+        ctxFor(USER_ID, { slug: SLUG }),
+      );
+      expect(statusOf(result) ?? 200).toBe(200);
+      const resource = (result as { __json?: { organizationId?: string; analytics?: unknown } }).__json ?? {};
+      expect(resource.organizationId).toBe(ORG_ID);
+      // task-13: ingestion keys live on SOURCES, never on the project
+      expect("apiKey" in resource).toBe(false);
+    });
+
+    it("a member of ANOTHER workspace is treated as a non-member (404)", async () => {
+      // The stranger's membership exists but in a different organization —
+      // membership is always proven against the PROJECT's organization.
+      const neon = makeMockDb((sql) => {
+        if (sql.includes("SELECT role FROM member")) return [];
+        if (sql.includes("SELECT organization_id FROM projects")) {
+          return [{ organization_id: ORG_ID }];
+        }
+        if (
+          sql.includes("SELECT") &&
+          sql.includes("FROM projects") &&
+          sql.includes("WHERE projects.slug")
+        ) {
+          return [{ id: PROJECT_ID, organization_id: ORG_ID, slug: SLUG, name: "Alpha" }];
+        }
+        return [];
+      });
+      getInstance.mockReturnValue(neon as never);
+      const result = await ProjectsController.getProjectBySlug(
+        ctxFor(STRANGER_ID, { slug: SLUG }),
+      );
+      expect(statusOf(result)).toBe(404);
+      expect(errorsOf(result)).toEqual(["project_not_found"]);
+    });
+
+    it("unauthenticated is rejected", async () => {
+      const result = await ProjectsController.getProjectBySlug(
+        ctxFor(null, { slug: SLUG }),
+      );
+      expect(statusOf(result)).toBe(401);
+    });
+  });
+
+  describe("getProjectEvents", () => {
+    it("any member can list events", async () => {
+      const neon = makeStore("member");
+      getInstance.mockReturnValue(neon as never);
+      const turso = makeTurso([]);
+      const result = await ProjectsController.getProjectEvents(
+        ctxFor(USER_ID, { slug: SLUG }),
+      );
+      expect(statusOf(result) ?? 200).toBe(200);
+      expect(turso).toHaveBeenCalledTimes(1);
+    });
+
+    it("non-member cannot list events (404)", async () => {
+      const neon = makeStore(null);
+      getInstance.mockReturnValue(neon as never);
+      const result = await ProjectsController.getProjectEvents(
+        ctxFor(STRANGER_ID, { slug: SLUG }),
+      );
+      expect(statusOf(result)).toBe(404);
+    });
   });
 });

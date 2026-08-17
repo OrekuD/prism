@@ -7,7 +7,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { DatabaseTables } from "../../types/types";
 import { user } from "./auth";
-import { teams } from "./teams";
+import { organization } from "./auth";
 
 export const projects = pgTable(
   DatabaseTables.PROJECTS,
@@ -16,8 +16,9 @@ export const projects = pgTable(
     creator_id: text("creator_id")
       .references(() => user.id)
       .notNull(),
-    team_id: uuid("team_id")
-      .references(() => teams.id, {
+    // Task 13: the tenant is a Better Auth organization (workspace).
+    organization_id: text("organization_id")
+      .references(() => organization.id, {
         onDelete: "cascade",
       })
       .notNull(),

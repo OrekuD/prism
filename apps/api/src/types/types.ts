@@ -49,11 +49,8 @@ export class DatabaseTables {
   static LOGIN_ATTEMPTS = "login_attempts";
   static OTP_SIGN_INS = "otp_sign_ins";
   static PROFILE_PICTURES = "profile_pictures";
-  static TEAMS = "teams";
-  static TEAM_MEMBERS = "team_members";
-  static TEAM_AVATARS = "team_avatars";
-  static TEAM_INVITES = "team_invites";
   static PROJECTS = "projects";
+  static PROJECT_SOURCES = "project_sources";
   static PROJECT_API_KEYS = "project_api_keys";
 }
 

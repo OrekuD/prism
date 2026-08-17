@@ -58,10 +58,10 @@ export interface PersistBatchOutcome {
 
 const INSERT_EVENT_SQL = `
   INSERT INTO events
-    (id, project_id, type, name, schema_version, occurred_at, received_at,
-     session_id, anonymous_id, user_id, person_id, properties, context,
-     sdk_name, sdk_version)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (id, project_id, source_id, platform, type, name, schema_version,
+     occurred_at, received_at, session_id, anonymous_id, user_id, person_id,
+     properties, context, sdk_name, sdk_version)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT (project_id, id) DO NOTHING
 `;
 
@@ -70,17 +70,20 @@ function sessionStatement(
   event: ValidatedEvent,
   projectId: string,
   receivedAt: number,
+  source?: { sourceId: string; platform: string },
 ): InStatement | null {
   if (!event.sessionId) return null;
   if (event.name === "session_started") {
     return {
-      sql: `INSERT INTO sessions_v2 (session_id, project_id, anonymous_id, started_at, last_seen_at, context, is_online)
-            VALUES (?, ?, ?, ?, ?, ?, 1)
+      sql: `INSERT INTO sessions_v2 (session_id, project_id, source_id, platform, anonymous_id, started_at, last_seen_at, context, is_online)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
             ON CONFLICT (project_id, session_id)
             DO UPDATE SET last_seen_at = excluded.last_seen_at, is_online = 1`,
       args: [
         event.sessionId,
         projectId,
+        source?.sourceId ?? null,
+        source?.platform ?? null,
         event.anonymousId ?? null,
         event.occurredAt,
         receivedAt,
@@ -121,6 +124,7 @@ export class IngestRepository {
     externalLinks: ReadonlyMap<string, string> = new Map(),
     anonymousLinks: ReadonlyMap<string, string> = new Map(),
     replacementPersonIds: ReadonlyMap<string, string> = new Map(),
+    source?: { sourceId: string; platform: string },
   ): Promise<PersistBatchOutcome> {
     // R4-F2/R4-F3/R5-F1: ONE write transaction with sequential visibility —
     // identity claims gate their mutations (rowsAffected = 1 wins), losing
@@ -309,6 +313,8 @@ export class IngestRepository {
           args: [
             event.eventId,
             projectId,
+            source?.sourceId ?? null,
+            source?.platform ?? null,
             event.type,
             event.name,
             event.schemaVersion,
@@ -342,7 +348,7 @@ export class IngestRepository {
             args: [personId, projectId, event.occurredAt, receivedAt],
           });
         }
-        const session = sessionStatement(event, projectId, receivedAt);
+        const session = sessionStatement(event, projectId, receivedAt, source);
         if (session) await tx.execute(session);
       }
 

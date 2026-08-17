@@ -1,4 +1,3 @@
-import { useActiveTeamStore } from "@/store/activeTeamStore";
 import { axiosInstance } from "@/utils/axiosInstance";
 import type {
   BreakdownResource,
@@ -14,8 +13,6 @@ import { useQuery } from "@tanstack/react-query";
  */
 
 export function usePeopleQuery(slug: string | undefined, params: { cursor?: string; q?: string; limit?: number }) {
-  const { teamId } = useActiveTeamStore();
-  void teamId;
   return useQuery<PeopleListResource>({
     queryKey: ["people", slug, params.cursor, params.q],
     queryFn: async () => {

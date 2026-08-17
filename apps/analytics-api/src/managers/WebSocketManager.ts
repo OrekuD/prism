@@ -134,8 +134,11 @@ class WebSocketManager {
    * Identity comes from the short-lived service JWT issued by the main API's
    * Better Auth JWT plugin: the JWT is verified against the published JWKS
    * (issuer + audience + signature + expiry), the subject must be an active
-   * Prism user, and that user must own or belong to the team that owns the
-   * requested project. Client-supplied user IDs are never trusted.
+   * Prism user, and that user must be a member of the Better Auth
+   * organization (workspace) that owns the requested project — proven on
+   * the canonical `member` table, never a client-supplied id. A valid
+   * session from another workspace is insufficient. Client-supplied user
+   * IDs are never trusted.
    *
    * @returns the authenticated userId, or null when the request is invalid.
    */
@@ -172,7 +175,7 @@ class WebSocketManager {
     // The subject must be an ACTIVE user in the product database —
     // role-agnostic (release review): first-boot owners are promoted to
     // ADMIN, and they must still subscribe to their realtime feeds.
-    // AUTHORIZATION happens below through project/team membership.
+    // AUTHORIZATION happens below through project/organization membership.
     const user =
       await NeonDatabaseManager.instance`SELECT id FROM "user" WHERE id = ${verified.sub};`;
 
@@ -180,28 +183,19 @@ class WebSocketManager {
       return null;
     }
 
+    // Task 13: the project's tenant is a Better Auth organization; the
+    // caller must be a canonical member of it (any role may read realtime).
     const project =
-      await NeonDatabaseManager.instance`SELECT id, team_id FROM projects WHERE id = ${payload.projectId};`;
+      await NeonDatabaseManager.instance`SELECT id, organization_id FROM projects WHERE id = ${payload.projectId};`;
 
     if (project.length === 0) {
       return null;
     }
 
-    const team =
-      await NeonDatabaseManager.instance`SELECT id, owner_id FROM teams WHERE id = ${project[0].team_id}`;
+    const membership =
+      await NeonDatabaseManager.instance`SELECT id FROM member WHERE user_id = ${user[0].id} AND organization_id = ${project[0].organization_id};`;
 
-    if (team.length === 0) {
-      return null;
-    }
-
-    if (user[0].id === team[0].owner_id) {
-      return user[0].id;
-    }
-
-    const teamMember =
-      await NeonDatabaseManager.instance`SELECT id FROM team_members WHERE user_id = ${user[0].id} AND team_id = ${team[0].id}`;
-
-    if (teamMember.length === 0) {
+    if (membership.length === 0) {
       return null;
     }
 

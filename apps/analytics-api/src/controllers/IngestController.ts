@@ -350,6 +350,11 @@ export class IngestController {
           externalLinks,
           anonymousLinks,
           replacementPersonIds,
+          // Task 13: trusted source context from the KEY, never the body.
+          {
+            sourceId: ctx.get("sourceId") ?? "",
+            platform: ctx.get("platform") ?? "",
+          },
         );
         persistedEvents = persisted.results;
         identityResults = persisted.identity;

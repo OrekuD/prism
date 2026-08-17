@@ -89,7 +89,7 @@ interface TestCtx {
   };
   header: ReturnType<typeof vi.fn>;
   json: ReturnType<typeof vi.fn>;
-  get: () => string;
+  get: (key: string) => string | undefined;
 }
 
 function streamOf(body: string): ReadableStream<Uint8Array> {
@@ -116,7 +116,20 @@ function makeContext(body: string, overrides: Record<string, unknown> = {}): Tes
     },
     header: vi.fn(),
     json: vi.fn((value: unknown, status?: number) => ({ __json: value, status })),
-    get: () => (overrides.projectId as string) ?? PROJECT_A,
+    get: (key: string) => {
+      switch (key) {
+        case "projectId":
+          return (overrides.projectId as string) ?? PROJECT_A;
+        case "sourceId":
+          return (overrides.sourceId as string) ?? "source-0001";
+        case "platform":
+          return (overrides.platform as string) ?? "web";
+        case "keyType":
+          return (overrides.keyType as string) ?? "publishable";
+        default:
+          return undefined;
+      }
+    },
   };
 }
 
@@ -229,6 +242,8 @@ describe("IngestController.ingest (v2 batch ingestion)", () => {
     expect(args).toEqual([
       "evt-0001",
       PROJECT_A, // derived from the key, never from the body
+      "source-0001", // trusted source context (task-13)
+      "web", // trusted platform, never client-overridable
       "track",
       "page_viewed",
       2,
@@ -341,7 +356,7 @@ describe("IngestController.ingest (v2 batch ingestion)", () => {
     await IngestController.ingest(ctx as never);
 
     const { args } = statementContaining("INSERT INTO events") ?? { args: [] };
-    const stored = JSON.parse(String(args[11])) as Record<string, unknown>;
+    const stored = JSON.parse(String(args[13])) as Record<string, unknown>;
     expect(stored.password).toBe("[REDACTED]");
     expect((stored.nested as Record<string, unknown>).token).toBe("[REDACTED]");
     expect(stored.ok).toBe(true);
@@ -413,6 +428,8 @@ it("maintains sessions_v2 state and broadcasts session-started for accepted sess
     expect(sessionStatement.args).toEqual([
       "sess-1",
       PROJECT_A,
+      "source-0001", // trusted source context on the session too (task-13)
+      "web",
       "anon-1",
       VALID_EVENT.occurredAt,
       expect.any(Number),
@@ -695,8 +712,8 @@ describe("identity operations (task-10 §4)", () => {
       args: unknown[];
     };
     expect(event.args[1]).toBe(PROJECT_A); // key-derived, never "evil"
-    expect(event.args[9]).toBe("user-123"); // user_id column
-    expect(String(event.args[10])).toContain("u_"); // derived person_id
+    expect(event.args[11]).toBe("user-123"); // user_id column (task-13: source_id/platform precede it)
+    expect(String(event.args[12])).toContain("u_"); // derived person_id
   });
 });
 

@@ -1,5 +1,6 @@
 import { createAuthClient } from "better-auth/react";
 import { jwtClient } from "better-auth/client/plugins";
+import { organizationClient } from "better-auth/client/plugins";
 
 /**
  * Single Better Auth browser client.
@@ -13,7 +14,7 @@ export const authBaseUrl = API_BASE_URL.replace(/\/api\/v1\/?$/, "");
 
 export const authClient = createAuthClient({
   baseURL: authBaseUrl,
-  plugins: [jwtClient()],
+  plugins: [jwtClient(), organizationClient()],
   fetchOptions: {
     credentials: "include",
   },

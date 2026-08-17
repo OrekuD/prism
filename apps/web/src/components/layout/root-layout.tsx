@@ -29,7 +29,7 @@ export function RootLayout() {
               aria-hidden="true"
             />
             <p className="min-w-0 flex-1 truncate text-[13px] text-text">
-              Verify your email to create teams and projects.
+              Verify your email to create workspaces and projects.
             </p>
             <button
               type="button"

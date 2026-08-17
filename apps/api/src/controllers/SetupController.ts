@@ -2,7 +2,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import type { Context } from "hono";
 import { buildAuthOptions } from "../auth/options";
-import { provisionUserResources } from "../auth/provision";
+import { createPersonalWorkspace, provisionUserResources } from "../auth/provision";
 import { resolvePrismConfig } from "../config";
 import { createProductDb } from "../database/db";
 import { clientIpFrom, RateLimiter } from "../utils/RateLimiter";
@@ -180,8 +180,10 @@ export class SetupController {
     }
 
     // Promote to ADMIN, mark the email verified (the verified-email
-    // product guards otherwise block the first team/project), and
-    // provision profile + personal team (no cloud).
+    // product guards otherwise block the first project), and provision
+    // profile + personal workspace (Task 13: the workspace is a Better
+    // Auth organization created through its server API — no session is
+    // needed when userId is supplied).
     const userId = (result.user as { id: string }).id;
     try {
       await productDb.query`UPDATE "user" SET role = ${Roles.ADMIN}, email_verified = true WHERE id = ${userId}`;
@@ -189,6 +191,10 @@ export class SetupController {
         id: userId,
         name: result.user.name,
         email: result.user.email,
+      });
+      await createPersonalWorkspace(auth.api as never, {
+        id: userId,
+        name: result.user.name,
       });
     } catch (error) {
       // Roll back: a partially configured owner must not close setup.

@@ -80,25 +80,21 @@ const OWNER_ID = "11111111-1111-1111-1111-111111111111";
 const MEMBER_ID = "22222222-2222-2222-2222-222222222222";
 const STRANGER_ID = "33333333-3333-3333-3333-333333333333";
 const PROJECT_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
-const TEAM_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+const ORG_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 function defaultDb(rows: {
   users?: Row[];
   projects?: Row[];
-  teams?: Row[];
-  teamMembers?: Row[];
+  members?: Row[];
 }) {
   mockDb((sql) => {
     if (sql.includes('FROM "user"') || sql.includes("FROM user")) {
       return Promise.resolve(rows.users ?? [{ id: OWNER_ID, role: Roles.USER }]);
     }
     if (sql.includes("FROM projects")) {
-      return Promise.resolve(rows.projects ?? [{ team_id: TEAM_ID }]);
+      return Promise.resolve(rows.projects ?? [{ organization_id: ORG_ID }]);
     }
-    if (sql.includes("FROM teams")) {
-      return Promise.resolve(rows.teams ?? [{ id: TEAM_ID, owner_id: OWNER_ID }]);
-    }
-    if (sql.includes("FROM team_members")) {
-      return Promise.resolve(rows.teamMembers ?? [{ id: "m1" }]);
+    if (sql.includes("FROM member")) {
+      return Promise.resolve(rows.members ?? [{ id: "m1" }]);
     }
     return Promise.resolve([]);
   });
@@ -177,7 +173,7 @@ describe("WebSocketManager.connect-project", () => {
     // source) confirms the stranger is not a member of the project's team.
     defaultDb({
       users: [{ id: STRANGER_ID, role: Roles.USER }],
-      teamMembers: [],
+      members: [],
     });
     const ws = makeSocket();
 
@@ -242,13 +238,10 @@ describe("WebSocketManager.connect-project", () => {
         return Promise.resolve([{ id: OWNER_ID, role: Roles.ADMIN }]);
       }
       if (sql.includes("FROM projects")) {
-        return Promise.resolve([{ team_id: TEAM_ID }]);
+        return Promise.resolve([{ organization_id: ORG_ID }]);
       }
-      if (sql.includes("FROM teams")) {
-        return Promise.resolve([{ id: TEAM_ID, owner_id: OWNER_ID }]);
-      }
-      if (sql.includes("FROM team_members")) {
-        return Promise.resolve([]);
+      if (sql.includes("FROM member")) {
+        return Promise.resolve([{ id: "m1" }]);
       }
       return Promise.resolve([]);
     });
@@ -281,7 +274,7 @@ describe("WebSocketManager.connect-project", () => {
   it("rejects a valid user who does not belong to the project's team", async () => {
     defaultDb({
       users: [{ id: STRANGER_ID, role: Roles.USER }],
-      teamMembers: [],
+      members: [],
     });
     const ws = makeSocket();
 
@@ -299,7 +292,7 @@ describe("WebSocketManager.connect-project", () => {
     expect(WebSocketManager.getConnectedClientIds()).not.toContain(PROJECT_ID);
   });
 
-  it("accepts the team owner", async () => {
+  it("accepts the workspace owner (canonical member row)", async () => {
     defaultDb({});
     const ws = makeSocket();
 
@@ -311,10 +304,10 @@ describe("WebSocketManager.connect-project", () => {
     expect(WebSocketManager.getConnectedClientIds()).toContain(PROJECT_ID);
   });
 
-  it("accepts a regular team member", async () => {
+  it("accepts a regular workspace member (any role may read realtime)", async () => {
     defaultDb({
       users: [{ id: MEMBER_ID, role: Roles.USER }],
-      teamMembers: [{ id: "m1" }],
+      members: [{ id: "m1" }],
     });
     const ws = makeSocket();
 
