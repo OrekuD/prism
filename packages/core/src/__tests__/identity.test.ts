@@ -328,7 +328,7 @@ describe("RN-shaped fake runtime (task-10 §2)", () => {
       },
     };
     const prism = await createPrismClient({
-      projectKey: base.projectKey,
+      sourceKey: base.sourceKey,
       endpoint: base.endpoint,
       runtime,
       collection: { initialState: "granted", anonymousPersistence: "persistent" },

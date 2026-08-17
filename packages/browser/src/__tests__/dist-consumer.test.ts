@@ -79,7 +79,7 @@ describe("packaged consumption", () => {
         );
         return installed
           .createBrowserClient({
-            projectKey: "pr_0123456789abcdef0123456789abcdef",
+            sourceKey: "psk_0123456789abcdef0123456789abcdef",
             endpoint: "https://self-hosted.prism.example",
             collection: { initialState: "granted" },
           })

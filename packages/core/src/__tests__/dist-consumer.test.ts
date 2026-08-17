@@ -108,7 +108,7 @@ describe("clean installed-package consumption", () => {
           context: { platform: "node", kind: "server" },
         };
         return installed.createPrismClient({
-          projectKey: "pr_0123456789abcdef0123456789abcdef",
+          sourceKey: "pr_0123456789abcdef0123456789abcdef",
           endpoint: "https://analytics.example.com",
           runtime,
           collection: { initialState: "granted" },

@@ -11,7 +11,7 @@ const EXAMPLE_KEY = "pr_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
 
 const installCommand = "yarn add @prism/core";
 const initializeCommand = `const prism = await createPrismClient({
-  projectKey: "${EXAMPLE_KEY}",
+  sourceKey: "${EXAMPLE_KEY}",
   endpoint: "https://your-prism-instance.example", // runtime choice, never compiled in
   runtime,
   collection: { initialState: "granted" },
@@ -109,7 +109,7 @@ const snippets = {
     [
       "Initialize",
       `const prism = await createPrismClient({
-  projectKey: "${EXAMPLE_KEY}",
+  sourceKey: "${EXAMPLE_KEY}",
   endpoint: "https://your-prism-instance.example",
   runtime,
   collection: { initialState: "granted" },

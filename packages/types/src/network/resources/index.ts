@@ -26,20 +26,6 @@ export type ProfileResource = {
   emailVerifiedAt: string | null;
 };
 
-export type TeamResource = {
-  id: string;
-  name: string;
-  avatarUrl: string;
-  ownerId: string;
-  isPersonal: boolean;
-};
-
-export type TeamInviteResource = {
-  id: string;
-  name: string;
-  avatarUrl: string;
-};
-
 export type UserResource = {
   id: string;
   email: string;
@@ -132,8 +118,7 @@ export type ProjectDetailedResource = {
   id: string;
   name: string;
   slug: string;
-  apiKey: string | null;
-  teamId: string;
+  organizationId: string;
   analytics: {
     /** Per-day session counts over the requested duration (bounded aggregate). */
     summary: Array<{ date: string; desktop: number; mobile: number }>;

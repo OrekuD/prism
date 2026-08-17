@@ -14,7 +14,7 @@ export type {
 export { REDACTED, sanitizeProperties } from "./validation";
 export {
   assertEndpoint,
-  assertProjectKey,
+  assertSourceKey,
   assertValidEventName,
   isValidEventName,
   validateJsonValue,

@@ -19,3 +19,6 @@ coverage/
 # Local engineering documentation (design system, ADRs, audits, screenshots).
 # Excluded from git per review — kept only in the working copy.
 engineering/
+
+# Task 14 fixture build artifacts (packed tarballs)
+fixtures/.artifacts/

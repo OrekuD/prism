@@ -63,43 +63,11 @@ export type UpdateUserInformationRequest = z.infer<
   typeof UpdateUserInformationRequestSchema
 >;
 
-export const SendTeamInvitesRequestSchema = z.strictObject({
-  emails: z.array(z.string()),
-  teamId: z.string(),
-});
-
-export type SendTeamInvitesRequest = z.infer<
-  typeof SendTeamInvitesRequestSchema
->;
-
-export const DeleteTeamRequestSchema = z.strictObject({
-  teamId: z.string(),
-});
-
-export type DeleteTeamRequest = z.infer<typeof DeleteTeamRequestSchema>;
-
-export const DeleteProjectRequestSchema = z.strictObject({
-  projectId: z.string(),
-  slug: z.string(),
-  teamId: z.string(),
-});
-
-export type DeleteProjectRequest = z.infer<typeof DeleteProjectRequestSchema>;
-
-export const JoinTeamRequestSchema = z.strictObject({
-  teamId: z.string(),
-});
-
-export type JoinTeamRequest = z.infer<typeof JoinTeamRequestSchema>;
-
-export const LeaveTeamRequestSchema = z.strictObject({
-  teamId: z.string(),
-});
-
-export type LeaveTeamRequest = z.infer<typeof LeaveTeamRequestSchema>;
-
+// Task 13: a project is created inside a Better Auth organization
+// (workspace). The id is only a target — membership is proven server-side
+// on the canonical member table, never taken from the client.
 export const CreateProjectRequestSchema = z.strictObject({
-  teamId: z.string(),
+  organizationId: z.string(),
   name: z.string(),
 });
 

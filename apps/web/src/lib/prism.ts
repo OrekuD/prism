@@ -21,11 +21,11 @@ let prism: PrismClient | null = null;
  * its own.
  */
 export async function initTelemetry(): Promise<void> {
-  const projectKey = import.meta.env.VITE_TELEMETRY_KEY as string | undefined;
-  if (!projectKey || prism) return;
+  const sourceKey = import.meta.env.VITE_TELEMETRY_KEY as string | undefined;
+  if (!sourceKey || prism) return;
   try {
     prism = await createBrowserClient({
-      projectKey,
+      sourceKey,
       endpoint: window.location.origin,
       collection: { initialState: "granted", anonymousPersistence: "none" },
     });

@@ -11,8 +11,8 @@ import { createBrowserRuntime } from "./browser-runtime";
 export { capturePageContext } from "./browser-runtime";
 
 export interface BrowserClientOptions {
-  /** Project analytics key (public, write-only). */
-  projectKey: string;
+  /** Source ingestion key (publishable, write-only). */
+  sourceKey: string;
   /**
    * Ingestion origin chosen at runtime (hosted or self-hosted) — REQUIRED,
    * never compiled into the package (task-9 §11).
@@ -54,7 +54,7 @@ export async function createBrowserClient(
   }
   const runtime = createBrowserRuntime();
   return createPrismClient({
-    projectKey: options.projectKey,
+    sourceKey: options.sourceKey,
     endpoint: options.endpoint.replace(/\/$/, ""),
     runtime,
     collection: {

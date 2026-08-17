@@ -71,7 +71,7 @@ export interface PrismRequest {
   readonly body: string;
   /**
    * Request headers. The core supplies Prism authentication and content
-   * type (`authorization: Bearer <projectKey>`,
+   * type (`authorization: Bearer <sourceKey>`,
    * `content-type: application/json`); adapters forward these unchanged
    * and must never remove or log them. Adapters may add runtime-specific
    * safe headers but must not implement Prism authentication themselves.
@@ -193,7 +193,7 @@ export interface PrismQueueOptions {
 /** Options for `createPrismClient`. Every field is explicit — no positional args. */
 export interface PrismClientOptions {
   /** Project analytics key (`pr_...`). */
-  projectKey: string;
+  sourceKey: string;
   /** Ingestion origin chosen at runtime (hosted or self-hosted). Never compiled in. */
   endpoint: string;
   /** Host adapter: transport/storage/ID/time/scheduler/lifecycle. */
@@ -347,7 +347,7 @@ export interface WireEventV3 {
 }
 
 export interface PrismClient {
-  readonly projectKey: string;
+  readonly sourceKey: string;
   /** Ingestion origin chosen at runtime. */
   readonly endpoint: string;
   readonly runtime: PrismRuntimeAdapter;

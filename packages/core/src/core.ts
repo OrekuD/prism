@@ -33,7 +33,7 @@ import { EventQueue, utf8Length, type QueuedEvent } from "./queue";
 import {
   assertEndpoint,
   assertJsonSerializable,
-  assertProjectKey,
+  assertSourceKey,
   assertValidEventName,
   isValidEventName,
   sanitizeProperties,
@@ -167,7 +167,7 @@ function withTimeout<T>(
 }
 
 class PrismClientImpl implements PrismClient {
-  readonly projectKey: string;
+  readonly sourceKey: string;
   readonly endpoint: string;
   readonly runtime: PrismClientOptions["runtime"];
 
@@ -213,7 +213,7 @@ class PrismClientImpl implements PrismClient {
   private persistChain: Promise<void> = Promise.resolve();
 
   constructor(options: PrismClientOptions) {
-    assertProjectKey(options.projectKey);
+    assertSourceKey(options.sourceKey);
     assertEndpoint(options.endpoint);
     const runtime = options.runtime;
     if (
@@ -241,7 +241,7 @@ class PrismClientImpl implements PrismClient {
     // ingestion server must reject, causing permanent data loss.
     this.assertConfigWithinWireLimits(options.queue ?? {});
 
-    this.projectKey = options.projectKey;
+    this.sourceKey = options.sourceKey;
     this.endpoint = options.endpoint.replace(/\/$/, "");
     // The wire context is an ALLOWLISTED, validated, sanitized, frozen
     // snapshot built once at initialization (F16) — runtime context values
@@ -260,9 +260,9 @@ class PrismClientImpl implements PrismClient {
     // endpoint origin is hashed (deterministic, no URL in storage keys).
     this.queueStorageKey = `prism:queue:v2:${hashString(
       options.endpoint,
-    )}:${this.projectKey}`;
+    )}:${this.sourceKey}`;
     const scope = (name: string) =>
-      `prism:globals:${name}:${hashString(options.endpoint)}:${this.projectKey}`;
+      `prism:globals:${name}:${hashString(options.endpoint)}:${this.sourceKey}`;
     this.globalsStorageKeys = {
       session: scope("session"),
       persistent: scope("persistent"),
@@ -271,7 +271,7 @@ class PrismClientImpl implements PrismClient {
     // browser routes "session" keys to sessionStorage (per execution
     // context) and "persistent" keys to localStorage (cross-launch);
     // "none" never reads or writes identity state at all.
-    this.identityStateKey = `prism:identity:${options.collection.anonymousPersistence ?? "none"}:${hashString(options.endpoint)}:${this.projectKey}`;
+    this.identityStateKey = `prism:identity:${options.collection.anonymousPersistence ?? "none"}:${hashString(options.endpoint)}:${this.sourceKey}`;
     this.runtime = runtime;
     this.state = options.collection.initialState;
     this.persistence = options.collection.anonymousPersistence ?? "none";
@@ -1072,7 +1072,7 @@ class PrismClientImpl implements PrismClient {
       // headers unchanged and never log them. The project key never
       // appears in diagnostics or error messages.
       headers: {
-        authorization: `Bearer ${this.projectKey}`,
+        authorization: `Bearer ${this.sourceKey}`,
         "content-type": "application/json",
       },
       timeoutMs: this.queueOptions.requestTimeoutMs,

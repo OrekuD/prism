@@ -256,9 +256,9 @@ export function assertJsonSerializable(properties: JsonObject | undefined): void
 }
 
 /** Throw when the configured project key is missing. */
-export function assertProjectKey(projectKey: string): void {
-  if (typeof projectKey !== "string" || projectKey.trim().length === 0) {
-    throw new Error("projectKey is required");
+export function assertSourceKey(sourceKey: string): void {
+  if (typeof sourceKey !== "string" || sourceKey.trim().length === 0) {
+    throw new Error("sourceKey is required");
   }
 }
 

@@ -33,7 +33,7 @@ export function fakeRuntime(name = "node-fake"): PrismRuntimeAdapter {
 }
 
 export const base = {
-  projectKey: "pr_0123456789abcdef0123456789abcdef",
+  sourceKey: "pr_0123456789abcdef0123456789abcdef",
   endpoint: "https://analytics.example.com",
 };
 
@@ -66,5 +66,5 @@ export function queueKey(): string {
   for (let i = 0; i < base.endpoint.length; i += 1) {
     hash = (hash * 33) ^ base.endpoint.charCodeAt(i);
   }
-  return `prism:queue:v2:${hash >>> 0}:${base.projectKey}`;
+  return `prism:queue:v2:${hash >>> 0}:${base.sourceKey}`;
 }

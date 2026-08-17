@@ -1,0 +1,26 @@
+:root {
+  color: #e7e8ee;
+  background: #101116;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; }
+button { border: 1px solid #3b3e4b; border-radius: 4px; color: #f1f2f7; background: #1b1e27; padding: 0.7rem 0.85rem; cursor: pointer; }
+button:hover { border-color: #8d7bff; background: #252837; }
+.shell { width: min(860px, calc(100% - 2rem)); margin: 0 auto; padding: 4rem 0; }
+.hero { max-width: 650px; }
+.eyebrow, .label { color: #9b92e8; font: 0.72rem ui-monospace, SFMono-Regular, monospace; letter-spacing: 0.08em; text-transform: uppercase; }
+h1 { font-size: clamp(2rem, 6vw, 4rem); letter-spacing: -0.05em; line-height: 1; margin: 0.65rem 0 1rem; }
+h2 { font-size: 1rem; margin: 0 0 1rem; }
+p { color: #aeb1bf; line-height: 1.6; }
+.status, .controls, .diagnostics { border: 1px solid #2d303b; border-radius: 6px; background: #15171e; margin-top: 1.25rem; padding: 1rem; }
+.status { display: flex; flex-wrap: wrap; gap: 2rem; }
+.status div { display: grid; gap: 0.4rem; }
+.status strong { color: #f5f5fa; font-weight: 500; }
+.button-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0.6rem; }
+.diagnostics p, .diagnostics li { color: #aeb1bf; font-size: 0.85rem; }
+.failure { max-width: 600px; margin: 15vh auto; padding: 2rem; }
+.failure h1 { font-size: 2rem; }
+@media (max-width: 560px) { .shell { padding: 2rem 0; } }

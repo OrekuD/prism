@@ -29,7 +29,7 @@ function installFetchMock(handler: (url: string, init: RequestInit) => Promise<P
 }
 
 const BASE = {
-  projectKey: "pr_0123456789abcdef0123456789abcdef",
+  sourceKey: "pr_0123456789abcdef0123456789abcdef",
   endpoint: "https://analytics.self-hosted.example",
   collection: { initialState: "granted" as const },
 };
@@ -54,7 +54,7 @@ describe("createBrowserClient", () => {
     expect(bodies).toHaveLength(1);
     expect(bodies[0]?.url).toBe("https://analytics.self-hosted.example/api/v2/ingest");
     const headers = (bodies[0]?.init.headers ?? {}) as Record<string, string>;
-    expect(headers.authorization).toBe(`Bearer ${BASE.projectKey}`);
+    expect(headers.authorization).toBe(`Bearer ${BASE.sourceKey}`);
     expect(headers["content-type"]).toBe("application/json");
     expect(bodies[0]?.init.keepalive).toBe(true); // authenticated keepalive
     await prism.shutdown({ timeoutMs: 50 });
@@ -356,7 +356,7 @@ describe("identity defaults (§4)", () => {
       return okResponse();
     });
     const prism = await createBrowserClient({
-      projectKey: BASE.projectKey,
+      sourceKey: BASE.sourceKey,
       endpoint: BASE.endpoint,
       collection: { initialState: "granted" },
     });
@@ -376,7 +376,7 @@ describe("identity defaults (§4)", () => {
       return okResponse();
     });
     const prism = await createBrowserClient({
-      projectKey: BASE.projectKey,
+      sourceKey: BASE.sourceKey,
       endpoint: BASE.endpoint,
       collection: { initialState: "granted", anonymousPersistence: "none" },
     });

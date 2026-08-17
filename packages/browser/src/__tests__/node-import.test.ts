@@ -16,7 +16,7 @@ describe("node without DOM", () => {
   it("fails loudly outside a browser", async () => {
     await expect(
       createBrowserClient({
-        projectKey: "pr_0123456789abcdef0123456789abcdef",
+        sourceKey: "pr_0123456789abcdef0123456789abcdef",
         endpoint: "https://example.com",
         collection: { initialState: "granted" },
       }),

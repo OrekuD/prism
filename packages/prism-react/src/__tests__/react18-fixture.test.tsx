@@ -70,7 +70,7 @@ describe("React 18 peer compatibility", () => {
         const { createPrismClient } = requireFromFixture("@prism/core") as typeof import("@prism/core");
 
         const client = await createPrismClient({
-          projectKey: "pr_0123456789abcdef0123456789abcdef",
+          sourceKey: "pr_0123456789abcdef0123456789abcdef",
           endpoint: "https://self-hosted.prism.example",
           runtime: {
             name: "node-fake",

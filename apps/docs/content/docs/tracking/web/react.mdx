@@ -17,7 +17,7 @@ policy — ownership stays with whoever called `createBrowserClient` (or
 // client.ts — create it ONCE, outside React
 import { createBrowserClient } from "@prism/browser";
 export const prism = await createBrowserClient({
-  projectKey: "pr_xxx",
+  sourceKey: "psk_xxx",
   endpoint: window.location.origin,
   collection: { initialState: "granted" },
 });

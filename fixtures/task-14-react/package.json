@@ -1,0 +1,24 @@
+{
+  "name": "prism-task-14-react-fixture",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "smoke": "node scripts/consumer-smoke.mjs"
+  },
+  "dependencies": {
+    "@prism/browser": "file:../.artifacts/task-14/prism-browser-0.0.1.tgz",
+    "@prism/core": "file:../.artifacts/task-14/prism-core-0.0.1.tgz",
+    "@prism/react": "file:../.artifacts/task-14/prism-react-0.0.1.tgz",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.1.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.2.6"
+  }
+}

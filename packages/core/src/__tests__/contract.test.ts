@@ -46,7 +46,7 @@ function fakeRuntime(name = "node-fake"): PrismRuntimeAdapter {
 }
 
 const baseOptions = {
-  projectKey: "pr_0123456789abcdef0123456789abcdef",
+  sourceKey: "pr_0123456789abcdef0123456789abcdef",
   endpoint: "https://analytics.example.com",
 };
 
@@ -59,7 +59,7 @@ describe("createPrismClient contract", () => {
     });
     expect(typeof prism).toBe("object");
     expect(prism.collectionState).toBe("pending");
-    expect(prism.projectKey).toBe(baseOptions.projectKey);
+    expect(prism.sourceKey).toBe(baseOptions.sourceKey);
     expect(prism.endpoint).toBe("https://analytics.example.com");
   });
 
@@ -83,15 +83,15 @@ describe("createPrismClient contract", () => {
     ).rejects.toThrow(/endpoint/);
   });
 
-  it("rejects a missing project key during setup", async () => {
+  it("rejects a missing source key during setup", async () => {
     await expect(
       createPrismClient({
-        projectKey: "",
+        sourceKey: "",
         endpoint: "https://analytics.example.com",
         runtime: fakeRuntime(),
         collection: { initialState: "granted" },
       }),
-    ).rejects.toThrow(/project/);
+    ).rejects.toThrow(/sourceKey/);
   });
 
   it("requires durable storage for persistent anonymous identity", async () => {

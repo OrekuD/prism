@@ -659,7 +659,7 @@ describe("queue persistence (slice 3)", () => {
   });
 
   it("quarantines corrupt queue state with a diagnostic", async () => {
-    // the client's ACTUAL key: prism:queue:v1:<projectKey>
+    // the client's ACTUAL key: prism:queue:v1:<sourceKey>
     const corruptKey = queueKey();
     const stored = new Map<string, string>([[corruptKey, "{not json"]]);
     const runtime: PrismRuntimeAdapter = {
@@ -1191,7 +1191,7 @@ describe("transport authentication (review F1)", () => {
     expect(seen).toHaveLength(1);
     const request = seen[0] as PrismRequest;
     expect(Object.isFrozen(request.headers)).toBe(false); // structurally readonly
-    expect(request.headers.authorization).toBe(`Bearer ${base.projectKey}`);
+    expect(request.headers.authorization).toBe(`Bearer ${base.sourceKey}`);
     expect(request.headers["content-type"]).toBe("application/json");
   });
 
@@ -1207,7 +1207,7 @@ describe("transport authentication (review F1)", () => {
     await expect(prism.flush()).rejects.toThrow(/batch delivery failed/);
 
     const all = JSON.stringify(codes) + JSON.stringify(codes.map((c) => c.message));
-    expect(all).not.toContain(base.projectKey);
+    expect(all).not.toContain(base.sourceKey);
   });
 });
 

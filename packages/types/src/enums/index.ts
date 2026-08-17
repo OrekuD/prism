@@ -5,9 +5,3 @@ export enum Roles {
   BANNED = 100,
   SUSPENDED = -1,
 }
-
-export enum TeamMemberPermissions {
-  BASIC = 1,
-  ADMIN = 2,
-  SUSPENDED = -1,
-}
