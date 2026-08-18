@@ -47,30 +47,30 @@ export function Toolbar({ onMenu }: { onMenu?: () => void }) {
   }
 
   return (
-    <div className="toolbar">
-      <div className="tb-left">
+    <div className="sticky top-0 z-40 mx-auto flex h-14 w-full max-w-[1800px] items-center justify-between gap-4 border-b border-border bg-canvas px-7">
+      <div className="flex min-w-0 items-center gap-3">
         <button
           type="button"
-          className="btn btn-icon btn-sm tb-menu"
+          className="hidden size-[30px] items-center justify-center gap-2 rounded-[2px] text-[13px] font-medium transition-colors hover:bg-surface-hover max-[1023px]:inline-flex"
           aria-label="Open navigation"
           onClick={onMenu}
         >
           <IconMenu />
         </button>
-        <div className="crumb">
+        <div className="flex min-w-0 items-center gap-2 whitespace-nowrap text-[13px] text-text-muted">
           {trail.filter((entry) => entry.label).map((entry, index) => (
             <React.Fragment key={`${entry.label}-${index}`}>
-              {index > 0 ? <span className="sep">/</span> : null}
+              {index > 0 ? <span className="text-text-subtle">/</span> : null}
               {entry.strong ? (
-                <b className="crumb-hide">{entry.label}</b>
+                <b className="font-semibold text-text max-[767px]:hidden">{entry.label}</b>
               ) : (
-                <span className="crumb-hide">{entry.label}</span>
+                <span className="max-[767px]:hidden">{entry.label}</span>
               )}
             </React.Fragment>
           ))}
         </div>
       </div>
-      <div className="tb-right">{/* project-specific toolbar actions */}</div>
+      <div className="flex items-center gap-3">{/* project toolbar actions */}</div>
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { Link, NavLink, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme-provider";
 import { authClient } from "@/lib/authClient";
-import { useActiveWorkspace, useWorkspaces } from "@/lib/workspace";
+import { useActiveWorkspace } from "@/lib/workspace";
 import { useProjectsQuery } from "@/network/queries/useProjectsQuery";
 import { getInitials } from "@/utils/getInitials";
 import * as I from "./icons";
@@ -11,37 +11,54 @@ import * as I from "./icons";
 const VITE_DOCS_URL: string =
   import.meta.env.VITE_DOCS_URL ?? "http://localhost:3000";
 
-type NavItem = {
+const LINK_BASE =
+  "relative flex h-9 items-center gap-2.5 rounded-[2px] px-3 text-[13px] text-text-muted transition-colors hover:bg-surface-hover hover:text-text";
+const LINK_ACTIVE =
+  "bg-accent-soft font-medium text-text before:absolute before:-left-3 before:top-0 before:bottom-0 before:w-0.5 before:bg-accent";
+
+function Active({
+  to,
+  label,
+  icon,
+  className,
+  end,
+}: {
   to: string;
   label: string;
   icon: React.ReactNode;
-  /** Match the nav item only on this exact url-bearing path. */
+  className?: string;
   end?: boolean;
-};
-
-function Active (props: { to: string; label: string; icon: React.ReactNode; className?: string; end?: boolean }) {
+}) {
   return (
     <NavLink
-      to={props.to}
-      end={props.end}
+      to={to}
+      end={end}
       className={({ isActive }) =>
-        cn("sb-link", isActive && "active", props.className)
+        cn(LINK_BASE, isActive && LINK_ACTIVE, className)
       }
     >
-      {props.icon}
-      {props.label}
+      {icon}
+      {label}
     </NavLink>
   );
 }
 
-export function Sidebar() {
+function SoonLink({ label }: { label: string }) {
+  return (
+    <span className={cn(LINK_BASE, "cursor-default text-text-subtle hover:bg-transparent hover:text-text-subtle")} title={`${label} — coming soon`}>
+      {SOON_ICONS[label]}
+      {label}
+    </span>
+  );
+}
+
+export function Sidebar({ navOpen }: { navOpen?: boolean }) {
   const { pathname } = useLocation();
   const { theme, setTheme } = useTheme();
   const { data: session } = authClient.useSession();
   const { data: activeWorkspace } = useActiveWorkspace();
   const projectsQuery = useProjectsQuery();
 
-  // Currently open project (when inside /projects/:slug…).
   const slug = pathname.split("/")[2];
   const project = projectsQuery.data?.find((entry) => entry.slug === slug);
   const workspaceName = (activeWorkspace as { name?: string } | null)?.name;
@@ -49,101 +66,112 @@ export function Sidebar() {
   const isDark = theme === "dark" || theme === "system";
 
   return (
-    <aside className="sidebar" id="sidebar" aria-label="Workspace navigation">
-      <div className="sb-brand">
-        <span className="brand-mark" aria-hidden="true">
-          <I.BrandMark />
+    <aside
+      id="sidebar"
+      aria-label="Workspace navigation"
+      className={cn(
+        "sticky top-0 z-60 flex h-dvh w-[240px] shrink-0 flex-col border-r border-border bg-canvas-subtle",
+        "max-[1023px]:fixed max-[1023px]:bottom-0 max-[1023px]:left-0 max-[1023px]:top-0 max-[1023px]:z-60 max-[1023px]:-translate-x-full max-[1023px]:transition-transform max-[1023px]:duration-200 max-[1023px]:ease-out",
+        navOpen && "max-[1023px]:translate-x-0 max-[1023px]:shadow-[16px_0_48px_rgb(0_0_0/0.45)]",
+      )}
+    >
+      <div className="flex items-center gap-2.5 px-3 pb-2.5 pt-3.5">
+        <span className="brand-mark grid size-5 shrink-0 place-items-center rounded-[2px] bg-accent-soft" aria-hidden="true">
+          <I.BrandMark className="text-accent" />
         </span>
-        <span className="brand-name">Prism</span>
+        <span className="text-sm font-semibold tracking-[-0.01em]">Prism</span>
       </div>
 
-      <nav className="sb-groups">
-        <div className="sb-group">
-          <div className="sb-label">Workspace</div>
+      <nav className="flex flex-1 flex-col gap-3 overflow-y-auto px-3 pb-4">
+        <div className="flex flex-col gap-0.5">
+          <div className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
+            Workspace
+          </div>
           <Active to="/overview" label="Workspace overview" icon={<I.IconGrid />} end />
           <Active to="/projects" label="Projects" icon={<I.IconFolder />} />
           <Active to="/members" label="Members" icon={<I.IconUsers />} />
         </div>
 
-        <div className="sb-group">
-          <div className="sb-label">Project</div>
-          <Link to="/projects" className="ws-switch sb-inline" aria-label="Switch project">
+        <div className="flex flex-col gap-0.5">
+          <div className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
+            Project
+          </div>
+          <Link
+            to="/projects"
+            aria-label="Switch project"
+            className="mb-2 flex h-[34px] w-full items-center gap-2 rounded-[2px] border border-border bg-surface px-2.5 text-[13px] font-medium transition-colors hover:bg-surface-hover"
+          >
             <I.IconFolder />
-            <span className="ws-name">{project?.name ?? workspaceName ?? "Select a project"}</span>
+            <span className="flex-1 truncate text-left">{project?.name ?? workspaceName ?? "Select a project"}</span>
             <I.IconChevronDown />
           </Link>
           {project ? (
-            <Active
-              to={`/projects/${project.slug}`}
-              end
-              label="Overview"
-              icon={<I.IconChart />}
-            />
+            <Active to={`/projects/${project.slug}`} end label="Overview" icon={<I.IconChart />} />
           ) : null}
         </div>
 
-        <div className="sb-group">
-          <div className="sb-label">Data</div>
-          {slug ? (
-            <>
-              <Active to={`/projects/${slug}/events`} label="Events" icon={<I.IconBolt />} />
-              <Active to={`/projects/${slug}/people`} label="People" icon={<I.IconPerson />} />
-              <Active to={`/projects/${slug}/realtime`} label="Live" icon={<I.IconGlobe />} />
-            </>
-          ) : null}
-        </div>
+        {slug ? (
+          <div className="flex flex-col gap-0.5">
+            <div className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
+              Data
+            </div>
+            <Active to={`/projects/${slug}/events`} label="Events" icon={<I.IconBolt />} />
+            <Active to={`/projects/${slug}/people`} label="People" icon={<I.IconPerson />} />
+            <Active to={`/projects/${slug}/realtime`} label="Live" icon={<I.IconGlobe />} />
+          </div>
+        ) : null}
 
-        <div className="sb-group">
-          <div className="sb-label">Analyze <span className="soon-tag">soon</span></div>
+        <div className="flex flex-col gap-0.5">
+          <div className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
+            Analyze <span className="ml-auto rounded-[2px] border border-border px-[5px] py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-text-subtle">soon</span>
+          </div>
           {SOON_ANALYZE.map((item) => <SoonLink key={item} label={item} />)}
         </div>
-        <div className="sb-group">
-          <div className="sb-label">Diagnose <span className="soon-tag">soon</span></div>
+        <div className="flex flex-col gap-0.5">
+          <div className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
+            Diagnose <span className="ml-auto rounded-[2px] border border-border px-[5px] py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-text-subtle">soon</span>
+          </div>
           {SOON_DIAGNOSE.map((item) => <SoonLink key={item} label={item} />)}
         </div>
-        <div className="sb-group">
-          <div className="sb-label">Ship <span className="soon-tag">soon</span></div>
+        <div className="flex flex-col gap-0.5">
+          <div className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
+            Ship <span className="ml-auto rounded-[2px] border border-border px-[5px] py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-text-subtle">soon</span>
+          </div>
           {SOON_SHIP.map((item) => <SoonLink key={item} label={item} />)}
         </div>
 
-        <div className="sb-group">
-          <div className="sb-label">Configure</div>
-          {slug ? (
-            <>
-              <Active to={`/projects/${slug}/sources`} label="Sources" icon={<I.IconGlobe />} />
-              <Active to={`/projects/${slug}/settings`} label="Settings" icon={<I.IconSettings />} />
-            </>
-          ) : null}
-        </div>
+        {slug ? (
+          <div className="flex flex-col gap-0.5">
+            <div className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
+              Configure
+            </div>
+            <Active to={`/projects/${slug}/sources`} label="Sources" icon={<I.IconGlobe />} />
+            <Active to={`/projects/${slug}/settings`} label="Settings" icon={<I.IconSettings />} />
+          </div>
+        ) : null}
       </nav>
 
-      <div className="sb-foot">
-        <a className="sb-link" href={VITE_DOCS_URL} target="_blank" rel="noreferrer">
+      <div className="flex flex-col gap-0.5 border-t border-border px-3 pb-3.5 pt-2.5">
+        <a className={LINK_BASE} href={VITE_DOCS_URL} target="_blank" rel="noreferrer">
           <I.IconDoc />Docs
         </a>
-        <button
-          className="sb-link"
-          type="button"
-          onClick={() => setTheme(isDark ? "light" : "dark")}
-        >
+        <button className={LINK_BASE} type="button" onClick={() => setTheme(isDark ? "light" : "dark")}>
           <I.IconMoon />
-          <span style={{ flex: 1, textAlign: "left" }}>Theme</span>
-          <span className="theme-val" style={{ font: "500 11px/1 var(--font-mono)", color: "var(--text-subtle)" }}>
-            {isDark ? "Dark" : "Light"}
-          </span>
+          <span className="flex-1 text-left">Theme</span>
+          <span className="font-mono text-[11px] text-text-subtle">{isDark ? "Dark" : "Light"}</span>
         </button>
-        <div className="sb-inst">
-          <span className="inst-label">Self-hosted</span>
-          <span className="inst-name">{workspaceName ?? "Prism"}</span>
+        <div className="flex items-center gap-2 px-1 pt-2">
+          <span className="font-mono text-[10px] uppercase tracking-[0.06em] rounded-[2px] border border-border px-[5px] py-0.5 text-text-subtle">Self-hosted</span>
+          <span className="font-mono text-[11px] text-text-subtle">{workspaceName ?? "Prism"}</span>
         </div>
-        <div className="sb-acct">
-          <Link to="/account/general" aria-label="Account settings">
-            <span className="avatar" aria-hidden="true">
+        <div className="mt-2 flex items-center gap-2.5 border-t border-border px-1 pt-2">
+          <Link to="/account/general" aria-label="Account settings" className="flex items-center gap-2.5">
+            <span className="grid size-[26px] shrink-0 place-items-center rounded-full border border-border-strong bg-surface-raised font-mono text-[11px] font-semibold text-text" aria-hidden="true">
               {getInitials(session?.user?.name ?? "Prism")}
             </span>
-            <span style={{ minWidth: 0 }}>
-              <span className="acct-nm">{session?.user?.name ?? "Account"}</span>
-              <span className="acct-em">{session?.user?.email ?? ""}</span>
+            <span className="min-w-0">
+              <span className="block text-[13px] font-medium leading-[1.2]">{session?.user?.name ?? "Account"}</span>
+              <span className="block text-[11px] leading-[1.3] text-text-subtle">{session?.user?.email ?? ""}</span>
             </span>
           </Link>
         </div>
@@ -163,15 +191,3 @@ const SOON_ICONS: Record<string, React.ReactNode> = {
   Logs: <I.IconLog />, "Feature flags": <I.IconFlag />, Experiments: <I.IconFlask />,
   Surveys: <I.IconSurvey />,
 };
-
-function SoonLink({ label }: { label: string }) {
-  return (
-    <span
-      className="sb-link soon"
-      title={`${label} — coming soon`}
-    >
-      {SOON_ICONS[label]}
-      {label}
-    </span>
-  );
-}

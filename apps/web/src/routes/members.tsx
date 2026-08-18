@@ -37,11 +37,9 @@ const ROLE_LABELS: Record<string, string> = {
 
 type MemberRow = WorkspaceMember & { user?: { name?: string; email?: string } };
 
-/**
- * Members (v2 dashboard `team` view): a standalone workspace-level page in
- * the product shell — Better Auth owns membership, roles, and invitations.
- * The owner may not be removed by anyone (v2 keeps the first row action-free).
- */
+const TH = "whitespace-nowrap border-b border-border bg-canvas-subtle px-3.5 py-2.5 text-left font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted";
+const TD = "border-t border-border px-3.5 py-[11px] align-middle leading-[1.4]";
+
 export function MembersPage() {
   const { data: activeWorkspace } = useActiveWorkspace();
   const { data: activeMember } = useActiveMember();
@@ -90,45 +88,48 @@ export function MembersPage() {
     <>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
         <div>
-          <h1 className="page-title">Members</h1>
-          <p className="page-sub">Members of the {workspaceName ?? "workspace"} workspace and their roles.</p>
+          <h1 className="font-mono text-[26px] font-semibold leading-[1.18] tracking-[-0.025em] text-text">Members</h1>
+          <p className="mt-2 text-sm text-text-muted">Members of the {workspaceName ?? "workspace"} workspace and their roles.</p>
         </div>
         {canManage ? (
-          <button type="button" className="btn btn-primary" onClick={() => setInviteOpen(true)}>
-            <UserPlus className="ic" />
-            Invite member
+          <button
+            type="button"
+            onClick={() => setInviteOpen(true)}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-[2px] bg-accent px-3.5 text-[13px] font-medium text-primary-foreground transition-colors hover:bg-accent-hover"
+          >
+            <UserPlus className="size-4" />Invite member
           </button>
         ) : null}
       </div>
 
-      <div className="sec-label">Members</div>
-      <div className="tbl-wrap">
-        <table className="tbl">
+      <div className="mt-10 mb-3.5 flex items-baseline gap-1.5 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">Members</div>
+      <div className="overflow-auto rounded-[2px] border border-border">
+        <table className="w-full border-collapse text-[13px]">
           <thead>
-            <tr><th>Member</th><th>Role</th><th>Status</th><th>Last active</th><th style={{ textAlign: "right" }}>Actions</th></tr>
+            <tr><th className={TH}>Member</th><th className={TH}>Role</th><th className={TH}>Status</th><th className={TH}>Last active</th><th className={`${TH} text-right`}>Actions</th></tr>
           </thead>
           <tbody>
             {members === null ? (
-              <tr><td colSpan={5}><span className="skel" /></td></tr>
+              <tr><td colSpan={5} className={TD}><span className="inline-block h-[14px] w-[72px] animate-pulse rounded-[2px] bg-surface-raised" /></td></tr>
             ) : members.length === 0 ? (
-              <tr><td colSpan={5} className="muted">No members yet.</td></tr>
+              <tr><td colSpan={5} className={`${TD} text-text-muted`}>No members yet.</td></tr>
             ) : (
               members.map((member) => {
                 const displayName = member.user?.name ?? member.userId;
                 return (
-                  <tr key={member.id}>
-                    <td>
-                      <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <span className="avatar" style={{ width: 24, height: 24, fontSize: 10 }} aria-hidden="true">
+                  <tr key={member.id} className="group transition-colors hover:bg-surface-hover">
+                    <td className={TD}>
+                      <span className="flex items-center gap-2.5">
+                        <span className="grid size-6 shrink-0 place-items-center rounded-full border border-border-strong bg-surface-raised font-mono text-[10px] font-semibold text-text" aria-hidden="true">
                           {getInitials(displayName)}
                         </span>
                         <span>
-                          <span style={{ display: "block", fontSize: 13, fontWeight: 500 }}>{displayName}</span>
-                          <span className="subtle" style={{ fontSize: 12 }}>{member.user?.email ?? member.userId}</span>
+                          <span className="block text-[13px] font-medium">{displayName}</span>
+                          <span className="block text-[12px] text-text-subtle">{member.user?.email ?? member.userId}</span>
                         </span>
                       </span>
                     </td>
-                    <td className="mono">
+                    <td className={`${TD} font-mono`}>
                       {canManage && member.role !== "owner" && organizationId ? (
                         <Select
                           value={member.role}
@@ -156,24 +157,19 @@ export function MembersPage() {
                         ROLE_LABELS[member.role] ?? member.role
                       )}
                     </td>
-                    <td><span className="tag ok">Active</span></td>
-                    <td className="muted" style={{ fontSize: 12 }}>—</td>
-                    <td>
-                      <span className="tbl-actions">
+                    <td className={TD}><span className="inline-flex h-[22px] items-center gap-1.5 rounded-[2px] border border-success/40 px-2 font-mono text-[11px] whitespace-nowrap text-success">Active</span></td>
+                    <td className={`${TD} text-[12px] text-text-muted`}>—</td>
+                    <td className={TD}>
+                      <span className="flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                         {canManage && member.role !== "owner" && organizationId ? (
                           <button
                             type="button"
-                            className="btn btn-ghost btn-sm"
                             disabled={busy}
                             aria-label={`Remove ${displayName}`}
-                            onClick={() =>
-                              void run(
-                                () => workspaceActions.removeMember({ memberId: member.id, organizationId }),
-                                "Member removed",
-                              )
-                            }
+                            onClick={() => void run(() => workspaceActions.removeMember({ memberId: member.id, organizationId }), "Member removed")}
+                            className="inline-flex h-[30px] items-center gap-2 rounded-[2px] px-3 text-[13px] text-text-muted transition-colors hover:bg-surface-hover hover:text-text"
                           >
-                            <Trash2 className="ic ic-sm" />
+                            <Trash2 className="size-3.5" />
                           </button>
                         ) : null}
                       </span>
@@ -188,31 +184,31 @@ export function MembersPage() {
 
       {canManage ? (
         <>
-          <div className="sec-label">Pending invitations</div>
+          <div className="mt-10 mb-3.5 flex items-baseline gap-1.5 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">Pending invitations</div>
           {invitations === null ? (
-            <span className="skel" />
+            <span className="inline-block h-[14px] w-[72px] animate-pulse rounded-[2px] bg-surface-raised" />
           ) : (invitations ?? []).filter((invite) => invite.status === "pending").length === 0 ? (
-            <p className="muted" style={{ fontSize: 13 }}>No pending invitations.</p>
+            <p className="text-[13px] text-text-muted">No pending invitations.</p>
           ) : (
-            <div className="tbl-wrap">
-              <table className="tbl">
-                <thead><tr><th>Email</th><th>Role</th><th>Status</th><th>Expires</th><th style={{ textAlign: "right" }}>Actions</th></tr></thead>
+            <div className="overflow-auto rounded-[2px] border border-border">
+              <table className="w-full border-collapse text-[13px]">
+                <thead><tr><th className={TH}>Email</th><th className={TH}>Role</th><th className={TH}>Status</th><th className={TH}>Expires</th><th className={`${TH} text-right`}>Actions</th></tr></thead>
                 <tbody>
                   {(invitations ?? [])
                     .filter((invite) => invite.status === "pending")
                     .map((invite) => (
-                      <tr key={invite.id}>
-                        <td>{invite.email}</td>
-                        <td className="mono">{ROLE_LABELS[invite.role ?? "member"] ?? invite.role}</td>
-                        <td><span className="tag warn">Pending</span></td>
-                        <td className="muted" style={{ fontSize: 12 }}>{new Date(invite.expiresAt).toLocaleDateString()}</td>
-                        <td>
-                          <span className="tbl-actions">
+                      <tr key={invite.id} className="group">
+                        <td className={TD}>{invite.email}</td>
+                        <td className={`${TD} font-mono`}>{ROLE_LABELS[invite.role ?? "member"] ?? invite.role}</td>
+                        <td className={TD}><span className="inline-flex h-[22px] items-center gap-1.5 rounded-[2px] border border-warning/40 px-2 font-mono text-[11px] whitespace-nowrap text-warning">Pending</span></td>
+                        <td className={`${TD} text-[12px] text-text-muted`}>{new Date(invite.expiresAt).toLocaleDateString()}</td>
+                        <td className={TD}>
+                          <span className="flex items-center justify-end opacity-0 transition-opacity group-hover:opacity-100">
                             <button
                               type="button"
-                              className="btn btn-ghost btn-sm"
                               disabled={busy}
                               onClick={() => void run(() => workspaceActions.cancelInvitation(invite.id), "Invitation cancelled")}
+                              className="inline-flex h-[30px] items-center gap-2 rounded-[2px] px-3 text-[13px] text-text-muted transition-colors hover:bg-surface-hover hover:text-text"
                             >
                               Cancel
                             </button>
@@ -228,24 +224,16 @@ export function MembersPage() {
       ) : null}
 
       {myRole === "owner" && organizationId ? (
-        <div className="danger-zone">
-          <div className="dz-t">Danger zone</div>
-          <p>Leaving is the only self-service option for owners. Deleting the workspace is handled from workspace settings.</p>
+        <div className="mt-5 border-t border-danger pt-5">
+          <div className="mb-1.5 text-[13px] font-semibold text-danger">Danger zone</div>
+          <p className="mb-3.5 text-[13px] leading-relaxed text-text-muted">Leaving is the only self-service option for owners. Deleting the workspace is handled from workspace settings.</p>
           <button
             type="button"
-            className="btn btn-secondary"
             disabled={busy}
-            onClick={() =>
-              void run(
-                async () => {
-                  await workspaceActions.leave(organizationId);
-                  navigate("/overview");
-                },
-                "Left workspace",
-              )
-            }
+            onClick={() => void run(async () => { await workspaceActions.leave(organizationId); navigate("/overview"); }, "Left workspace")}
+            className="inline-flex h-9 items-center gap-2 rounded-[2px] border border-border-strong px-3.5 text-[13px] font-medium text-text transition-colors hover:bg-surface-hover"
           >
-            <LogOut className="ic" /> Leave workspace
+            <LogOut className="size-4" /> Leave workspace
           </button>
         </div>
       ) : null}
@@ -256,8 +244,7 @@ export function MembersPage() {
         onInvited={(email, role) => {
           if (!organizationId) return;
           void run(
-            () =>
-              workspaceActions.inviteMember({ organizationId, email, role: role as "owner" | "admin" | "member" }),
+            () => workspaceActions.inviteMember({ organizationId, email, role: role as "owner" | "admin" | "member" }),
             `Invitation sent to ${email}`,
           );
         }}
@@ -266,15 +253,7 @@ export function MembersPage() {
   );
 }
 
-function InviteDialog({
-  open,
-  onOpenChange,
-  onInvited,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onInvited: (email: string, role: string) => void;
-}) {
+function InviteDialog({ open, onOpenChange, onInvited }: { open: boolean; onOpenChange: (open: boolean) => void; onInvited: (email: string, role: string) => void }) {
   const [email, setEmail] = React.useState("");
   const [role, setRole] = React.useState("member");
 
@@ -283,9 +262,7 @@ function InviteDialog({
       <DialogContent className="w-[90vw] md:w-full rounded-lg">
         <DialogHeader>
           <DialogTitle>Invite member</DialogTitle>
-          <DialogDescription>
-            They receive an email with a link to join the workspace. Invitations are managed by Better Auth and expire automatically.
-          </DialogDescription>
+          <DialogDescription>They receive an email with a link to join the workspace. Invitations are managed by Better Auth and expire automatically.</DialogDescription>
         </DialogHeader>
         <form
           className="space-y-4"
@@ -314,9 +291,9 @@ function InviteDialog({
           </div>
           <DialogFooter>
             <DialogClose asChild>
-              <button type="button" className="btn btn-secondary">Cancel</button>
+              <button type="button" className="inline-flex h-9 items-center gap-2 rounded-[2px] border border-border-strong px-3.5 text-[13px] font-medium text-text transition-colors hover:bg-surface-hover">Cancel</button>
             </DialogClose>
-            <button className="btn btn-primary" type="submit">Send invitation</button>
+            <button type="submit" className="inline-flex h-9 items-center gap-2 rounded-[2px] bg-accent px-3.5 text-[13px] font-medium text-primary-foreground transition-colors hover:bg-accent-hover">Send invitation</button>
           </DialogFooter>
         </form>
       </DialogContent>

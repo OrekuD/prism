@@ -4,7 +4,8 @@ import { CodeCopyRow } from "@/components/public/code-copy-row";
 import { Frame, SectionLabel } from "@/components/public/frame";
 import { cn } from "@/lib/utils";
 
-const VITE_DOCS_URL: string = import.meta.env.VITE_DOCS_URL ?? "http://localhost:3000";
+const VITE_DOCS_URL: string =
+  import.meta.env.VITE_DOCS_URL ?? "http://localhost:3000";
 
 /** Redacted example key: never a real secret (design-system.md 9.6). */
 const EXAMPLE_KEY = "pr_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
@@ -125,11 +126,15 @@ const snippets = {
 };
 
 function SetupSection() {
-  const [framework, setFramework] = React.useState<keyof typeof snippets>("javascript");
+  const [framework, setFramework] =
+    React.useState<keyof typeof snippets>("javascript");
   const steps = snippets[framework];
 
   return (
-    <section aria-label="Connect a project" className="px-6 py-16 lg:px-10 lg:py-24">
+    <section
+      aria-label="Connect a project"
+      className="px-6 py-16 lg:px-10 lg:py-24"
+    >
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="text-[26px] font-semibold tracking-[-0.025em] text-text">
@@ -148,24 +153,30 @@ function SetupSection() {
       </div>
 
       <Frame className="mt-8 p-4 sm:p-6">
-        <div role="tablist" aria-label="Framework" className="flex gap-1 border-b border-border pb-3">
-          {(Object.keys(snippets) as Array<keyof typeof snippets>).map((name) => (
-            <button
-              key={name}
-              type="button"
-              role="tab"
-              aria-selected={framework === name}
-              onClick={() => setFramework(name)}
-              className={cn(
-                "h-[30px] rounded-[2px] px-3 font-mono text-[12px] transition-colors duration-150",
-                framework === name
-                  ? "bg-accent text-primary-foreground"
-                  : "text-text-muted hover:bg-surface-hover hover:text-text",
-              )}
-            >
-              {name === "javascript" ? "JavaScript" : "React"}
-            </button>
-          ))}
+        <div
+          role="tablist"
+          aria-label="Framework"
+          className="flex gap-1 border-b border-border pb-3"
+        >
+          {(Object.keys(snippets) as Array<keyof typeof snippets>).map(
+            (name) => (
+              <button
+                key={name}
+                type="button"
+                role="tab"
+                aria-selected={framework === name}
+                onClick={() => setFramework(name)}
+                className={cn(
+                  "h-[30px] rounded-[2px] px-3 font-mono text-[12px] transition-colors duration-150",
+                  framework === name
+                    ? "bg-accent text-primary-foreground"
+                    : "text-text-muted hover:bg-surface-hover hover:text-text"
+                )}
+              >
+                {name === "javascript" ? "JavaScript" : "React"}
+              </button>
+            )
+          )}
         </div>
         <div className="mt-4 grid gap-5 sm:grid-cols-[150px_1fr]">
           <ol className="grid content-start gap-2">
@@ -200,7 +211,11 @@ function SetupSection() {
 
 function HostedVsSelfHosted() {
   return (
-    <section id="self-host" aria-label="Hosted and self-hosted" className="px-6 pb-16 lg:px-10 lg:pb-24">
+    <section
+      id="self-host"
+      aria-label="Hosted and self-hosted"
+      className="px-6 pb-16 lg:px-10 lg:pb-24"
+    >
       <Frame className="grid divide-y divide-border md:grid-cols-2 md:divide-x md:divide-y-0">
         <div className="p-8">
           <SectionLabel prefix={null}>Hosted Prism</SectionLabel>

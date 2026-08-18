@@ -69,11 +69,13 @@ describe("v2 dashboard shell", () => {
       </MemoryRouter>,
     );
 
-    expect(document.querySelector(".shell")).not.toBeNull();
-    expect(document.querySelector(".sidebar")).not.toBeNull();
-    expect(document.querySelector(".toolbar")).not.toBeNull();
-    expect(document.querySelector(".content .view")).not.toBeNull();
-    // mobile drawers start closed
-    expect(document.querySelector(".scrim")?.className).toContain("scrim");
+    // Tailwind shell: 240px sidebar landmark, toolbar menu button, main
+    // view, and a hidden click-away scrim for the mobile drawer.
+    expect(
+      screen.getByRole("complementary", { name: "Workspace navigation" }),
+    ).not.toBeNull();
+    expect(document.querySelector("button[aria-label='Open navigation']")).not.toBeNull();
+    expect(document.querySelector("main")).not.toBeNull();
+    expect(document.querySelector("button[aria-label='Close navigation']")).not.toBeNull();
   });
 });

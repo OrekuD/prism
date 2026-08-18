@@ -4,13 +4,15 @@
  * shell renders the exact exported glyphs.
  */
 import type React from "react";
+import { cn } from "@/lib/utils";
 
 type IconProps = React.SVGProps<SVGSVGElement>;
 
-function Ic({ children, ...props }: IconProps & { children: React.ReactNode }) {
+function Ic({ children, className, ...props }: IconProps & { children: React.ReactNode }) {
   return (
     <svg
-      className="ic"
+      {...props}
+      className={cn("size-4 shrink-0", className)}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -19,7 +21,6 @@ function Ic({ children, ...props }: IconProps & { children: React.ReactNode }) {
       strokeLinejoin="round"
       aria-hidden="true"
       focusable="false"
-      {...props}
     >
       {children}
     </svg>
@@ -30,6 +31,8 @@ function Ic({ children, ...props }: IconProps & { children: React.ReactNode }) {
 export function BrandMark(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg
+      {...props}
+      className={cn("size-5", props.className)}
       viewBox="0 0 20 20"
       fill="none"
       strokeWidth="2"
@@ -37,7 +40,6 @@ export function BrandMark(props: React.SVGProps<SVGSVGElement>) {
       strokeLinejoin="round"
       aria-hidden="true"
       focusable="false"
-      {...props}
     >
       <path d="M10 2 18 17H2Z" />
       <path d="M4.5 14h11" />

@@ -183,35 +183,41 @@ function WorkspacePanel({ organizationId }: { organizationId: string }) {
 
   return (
     <div className="space-y-6">
-      <div className="sec-label">Members</div>
-      <div className="tbl-wrap">
-        <table className="tbl">
+      <div className="mt-10 mb-3.5 flex items-baseline gap-1.5 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">Members</div>
+      <div className="overflow-auto rounded-[2px] border border-border">
+        <table className="w-full border-collapse text-[13px]">
           <thead>
-            <tr><th>Member</th><th>Role</th><th>Status</th><th>Last active</th><th style={{ textAlign: "right" }}>Actions</th></tr>
+            <tr>
+              <th className="whitespace-nowrap border-b border-border bg-canvas-subtle px-3.5 py-2.5 text-left font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">Member</th>
+              <th className="whitespace-nowrap border-b border-border bg-canvas-subtle px-3.5 py-2.5 text-left font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">Role</th>
+              <th className="whitespace-nowrap border-b border-border bg-canvas-subtle px-3.5 py-2.5 text-left font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">Status</th>
+              <th className="whitespace-nowrap border-b border-border bg-canvas-subtle px-3.5 py-2.5 text-left font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">Last active</th>
+              <th className="whitespace-nowrap border-b border-border bg-canvas-subtle px-3.5 py-2.5 text-left font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted text-right">Actions</th>
+            </tr>
           </thead>
           <tbody>
             {members === null ? (
-              <tr><td colSpan={5}><span className="skel" /></td></tr>
+              <tr><td colSpan={5} className="border-t border-border px-3.5 py-[11px]"><span className="inline-block h-[14px] w-[72px] animate-pulse rounded-[2px] bg-surface-raised" /></td></tr>
             ) : members.length === 0 ? (
-              <tr><td colSpan={5} className="muted">No members.</td></tr>
+              <tr><td colSpan={5} className="border-t border-border px-3.5 py-[11px] text-text-muted">No members.</td></tr>
             ) : (
               members.map((member) => {
                 const user = (member as unknown as { user?: { name?: string; email?: string } }).user;
                 const displayName = user?.name ?? member.userId;
                 return (
-                  <tr key={member.id}>
-                    <td>
-                      <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <span className="avatar" style={{ width: 24, height: 24, fontSize: 10 }} aria-hidden="true">
+                  <tr key={member.id} className="group transition-colors hover:bg-surface-hover">
+                    <td className="border-t border-border px-3.5 py-[11px] align-middle leading-[1.4]">
+                      <span className="flex items-center gap-2.5">
+                        <span className="grid size-6 shrink-0 place-items-center rounded-full border border-border-strong bg-surface-raised font-mono text-[10px] font-semibold text-text" aria-hidden="true">
                           {getInitials(displayName)}
                         </span>
                         <span>
-                          <span style={{ display: "block", fontSize: 13, fontWeight: 500 }}>{displayName}</span>
-                          <span className="subtle" style={{ fontSize: 12 }}>{user?.email ?? member.userId}</span>
+                          <span className="block text-[13px] font-medium">{displayName}</span>
+                          <span className="block text-[12px] text-text-subtle">{user?.email ?? member.userId}</span>
                         </span>
                       </span>
                     </td>
-                    <td className="mono">
+                    <td className="border-t border-border px-3.5 py-[11px] align-middle font-mono leading-[1.4]">
                       {canManage && member.role !== "owner" ? (
                         <Select
                           value={member.role}
@@ -239,13 +245,13 @@ function WorkspacePanel({ organizationId }: { organizationId: string }) {
                         ROLE_LABELS[member.role] ?? member.role
                       )}
                     </td>
-                    <td><span className="tag ok">Active</span></td>
-                    <td className="muted" style={{ fontSize: 12 }}>—</td>
-                    <td>
-                      <span className="tbl-actions">
+                    <td className="border-t border-border px-3.5 py-[11px]"><span className="inline-flex h-[22px] items-center gap-1.5 rounded-[2px] border border-success/40 px-2 font-mono text-[11px] whitespace-nowrap text-success">Active</span></td>
+                    <td className="border-t border-border px-3.5 py-[11px] text-[12px] text-text-muted">—</td>
+                    <td className="border-t border-border px-3.5 py-[11px]">
+                      <span className="flex items-center justify-end opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                         {canManage && member.role !== "owner" ? (
                           <button
-                            className="btn btn-ghost btn-sm"
+                            type="button"
                             disabled={busy}
                             onClick={() =>
                               void run(
@@ -253,6 +259,7 @@ function WorkspacePanel({ organizationId }: { organizationId: string }) {
                                 "Member removed",
                               )
                             }
+                            className="inline-flex h-[30px] items-center gap-2 rounded-[2px] px-3 text-[13px] text-text-muted transition-colors hover:bg-surface-hover hover:text-text"
                           >
                             <Trash2 className="size-3.5" />
                           </button>
