@@ -15,7 +15,7 @@ import {
   WorkspaceHome,
   RedirectToWs,
   RedirectToProjectWs,
-} from "./components/layout/v2/WorkspaceScope";
+} from "./components/layout/WorkspaceScope";
 import { lazy } from "react";
 
 /**
@@ -113,9 +113,14 @@ const Overview = lazy(() =>
 const MembersPage = lazy(() =>
   import("./routes/members").then((m) => ({ default: m.MembersPage })),
 );
-const WorkspaceSettingsPage = lazy(() =>
+const WorkspaceSettingsLayout = lazy(() =>
+  import("./components/layout/workspace-settings-layout").then((m) => ({
+    default: m.WorkspaceSettingsLayout,
+  })),
+);
+const WorkspaceSettingsGeneral = lazy(() =>
   import("./routes/workspace-settings").then((m) => ({
-    default: m.WorkspaceSettingsPage,
+    default: m.WorkspaceSettingsGeneral,
   })),
 );
 
@@ -182,7 +187,10 @@ const router = createBrowserRouter(
         <Route path=":wrkSlug" element={<WorkspaceScope />}>
           <Route path="overview" element={<Overview />} />
           <Route path="members" element={<MembersPage />} />
-          <Route path="settings" element={<WorkspaceSettingsPage />} />
+          <Route path="settings" element={<WorkspaceSettingsLayout />}>
+            <Route path="" element={<Navigate to="general" replace />} />
+            <Route path="general" element={<WorkspaceSettingsGeneral />} />
+          </Route>
           <Route path="projects">
             <Route path="" element={<Projects />} />
             <Route path="new" element={<NewProject />} />

@@ -1,8 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
-import { Sidebar } from "@/components/layout/v2/Sidebar";
-import { DashboardLayout } from "@/components/layout/v2/DashboardLayout";
+import { Sidebar } from "@/components/layout/Sidebar";
+import { DashboardLayout } from "@/components/layout/DashboardLayout";
 
 vi.mock("@/lib/authClient", () => ({
   authClient: {

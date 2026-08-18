@@ -42,7 +42,7 @@ router.post(
   SourcesController.revealKey,
 );
 router.post(
-  "/:teamId",
+  "/",
   RequireVerifiedEmailMiddleware,
   ProjectsController.createProject,
 );

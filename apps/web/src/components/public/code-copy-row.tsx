@@ -1,6 +1,7 @@
 import { Check, Copy } from "lucide-react";
 import React from "react";
 import { cn } from "@/lib/utils";
+import { useCopy } from "@/components/ui/copy-button";
 
 /**
  * Code-copy row (design-system.md 9.6): `$` prompt, mono command, copy
@@ -19,17 +20,7 @@ export function CodeCopyRow({
   prompt?: string;
   className?: string;
 }) {
-  const [copied, setCopied] = React.useState(false);
-
-  const onCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(command);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // Clipboard unavailable (permissions, http): leave the row as-is.
-    }
-  };
+  const { copied, onCopy } = useCopy(command);
 
   return (
     <div

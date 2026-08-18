@@ -7,7 +7,7 @@ import type { TotalsResource } from "@prism-analytics/types";
 import { CodeCopyRow } from "@/components/public/code-copy-row";
 import { Frame } from "@/components/public/frame";
 import { useProjectsQuery } from "@/network/queries/useProjectsQuery";
-import { IconFolder, IconGlobe, IconDoc } from "@/components/layout/v2/icons";
+import { IconFolder, IconGlobe, IconDoc } from "@/components/layout/icons";
 
 const VITE_DOCS_URL: string =
   import.meta.env.VITE_DOCS_URL ?? "http://localhost:3000";

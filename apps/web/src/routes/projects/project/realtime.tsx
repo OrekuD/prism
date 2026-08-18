@@ -16,6 +16,12 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { WebSocketManager } from "@/managers/WebSocketManager";
 import { useProjectQuery } from "@/network/queries/useProjectQuery";
 import { useActiveSessionsStore } from "@/store/activeSessionsStore";
+import type { SessionResource } from "@prism-analytics/types";
+
+// Stable module-level reference: the zustand selector must never return a
+// freshly-allocated array — useSyncExternalStore would see a snapshot that
+// never stabilizes and re-render in an infinite loop.
+const EMPTY_SESSIONS: SessionResource[] = [];
 
 export function ProjectRealtime() {
   const isDarkTheme = useIsDarkTheme();
@@ -27,12 +33,15 @@ export function ProjectRealtime() {
     duration: null,
   });
   // project-scoped sessions (release review): navigating between projects
-  // never shows the previous project's live sessions
-  const sessions = useActiveSessionsStore((store) =>
-    projectQuery.data?.id
-      ? store.sessionsByProject[projectQuery.data.id] ?? []
-      : [],
+  // never shows the previous project's live sessions. Select the map (a
+  // stable reference) and derive the array outside the selector so the
+  // empty case returns the same EMPTY_SESSIONS identity every render.
+  const sessionsByProject = useActiveSessionsStore(
+    (store) => store.sessionsByProject,
   );
+  const sessions = projectQuery.data?.id
+    ? (sessionsByProject[projectQuery.data.id] ?? EMPTY_SESSIONS)
+    : EMPTY_SESSIONS;
   const mapboxToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
 
   // Mapbox-optional: the session rows render ALWAYS — a missing token

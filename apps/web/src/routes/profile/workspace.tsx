@@ -25,6 +25,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -342,19 +353,37 @@ function WorkspacePanel({ organizationId }: { organizationId: string }) {
             <LogOut className="size-4" /> Leave workspace
           </Button>
           {myMember === "owner" ? (
-            <Button
-              variant="destructive"
-              disabled={busy}
-              onClick={() => {
-                if (!window.confirm("Delete this workspace permanently? All projects, sources, and analytics are removed.")) return;
-                void run(async () => {
-                  await workspaceActions.delete(organizationId);
-                  navigate("/overview");
-                }, "Workspace deleted");
-              }}
-            >
-              <Trash2 className="size-4" /> Delete workspace
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" disabled={busy}>
+                  <Trash2 className="size-4" /> Delete workspace
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete this workspace?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    All projects, sources, and analytics are removed. This
+                    can't be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-danger text-white hover:bg-danger/90"
+                    onClick={async (event) => {
+                      event.preventDefault();
+                      await run(async () => {
+                        await workspaceActions.delete(organizationId);
+                        navigate("/overview");
+                      }, "Workspace deleted");
+                    }}
+                  >
+                    Delete workspace
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           ) : null}
         </CardContent>
       </Card>

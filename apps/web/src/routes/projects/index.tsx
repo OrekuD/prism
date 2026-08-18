@@ -1,10 +1,9 @@
 import React from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useProjectsQuery } from "@/network/queries/useProjectsQuery";
 import { useActiveWorkspace } from "@/lib/workspace";
-import { CreateNewProject } from "@/components/projects/create-new-project";
 import { Frame } from "@/components/public/frame";
-import { IconFolder } from "@/components/layout/v2/icons";
+import { IconFolder } from "@/components/layout/icons";
 
 const placeholders = Array(3).fill(null);
 
@@ -19,6 +18,7 @@ function sessionCount(project: {
 }
 
 export function Projects() {
+  const navigate = useNavigate();
   const { data: projects, isLoading, isError, refetch } = useProjectsQuery();
   const { data: activeWorkspace } = useActiveWorkspace();
   const workspaceName = (activeWorkspace as { name?: string } | null)?.name;
@@ -44,14 +44,13 @@ export function Projects() {
             workspace.
           </p>
         </div>
-        <CreateNewProject>
-          <button
-            type="button"
-            className="inline-flex h-9 items-center gap-2 rounded-[2px] bg-accent px-3.5 text-[13px] font-medium text-primary-foreground transition-colors hover:bg-accent-hover"
-          >
-            New project
-          </button>
-        </CreateNewProject>
+        <button
+          type="button"
+          onClick={() => navigate(`/${wrkSlug}/projects/new`)}
+          className="inline-flex h-9 items-center gap-2 rounded-[2px] bg-accent px-3.5 text-[13px] font-medium text-primary-foreground transition-colors hover:bg-accent-hover"
+        >
+          New project
+        </button>
       </div>
 
       <div className="mt-10 mb-3.5 flex items-baseline gap-1.5 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">

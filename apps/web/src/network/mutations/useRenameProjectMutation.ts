@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import type {
   ErrorResource,
   OkResource,
+  ProjectResource,
   RenameProjectRequest,
 } from "@prism-analytics/types";
 import type { AxiosError } from "axios";
@@ -25,8 +26,21 @@ export function useRenameProjectMutation(slug: string | undefined) {
 
   return useMutation({
     mutationFn: renameProject,
-    onSuccess: () => {
+    onSuccess: (_data, payload) => {
       toast("Project renamed");
+      // Patch the new name into the caches right away (we know the value we
+      // just sent); invalidate keeps server truth in the background.
+      const renamed = (project: ProjectResource): ProjectResource =>
+        project.id === payload.projectId
+          ? { ...project, name: payload.name }
+          : project;
+      queryClient.setQueryData<ProjectResource>(["project", slug], (project) =>
+        project ? renamed(project) : project,
+      );
+      queryClient.setQueriesData<Array<ProjectResource> | undefined>(
+        { queryKey: ["projects"] },
+        (current) => current?.map(renamed),
+      );
       queryClient.invalidateQueries({ queryKey: ["project", slug] });
       queryClient.invalidateQueries({ queryKey: ["projects"] });
     },

@@ -8,6 +8,8 @@ import {
   QueryClient,
   QueryClientProvider,
 } from "@tanstack/react-query";
+import { persistQueryClient } from "@tanstack/react-query-persist-client";
+import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { ThemeProvider } from "./components/theme-provider";
 import { Toaster } from "./components/ui/sonner";
 import { toast } from "sonner";
@@ -46,6 +48,27 @@ if (el) {
       </QueryClientProvider>
     </ThemeProvider>,
   );
+
+  // Persist the workspace/project/source queries to localStorage so a page
+  // refresh restores them instantly (sidebar dropdowns don't sit on a
+  // loading sketch). Scoped to those keys; maxAge guards staleness.
+  void persistQueryClient({
+    queryClient: client,
+    persister: createSyncStoragePersister({
+      key: "prism-query-cache",
+      storage: window.localStorage,
+    }),
+    maxAge: 1000 * 60 * 60 * 24, // 24h
+    dehydrateOptions: {
+      shouldDehydrateQuery: (query) => {
+        const key = query.queryKey[0];
+        return (
+          typeof key === "string" &&
+          ["projects", "project", "sources", "source"].includes(key)
+        );
+      },
+    },
+  });
 } else {
   throw new Error("Could not find root element");
 }

@@ -1,13 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Frame, SectionLabel } from "@/components/public/frame";
 import { DeleteProject } from "@/components/projects/delete-project";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -52,22 +45,20 @@ export function ProjectSettingsGeneral() {
 
   return (
     <div className="grid gap-6">
-      <Card>
-        <CardHeader className="gap-1">
-          <CardTitle>Project Name</CardTitle>
-          <CardDescription>
-            Identifies your Project across the Dashboard, Prism CLI, and
-            Deployment URLs.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      <Frame className="p-6">
+        <SectionLabel>Project name</SectionLabel>
+        <p className="mt-1.5 text-[13px] text-text-muted">
+          Identifies your project across the Dashboard, Prism CLI, and
+          Deployment URLs.
+        </p>
+        <div className="mt-4 flex items-center justify-between gap-4">
           {isLoading || !data ? (
-            <Skeleton className="w-full h-6" />
+            <div className="flex-1">
+              <Skeleton className="h-6 w-1/3" />
+            </div>
           ) : (
-            <p className="text-sm font-medium">{data.name}</p>
+            <p className="text-[14px] font-medium text-text">{data.name}</p>
           )}
-        </CardContent>
-        <CardFooter className="border-t px-6 py-4">
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button disabled={!data || isLoading}>Rename project</Button>
@@ -102,9 +93,7 @@ export function ProjectSettingsGeneral() {
                 <Button
                   type="button"
                   onClick={onRename}
-                  disabled={
-                    renameProjectMutation.isPending || !name.trim()
-                  }
+                  disabled={renameProjectMutation.isPending || !name.trim()}
                 >
                   {renameProjectMutation.isPending ? (
                     <Loader2 className="size-4 animate-spin" />
@@ -115,25 +104,23 @@ export function ProjectSettingsGeneral() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-        </CardFooter>
-      </Card>
-      <Card className="border-destructive">
-        <CardHeader className="gap-1">
-          <CardTitle className="text-destructive">Delete Project</CardTitle>
-          <CardDescription>Warning: Permanent Project Deletion</CardDescription>
-          <CardDescription>
-            This will irreversibly remove your Project and all associated
-            content from Prism.
-          </CardDescription>
-        </CardHeader>
-        <CardFooter className="border-t px-6 py-4">
+        </div>
+      </Frame>
+
+      <Frame destructive className="p-6">
+        <SectionLabel className="text-danger">Delete project</SectionLabel>
+        <p className="mt-1.5 text-[13px] text-text-muted">
+          This will irreversibly remove your project and all associated
+          content from Prism.
+        </p>
+        <div className="mt-4">
           <DeleteProject>
             <Button variant="destructive" disabled={!data || isLoading}>
               Delete project
             </Button>
           </DeleteProject>
-        </CardFooter>
-      </Card>
+        </div>
+      </Frame>
     </div>
   );
 }

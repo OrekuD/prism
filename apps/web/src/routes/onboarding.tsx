@@ -4,6 +4,7 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import { Frame, SectionLabel } from "@/components/public/frame";
 import { PrismMark } from "@/components/brand/prism-mark";
 import { CodeCopyRow } from "@/components/public/code-copy-row";
+import { useCopy } from "@/components/ui/copy-button";
 import { authClient } from "@/lib/authClient";
 import { waitForSession } from "@/lib/session";
 import { loadRuntimeConfig, type RuntimeConfig } from "@/lib/runtimeConfig";
@@ -116,7 +117,6 @@ export function Onboarding() {
   const [projectName, setProjectName] = React.useState("");
   const [createError, setCreateError] = React.useState<string | null>(null);
   const [isCreating, setIsCreating] = React.useState(false);
-  const [keyCopied, setKeyCopied] = React.useState(false);
   const [keyConfirmed, setKeyConfirmed] = React.useState(false);
   const [verifying, setVerifying] = React.useState(false);
   const [firstEvent, setFirstEvent] = React.useState(false);
@@ -159,15 +159,11 @@ export function Onboarding() {
     }
   };
 
-  const onCopyKey = async () => {
+  // Copy feedback is shared app-wide (icon flips to a success check).
+  const { copied: keyCopied, onCopy: onCopyKey } = useCopy(progress?.apiKey ?? "");
+  const handleCopyKey = () => {
     if (!progress?.apiKey) return;
-    try {
-      await navigator.clipboard.writeText(progress.apiKey);
-      setKeyCopied(true);
-      window.setTimeout(() => setKeyCopied(false), 1500);
-    } catch {
-      // Clipboard unavailable: the key stays visible until confirmed.
-    }
+    void onCopyKey();
   };
 
   const onVerify = React.useCallback(async () => {
@@ -473,7 +469,7 @@ export function Onboarding() {
                   </code>
                   <button
                     type="button"
-                    onClick={onCopyKey}
+                    onClick={handleCopyKey}
                     aria-label={keyCopied ? "Copied" : "Copy project key"}
                     aria-live="polite"
                     className="grid w-9 shrink-0 place-items-center border-l border-border text-text-muted transition-colors duration-150 hover:bg-surface-hover hover:text-text"

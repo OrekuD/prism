@@ -83,7 +83,7 @@ export function WorkspaceSwitcher() {
           <CaretSortIcon />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-[200px]">
+      <DropdownMenuContent align="start" side="bottom" sideOffset={8} className="w-[200px]">
         <DropdownMenuLabel>Workspaces</DropdownMenuLabel>
         {list.map((entry) => (
           <DropdownMenuItem

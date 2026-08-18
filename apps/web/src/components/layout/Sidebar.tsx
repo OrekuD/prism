@@ -145,7 +145,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
               <I.IconChevronDown />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" sideOffset={6} className="w-(--radix-dropdown-menu-trigger-width)">
+          <DropdownMenuContent align="start" side="bottom" sideOffset={8} className="w-(--radix-dropdown-menu-trigger-width)">
             <DropdownMenuLabel>Workspaces</DropdownMenuLabel>
             {allWorkspaces.length === 0 ? (
               <div className="px-2 py-1.5 text-[13px] text-text-subtle">
@@ -211,10 +211,14 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
                 <I.IconFolder />
                 <span className="flex-1 truncate text-left">
                   {projectsQuery.isLoading ? (
-                    <span
-                      className="inline-block h-[13px] w-20 animate-pulse rounded-[2px] bg-surface-raised"
-                      aria-hidden="true"
-                    />
+                    slug ? (
+                      project?.name ?? slug
+                    ) : (
+                      <span
+                        className="inline-block h-[13px] w-20 animate-pulse rounded-[2px] bg-surface-raised"
+                        aria-hidden="true"
+                      />
+                    )
                   ) : (
                     project?.name ?? workspaceName ?? "Select a project"
                   )}
@@ -222,7 +226,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
                 <I.IconChevronDown />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" sideOffset={6} className="w-(--radix-dropdown-menu-trigger-width)">
+            <DropdownMenuContent align="start" side="bottom" sideOffset={8} className="w-(--radix-dropdown-menu-trigger-width)">
               <DropdownMenuLabel>Projects</DropdownMenuLabel>
               {projects.length === 0 ? (
                 <div className="px-2 py-1.5 text-[13px] text-text-subtle">
@@ -245,8 +249,8 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
               )}
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                onClick={() => navigate(`/${wrkSlug}/projects/new`)}
                 className="gap-2"
+                onClick={() => navigate(`/${wrkSlug}/projects/new`)}
               >
                 <Plus className="size-4" />
                 <span className="flex-1">New project</span>
@@ -269,7 +273,9 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
           </div>
         ) : null}
 
-        <div className="flex flex-col gap-0.5">
+        {/* Analyze/Diagnose/Ship groups are commented out until their
+            features exist. */}
+        {/* <div className="flex flex-col gap-0.5">
           <div className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
             Analyze <span className="ml-auto rounded-[2px] border border-border px-[5px] py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-text-subtle">soon</span>
           </div>
@@ -286,7 +292,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
             Ship <span className="ml-auto rounded-[2px] border border-border px-[5px] py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-text-subtle">soon</span>
           </div>
           {SOON_SHIP.map((item) => <SoonLink key={item} label={item} />)}
-        </div>
+        </div> */}
 
         {slug ? (
           <div className="flex flex-col gap-0.5">
@@ -318,7 +324,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
               <I.IconChevronDown className="size-3" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" sideOffset={6} className="w-(--radix-dropdown-menu-trigger-width)">
+          <DropdownMenuContent align="start" side="bottom" sideOffset={8} className="w-(--radix-dropdown-menu-trigger-width)">
             <DropdownMenuLabel>Theme</DropdownMenuLabel>
             {themeOptions.map((option) => {
               const Icon = option.Icon;
@@ -373,7 +379,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
                 <I.IconChevronDown className="size-3.5 shrink-0 text-text-subtle" />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" sideOffset={6} className="w-(--radix-dropdown-menu-trigger-width)">
+            <DropdownMenuContent align="start" side="bottom" sideOffset={8} className="w-(--radix-dropdown-menu-trigger-width)">
               <DropdownMenuLabel className="font-normal">Account</DropdownMenuLabel>
               <Link to="/account/general">
                 <DropdownMenuItem className="gap-2">

@@ -5,6 +5,13 @@ import type { ErrorResource, OkResource } from "@prism-analytics/types";
 import type { AxiosError } from "axios";
 import type { SourceResource } from "@/network/queries/useSourcesQuery";
 
+/**
+ * Cache-first mutations: when the server returns the created/updated
+ * resource it is written straight into the source list/detail queries, so
+ * the UI reflects the change immediately. Invalidations still run in the
+ * background to keep server truth.
+ */
+
 export function useCreateSourceMutation(slug: string | undefined) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -19,9 +26,13 @@ export function useCreateSourceMutation(slug: string | undefined) {
       );
       return response.data;
     },
-    onSuccess: () => {
+    onSuccess: (created: SourceResource) => {
       toast.success("Source created");
-      queryClient.invalidateQueries({ queryKey: ["sources", slug] });
+      // The response IS the new source — append it to the list now.
+      queryClient.setQueryData<SourceResource[]>(["sources", slug], (current) =>
+        current ? [...current, created] : current,
+      );
+      void queryClient.invalidateQueries({ queryKey: ["sources", slug] });
     },
     onError: (error: AxiosError<ErrorResource>) => {
       const code = error.response?.data.errors?.[0];
@@ -51,9 +62,19 @@ export function useUpdateSourceMutation(slug: string | undefined) {
       );
       return response.data;
     },
-    onSuccess: () => {
+    onSuccess: (updated: SourceResource, payload) => {
       toast.success("Source updated");
-      queryClient.invalidateQueries({ queryKey: ["sources", slug] });
+      // The response is the updated source — swap it into both caches.
+      queryClient.setQueryData<SourceResource[]>(["sources", slug], (list) =>
+        list?.map((source) =>
+          source.id === payload.sourceId ? updated : source,
+        ),
+      );
+      queryClient.setQueryData<SourceResource>(
+        ["source", slug, payload.sourceId],
+        updated,
+      );
+      void queryClient.invalidateQueries({ queryKey: ["sources", slug] });
     },
     onError: () => toast.error("Something went wrong"),
   });
@@ -68,9 +89,14 @@ export function useDeleteSourceMutation(slug: string | undefined) {
       );
       return response.data;
     },
-    onSuccess: () => {
+    onSuccess: (_data, sourceId) => {
       toast.success("Source deleted");
-      queryClient.invalidateQueries({ queryKey: ["sources", slug] });
+      // Drop it from the list and detail caches immediately.
+      queryClient.setQueryData<SourceResource[]>(["sources", slug], (list) =>
+        list?.filter((source) => source.id !== sourceId),
+      );
+      queryClient.removeQueries({ queryKey: ["source", slug, sourceId] });
+      void queryClient.invalidateQueries({ queryKey: ["sources", slug] });
     },
     onError: () => toast.error("Something went wrong"),
   });
@@ -84,12 +110,18 @@ export function useCreateKeyMutation(slug: string | undefined) {
         name: string;
         keyType: "publishable" | "secret";
         value: string;
-      }>(`/projects/${slug}/sources/${payload.sourceId}/keys`, payload);
+      }>(
+        `/projects/${slug}/sources/${payload.sourceId}/keys`,
+        // The schema is strict: sourceId lives in the URL path, not the body.
+        { name: payload.name },
+      );
       return response.data;
     },
     onSuccess: () => {
       toast.success("Key created");
-      queryClient.invalidateQueries({ queryKey: ["sources", slug] });
+      // The create response has no key id, so a full key row can't be
+      // appended safely — refetch the source instead.
+      void queryClient.invalidateQueries({ queryKey: ["sources", slug] });
     },
     onError: () => toast.error("Something went wrong"),
   });
@@ -104,9 +136,25 @@ export function useRevokeKeyMutation(slug: string | undefined) {
       );
       return response.data;
     },
-    onSuccess: () => {
+    onSuccess: (_data, payload) => {
       toast.success("Key revoked");
-      queryClient.invalidateQueries({ queryKey: ["sources", slug] });
+      // Mark the key revoked in both caches right away.
+      const revokeInSource = (source: SourceResource): SourceResource => ({
+        ...source,
+        keys: source.keys.map((key) =>
+          key.id === payload.keyId ? { ...key, status: "revoked" as const } : key,
+        ),
+      });
+      queryClient.setQueryData<SourceResource>(
+        ["source", slug, payload.sourceId],
+        (source) => (source ? revokeInSource(source) : source),
+      );
+      queryClient.setQueryData<SourceResource[]>(["sources", slug], (list) =>
+        list?.map((source) =>
+          source.id === payload.sourceId ? revokeInSource(source) : source,
+        ),
+      );
+      void queryClient.invalidateQueries({ queryKey: ["sources", slug] });
     },
     onError: () => toast.error("Something went wrong"),
   });

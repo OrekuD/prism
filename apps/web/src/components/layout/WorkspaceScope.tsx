@@ -1,5 +1,5 @@
 import React from "react";
-import { Navigate, Outlet, useNavigate, useParams } from "react-router-dom";
+import { Navigate, Outlet, useParams } from "react-router-dom";
 import {
   useActiveWorkspace,
   useWorkspaces,
@@ -59,19 +59,23 @@ export function WorkspaceHome() {
  */
 export function WorkspaceScope() {
   const { wrkSlug } = useParams();
-  const navigate = useNavigate();
-  const { data: workspaces } = useWorkspaces();
-  const { data: active } = useActiveWorkspace();
+  const { data: workspaces, isPending: workspacesPending } = useWorkspaces();
+  const { data: active, isPending: activePending } = useActiveWorkspace();
   const list = (workspaces ?? []) as Array<{ id: string; slug: string }>;
   const workspace = list.find((w) => w.slug === wrkSlug);
   const activeId = (active as { id?: string } | null)?.id;
 
   React.useEffect(() => {
+    // On a fresh page load (refresh) the session's active workspace is
+    // briefly pending — deciding here would kick the user off their current
+    // page. Wait for both the list and the active workspace to resolve.
+    if (workspacesPending || activePending) return;
     if (!workspace || activeId === workspace.id) return;
-    // URL points at a workspace the session hasn't adopted yet → adopt it.
+    // The URL points at a workspace the session hasn't adopted yet → adopt
+    // it in place. The URL is the source of truth, so we stay on the
+    // current path (no redirect to overview).
     void workspaceActions.setActive(workspace.id).catch(() => {});
-    navigate(`/${workspace.slug}/overview`, { replace: true });
-  }, [workspace?.id, activeId]);
+  }, [workspace?.id, activeId, workspacesPending, activePending]);
 
   // While workspaces are still loading, render immediately — the pages and
   // sidebar show their own skeletons. Only redirect a definitively-unknown

@@ -1,7 +1,6 @@
 import React from "react";
 import { Link, useParams } from "react-router-dom";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Frame } from "@/components/public/frame";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -52,7 +51,8 @@ function CreateSourceDialog({ slug }: { slug: string }) {
   const createMutation = useCreateSourceMutation(slug);
   const admin = useActiveMember();
 
-  const canManage = admin?.data?.role === "owner" || admin?.data?.role === "admin";
+  const canManage =
+    admin?.data?.role === "owner" || admin?.data?.role === "admin";
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -65,17 +65,20 @@ function CreateSourceDialog({ slug }: { slug: string }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button disabled={!canManage} title={canManage ? undefined : "Members cannot create sources"}>
-          <Plus className="size-4" /> New Source
+        <Button
+          disabled={!canManage}
+          title={canManage ? undefined : "Members cannot create sources"}
+        >
+          <Plus className="size-4" /> New Sources
         </Button>
       </DialogTrigger>
       <DialogContent className="w-[90vw] md:w-full rounded-lg">
         <DialogHeader>
           <DialogTitle>Create Source</DialogTitle>
           <DialogDescription>
-            A source is one installation that sends data to this project —
-            a web app, iOS app, Android app, React Native app, or server API.
-            Its initial ingestion key is created with it and shown once.
+            A source is one installation that sends data to this project — a web
+            app, iOS app, Android app, React Native app, or server API. Its
+            initial ingestion key is created with it and shown once.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-4">
@@ -104,10 +107,15 @@ function CreateSourceDialog({ slug }: { slug: string }) {
           </div>
           <DialogFooter>
             <DialogClose asChild>
-              <Button type="button" variant="outline">Cancel</Button>
+              <Button type="button" variant="outline">
+                Cancel
+              </Button>
             </DialogClose>
             <Button type="submit" disabled={createMutation.isPending}>
-              {createMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : "Create"}
+              {createMutation.isPending && (
+                <Loader2 className="size-4 animate-spin" />
+              )}
+              Create
             </Button>
           </DialogFooter>
         </form>
@@ -136,43 +144,62 @@ export function ProjectSources() {
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {[0, 1].map((i) => (
-            <Card key={i}>
-              <CardHeader><Skeleton className="h-[18px] w-1/3" /></CardHeader>
-              <CardContent><Skeleton className="h-[60px]" /></CardContent>
-            </Card>
+            <Frame key={i} className="p-5">
+              <Skeleton className="h-[18px] w-1/3" />
+              <Skeleton className="mt-3 h-[60px]" />
+            </Frame>
           ))}
         </div>
       ) : isError ? (
-        <ErrorState title="Could not load sources" description="Prism could not reach the API." onRetry={() => refetch()} />
+        <ErrorState
+          title="Could not load sources"
+          description="Prism could not reach the API."
+          onRetry={() => refetch()}
+        />
       ) : data && data.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {data.map((source) => (
-            <Link to={`/${wrkSlug}/projects/${slug}/sources/${source.id}`} key={source.id}>
-              <Card className="hover:border-accent transition-colors">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-md">{source.name}</CardTitle>
-                    <Badge variant="outline">{PLATFORM_LABELS[source.platform] ?? source.platform}</Badge>
+          {data.map((source) => {
+            const activeKeyCount = source.keys.filter(
+              (key) => key.status === "active"
+            ).length;
+            return (
+              <Link
+                to={`/${wrkSlug}/projects/${slug}/sources/${source.id}`}
+                key={source.id}
+                className="block h-full"
+              >
+                <Frame className="h-full p-5 transition-colors hover:border-border-strong hover:bg-surface-hover">
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="text-[15px] font-semibold tracking-[-0.01em] text-text">
+                      {source.name}
+                    </h3>
+                    <span className="shrink-0 rounded-[2px] border border-border px-[5px] py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-text-subtle">
+                      {PLATFORM_LABELS[source.platform] ?? source.platform}
+                    </span>
                   </div>
-                  <CardDescription>
+                  <p className="mt-1.5 text-[13px] text-text-muted">
                     {formatCount(source.telemetry.events)} events
                     {source.telemetry.lastReceivedAt
                       ? ` · last ${new Date(source.telemetry.lastReceivedAt).toLocaleString()}`
                       : " · no telemetry yet"}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <span>
-                    {source.keys.filter((key) => key.status === "active").length} active key
-                    {source.keys.filter((key) => key.status === "active").length === 1 ? "" : "s"}
-                  </span>
-                  {source.platform === "web" && source.allowedOrigins.length > 0 && (
-                    <span>· {source.allowedOrigins.length} allowed origin{source.allowedOrigins.length === 1 ? "" : "s"}</span>
-                  )}
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
+                  </p>
+                  <div className="mt-4 flex items-center gap-2 border-t border-border pt-3 text-[12px] text-text-subtle">
+                    <span>
+                      {activeKeyCount} active key
+                      {activeKeyCount === 1 ? "" : "s"}
+                    </span>
+                    {source.platform === "web" &&
+                      source.allowedOrigins.length > 0 && (
+                        <span>
+                          · {source.allowedOrigins.length} allowed origin
+                          {source.allowedOrigins.length === 1 ? "" : "s"}
+                        </span>
+                      )}
+                  </div>
+                </Frame>
+              </Link>
+            );
+          })}
         </div>
       ) : (
         <EmptyState

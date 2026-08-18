@@ -41,15 +41,19 @@ export function useBreadcrumbs(): Crumb[] {
     crumbs.push({ label: "Settings" });
   } else if (section === "projects") {
     crumbs.push({ label: "Projects" });
-    const projectSlug = parts[3];
-    const project = projectsQuery.data?.find((p) => p.slug === projectSlug);
-    if (projectSlug) {
-      crumbs.push({
-        label: project?.name ?? projectSlug,
-        href: `/${parts[0]}/projects/${projectSlug}`,
-      });
-      const sub = parts[4];
-      if (sub) crumbs.push({ label: cap(sub) });
+    if (parts[2] === "new") {
+      crumbs.push({ label: "New" });
+    } else {
+      const projectSlug = parts[3];
+      const project = projectsQuery.data?.find((p) => p.slug === projectSlug);
+      if (projectSlug) {
+        crumbs.push({
+          label: project?.name ?? projectSlug,
+          href: `/${parts[0]}/projects/${projectSlug}`,
+        });
+        const sub = parts[4];
+        if (sub) crumbs.push({ label: cap(sub) });
+      }
     }
   } else {
     crumbs.push({ label: workspace });
