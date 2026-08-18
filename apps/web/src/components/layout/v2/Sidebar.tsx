@@ -62,7 +62,7 @@ export function Sidebar() {
           <div className="sb-label">Workspace</div>
           <Active to="/overview" label="Workspace overview" icon={<I.IconGrid />} end />
           <Active to="/projects" label="Projects" icon={<I.IconFolder />} />
-          <Active to="/account/workspace" label="Members" icon={<I.IconUsers />} />
+          <Active to="/members" label="Members" icon={<I.IconUsers />} />
         </div>
 
         <div className="sb-group">

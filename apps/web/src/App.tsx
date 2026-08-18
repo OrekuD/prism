@@ -104,6 +104,9 @@ const Onboarding = lazy(() =>
 const Overview = lazy(() =>
   import("./routes/overview").then((m) => ({ default: m.Overview })),
 );
+const MembersPage = lazy(() =>
+  import("./routes/members").then((m) => ({ default: m.MembersPage })),
+);
 
 import { Index } from "./routes/index";
 import { LogIn } from "./routes/auth/log-in";
@@ -144,6 +147,7 @@ const router = createBrowserRouter(
       <Route path="/" element={<RootLayout />}>
         <Route path="onboarding" element={<Onboarding />} />
         <Route path="overview" element={<Overview />} />
+        <Route path="members" element={<MembersPage />} />
         <Route path="projects">
           <Route path="" element={<Projects />} />
           <Route path="new" element={<NewProject />} />
