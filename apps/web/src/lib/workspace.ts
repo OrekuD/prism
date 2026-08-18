@@ -17,6 +17,7 @@ export type Workspace = {
   slug: string;
   logo: string | null;
   createdAt: Date;
+  metadata?: Record<string, unknown> | null;
 };
 
 /** All workspaces the signed-in user belongs to. */
@@ -58,6 +59,11 @@ export const workspaceActions = {
     authClient.organization.setActive({ organizationId }),
   create: (name: string) =>
     authClient.organization.create({ name, slug: newWorkspaceSlug() }),
+  update: (data: { organizationId: string; name: string }) =>
+    authClient.organization.update({
+      organizationId: data.organizationId,
+      data: { name: data.name },
+    }),
   delete: (organizationId: string) =>
     authClient.organization.delete({ organizationId }),
   leave: (organizationId: string) =>

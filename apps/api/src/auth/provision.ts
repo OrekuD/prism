@@ -21,7 +21,7 @@ type ProvisionDb =
   | NodePgDatabase
   | NeonDatabase<Record<string, never>>;
 
-type AuthLike = { api: { createOrganization: (args: { body: { name: string; slug: string; userId: string } }) => Promise<unknown> } };
+type AuthLike = { api: { createOrganization: (args: { body: { name: string; slug: string; userId: string; metadata?: Record<string, unknown> } }) => Promise<unknown> } };
 
 function splitName(name: string, email: string) {
   const parts = name.trim().split(/\s+/);
@@ -65,6 +65,8 @@ export async function createPersonalWorkspace(
         name: `${user.name}'s workspace`,
         slug: newWorkspaceSlug(),
         userId: user.id,
+        // This is the user's default (undeletable) personal workspace.
+        metadata: { default: true },
       },
     });
   } catch (error) {

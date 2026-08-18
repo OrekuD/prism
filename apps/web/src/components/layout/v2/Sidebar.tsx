@@ -168,6 +168,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
           <Active to="/overview" label="Workspace overview" icon={<I.IconGrid />} end />
           <Active to="/projects" label="Projects" icon={<I.IconFolder />} />
           <Active to="/members" label="Members" icon={<I.IconUsers />} />
+          <Active to="/members/settings" label="Workspace settings" icon={<I.IconSettings />} />
         </div>
 
         <div className="flex flex-col gap-0.5">

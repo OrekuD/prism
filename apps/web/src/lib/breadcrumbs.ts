@@ -34,7 +34,9 @@ export function useBreadcrumbs(): Crumb[] {
     }
   } else if (parts[0] === "members") {
     crumbs.push({ label: workspace, href: "/overview" });
-    crumbs.push({ label: "Members" });
+    crumbs.push({
+      label: parts[1] === "settings" ? "Settings" : "Members",
+    });
   } else if (parts[0] === "overview") {
     crumbs.push({ label: workspace, href: "/overview" });
     crumbs.push({ label: "Overview" });

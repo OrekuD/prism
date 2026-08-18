@@ -107,6 +107,11 @@ const Overview = lazy(() =>
 const MembersPage = lazy(() =>
   import("./routes/members").then((m) => ({ default: m.MembersPage })),
 );
+const WorkspaceSettingsPage = lazy(() =>
+  import("./routes/workspace-settings").then((m) => ({
+    default: m.WorkspaceSettingsPage,
+  })),
+);
 
 import { Index } from "./routes/index";
 import { LogIn } from "./routes/auth/log-in";
@@ -148,6 +153,7 @@ const router = createBrowserRouter(
         <Route path="onboarding" element={<Onboarding />} />
         <Route path="overview" element={<Overview />} />
         <Route path="members" element={<MembersPage />} />
+        <Route path="members/settings" element={<WorkspaceSettingsPage />} />
         <Route path="projects">
           <Route path="" element={<Projects />} />
           <Route path="new" element={<NewProject />} />
