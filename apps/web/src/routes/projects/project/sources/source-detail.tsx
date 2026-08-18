@@ -94,7 +94,7 @@ function CopyButton({ value }: { value: string }) {
 }
 
 export function SourceDetail() {
-  const { slug, sourceId } = useParams<{ slug: string; sourceId: string }>();
+  const { slug, sourceId, wrkSlug } = useParams<{ slug: string; sourceId: string; wrkSlug: string }>();
   const navigate = useNavigate();
   const { data, isLoading, isError, refetch } = useSourceQuery(slug, sourceId);
   const createKey = useCreateKeyMutation(slug);
@@ -217,7 +217,7 @@ export function SourceDetail() {
               onClick={async () => {
                 if (!window.confirm("Delete this source? Its keys are revoked and telemetry stops.")) return;
                 await deleteSource.mutateAsync(data.id);
-                navigate(`/projects/${slug}/sources`);
+                navigate(`/${wrkSlug}/projects/${slug}/sources`);
               }}
             >
               <Trash2 className="size-4" />

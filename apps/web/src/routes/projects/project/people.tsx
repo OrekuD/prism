@@ -49,7 +49,7 @@ function RedactedTraits({ traits }: { traits: Record<string, unknown> }) {
 }
 
 export function ProjectPeople() {
-  const { slug } = useParams<{ slug: string }>();
+  const { slug, wrkSlug } = useParams<{ slug: string; wrkSlug: string }>();
   const [cursor, setCursor] = React.useState<string | null>(null);
   const [search, setSearch] = React.useState("");
   const [appliedSearch, setAppliedSearch] = React.useState("");
@@ -144,7 +144,7 @@ export function ProjectPeople() {
                     >
                       <td className="px-4 py-3">
                         <Link
-                          to={`/projects/${slug}/people/${encodeURIComponent(person.personId)}`}
+                          to={`/${wrkSlug}/projects/${slug}/people/${encodeURIComponent(person.personId)}`}
                           className="font-mono text-[13px] text-link hover:underline"
                         >
                           {shortId(person.personId)}

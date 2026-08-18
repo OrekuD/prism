@@ -10,6 +10,12 @@ import {
 } from "react-router-dom";
 import { RootLayout } from "./components/layout/root-layout";
 import { PublicLayout } from "./components/layout/public-layout";
+import {
+  WorkspaceScope,
+  WorkspaceHome,
+  RedirectToWs,
+  RedirectToProjectWs,
+} from "./components/layout/v2/WorkspaceScope";
 import { lazy } from "react";
 
 /**
@@ -151,23 +157,47 @@ const router = createBrowserRouter(
           only re-render. */}
       <Route path="/" element={<RootLayout />}>
         <Route path="onboarding" element={<Onboarding />} />
-        <Route path="overview" element={<Overview />} />
-        <Route path="members" element={<MembersPage />} />
-        <Route path="members/settings" element={<WorkspaceSettingsPage />} />
-        <Route path="projects">
-          <Route path="" element={<Projects />} />
-          <Route path="new" element={<NewProject />} />
-          <Route path=":slug" element={<ProjectLayout />}>
-            <Route path="" element={<ProjectSummary />} />
-            <Route path="events" element={<ProjectEvents />} />
-            <Route path="realtime" element={<ProjectRealtime />} />
-            <Route path="people" element={<ProjectPeople />} />
-            <Route path="people/:personId" element={<PersonDetail />} />
-            <Route path="sources" element={<ProjectSources />} />
-            <Route path="sources/:sourceId" element={<SourceDetail />} />
-            <Route path="settings" element={<ProjectSettingsLayout />}>
-              <Route path="" element={<Navigate to="general" />} />
-              <Route path="general" element={<ProjectSettingsGeneral />} />
+        {/* Legacy vanity home (and the login redirect target) → scoped. */}
+        <Route path="overview" element={<WorkspaceHome />} />
+        {["projects", "members"].map((seg) => (
+          <Route
+            key={seg}
+            path={seg}
+            element={<RedirectToWs to={`/${seg}`} />}
+          />
+        ))}
+        <Route
+          path="settings"
+          element={<RedirectToWs to="/settings" />}
+        />
+        <Route
+          path="members/settings"
+          element={<RedirectToWs to="/settings" />}
+        />
+        {/* Legacy project deep links → scoped. */}
+        <Route path="projects/:slug/*" element={<RedirectToProjectWs />} />
+        <Route path="members/:slug/*" element={<RedirectToProjectWs />} />
+
+        {/* Workspace-scoped product routes. */}
+        <Route path=":wrkSlug" element={<WorkspaceScope />}>
+          <Route path="overview" element={<Overview />} />
+          <Route path="members" element={<MembersPage />} />
+          <Route path="settings" element={<WorkspaceSettingsPage />} />
+          <Route path="projects">
+            <Route path="" element={<Projects />} />
+            <Route path="new" element={<NewProject />} />
+            <Route path=":slug" element={<ProjectLayout />}>
+              <Route path="" element={<ProjectSummary />} />
+              <Route path="events" element={<ProjectEvents />} />
+              <Route path="realtime" element={<ProjectRealtime />} />
+              <Route path="people" element={<ProjectPeople />} />
+              <Route path="people/:personId" element={<PersonDetail />} />
+              <Route path="sources" element={<ProjectSources />} />
+              <Route path="sources/:sourceId" element={<SourceDetail />} />
+              <Route path="settings" element={<ProjectSettingsLayout />}>
+                <Route path="" element={<Navigate to="general" />} />
+                <Route path="general" element={<ProjectSettingsGeneral />} />
+              </Route>
             </Route>
           </Route>
         </Route>

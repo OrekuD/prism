@@ -72,10 +72,16 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
   const { data: workspaces } = useWorkspaces();
   const projectsQuery = useProjectsQuery();
 
-  const slug = pathname.split("/")[2];
+  const wrkSlug = (activeWorkspace as { slug?: string } | null)?.slug ?? "";
+  const pathSegments = pathname.split("/");
+  const slug = pathSegments[2] === "projects" ? pathSegments[3] : undefined;
   const project = projectsQuery.data?.find((entry) => entry.slug === slug);
   const workspaceName = (activeWorkspace as { name?: string } | null)?.name;
-  const allWorkspaces = (workspaces ?? []) as Array<{ id: string; name: string }>;
+  const allWorkspaces = (workspaces ?? []) as Array<{
+    id: string;
+    name: string;
+    slug: string;
+  }>;
   const activeWorkspaceId = (activeWorkspace as { id?: string } | null)?.id;
   const [newWorkspaceOpen, setNewWorkspaceOpen] = React.useState(false);
   const projects = (projectsQuery.data ?? []) as Array<{ name: string; slug: string }>;
@@ -99,7 +105,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
       )}
     >
       <div className="flex items-center px-3 pb-2.5 pt-3.5">
-        <Link to="/overview" aria-label="Prism home" className="inline-flex items-center gap-2.5 rounded-[2px] transition-opacity hover:opacity-90">
+        <Link to={`/${wrkSlug}/overview`} aria-label="Prism home" className="inline-flex items-center gap-2.5 rounded-[2px] transition-opacity hover:opacity-90">
           <PrismLogo size={22} variant="monochrome" className="text-text" />
         </Link>
       </div>
@@ -133,7 +139,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
                   onClick={() => {
                     if (ws.id !== activeWorkspaceId) {
                       void workspaceActions.setActive(ws.id);
-                      navigate("/overview");
+                      navigate(`/${ws.slug}/overview`);
                     }
                   }}
                 >
@@ -165,10 +171,10 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
           <div className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
             Workspace
           </div>
-          <Active to="/overview" label="Workspace overview" icon={<I.IconGrid />} end />
-          <Active to="/projects" label="Projects" icon={<I.IconFolder />} />
-          <Active to="/members" label="Members" icon={<I.IconUsers />} />
-          <Active to="/members/settings" label="Workspace settings" icon={<I.IconSettings />} />
+          <Active to={`/${wrkSlug}/overview`} label="Workspace overview" icon={<I.IconGrid />} end />
+          <Active to={`/${wrkSlug}/projects`} label="Projects" icon={<I.IconFolder />} />
+          <Active to={`/${wrkSlug}/members`} label="Members" icon={<I.IconUsers />} />
+          <Active to={`/${wrkSlug}/settings`} label="Settings" icon={<I.IconSettings />} />
         </div>
 
         <div className="flex flex-col gap-0.5">
@@ -199,7 +205,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
                 projects.map((entry) => (
                   <DropdownMenuItem
                     key={entry.slug}
-                    onClick={() => navigate(`/projects/${entry.slug}`)}
+                    onClick={() => navigate(`/${wrkSlug}/projects/${entry.slug}`)}
                     className="gap-2"
                   >
                     <I.IconFolder />
@@ -212,7 +218,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
               )}
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                onClick={() => navigate("/projects/new")}
+                onClick={() => navigate(`/${wrkSlug}/projects/new`)}
                 className="gap-2"
               >
                 <Plus className="size-4" />
@@ -221,7 +227,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
             </DropdownMenuContent>
           </DropdownMenu>
           {project ? (
-            <Active to={`/projects/${project.slug}`} end label="Overview" icon={<I.IconChart />} />
+            <Active to={`/${wrkSlug}/projects/${project.slug}`} end label="Overview" icon={<I.IconChart />} />
           ) : null}
         </div>
 
@@ -230,9 +236,9 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
             <div className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
               Data
             </div>
-            <Active to={`/projects/${slug}/events`} label="Events" icon={<I.IconBolt />} />
-            <Active to={`/projects/${slug}/people`} label="People" icon={<I.IconPerson />} />
-            <Active to={`/projects/${slug}/realtime`} label="Live" icon={<I.IconGlobe />} />
+            <Active to={`/${wrkSlug}/projects/${slug}/events`} label="Events" icon={<I.IconBolt />} />
+            <Active to={`/${wrkSlug}/projects/${slug}/people`} label="People" icon={<I.IconPerson />} />
+            <Active to={`/${wrkSlug}/projects/${slug}/realtime`} label="Live" icon={<I.IconGlobe />} />
           </div>
         ) : null}
 
@@ -260,8 +266,8 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
             <div className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
               Configure
             </div>
-            <Active to={`/projects/${slug}/sources`} label="Sources" icon={<I.IconGlobe />} />
-            <Active to={`/projects/${slug}/settings`} label="Settings" icon={<I.IconSettings />} />
+            <Active to={`/${wrkSlug}/projects/${slug}/sources`} label="Sources" icon={<I.IconGlobe />} />
+            <Active to={`/${wrkSlug}/projects/${slug}/settings`} label="Settings" icon={<I.IconSettings />} />
           </div>
         ) : null}
       </nav>

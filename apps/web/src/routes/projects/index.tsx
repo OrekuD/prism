@@ -1,5 +1,5 @@
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useProjectsQuery } from "@/network/queries/useProjectsQuery";
 import { useActiveWorkspace } from "@/lib/workspace";
 import { CreateNewProject } from "@/components/projects/create-new-project";
@@ -22,6 +22,7 @@ export function Projects() {
   const { data: projects, isLoading, isError, refetch } = useProjectsQuery();
   const { data: activeWorkspace } = useActiveWorkspace();
   const workspaceName = (activeWorkspace as { name?: string } | null)?.name;
+  const { wrkSlug } = useParams<{ wrkSlug: string }>();
 
   return (
     <>
@@ -93,7 +94,7 @@ export function Projects() {
                 className="flex min-h-[128px] flex-col gap-3.5 p-5 transition-colors hover:bg-surface-hover hover:border-border-strong"
               >
                 <Link
-                  to={`/projects/${project.slug}`}
+                  to={`/${wrkSlug}/projects/${project.slug}`}
                   className="flex h-full flex-col gap-3.5"
                 >
                   <span className="grid size-9 place-items-center rounded-[2px] border border-border bg-surface-raised">

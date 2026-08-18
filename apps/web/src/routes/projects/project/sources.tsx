@@ -117,7 +117,7 @@ function CreateSourceDialog({ slug }: { slug: string }) {
 }
 
 export function ProjectSources() {
-  const { slug } = useParams<{ slug: string }>();
+  const { slug, wrkSlug } = useParams<{ slug: string; wrkSlug: string }>();
   const { data, isLoading, isError, refetch } = useSourcesQuery(slug);
 
   return (
@@ -147,7 +147,7 @@ export function ProjectSources() {
       ) : data && data.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {data.map((source) => (
-            <Link to={`/projects/${slug}/sources/${source.id}`} key={source.id}>
+            <Link to={`/${wrkSlug}/projects/${slug}/sources/${source.id}`} key={source.id}>
               <Card className="hover:border-accent transition-colors">
                 <CardHeader>
                   <div className="flex items-center justify-between">

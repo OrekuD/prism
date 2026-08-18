@@ -27,7 +27,7 @@ function shortId(id: string): string {
 }
 
 export function PersonDetail() {
-  const { slug, personId } = useParams<{ slug: string; personId: string }>();
+  const { slug, personId, wrkSlug } = useParams<{ slug: string; personId: string; wrkSlug: string }>();
   const navigate = useNavigate();
   const { data, isLoading, isError, refetch } = usePersonQuery(slug, personId);
   const activity = usePersonActivityQuery(slug, personId);
@@ -62,7 +62,7 @@ export function PersonDetail() {
     setDeleteError(null);
     try {
       await axiosInstance.delete(`/projects/${slug}/people/${personId}?confirm=true`);
-      navigate(`/projects/${slug}/people`);
+      navigate(`/${wrkSlug}/projects/${slug}/people`);
     } catch {
       setDeleteError("Deletion failed. Try again.");
       setDeleting(false);

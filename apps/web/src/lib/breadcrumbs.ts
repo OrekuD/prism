@@ -16,36 +16,41 @@ export function useBreadcrumbs(): Crumb[] {
 
   const workspace =
     (activeWorkspace as { name?: string } | null)?.name ?? "Workspace";
+  const wrkSlug =
+    (activeWorkspace as { slug?: string } | null)?.slug ?? "";
   const parts = pathname.split("/").filter(Boolean);
   const crumbs: Crumb[] = [];
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-  if (parts[0] === "projects") {
-    const slug = parts[2];
-    const project = projectsQuery.data?.find((p) => p.slug === slug);
-    crumbs.push({ label: workspace, href: "/overview" });
-    if (!slug) {
-      crumbs.push({ label: "Projects" });
-    } else {
-      crumbs.push({ label: project?.name ?? slug, href: `/projects/${slug}` });
-      const section = parts[3];
-      if (section) {
-        crumbs.push({ label: section.charAt(0).toUpperCase() + section.slice(1) });
-      }
-    }
-  } else if (parts[0] === "members") {
-    crumbs.push({ label: workspace, href: "/overview" });
-    crumbs.push({
-      label: parts[1] === "settings" ? "Settings" : "Members",
-    });
-  } else if (parts[0] === "overview") {
-    crumbs.push({ label: workspace, href: "/overview" });
-    crumbs.push({ label: "Overview" });
-  } else if (parts[0] === "account") {
-    crumbs.push({ label: workspace, href: "/overview" });
+  if (parts[0] === "account") {
+    crumbs.push({ label: workspace, href: `/${wrkSlug}/overview` });
     crumbs.push({ label: "Account", href: "/account/general" });
-    crumbs.push({
-      label: parts[1] ? parts[1].charAt(0).toUpperCase() + parts[1].slice(1) : "General",
-    });
+    crumbs.push({ label: parts[1] ? cap(parts[1]) : "General" });
+    return crumbs;
+  }
+
+  // Workspace-scoped pages: parts[0] is the workspace slug.
+  crumbs.push({ label: workspace, href: `/${wrkSlug}/overview` });
+  const section = parts[1];
+
+  if (!section || section === "overview") {
+    crumbs.push({ label: "Overview" });
+  } else if (section === "members") {
+    crumbs.push({ label: "Members" });
+  } else if (section === "settings") {
+    crumbs.push({ label: "Settings" });
+  } else if (section === "projects") {
+    crumbs.push({ label: "Projects" });
+    const projectSlug = parts[3];
+    const project = projectsQuery.data?.find((p) => p.slug === projectSlug);
+    if (projectSlug) {
+      crumbs.push({
+        label: project?.name ?? projectSlug,
+        href: `/${parts[0]}/projects/${projectSlug}`,
+      });
+      const sub = parts[4];
+      if (sub) crumbs.push({ label: cap(sub) });
+    }
   } else {
     crumbs.push({ label: workspace });
   }

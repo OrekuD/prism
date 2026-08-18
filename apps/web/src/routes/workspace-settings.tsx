@@ -9,10 +9,20 @@ import {
 import { Frame } from "@/components/public/frame";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Loader2, Trash2 } from "lucide-react";
 
 const SECTION =
-  "mb-3.5 flex items-baseline gap-1.5 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted";
+  "mt-10 mb-3.5 flex items-baseline gap-1.5 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted";
 const SAVE_BTN =
   "inline-flex h-9 items-center gap-2 rounded-[2px] bg-accent px-3.5 text-[13px] font-medium text-primary-foreground transition-colors hover:bg-accent-hover disabled:opacity-45";
 const DANGER_BTN =
@@ -36,6 +46,7 @@ export function WorkspaceSettingsPage() {
   const [name, setName] = React.useState(workspace?.name ?? "");
   const [saving, setSaving] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
 
   React.useEffect(() => {
     setName(workspace?.name ?? "");
@@ -60,13 +71,6 @@ export function WorkspaceSettingsPage() {
 
   async function onDelete() {
     if (!workspace || !canDelete) return;
-    if (
-      !window.confirm(
-        `Delete "${workspace.name}" permanently? All projects, sources, and analytics are removed.`,
-      )
-    ) {
-      return;
-    }
     setDeleting(true);
     try {
       await workspaceActions.delete(workspace.id);
@@ -116,15 +120,6 @@ export function WorkspaceSettingsPage() {
               aria-label="Workspace name"
             />
           </div>
-          <div className="space-y-1">
-            <Label className="text-[13px] font-medium text-text">Slug</Label>
-            <div className="font-mono text-[13px] text-text-muted">
-              {workspace?.slug}
-            </div>
-            <p className="text-[12px] text-text-subtle">
-              Used as the identifier in the workspace URL.
-            </p>
-          </div>
           <button type="submit" disabled={saving} className={SAVE_BTN}>
             {saving ? (
               <Loader2 className="size-4 animate-spin" aria-hidden="true" />
@@ -153,20 +148,44 @@ export function WorkspaceSettingsPage() {
           </div>
           <button
             type="button"
-            onClick={onDelete}
+            onClick={() => setConfirmOpen(true)}
             disabled={!canDelete || deleting}
             className={`${DANGER_BTN} shrink-0`}
             title={isDefault ? "Default workspaces are undeletable" : undefined}
           >
-            {deleting ? (
-              <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-            ) : (
-              <Trash2 className="size-3.5" />
-            )}
+            <Trash2 className="size-3.5" />
             Delete workspace
           </button>
         </div>
       </Frame>
+
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this workspace?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete “{workspace?.name}” and all of its
+              projects, sources, and analytics. This can’t be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                void onDelete();
+              }}
+              disabled={deleting}
+              className="bg-danger text-white hover:bg-danger/90"
+            >
+              {deleting ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              ) : null}
+              Delete workspace
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
