@@ -22,3 +22,6 @@ engineering/
 
 # Task 14 fixture build artifacts (packed tarballs)
 fixtures/.artifacts/
+
+# npm artifacts (project uses yarn)
+package-lock.json
