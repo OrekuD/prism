@@ -54,6 +54,9 @@
   --radius: 2px;
   --radius-control: 2px;
   --radius-global-cta: 999px;
+  /* Floated/surface shadows (v2 dashboard). */
+  --shadow-dialog: 0 24px 80px rgb(17 17 22 / 0.25);
+  --on-accent: #f7f7f9;
 
   /* Legacy shadcn aliases */
   --background: var(--canvas);
@@ -80,6 +83,8 @@
 
 .dark {
   color-scheme: dark;
+  --shadow-dialog: 0 24px 80px rgb(0 0 0 / 0.45);
+  --on-accent: #f2f2f4;
 
   --canvas: #050506;
   --canvas-subtle: #08080a;

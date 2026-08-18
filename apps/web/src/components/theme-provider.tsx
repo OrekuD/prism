@@ -35,6 +35,9 @@ export function ThemeProvider({
     const root = window.document.documentElement;
 
     root.classList.remove("light", "dark");
+    // Keep the v2 dashboard&apos;s html[data-theme] hook in sync with the
+    // app theme so the sidebar theme toggle and token switching agree.
+    root.dataset.theme = theme === "system" ? "dark" : theme;
 
     if (theme === "system") {
       const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
