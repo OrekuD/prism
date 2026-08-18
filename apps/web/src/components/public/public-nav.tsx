@@ -3,6 +3,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { PrismLogo } from "@/components/brand/prism-logo";
 import { authClient } from "@/lib/authClient";
+import { useActiveWorkspace } from "@/lib/workspace";
 import { TELEMETRY_EVENTS, trackTelemetry } from "@/lib/telemetry";
 import { cn } from "@/lib/utils";
 
@@ -18,7 +19,12 @@ const docsHref = `${VITE_DOCS_URL}`;
 export function PublicNav() {
   const [open, setOpen] = React.useState(false);
   const { data: sessionData } = authClient.useSession();
+  const { data: activeWorkspace } = useActiveWorkspace();
   const isAuthenticated = Boolean(sessionData?.session);
+  const homeSlug = (activeWorkspace as { slug?: string } | null)?.slug;
+  // Dashboard goes straight to the scoped overview — never a vanity path
+  // that has to re-resolve into a redirect.
+  const dashboardHref = homeSlug ? `/${homeSlug}/overview` : "/";
 
   return (
     <header>
@@ -54,7 +60,7 @@ export function PublicNav() {
               </Link>
             )}
             <Link
-              to={isAuthenticated ? "/projects" : "/auth/create-account"}
+              to={isAuthenticated ? dashboardHref : "/auth/create-account"}
               className="inline-flex h-[38px] items-center rounded-[2px] bg-accent px-5 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
             >
               {isAuthenticated ? "Dashboard" : "Get started"}
@@ -96,7 +102,7 @@ export function PublicNav() {
                 </Link>
               )}
               <Link
-                to={isAuthenticated ? "/projects" : "/auth/create-account"}
+                to={isAuthenticated ? dashboardHref : "/auth/create-account"}
                 onClick={() => setOpen(false)}
                 className={cn(
                   "my-4 flex h-11 items-center justify-center rounded-[2px]",

@@ -7,6 +7,7 @@ import { Index } from "@/routes/index";
 import axe from "axe-core";
 import { CreateAccount } from "@/routes/auth/create-account";
 import { ForgotPassword } from "@/routes/auth/forgot-password";
+import { Toaster } from "@/components/ui/sonner";
 
 const signInEmail = vi.fn();
 const signUpEmail = vi.fn();
@@ -16,6 +17,8 @@ const requestPasswordReset = vi.fn();
 vi.mock("@/lib/authClient", () => ({
   authClient: {
     useSession: () => ({ data: null, isPending: false }),
+    useListOrganizations: () => ({ data: [], isPending: false }),
+    useActiveOrganization: () => ({ data: null, isPending: false }),
     // waitForSession() reads the session atom and falls back to
     // getSession(); both report a session so post-auth navigation
     // resolves immediately in tests.
@@ -53,7 +56,10 @@ vi.mock("@/lib/runtimeConfig", () => ({
 
 function renderPage(page: React.ReactNode, initialPath = "/auth/log-in") {
   return render(
-    <MemoryRouter initialEntries={[initialPath]}>{page}</MemoryRouter>,
+    <MemoryRouter initialEntries={[initialPath]}>
+      {page}
+      <Toaster />
+    </MemoryRouter>,
   );
 }
 

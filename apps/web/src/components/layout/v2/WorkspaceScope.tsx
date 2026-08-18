@@ -14,18 +14,41 @@ function Centered({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** Full-viewport loading skeleton for redirect targets. */
+export function HomeSkeleton() {
+  return (
+    <div className="flex h-[100dvh] w-full items-center justify-center bg-canvas">
+      <div className="flex flex-col items-center gap-3">
+        <span className="h-4 w-48 animate-pulse rounded-[2px] bg-surface-raised" />
+        <span className="h-4 w-32 animate-pulse rounded-[2px] bg-surface-raised" />
+      </div>
+    </div>
+  );
+}
+
+/** Resolves `/{workspaceSlug}/overview` once the active workspace is known. */
+export function useWorkspaceHome(): {
+  path: string | null;
+  isPending: boolean;
+} {
+  const { data: workspaces, isPending } = useWorkspaces();
+  const { data: active } = useActiveWorkspace();
+  const slug =
+    (active as { slug?: string } | null)?.slug ??
+    (workspaces?.[0] as { slug?: string } | undefined)?.slug;
+  return { path: slug ? `/${slug}/overview` : null, isPending };
+}
+
 /**
  * Workspace-scoped home: the vanity `/overview` (and any plain landing)
- * resolves to `/{activeWorkspaceSlug}/overview`.
+ * resolves to `/{activeWorkspaceSlug}/overview`. Shows a skeleton while the
+ * workspace is still loading so the path never flashes as invalid.
  */
 export function WorkspaceHome() {
-  const { data: workspaces } = useWorkspaces();
-  const { data: active } = useActiveWorkspace();
-  const activeSlug = (active as { slug?: string } | null)?.slug;
-  const list = (workspaces ?? []) as Array<{ slug: string }>;
-  const target = activeSlug ?? list[0]?.slug;
-  if (!target) return <Centered>No workspace yet.</Centered>;
-  return <Navigate to={`/${target}/overview`} replace />;
+  const { path, isPending } = useWorkspaceHome();
+  if (path) return <Navigate to={path} replace />;
+  if (isPending) return <HomeSkeleton />;
+  return <Centered>No workspace yet. Create one to get started.</Centered>;
 }
 
 /**
@@ -63,17 +86,17 @@ export function WorkspaceScope() {
 
 /** Redirect to a workspace-scoped path using the active workspace slug. */
 export function RedirectToWs({ to }: { to: string }) {
-  const { data: active } = useActiveWorkspace();
+  const { data: active, isPending } = useActiveWorkspace();
   const slug = (active as { slug?: string } | null)?.slug ?? "";
-  if (!slug) return null;
-  return <Navigate to={`/${slug}${to}`} replace />;
+  if (slug) return <Navigate to={`/${slug}${to}`} replace />;
+  return <HomeSkeleton />;
 }
 
 /** Redirect `/projects/:slug` (legacy) to `/:wrkSlug/projects/:slug`. */
 export function RedirectToProjectWs() {
   const { slug } = useParams();
-  const { data: active } = useActiveWorkspace();
+  const { data: active, isPending } = useActiveWorkspace();
   const ws = (active as { slug?: string } | null)?.slug ?? "";
-  if (!ws) return null;
-  return <Navigate to={`/${ws}/projects/${slug}`} replace />;
+  if (ws) return <Navigate to={`/${ws}/projects/${slug}`} replace />;
+  return <HomeSkeleton />;
 }

@@ -1,6 +1,6 @@
 import { Loader2 } from "lucide-react";
 import React from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { authClient, fetchEnabledProviders } from "@/lib/authClient";
 import { AuthAlert } from "@/components/auth/auth-alert";
 import { AuthHeading, AuthShell, OrEmailDivider } from "@/components/auth/auth-shell";
@@ -17,7 +17,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export function CreateAccount() {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const oauthError = oauthErrorMessage(searchParams.get("error"));
   const [name, setName] = React.useState("");
@@ -55,14 +54,13 @@ export function CreateAccount() {
       }
       trackTelemetry(TELEMETRY_EVENTS.signupMethod, { method: "email" });
       // Sign-up creates a session immediately, even with verification
-      // pending, so wait until the router sees it before navigating —
-      // otherwise the signed-out tree 404s the destination. Verified
-      // accounts continue into onboarding; unverified ones land on the
-      // dashboard, where the verification banner offers a resend.
+      // pending. Hard-navigate after the session is durable so the fresh
+      // boot reads the cookie and never bounces back to this page.
+      // Verified accounts continue into onboarding; unverified ones land
+      // on the dashboard, where the verification banner offers a resend.
       await waitForSession();
-      navigate(
+      window.location.assign(
         response.data?.user?.emailVerified ? "/onboarding" : "/overview",
-        { replace: true },
       );
     } catch (err) {
       setError(

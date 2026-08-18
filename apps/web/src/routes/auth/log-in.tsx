@@ -1,8 +1,8 @@
 import { Loader2 } from "lucide-react";
 import React from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
 import { authClient, fetchEnabledProviders } from "@/lib/authClient";
-import { AuthAlert } from "@/components/auth/auth-alert";
 import { AuthHeading, AuthShell, OrEmailDivider } from "@/components/auth/auth-shell";
 import { isNetworkError, oauthErrorMessage } from "@/components/auth/auth-errors";
 import { waitForSession } from "@/lib/session";
@@ -16,13 +16,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export function LogIn() {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const oauthError = oauthErrorMessage(searchParams.get("error"));
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
-  const [error, setError] = React.useState<string | null>(null);
   const [isPending, setIsPending] = React.useState(false);
+
+  React.useEffect(() => {
+    if (oauthError) toast.error(oauthError);
+  }, [oauthError]);
   const [pendingProvider, setPendingProvider] = React.useState<
     "github" | "google" | null
   >(null);
@@ -38,39 +40,36 @@ export function LogIn() {
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (isPending) return; // duplicate-submit guard
-    setError(null);
     setIsPending(true);
     try {
       const response = await authClient.signIn.email({ email, password });
       if (response.error) {
         // Non-enumerating: same message for every credential failure.
-        setError("Invalid email or password.");
+        toast.error("Invalid email or password.");
         setIsPending(false);
         return;
       }
-      // Resolve the destination (organizations + session) while the router
-      // catches up on the session, so the two round-trips overlap instead of
-      // leaving a visible gap on the sign-in page.
+      // Resolve the destination while the session propagates, then hard-
+      // navigate. A full navigation (fresh boot) reads the confirmed session
+      // cookie, so the router never briefly sees a "signed out" state that
+      // bounces back to this page.
       const homePromise = resolveDefaultWorkspacePath();
-      // Wait for the session to reach the router before navigating, or
-      // the signed-out tree 404s on /projects.
+      // Wait for the session to be durable before leaving the page.
       await waitForSession();
-      navigate((await homePromise) || "/overview", { replace: true });
-      // Leave isPending true: the page unmounts on navigation, so the
-      // button never resets to its idle state mid-wait.
+      window.location.assign((await homePromise) || "/overview");
+      // Leave isPending true: the page unloads on navigation.
     } catch (err) {
-      if (isNetworkError(err)) {
-        setError("Cannot reach Prism. Check your connection and try again.");
-      } else {
-        setError("Something went wrong. Please try again.");
-      }
+      toast.error(
+        isNetworkError(err)
+          ? "Cannot reach Prism. Check your connection and try again."
+          : "Something went wrong. Please try again.",
+      );
       setIsPending(false);
     }
   };
 
   const onSocial = async (provider: "github" | "google") => {
     if (pendingProvider) return; // duplicate-submit guard
-    setError(null);
     setPendingProvider(provider);
     try {
       const response = await authClient.signIn.social({
@@ -78,14 +77,14 @@ export function LogIn() {
         callbackURL: "/overview",
       });
       if (response.error) {
-        setError("Sign-in with the provider failed. Try again.");
+        toast.error("Sign-in with the provider failed. Try again.");
         return;
       }
       if (response.data?.url) {
         window.location.assign(response.data.url);
       }
     } catch (err) {
-      setError(
+      toast.error(
         isNetworkError(err)
           ? "Cannot reach Prism. Check your connection and try again."
           : "Sign-in with the provider failed. Try again.",
@@ -98,8 +97,6 @@ export function LogIn() {
     <AuthShell>
       <AuthHeading title="Welcome back." description="Use your Prism account to continue." />
       <div className="mt-8 grid gap-4">
-        {oauthError ? <AuthAlert>{oauthError}</AuthAlert> : null}
-        {error ? <AuthAlert>{error}</AuthAlert> : null}
         <SocialAuthButtons
           providers={providers}
           onSocial={onSocial}

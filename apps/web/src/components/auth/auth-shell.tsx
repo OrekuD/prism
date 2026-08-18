@@ -1,8 +1,10 @@
 import React from "react";
-import { authBaseUrl } from "@/lib/authClient";
+import { Navigate } from "react-router-dom";
+import { authBaseUrl, authClient } from "@/lib/authClient";
 import { loadRuntimeConfig } from "@/lib/runtimeConfig";
 import { Frame, SectionLabel } from "@/components/public/frame";
 import { PrismMark } from "@/components/brand/prism-mark";
+import { HomeSkeleton, useWorkspaceHome } from "@/components/layout/v2/WorkspaceScope";
 
 /**
  * Shared authentication shell (design-system.md 11.1-11.2).
@@ -11,6 +13,9 @@ import { PrismMark } from "@/components/brand/prism-mark";
  * logo/instance identity and one sentence, drops the long context copy.
  */
 export function AuthShell({ children }: { children: React.ReactNode }) {
+  const { data: sessionData } = authClient.useSession();
+  const isAuthenticated = Boolean(sessionData?.session);
+  const { path: homePath, isPending: homePending } = useWorkspaceHome();
   const instanceHost = new URL(authBaseUrl).host;
   const [instanceName, setInstanceName] = React.useState<string>("Prism");
 
@@ -20,6 +25,13 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
       document.title = `${config.instanceName} - sign in`;
     });
   }, []);
+
+  // Already signed in? There's nothing to do here — bounce straight to the
+  // dashboard (scoped URL) instead of a vanity path that has to re-resolve.
+  if (isAuthenticated) {
+    if (homePath) return <Navigate to={homePath} replace />;
+    if (homePending) return <HomeSkeleton />;
+  }
 
   return (
     <div className="mx-auto w-full max-w-[1040px] px-4 py-14 md:px-6 md:py-16">
