@@ -113,7 +113,6 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
               title="Switch workspace"
               className="flex h-[34px] w-full items-center gap-2 rounded-[2px] border border-border bg-surface px-2.5 text-[13px] font-medium transition-colors hover:bg-surface-hover"
             >
-              <I.IconGrid />
               <span className="flex-1 truncate text-left">
                 {workspaceName ?? "Select a workspace"}
               </span>
@@ -138,7 +137,6 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
                     }
                   }}
                 >
-                  <I.IconGrid />
                   <span className="flex-1 truncate">{ws.name}</span>
                   {activeWorkspaceId === ws.id ? (
                     <Check className="size-3.5 text-accent" />
