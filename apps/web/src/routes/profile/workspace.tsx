@@ -142,13 +142,18 @@ function WorkspacePanel({ organizationId }: { organizationId: string }) {
   React.useEffect(() => {
     let cancelled = false;
     async function load() {
-      const [memberRows, inviteRows] = await Promise.all([
+      const [memberResult, inviteResult] = await Promise.all([
         workspaceActions.listMembers(organizationId),
         workspaceActions.listInvitations(organizationId),
       ]);
       if (cancelled) return;
-      setMembers((memberRows as unknown as WorkspaceMember[] | null));
-      setInvitations((inviteRows as unknown as WorkspaceInvitation[] | null));
+      setMembers(
+        (memberResult as { data?: { members?: WorkspaceMember[] } })?.data
+          ?.members ?? null,
+      );
+      setInvitations(
+        (inviteResult as { data?: WorkspaceInvitation[] })?.data ?? null,
+      );
     }
     setMembers(null);
     setInvitations(null);
@@ -163,12 +168,17 @@ function WorkspacePanel({ organizationId }: { organizationId: string }) {
     try {
       await action();
       toast.success(success);
-      const [memberRows, inviteRows] = await Promise.all([
+      const [memberResult, inviteResult] = await Promise.all([
         workspaceActions.listMembers(organizationId),
         workspaceActions.listInvitations(organizationId),
       ]);
-      setMembers((memberRows as unknown as WorkspaceMember[] | null));
-      setInvitations((inviteRows as unknown as WorkspaceInvitation[] | null));
+      setMembers(
+        (memberResult as { data?: { members?: WorkspaceMember[] } })?.data
+          ?.members ?? null,
+      );
+      setInvitations(
+        (inviteResult as { data?: WorkspaceInvitation[] })?.data ?? null,
+      );
     } catch (error) {
       const message = String((error as { message?: unknown })?.message ?? error);
       if (message.includes("YOU_ARE_NOT_ALLOWED")) {
@@ -448,7 +458,7 @@ function InvitationsPanel() {
     async function load() {
       const rows = await workspaceActions.listUserInvitations();
       if (!cancelled) {
-        setInvitations((rows as unknown as WorkspaceInvitation[] | null));
+        setInvitations((rows as { data?: WorkspaceInvitation[] })?.data ?? null);
       }
     }
     void load();

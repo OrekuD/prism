@@ -56,12 +56,20 @@ export function MembersPage() {
 
   const load = React.useCallback(async () => {
     if (!organizationId) return;
-    const [memberRows, inviteRows] = await Promise.all([
+    const [memberResult, inviteResult] = await Promise.all([
       workspaceActions.listMembers(organizationId),
       workspaceActions.listInvitations(organizationId),
     ]);
-    setMembers((memberRows as unknown as MemberRow[] | null));
-    setInvitations((inviteRows as unknown as WorkspaceInvitation[] | null));
+    // Better Auth client methods resolve to { data, error }; listMembers
+    // returns { data: { members }, } and listInvitations returns
+    // { data: Invitation[] }. Extract the arrays before storing.
+    const memberRows =
+      (memberResult as { data?: { members?: MemberRow[] } })?.data
+        ?.members ?? [];
+    const inviteRows =
+      (inviteResult as { data?: WorkspaceInvitation[] })?.data ?? [];
+    setMembers(memberRows);
+    setInvitations(inviteRows);
   }, [organizationId]);
 
   React.useEffect(() => {
