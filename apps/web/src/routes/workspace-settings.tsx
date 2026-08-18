@@ -133,24 +133,22 @@ export function WorkspaceSettingsPage() {
         <span className="mr-1 text-text-subtle">{"//"}</span>Danger zone
       </div>
       <Frame className="p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h3 className="text-[15px] font-semibold tracking-[-0.01em] text-danger">
-              Delete workspace
-            </h3>
-            <p className="mt-1.5 text-[13px] leading-relaxed text-text-muted">
-              {isDefault
-                ? "This is your default workspace and can't be deleted."
-                : myRole === "owner"
-                  ? "Permanently delete this workspace and all of its projects, sources, and analytics. This can't be undone."
-                  : "Only the workspace owner can delete it."}
-            </p>
-          </div>
+        <div>
+          <h3 className="text-[15px] font-semibold tracking-[-0.01em] text-danger">
+            Delete workspace
+          </h3>
+          <p className="mt-1.5 text-[13px] leading-relaxed text-text-muted">
+            {isDefault
+              ? "This is your default workspace and can't be deleted."
+              : myRole === "owner"
+                ? "Permanently delete this workspace and all of its projects, sources, and analytics. This can't be undone."
+                : "Only the workspace owner can delete it."}
+          </p>
           <button
             type="button"
             onClick={() => setConfirmOpen(true)}
             disabled={!canDelete || deleting}
-            className={`${DANGER_BTN} shrink-0`}
+            className={`${DANGER_BTN} mt-4`}
             title={isDefault ? "Default workspaces are undeletable" : undefined}
           >
             <Trash2 className="size-3.5" />
