@@ -1,6 +1,5 @@
 import React from "react";
 import { toast } from "sonner";
-import { useNavigate } from "react-router-dom";
 import {
   useActiveMember,
   useActiveWorkspace,
@@ -27,7 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { UserPlus, Trash2, LogOut } from "lucide-react";
+import { UserPlus, Trash2 } from "lucide-react";
 
 const ROLE_LABELS: Record<string, string> = {
   owner: "Owner",
@@ -52,7 +51,6 @@ export function MembersPage() {
   const [invitations, setInvitations] = React.useState<WorkspaceInvitation[] | null>(null);
   const [inviteOpen, setInviteOpen] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
-  const navigate = useNavigate();
 
   const load = React.useCallback(async () => {
     if (!organizationId) return;
@@ -229,21 +227,6 @@ export function MembersPage() {
             </div>
           )}
         </>
-      ) : null}
-
-      {myRole === "owner" && organizationId ? (
-        <div className="mt-5 border-t border-danger pt-5">
-          <div className="mb-1.5 text-[13px] font-semibold text-danger">Danger zone</div>
-          <p className="mb-3.5 text-[13px] leading-relaxed text-text-muted">Leaving is the only self-service option for owners. Deleting the workspace is handled from workspace settings.</p>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void run(async () => { await workspaceActions.leave(organizationId); navigate("/overview"); }, "Left workspace")}
-            className="inline-flex h-9 items-center gap-2 rounded-[2px] border border-border-strong px-3.5 text-[13px] font-medium text-text transition-colors hover:bg-surface-hover"
-          >
-            <LogOut className="size-4" /> Leave workspace
-          </button>
-        </div>
       ) : null}
 
       <InviteDialog
