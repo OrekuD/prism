@@ -127,7 +127,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
                 <I.IconChevronDown />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" sideOffset={6} className="w-[220px]">
+            <DropdownMenuContent align="start" sideOffset={6} className="w-(--radix-dropdown-menu-trigger-width)">
               <DropdownMenuLabel>Projects</DropdownMenuLabel>
               {projects.length === 0 ? (
                 <div className="px-2 py-1.5 text-[13px] text-text-subtle">
@@ -223,7 +223,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
               <I.IconChevronDown className="size-3" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" sideOffset={6} className="w-[170px]">
+          <DropdownMenuContent align="start" sideOffset={6} className="w-(--radix-dropdown-menu-trigger-width)">
             <DropdownMenuLabel>Theme</DropdownMenuLabel>
             {themeOptions.map((option) => {
               const Icon = option.Icon;
@@ -272,7 +272,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
                 <I.IconChevronDown className="size-3.5 shrink-0 text-text-subtle" />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" sideOffset={6} className="w-[200px]">
+            <DropdownMenuContent align="start" sideOffset={6} className="w-(--radix-dropdown-menu-trigger-width)">
               <DropdownMenuLabel className="font-normal">Account</DropdownMenuLabel>
               <Link to="/account/general">
                 <DropdownMenuItem className="gap-2">
