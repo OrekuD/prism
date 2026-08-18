@@ -88,7 +88,7 @@ export function MembersPage() {
     <>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
         <div>
-          <h1 className="font-mono text-[26px] font-semibold leading-[1.18] tracking-[-0.025em] text-text">Members</h1>
+          <h1 className="font-mono text-[26px] font-[650] leading-[1.18] tracking-[-0.025em] text-text">Members</h1>
           <p className="mt-2 text-sm text-text-muted">Members of the {workspaceName ?? "workspace"} workspace and their roles.</p>
         </div>
         {canManage ? (

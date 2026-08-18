@@ -129,7 +129,7 @@ export function Overview() {
 
   return (
     <>
-      <h1 className="font-mono text-[26px] font-semibold leading-[1.18] tracking-[-0.025em] text-text">
+      <h1 className="font-mono text-[26px] font-[650] leading-[1.18] tracking-[-0.025em] text-text">
         <span className="mr-2.5 select-none text-text-subtle">{"//"}</span>Welcome back,{" "}
         {firstName || "there"}
       </h1>

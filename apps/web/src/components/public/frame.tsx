@@ -14,9 +14,11 @@ function CornerL({ x, y }: { x: "left" | "right"; y: "top" | "bottom" }) {
     <span
       aria-hidden="true"
       className={cn(
+        // Offset by -1px so the L straddles the frame's 1px border (it sits
+        // ON the border, half outside / half inside), matching the v2 .mk.
         "pointer-events-none absolute",
-        x === "left" ? "left-0" : "right-0",
-        y === "top" ? "top-0" : "bottom-0",
+        x === "left" ? "-left-px" : "-right-px",
+        y === "top" ? "-top-px" : "-bottom-px",
         // horizontal + vertical arms meet at the frame corner
         "before:absolute before:block before:h-px before:w-[6px] before:bg-accent",
         "after:absolute after:block after:h-[6px] after:w-px after:bg-accent",

@@ -25,7 +25,7 @@ export function Projects() {
     <>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
         <div>
-          <h1 className="font-mono text-[26px] font-semibold leading-[1.18] tracking-[-0.025em] text-text">Projects</h1>
+          <h1 className="font-mono text-[26px] font-[650] leading-[1.18] tracking-[-0.025em] text-text">Projects</h1>
           <p className="mt-2 text-sm text-text-muted">Tracked applications in the {workspaceName ?? "workspace"} workspace.</p>
         </div>
         <CreateNewProject>
