@@ -69,7 +69,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
   const { theme, setTheme } = useTheme();
   const { data: session } = authClient.useSession();
   const { data: activeWorkspace } = useActiveWorkspace();
-  const { data: workspaces } = useWorkspaces();
+  const { data: workspaces, isPending: workspacesPending } = useWorkspaces();
   const projectsQuery = useProjectsQuery();
 
   const wrkSlug = (activeWorkspace as { slug?: string } | null)?.slug ?? "";
@@ -120,7 +120,14 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
               className="flex h-[34px] w-full items-center gap-2 rounded-[2px] border border-border bg-surface px-2.5 text-[13px] font-medium transition-colors hover:bg-surface-hover"
             >
               <span className="flex-1 truncate text-left">
-                {workspaceName ?? "Select a workspace"}
+                {workspacesPending ? (
+                  <span
+                    className="inline-block h-[13px] w-28 animate-pulse rounded-[2px] bg-surface-raised"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  workspaceName ?? "Select a workspace"
+                )}
               </span>
               <I.IconChevronDown />
             </button>
@@ -190,7 +197,14 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
               >
                 <I.IconFolder />
                 <span className="flex-1 truncate text-left">
-                  {project?.name ?? workspaceName ?? "Select a project"}
+                  {projectsQuery.isLoading ? (
+                    <span
+                      className="inline-block h-[13px] w-20 animate-pulse rounded-[2px] bg-surface-raised"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    project?.name ?? workspaceName ?? "Select a project"
+                  )}
                 </span>
                 <I.IconChevronDown />
               </button>

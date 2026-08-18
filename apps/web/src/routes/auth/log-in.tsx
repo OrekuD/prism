@@ -6,6 +6,7 @@ import { AuthAlert } from "@/components/auth/auth-alert";
 import { AuthHeading, AuthShell, OrEmailDivider } from "@/components/auth/auth-shell";
 import { isNetworkError, oauthErrorMessage } from "@/components/auth/auth-errors";
 import { waitForSession } from "@/lib/session";
+import { resolveDefaultWorkspacePath } from "@/lib/workspace";
 import { PasswordInput } from "@/components/auth/password-input";
 import {
   type EnabledProviders,
@@ -49,7 +50,9 @@ export function LogIn() {
       // Wait for the session to reach the router before navigating, or
       // the signed-out tree 404s on /projects.
       await waitForSession();
-      navigate("/overview", { replace: true });
+      navigate((await resolveDefaultWorkspacePath()) || "/overview", {
+        replace: true,
+      });
     } catch (err) {
       if (isNetworkError(err)) {
         setError("Cannot reach Prism. Check your connection and try again.");

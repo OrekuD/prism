@@ -43,24 +43,21 @@ export function WorkspaceScope() {
   const workspace = list.find((w) => w.slug === wrkSlug);
   const activeId = (active as { id?: string } | null)?.id;
 
-  const isActive = Boolean(activeId && workspace && activeId === workspace.id);
-
   React.useEffect(() => {
     if (!workspace || activeId === workspace.id) return;
-    if (activeId != null && workspace.id !== activeId) {
-      // URL points at a different workspace than the session → adopt it.
-      void workspaceActions.setActive(workspace.id);
-    }
+    // URL points at a workspace the session hasn't adopted yet → adopt it.
+    void workspaceActions.setActive(workspace.id).catch(() => {});
     navigate(`/${workspace.slug}/overview`, { replace: true });
   }, [workspace?.id, activeId]);
 
-  if (!workspaces) return <Centered>Loading workspace…</Centered>;
-  if (!workspace) {
+  // While workspaces are still loading, render immediately — the pages and
+  // sidebar show their own skeletons. Only redirect a definitively-unknown
+  // slug once the data has arrived.
+  if (workspaces != null && !workspace) {
     const activeSlug = (active as { slug?: string } | null)?.slug;
     if (activeSlug) return <Navigate to={`/${activeSlug}/overview`} replace />;
     return <Centered>Workspace not found.</Centered>;
   }
-  if (!isActive) return <Centered>Loading workspace…</Centered>;
   return <Outlet />;
 }
 

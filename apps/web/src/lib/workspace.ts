@@ -139,6 +139,31 @@ export function newWorkspaceSlug(): string {
   return slug;
 }
 
+/**
+ * The default post-sign-in destination — the active (or first) workspace's
+ * overview, e.g. `/wrk_xxxxx/overview`. This lets sign-in navigate straight
+ * to the scoped dashboard URL instead of landing on a blank vanity path.
+ * Falls back to `/overview` (which redirects) if no workspace has
+ * provisioned yet. Best-effort: the auth session cookie is already set by
+ * the caller (after waitForSession).
+ */
+export async function resolveDefaultWorkspacePath(): Promise<string> {
+  try {
+    const { data } = await authClient.organization.list();
+    const sessionData = await authClient.getSession();
+    const activeId = (
+      sessionData as unknown as {
+        session?: { activeOrganizationId?: string };
+      } | null
+    )?.session?.activeOrganizationId;
+    const orgs = (data ?? []) as Array<{ id: string; slug: string }>;
+    const target = orgs.find((o) => o.id === activeId) ?? orgs[0];
+    return target?.slug ? `/${target.slug}/overview` : "/overview";
+  } catch {
+    return "/overview";
+  }
+}
+
 export const WORKSPACE_PLATFORMS = [
   "web",
   "ios",
