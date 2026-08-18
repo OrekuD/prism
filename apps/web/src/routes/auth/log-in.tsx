@@ -49,7 +49,7 @@ export function LogIn() {
       // Wait for the session to reach the router before navigating, or
       // the signed-out tree 404s on /projects.
       await waitForSession();
-      navigate("/projects", { replace: true });
+      navigate("/overview", { replace: true });
     } catch (err) {
       if (isNetworkError(err)) {
         setError("Cannot reach Prism. Check your connection and try again.");
@@ -68,7 +68,7 @@ export function LogIn() {
     try {
       const response = await authClient.signIn.social({
         provider,
-        callbackURL: "/projects",
+        callbackURL: "/overview",
       });
       if (response.error) {
         setError("Sign-in with the provider failed. Try again.");

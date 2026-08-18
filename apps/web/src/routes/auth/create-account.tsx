@@ -61,7 +61,7 @@ export function CreateAccount() {
       // dashboard, where the verification banner offers a resend.
       await waitForSession();
       navigate(
-        response.data?.user?.emailVerified ? "/onboarding" : "/projects",
+        response.data?.user?.emailVerified ? "/onboarding" : "/overview",
         { replace: true },
       );
     } catch (err) {
@@ -82,7 +82,7 @@ export function CreateAccount() {
     try {
       const response = await authClient.signIn.social({
         provider,
-        callbackURL: "/projects",
+        callbackURL: "/overview",
       });
       if (response.error) {
         setError("Sign-in with the provider failed. Try again.");
