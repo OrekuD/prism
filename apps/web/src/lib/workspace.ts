@@ -57,7 +57,7 @@ export const workspaceActions = {
   setActive: (organizationId: string) =>
     authClient.organization.setActive({ organizationId }),
   create: (name: string) =>
-    authClient.organization.create({ name, slug: `ws-${crypto.randomUUID()}` }),
+    authClient.organization.create({ name, slug: newWorkspaceSlug() }),
   delete: (organizationId: string) =>
     authClient.organization.delete({ organizationId }),
   leave: (organizationId: string) =>
@@ -114,6 +114,23 @@ export function useCurrentWorkspace(): {
         ((workspaces?.[0] as Workspace | undefined) ?? null)),
     isLoading: workspacesPending || activePending,
   };
+}
+
+/**
+ * Workspace slugs are opaque, URL-safe identifiers in the form
+ * `wrk_xxxxxxxxxx` (10 lowercase alphanumerics). They're designed to be
+ * used in the workspace-scoped URL so the selected workspace is explicit
+ * in the address bar.
+ */
+const WORKSPACE_SLUG_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
+export function newWorkspaceSlug(): string {
+  const bytes = new Uint8Array(10);
+  crypto.getRandomValues(bytes);
+  let slug = "wrk_";
+  for (const byte of bytes) {
+    slug += WORKSPACE_SLUG_ALPHABET[byte % WORKSPACE_SLUG_ALPHABET.length];
+  }
+  return slug;
 }
 
 export const WORKSPACE_PLATFORMS = [

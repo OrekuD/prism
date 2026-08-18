@@ -63,7 +63,7 @@ run("product database integration", () => {
     // mirrors the plugin's exact rows).
     const org = await db()`
       INSERT INTO organization (id, name, slug, created_at)
-      VALUES (gen_random_uuid(), ${`Integration Test's workspace`}, ${`personal-${userId}`}, NOW())
+      VALUES (gen_random_uuid(), ${`Integration Test's workspace`}, ${`wrk_itestws01`}, NOW())
       RETURNING id`;
     const orgId = org[0].id;
     const member = await db()`

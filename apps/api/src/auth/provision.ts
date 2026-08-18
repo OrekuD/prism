@@ -42,6 +42,19 @@ function splitName(name: string, email: string) {
  * authentication middleware provisions lazily on the first authenticated
  * request instead (also a server-API path, no session needed).
  */
+
+/** Opaque, URL-safe workspace slugs: `wrk_` + 10 lowercase alphanumerics. */
+const WORKSPACE_SLUG_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
+function newWorkspaceSlug(): string {
+  const bytes = new Uint8Array(10);
+  crypto.getRandomValues(bytes);
+  let slug = "wrk_";
+  for (const byte of bytes) {
+    slug += WORKSPACE_SLUG_ALPHABET[byte % WORKSPACE_SLUG_ALPHABET.length];
+  }
+  return slug;
+}
+
 export async function createPersonalWorkspace(
   api: AuthLike["api"],
   user: { id: string; name: string },
@@ -50,9 +63,7 @@ export async function createPersonalWorkspace(
     await api.createOrganization({
       body: {
         name: `${user.name}'s workspace`,
-        // Deterministic per user; the server enforces slug uniqueness, so
-        // two users named alike can never collide.
-        slug: `personal-${user.id}`,
+        slug: newWorkspaceSlug(),
         userId: user.id,
       },
     });
