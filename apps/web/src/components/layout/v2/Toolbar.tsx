@@ -58,7 +58,6 @@ export function Toolbar({ onMenu }: { onMenu?: () => void }) {
           <IconMenu />
         </button>
         <div className="crumb">
-          {/* biome-ignore lint/suspicious/noArrayIndexKey: static breadcrumb trail */}
           {trail.filter((entry) => entry.label).map((entry, index) => (
             <React.Fragment key={`${entry.label}-${index}`}>
               {index > 0 ? <span className="sep">/</span> : null}
