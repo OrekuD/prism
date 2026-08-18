@@ -6,6 +6,9 @@ import { cn } from "@/lib/utils";
  * Code-copy row (design-system.md 9.6): `$` prompt, mono command, copy
  * action that flips to a check for 1500ms and announces via an ARIA live
  * region. Never shows real secrets.
+ *
+ * Multi-line commands render on their own lines and long lines wrap inside
+ * the container (pre-wrap + break-words), so nothing overflows the card.
  */
 export function CodeCopyRow({
   command,
@@ -31,16 +34,16 @@ export function CodeCopyRow({
   return (
     <div
       className={cn(
-        "flex h-[42px] min-w-0 items-stretch bg-surface-raised",
+        "flex min-h-[42px] min-w-0 items-stretch bg-surface-raised",
         className,
       )}
     >
-      <code className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto px-3 font-mono text-[13px] text-text">
-        <span aria-hidden="true" className="select-none text-text-subtle">
+      <pre className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words px-3 py-[11px] font-mono text-[13px] leading-[1.5] text-text">
+        <span aria-hidden="true" className="mr-2 select-none text-text-subtle">
           {prompt}
         </span>
-        <span className="whitespace-nowrap">{command}</span>
-      </code>
+        {command}
+      </pre>
       <button
         type="button"
         onClick={onCopy}
