@@ -32,6 +32,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CreateWorkspaceDialog } from "@/components/layout/workspace-switcher";
+import { getInitials } from "@/utils/getInitials";
 import { Plus, UserPlus, Trash2, LogOut } from "lucide-react";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -182,75 +183,89 @@ function WorkspacePanel({ organizationId }: { organizationId: string }) {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Members</CardTitle>
-          <CardDescription>
-            {canManage
-              ? "Invite members, change roles, and remove access. Owners and admins manage membership."
-              : "Members can read project analytics; owners and admins manage projects, sources, and keys."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {members === null ? (
-            <Skeleton className="h-[80px] w-full" />
-          ) : members.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No members.</p>
-          ) : (
-            members.map((member) => (
-              <div key={member.id} className="flex items-center justify-between rounded border p-3">
-                <div>
-                  <p className="text-sm font-medium">{member.userId}</p>
-                  <p className="text-xs text-muted-foreground">Member id</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {canManage && member.role !== "owner" ? (
-                    <Select
-                      value={member.role}
-                      onValueChange={(role) =>
-                        void run(
-                          () =>
-                            workspaceActions.updateMemberRole({
-                              memberId: member.id,
-                              role: role as "owner" | "admin" | "member",
-                              organizationId,
-                            }),
-                          "Role updated",
-                        )
-                      }
-                    >
-                      <SelectTrigger className="h-8 w-[110px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="member">Member</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <Badge variant="outline">{ROLE_LABELS[member.role] ?? member.role}</Badge>
-                  )}
-                  {canManage && member.role !== "owner" ? (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() =>
-                        void run(
-                          () => workspaceActions.removeMember({ memberId: member.id, organizationId }),
-                          "Member removed",
-                        )
-                      }
-                    >
-                      <Trash2 className="size-3.5" />
-                    </Button>
-                  ) : null}
-                </div>
-              </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
+      <div className="sec-label">Members</div>
+      <div className="tbl-wrap">
+        <table className="tbl">
+          <thead>
+            <tr><th>Member</th><th>Role</th><th>Status</th><th>Last active</th><th style={{ textAlign: "right" }}>Actions</th></tr>
+          </thead>
+          <tbody>
+            {members === null ? (
+              <tr><td colSpan={5}><span className="skel" /></td></tr>
+            ) : members.length === 0 ? (
+              <tr><td colSpan={5} className="muted">No members.</td></tr>
+            ) : (
+              members.map((member) => {
+                const user = (member as unknown as { user?: { name?: string; email?: string } }).user;
+                const displayName = user?.name ?? member.userId;
+                return (
+                  <tr key={member.id}>
+                    <td>
+                      <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <span className="avatar" style={{ width: 24, height: 24, fontSize: 10 }} aria-hidden="true">
+                          {getInitials(displayName)}
+                        </span>
+                        <span>
+                          <span style={{ display: "block", fontSize: 13, fontWeight: 500 }}>{displayName}</span>
+                          <span className="subtle" style={{ fontSize: 12 }}>{user?.email ?? member.userId}</span>
+                        </span>
+                      </span>
+                    </td>
+                    <td className="mono">
+                      {canManage && member.role !== "owner" ? (
+                        <Select
+                          value={member.role}
+                          onValueChange={(role) =>
+                            void run(
+                              () =>
+                                workspaceActions.updateMemberRole({
+                                  memberId: member.id,
+                                  role: role as "owner" | "admin" | "member",
+                                  organizationId,
+                                }),
+                              "Role updated",
+                            )
+                          }
+                        >
+                          <SelectTrigger className="h-7 w-[110px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="admin">Admin</SelectItem>
+                            <SelectItem value="member">Member</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        ROLE_LABELS[member.role] ?? member.role
+                      )}
+                    </td>
+                    <td><span className="tag ok">Active</span></td>
+                    <td className="muted" style={{ fontSize: 12 }}>—</td>
+                    <td>
+                      <span className="tbl-actions">
+                        {canManage && member.role !== "owner" ? (
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            disabled={busy}
+                            onClick={() =>
+                              void run(
+                                () => workspaceActions.removeMember({ memberId: member.id, organizationId }),
+                                "Member removed",
+                              )
+                            }
+                          >
+                            <Trash2 className="size-3.5" />
+                          </button>
+                        ) : null}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
 
       {canManage ? (
         <Card>

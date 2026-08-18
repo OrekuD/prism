@@ -1,108 +1,112 @@
-import { useTheme } from "@/components/theme-provider";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ProjectSparkline } from "@/components/charts/project-sparkline";
-import { EmptyState } from "@/components/ui/empty-state";
-import { ErrorState } from "@/components/ui/error-state";
-import { CreateNewProject } from "@/components/projects/create-new-project";
-import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useProjectsQuery } from "@/network/queries/useProjectsQuery";
-import { useActiveWorkspace } from "@/lib/workspace";
-import { Search } from "lucide-react";
 import React from "react";
 import { Link } from "react-router-dom";
+import { useProjectsQuery } from "@/network/queries/useProjectsQuery";
+import { useActiveWorkspace } from "@/lib/workspace";
+import { CreateNewProject } from "@/components/projects/create-new-project";
+import { IconFolder } from "@/components/layout/v2/icons";
 
 const placeholders = Array(3).fill(null);
 
+/** Honest per-project session count from the 7-day daily summaries. */
+function sessionCount(project: { summary?: Array<{ desktop: number; mobile: number }> }): number {
+  return (project.summary ?? []).reduce(
+    (sum, row) => sum + row.desktop + row.mobile,
+    0,
+  );
+}
+
 export function Projects() {
-  const projectsQuery = useProjectsQuery();
-  const { refetch } = projectsQuery;
+  const { data: projects, isLoading, isError, refetch } = useProjectsQuery();
   const { data: activeWorkspace } = useActiveWorkspace();
+  const workspaceName = (activeWorkspace as { name?: string } | null)?.name;
 
   return (
-    <div className="flex flex-1 flex-col py-4">
-      <div className="flex flex-col md:flex-row md:items-center gap-3">
-        <form className="flex-1">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-3 size-4 text-muted-foreground" />
-            <Input
-              type="search"
-              placeholder="Search projects..."
-              className="pl-8 w-full"
-            />
-          </div>
-        </form>
-        <div className="flex gap-3">
-          <CreateNewProject>
-            <Button>New Project</Button>
-          </CreateNewProject>
+    <>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+        <div>
+          <h1 className="page-title">Projects</h1>
+          <p className="page-sub">
+            Tracked applications in the {workspaceName ?? "workspace"} workspace.
+          </p>
         </div>
+        <CreateNewProject>
+          <button className="btn btn-primary">New project</button>
+        </CreateNewProject>
       </div>
-      <div className="flex flex-1 flex-col py-4">
-        {projectsQuery.isLoading || projectsQuery.isRefetching ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {placeholders.map((_, index) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholder list with no stable identity
-              <Card key={index}>
-                <CardHeader>
-                  <Skeleton className="h-[20px]" />
-                </CardHeader>
-                <CardContent>
-                  <Skeleton className="h-[150px]" />
-                </CardContent>
-              </Card>
-            ))}
+
+      <div className="sec-label">All projects</div>
+
+      {isLoading ? (
+        <div className="grid3">
+          {placeholders.map((_, index) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list
+            <div className="frame metric mk" key={index}>
+              <span className="skel skel-v" />
+              <span className="skel" />
+            </div>
+          ))}
+        </div>
+      ) : isError ? (
+        <div className="frame panel" style={{ minHeight: 120 }}>
+          <p className="muted">Could not load projects.</p>
+          <button className="btn btn-secondary btn-sm" onClick={() => refetch()}>Retry</button>
+        </div>
+      ) : projects && projects.length > 0 ? (
+        <div className="grid3">
+          {projects.map((project) => {
+            const sessions = sessionCount(project);
+            return (
+              <Link
+                className="frame qlink mk"
+                to={`/projects/${project.slug}`}
+                key={project.id}
+              >
+                <span className="iw"><IconFolder /></span>
+                <h3>{project.name}</h3>
+                <p>
+                  <span className="mono" style={{ fontSize: 12, color: "var(--text-subtle)" }}>
+                    {project.slug}
+                  </span>
+                </p>
+                <p style={{ marginTop: -8 }}>
+                  {sessions > 0 ? (
+                    <>
+                      <span className="num" style={{ font: "650 22px/1 var(--font-mono)", color: "var(--text)" }}>
+                        {sessions.toLocaleString()}
+                      </span>{" "}
+                      <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>sessions</span>
+                    </>
+                  ) : (
+                    <span style={{ font: "500 12px/1 var(--font-mono)", color: "var(--text-subtle)" }}>
+                      WAITING FOR EVENTS
+                    </span>
+                  )}
+                </p>
+                <span className="go">Open project <Go /></span>
+              </Link>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="frame setup mk" style={{ padding: 24 }}>
+          <div className="setup-head">
+            <div>
+              <h3>{workspaceName ? `No projects in ${workspaceName}` : "No projects yet"}</h3>
+              <p>Create your first project, add a source, then install the SDK and verify your first event.</p>
+            </div>
+            <Link to="/onboarding" className="btn btn-secondary btn-sm">Set up your first project</Link>
           </div>
-        ) : (
-          <>
-            {projectsQuery.isError ? (
-              <ErrorState
-                title="Could not load projects"
-                description="Prism could not reach the API. Check your connection and try again."
-                onRetry={() => refetch()}
-              />
-            ) : projectsQuery.data && projectsQuery.data.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {projectsQuery.data.map(({ id, name, slug, summary }) => {
-                  return (
-                    <Link to={`/projects/${slug}`} key={id}>
-                      <Card className="">
-                        <CardHeader>
-                          <CardTitle className="text-md">{name}</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="h-[150px]">
-                            <ProjectSparkline summary={summary} />
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </Link>
-                  );
-                })}
-              </div>
-            ) : (
-              <EmptyState
-                label="No projects"
-                title={
-                  activeWorkspace
-                    ? `No projects in ${(activeWorkspace as { name?: string }).name ?? "this workspace"}`
-                    : "No projects"
-                }
-                description="Create your first project, add a source, then install the SDK and verify your first event."
-                action={
-                  <Link
-                    to="/onboarding"
-                    className="inline-flex h-10 items-center rounded-[2px] bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
-                  >
-                    Set up your first project
-                  </Link>
-                }
-              />
-            )}
-          </>
-        )}
-      </div>
-    </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function Go() {
+  return (
+    <svg style={{ width: 11, height: 11 }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M5 12h14" />
+      <path d="m12 5 7 7-7 7" />
+    </svg>
   );
 }
