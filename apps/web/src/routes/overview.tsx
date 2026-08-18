@@ -7,6 +7,7 @@ import type { TotalsResource } from "@prism-analytics/types";
 import { CodeCopyRow } from "@/components/public/code-copy-row";
 import { Frame } from "@/components/public/frame";
 import { useProjectsQuery } from "@/network/queries/useProjectsQuery";
+import { Breadcrumb } from "@/components/layout/v2/Breadcrumb";
 import { IconFolder, IconGlobe, IconDoc } from "@/components/layout/v2/icons";
 
 const VITE_DOCS_URL: string =
@@ -129,6 +130,7 @@ export function Overview() {
 
   return (
     <>
+      <Breadcrumb />
       <h1 className="font-mono text-[26px] font-[650] leading-[1.18] tracking-[-0.025em] text-text">
         <span className="mr-2.5 select-none text-text-subtle">{"//"}</span>Welcome back,{" "}
         {firstName || "there"}

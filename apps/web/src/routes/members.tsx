@@ -28,6 +28,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { UserPlus, Trash2, LogOut } from "lucide-react";
+import { Breadcrumb } from "@/components/layout/v2/Breadcrumb";
 
 const ROLE_LABELS: Record<string, string> = {
   owner: "Owner",
@@ -86,6 +87,7 @@ export function MembersPage() {
 
   return (
     <>
+      <Breadcrumb />
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
         <div>
           <h1 className="font-mono text-[26px] font-[650] leading-[1.18] tracking-[-0.025em] text-text">Members</h1>

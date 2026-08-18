@@ -1,6 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { useProjectsQuery } from "@/network/queries/useProjectsQuery";
+import { Breadcrumb } from "@/components/layout/v2/Breadcrumb";
 import { useActiveWorkspace } from "@/lib/workspace";
 import { CreateNewProject } from "@/components/projects/create-new-project";
 import { Frame } from "@/components/public/frame";
@@ -23,6 +24,7 @@ export function Projects() {
 
   return (
     <>
+      <Breadcrumb />
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
         <div>
           <h1 className="font-mono text-[26px] font-[650] leading-[1.18] tracking-[-0.025em] text-text">Projects</h1>

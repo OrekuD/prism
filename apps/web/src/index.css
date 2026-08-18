@@ -208,14 +208,11 @@
   --radius-lg: var(--radius-control);
   --radius-xl: var(--radius-control);
 
-  /* Self-hosted type ramp (Geist Sans + Geist Mono via @fontsource). The
-     v2 dashboard names the families "Geist" / "Geist Mono" (matching the
-     token values from analytics-dashboard-v2.html); the variable build is
-     the same Geist typeface, so the loaded "Geist Variable" sits as the
-     render fallback. */
-  --font-sans: "Geist", "Geist Variable", "Helvetica Neue", Arial, sans-serif;
-  --font-mono: "Geist Mono", "Geist Mono Variable", ui-monospace, SFMono-Regular,
-    Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  /* Type ramp matching the v2 dashboard tokens: Geist + Geist Mono, loaded
+     from Google Fonts (see index.html; "Geist" / "Geist Mono" families). */
+  --font-sans: "Geist", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Geist Mono", "SFMono-Regular", Consolas, "Liberation Mono",
+    monospace;
 
   --height-full-screen: calc(100dvh - 4rem);
   --height-full-screen-sm: calc(100dvh - 8rem);
