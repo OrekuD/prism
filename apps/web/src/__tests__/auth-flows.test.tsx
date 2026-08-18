@@ -149,7 +149,10 @@ describe("duplicate-submit prevention", () => {
     // Enter while pending must not trigger a second request.
     await userEvent.keyboard("{Enter}");
     resolveSignIn?.({ data: null, error: null });
-    await waitFor(() => expect(submit).not.toBeDisabled());
+    await waitFor(() => expect(signInEmail).toHaveBeenCalledTimes(1));
+    // The button stays in its loading state through navigation — it must not
+    // reset to idle (and expose the form again) before the dashboard mounts.
+    expect(submit).toBeDisabled();
     expect(signInEmail).toHaveBeenCalledTimes(1);
   });
 

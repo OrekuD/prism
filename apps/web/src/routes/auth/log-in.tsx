@@ -45,21 +45,25 @@ export function LogIn() {
       if (response.error) {
         // Non-enumerating: same message for every credential failure.
         setError("Invalid email or password.");
+        setIsPending(false);
         return;
       }
+      // Resolve the destination (organizations + session) while the router
+      // catches up on the session, so the two round-trips overlap instead of
+      // leaving a visible gap on the sign-in page.
+      const homePromise = resolveDefaultWorkspacePath();
       // Wait for the session to reach the router before navigating, or
       // the signed-out tree 404s on /projects.
       await waitForSession();
-      navigate((await resolveDefaultWorkspacePath()) || "/overview", {
-        replace: true,
-      });
+      navigate((await homePromise) || "/overview", { replace: true });
+      // Leave isPending true: the page unmounts on navigation, so the
+      // button never resets to its idle state mid-wait.
     } catch (err) {
       if (isNetworkError(err)) {
         setError("Cannot reach Prism. Check your connection and try again.");
       } else {
         setError("Something went wrong. Please try again.");
       }
-    } finally {
       setIsPending(false);
     }
   };

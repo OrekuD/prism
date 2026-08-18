@@ -149,8 +149,10 @@ export function newWorkspaceSlug(): string {
  */
 export async function resolveDefaultWorkspacePath(): Promise<string> {
   try {
-    const { data } = await authClient.organization.list();
-    const sessionData = await authClient.getSession();
+    const [{ data }, sessionData] = await Promise.all([
+      authClient.organization.list(),
+      authClient.getSession(),
+    ]);
     const activeId = (
       sessionData as unknown as {
         session?: { activeOrganizationId?: string };
