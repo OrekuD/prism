@@ -7,7 +7,7 @@ import type { TotalsResource } from "@prism-analytics/types";
 import { CodeCopyRow } from "@/components/public/code-copy-row";
 import { Frame } from "@/components/public/frame";
 import { useProjectsQuery } from "@/network/queries/useProjectsQuery";
-import { IconFolder, IconGlobe, IconDoc } from "@/components/layout/icons";
+import { IconFolder, IconGlobe, IconDoc } from "@/components/ui/icons";
 
 const VITE_DOCS_URL: string =
   import.meta.env.VITE_DOCS_URL ?? "http://localhost:3000";
@@ -150,7 +150,7 @@ export function Overview() {
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Frame className="flex min-h-[128px] flex-col gap-3.5 p-5 transition-colors hover:bg-surface-hover hover:border-border-strong">
-          <Link to={`/${wrkSlug}/projects`} className="flex h-full flex-col gap-3.5">
+          <Link to={`/workspace/${wrkSlug}/projects`} className="flex h-full flex-col gap-3.5">
             <span className="grid size-9 place-items-center rounded-[2px] border border-border bg-surface-raised"><IconFolder /></span>
             <h3 className="text-[15px] font-semibold tracking-[-0.01em]">Projects</h3>
             <p className="max-w-[36ch] text-[13px] leading-relaxed text-text-muted">Manage tracked applications.</p>
@@ -158,7 +158,7 @@ export function Overview() {
           </Link>
         </Frame>
         <Frame className="flex min-h-[128px] flex-col gap-3.5 p-5 transition-colors hover:bg-surface-hover hover:border-border-strong">
-          <Link to={`/${wrkSlug}/projects`} className="flex h-full flex-col gap-3.5">
+          <Link to={`/workspace/${wrkSlug}/projects`} className="flex h-full flex-col gap-3.5">
             <span className="grid size-9 place-items-center rounded-[2px] border border-border bg-surface-raised"><IconGlobe /></span>
             <h3 className="text-[15px] font-semibold tracking-[-0.01em]">Sources</h3>
             <p className="max-w-[36ch] text-[13px] leading-relaxed text-text-muted">Set up SDKs and manage keys per source.</p>

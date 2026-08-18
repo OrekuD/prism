@@ -36,7 +36,7 @@ export function useWorkspaceHome(): {
   const slug =
     (active as { slug?: string } | null)?.slug ??
     (workspaces?.[0] as { slug?: string } | undefined)?.slug;
-  return { path: slug ? `/${slug}/overview` : null, isPending };
+  return { path: slug ? `/workspace/${slug}/overview` : null, isPending };
 }
 
 /**
@@ -82,7 +82,7 @@ export function WorkspaceScope() {
   // slug once the data has arrived.
   if (workspaces != null && !workspace) {
     const activeSlug = (active as { slug?: string } | null)?.slug;
-    if (activeSlug) return <Navigate to={`/${activeSlug}/overview`} replace />;
+    if (activeSlug) return <Navigate to={`/workspace/${activeSlug}/overview`} replace />;
     return <Centered>Workspace not found.</Centered>;
   }
   return <Outlet />;
@@ -92,7 +92,7 @@ export function WorkspaceScope() {
 export function RedirectToWs({ to }: { to: string }) {
   const { data: active, isPending } = useActiveWorkspace();
   const slug = (active as { slug?: string } | null)?.slug ?? "";
-  if (slug) return <Navigate to={`/${slug}${to}`} replace />;
+  if (slug) return <Navigate to={`/workspace/${slug}${to}`} replace />;
   return <HomeSkeleton />;
 }
 
@@ -101,6 +101,6 @@ export function RedirectToProjectWs() {
   const { slug } = useParams();
   const { data: active, isPending } = useActiveWorkspace();
   const ws = (active as { slug?: string } | null)?.slug ?? "";
-  if (ws) return <Navigate to={`/${ws}/projects/${slug}`} replace />;
+  if (ws) return <Navigate to={`/workspace/${ws}/projects/${slug}`} replace />;
   return <HomeSkeleton />;
 }

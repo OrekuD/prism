@@ -23,15 +23,15 @@ export function useBreadcrumbs(): Crumb[] {
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
   if (parts[0] === "account") {
-    crumbs.push({ label: workspace, href: `/${wrkSlug}/overview` });
+    crumbs.push({ label: workspace, href: `/workspace/${wrkSlug}/overview` });
     crumbs.push({ label: "Account", href: "/account/general" });
     crumbs.push({ label: parts[1] ? cap(parts[1]) : "General" });
     return crumbs;
   }
 
-  // Workspace-scoped pages: parts[0] is the workspace slug.
-  crumbs.push({ label: workspace, href: `/${wrkSlug}/overview` });
-  const section = parts[1];
+  // Workspace-scoped pages: parts = ["workspace", wrkSlug, section, ...].
+  crumbs.push({ label: workspace, href: `/workspace/${wrkSlug}/overview` });
+  const section = parts[2];
 
   if (!section || section === "overview") {
     crumbs.push({ label: "Overview" });
@@ -41,17 +41,17 @@ export function useBreadcrumbs(): Crumb[] {
     crumbs.push({ label: "Settings" });
   } else if (section === "projects") {
     crumbs.push({ label: "Projects" });
-    if (parts[2] === "new") {
+    if (parts[3] === "new") {
       crumbs.push({ label: "New" });
     } else {
-      const projectSlug = parts[3];
+      const projectSlug = parts[4];
       const project = projectsQuery.data?.find((p) => p.slug === projectSlug);
       if (projectSlug) {
         crumbs.push({
           label: project?.name ?? projectSlug,
-          href: `/${parts[0]}/projects/${projectSlug}`,
+          href: `/workspace/${parts[1]}/projects/${projectSlug}`,
         });
-        const sub = parts[4];
+        const sub = parts[5];
         if (sub) crumbs.push({ label: cap(sub) });
       }
     }

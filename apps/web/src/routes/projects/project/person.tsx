@@ -6,6 +6,7 @@ import {
   CardContent,
   CardDescription,
 } from "@/components/ui/card";
+import { PageHeader } from "@/components/public/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
@@ -62,7 +63,7 @@ export function PersonDetail() {
     setDeleteError(null);
     try {
       await axiosInstance.delete(`/projects/${slug}/people/${personId}?confirm=true`);
-      navigate(`/${wrkSlug}/projects/${slug}/people`);
+      navigate(`/workspace/${wrkSlug}/projects/${slug}/people`);
     } catch {
       setDeleteError("Deletion failed. Try again.");
       setDeleting(false);
@@ -88,16 +89,12 @@ export function PersonDetail() {
   }
 
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-6">
+      <PageHeader
+        title={shortId(data.personId)}
+        description={`First seen ${new Date(data.firstSeenAt).toLocaleString()} · Last seen ${new Date(data.lastSeenAt).toLocaleString()} · ${data.identityCount} linked identities`}
+      />
       <Card>
-        <CardHeader className="gap-1">
-          <CardTitle className="font-mono text-sm">{shortId(data.personId)}</CardTitle>
-          <CardDescription>
-            First seen {new Date(data.firstSeenAt).toLocaleString()} · Last seen{" "}
-            {new Date(data.lastSeenAt).toLocaleString()} · {data.identityCount} linked
-            identities
-          </CardDescription>
-        </CardHeader>
         <CardContent className="grid gap-3">
           <section aria-labelledby="traits-heading">
             <h3 id="traits-heading" className="mb-2 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-subtle">

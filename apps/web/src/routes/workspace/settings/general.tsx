@@ -5,9 +5,20 @@ import {
   useActiveWorkspace,
   workspaceActions,
 } from "@/lib/workspace";
+import { Button } from "@/components/ui/button";
 import { Frame, SectionLabel } from "@/components/public/frame";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Loader2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,17 +29,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Trash2 } from "lucide-react";
-
-const SAVE_BTN =
-  "inline-flex h-9 items-center gap-2 rounded-[2px] bg-accent px-3.5 text-[13px] font-medium text-primary-foreground transition-colors hover:bg-accent-hover disabled:opacity-45";
-const DANGER_BTN =
-  "inline-flex h-9 items-center gap-2 rounded-[2px] border border-danger/50 px-3.5 text-[13px] font-medium text-danger transition-colors hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-45";
 
 /**
- * Workspace settings — General tab (/:wrkSlug/settings/general). Uses the
- * same Frame layout as project settings: a normal frame for the rename
- * form and a destructive frame for the delete zone.
+ * Workspace settings — General tab (/:wrkSlug/settings/general). Rename uses
+ * the same read-only-name + dialog flow as project settings; delete stays
+ * owner-only for non-default workspaces, confirmed via AlertDialog.
  */
 export function WorkspaceSettingsGeneral() {
   const { data: activeWorkspace } = useActiveWorkspace();
@@ -44,18 +49,14 @@ export function WorkspaceSettingsGeneral() {
   const isDefault = workspace?.metadata?.default === true;
   const canDelete = myRole === "owner" && !isDefault;
 
-  const [name, setName] = React.useState(workspace?.name ?? "");
+  const [open, setOpen] = React.useState(false);
+  const [name, setName] = React.useState("");
   const [saving, setSaving] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
   const [confirmOpen, setConfirmOpen] = React.useState(false);
 
-  React.useEffect(() => {
-    setName(workspace?.name ?? "");
-  }, [workspace?.name]);
-
-  async function onSave(event: React.FormEvent) {
-    event.preventDefault();
-    if (!workspace || !name.trim() || name.trim() === workspace.name) return;
+  const onRename = async () => {
+    if (!workspace || !name.trim()) return;
     setSaving(true);
     try {
       await workspaceActions.update({
@@ -63,12 +64,14 @@ export function WorkspaceSettingsGeneral() {
         name: name.trim(),
       });
       toast.success("Workspace updated");
+      setOpen(false);
+      setName("");
     } catch {
       toast.error("Something went wrong.");
     } finally {
       setSaving(false);
     }
-  }
+  };
 
   async function onDelete() {
     if (!workspace || !canDelete) return;
@@ -90,47 +93,78 @@ export function WorkspaceSettingsGeneral() {
       <Frame className="p-6">
         <SectionLabel>Workspace name</SectionLabel>
         <p className="mt-1.5 text-[13px] text-text-muted">
-          The name of your active workspace.
+          Identifies your workspace across the Dashboard and Prism CLI.
         </p>
-        <form onSubmit={onSave} className="mt-4 max-w-sm space-y-5">
-          <div className="space-y-2">
-            <Label className="text-[13px] font-medium text-text">Name</Label>
-            <Input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              aria-label="Workspace name"
-            />
-          </div>
-          <button type="submit" disabled={saving} className={SAVE_BTN}>
-            {saving ? (
-              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-            ) : null}
-            Save changes
-          </button>
-        </form>
+        <div className="mt-4 flex items-center justify-between gap-4">
+          <p className="text-[14px] font-medium text-text">
+            {workspace?.name}
+          </p>
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button disabled={!workspace}>Rename workspace</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Rename workspace</DialogTitle>
+                <DialogDescription>
+                  Give your workspace a new name. The workspace slug stays the
+                  same.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="workspace-name">Workspace name</Label>
+                  <Input
+                    id="workspace-name"
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    placeholder={workspace?.name}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => void onRename()}
+                  disabled={saving || !name.trim()}
+                >
+                  {saving ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    "Save"
+                  )}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
       </Frame>
 
       {/* Delete */}
       <Frame destructive className="p-6">
         <SectionLabel className="text-danger">Delete workspace</SectionLabel>
-        <p className="mt-1.5 text-[13px] leading-relaxed text-text-muted">
+        <p className="mt-1.5 text-[13px] text-text-muted">
           {isDefault
             ? "This is your default workspace and can't be deleted."
             : myRole === "owner"
-              ? "Permanently delete this workspace and all of its projects, sources, and analytics. This can't be undone."
+              ? "This will irreversibly remove your workspace and all its projects, sources, and analytics."
               : "Only the workspace owner can delete it."}
         </p>
         <div className="mt-4">
-          <button
-            type="button"
+          <Button
+            variant="destructive"
             onClick={() => setConfirmOpen(true)}
             disabled={!canDelete || deleting}
-            className={DANGER_BTN}
-            title={isDefault ? "Default workspaces are undeletable" : undefined}
           >
-            <Trash2 className="size-3.5" />
             Delete workspace
-          </button>
+          </Button>
         </div>
       </Frame>
 

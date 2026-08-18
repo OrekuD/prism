@@ -1,6 +1,7 @@
 import React from "react";
 import { Link, useParams } from "react-router-dom";
 import { Frame } from "@/components/public/frame";
+import { PageHeader } from "@/components/public/page-header";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -129,17 +130,13 @@ export function ProjectSources() {
   const { data, isLoading, isError, refetch } = useSourcesQuery(slug);
 
   return (
-    <div className="flex flex-1 flex-col py-4 space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Sources</h2>
-          <p className="text-sm text-muted-foreground">
-            Installations that send telemetry to this project. Each source has
-            its own ingestion key and SDK setup.
-          </p>
-        </div>
+    <div className="flex flex-1 flex-col space-y-6">
+      <PageHeader
+        title="Sources"
+        description="Installations that send telemetry to this project. Each source has its own ingestion key and SDK setup."
+      >
         {slug ? <CreateSourceDialog slug={slug} /> : null}
-      </div>
+      </PageHeader>
 
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -164,7 +161,7 @@ export function ProjectSources() {
             ).length;
             return (
               <Link
-                to={`/${wrkSlug}/projects/${slug}/sources/${source.id}`}
+                to={`/workspace/${wrkSlug}/projects/${slug}/sources/${source.id}`}
                 key={source.id}
                 className="block h-full"
               >

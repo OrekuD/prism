@@ -1,8 +1,8 @@
 import React from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { Sidebar } from "./Sidebar";
-import { Toolbar } from "./Toolbar";
+import { Sidebar } from "./sidebar";
+import { Toolbar } from "./toolbar";
 
 /**
  * v2 dashboard shell (Tailwind): persistent 240px sidebar + sticky toolbar

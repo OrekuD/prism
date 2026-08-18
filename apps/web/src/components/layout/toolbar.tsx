@@ -1,6 +1,6 @@
 import React from "react";
 import { useBreadcrumbs } from "@/lib/breadcrumbs";
-import { IconMenu } from "./icons";
+import { IconMenu } from "@/components/ui/icons";
 import {
   Breadcrumb as ShadcnBreadcrumb,
   BreadcrumbItem,

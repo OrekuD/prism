@@ -1,11 +1,6 @@
 import React from "react";
-import {
-  Card,
-  CardTitle,
-  CardHeader,
-  CardContent,
-  CardDescription,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { PageHeader } from "@/components/public/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
@@ -60,17 +55,19 @@ export function ProjectPeople() {
   const totals = useTotalsQuery(slug);
 
   return (
-    <div className="grid gap-4">
-      <Card>
-        <CardHeader className="gap-1">
-          <CardTitle>People</CardTitle>
-          <CardDescription>
+    <div className="grid gap-6">
+      <PageHeader
+        title="People"
+        description={
+          <>
             Resolved analytics subjects — developer-supplied identities only.{" "}
             {totals.data
               ? `${totals.data.people} people · ${totals.data.anonymousIdentities} anonymous identities · ${totals.data.sessions} sessions · ${totals.data.events} events`
               : ""}
-          </CardDescription>
-        </CardHeader>
+          </>
+        }
+      />
+      <Card>
         <CardContent className="grid gap-3">
           <form
             className="flex max-w-sm items-center gap-2"
@@ -144,7 +141,7 @@ export function ProjectPeople() {
                     >
                       <td className="px-4 py-3">
                         <Link
-                          to={`/${wrkSlug}/projects/${slug}/people/${encodeURIComponent(person.personId)}`}
+                          to={`/workspace/${wrkSlug}/projects/${slug}/people/${encodeURIComponent(person.personId)}`}
                           className="font-mono text-[13px] text-link hover:underline"
                         >
                           {shortId(person.personId)}

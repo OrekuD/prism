@@ -4,7 +4,7 @@ import { authBaseUrl, authClient } from "@/lib/authClient";
 import { loadRuntimeConfig } from "@/lib/runtimeConfig";
 import { Frame, SectionLabel } from "@/components/public/frame";
 import { PrismMark } from "@/components/brand/prism-mark";
-import { HomeSkeleton, useWorkspaceHome } from "@/components/layout/WorkspaceScope";
+import { HomeSkeleton, useWorkspaceHome } from "@/components/workspace/workspace-scope";
 
 /**
  * Shared authentication shell (design-system.md 11.1-11.2).

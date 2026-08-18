@@ -4,7 +4,7 @@ import { useActiveWorkspace, useWorkspaces, workspaceActions } from "@/lib/works
 import { Navigate, useLocation } from "react-router-dom";
 import { Loader2, TriangleAlert } from "lucide-react";
 import { useResendVerificationEmail } from "@/hooks/useResendVerificationEmail";
-import { DashboardLayout } from "./DashboardLayout";
+import { DashboardLayout } from "./dashboard-layout";
 
 /**
  * Auto-selects the user's first workspace once the session and workspace

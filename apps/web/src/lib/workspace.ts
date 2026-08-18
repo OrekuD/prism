@@ -160,7 +160,7 @@ export async function resolveDefaultWorkspacePath(): Promise<string> {
     )?.session?.activeOrganizationId;
     const orgs = (data ?? []) as Array<{ id: string; slug: string }>;
     const target = orgs.find((o) => o.id === activeId) ?? orgs[0];
-    return target?.slug ? `/${target.slug}/overview` : "/overview";
+    return target?.slug ? `/workspace/${target.slug}/overview` : "/overview";
   } catch {
     return "/overview";
   }

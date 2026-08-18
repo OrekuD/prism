@@ -1,4 +1,5 @@
 import React from "react";
+import { PageHeader } from "@/components/public/page-header";
 import { toast } from "sonner";
 import {
   useActiveMember,
@@ -92,11 +93,10 @@ export function MembersPage() {
 
   return (
     <>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-        <div>
-          <h1 className="font-mono text-[26px] font-[650] leading-[1.18] tracking-[-0.025em] text-text">Members</h1>
-          <p className="mt-2 text-sm text-text-muted">Members of the {workspaceName ?? "workspace"} workspace and their roles.</p>
-        </div>
+      <PageHeader
+        title="Members"
+        description={`Members of the ${workspaceName ?? "workspace"} workspace and their roles.`}
+      >
         {canManage ? (
           <button
             type="button"
@@ -106,7 +106,7 @@ export function MembersPage() {
             <UserPlus className="size-4" />Invite member
           </button>
         ) : null}
-      </div>
+      </PageHeader>
 
       <div className="mt-10 mb-3.5 flex items-baseline gap-1.5 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">Members</div>
       <div className="overflow-auto rounded-[2px] border border-border">

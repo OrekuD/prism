@@ -15,7 +15,7 @@ import {
   WorkspaceHome,
   RedirectToWs,
   RedirectToProjectWs,
-} from "./components/layout/WorkspaceScope";
+} from "./components/workspace/workspace-scope";
 import { lazy } from "react";
 
 /**
@@ -70,27 +70,27 @@ const ProjectSettingsGeneral = lazy(() =>
   })),
 );
 const AccountGeneral = lazy(() =>
-  import("./routes/profile/general").then((m) => ({
+  import("./routes/account/general").then((m) => ({
     default: m.AccountGeneral,
   })),
 );
 const AccountSecurity = lazy(() =>
-  import("./routes/profile/security").then((m) => ({
+  import("./routes/account/security").then((m) => ({
     default: m.AccountSecurity,
   })),
 );
 const AccountAuthentication = lazy(() =>
-  import("./routes/profile/authentication").then((m) => ({
+  import("./routes/account/authentication").then((m) => ({
     default: m.AccountAuthentication,
   })),
 );
 const AccountWorkspaces = lazy(() =>
-  import("./routes/profile/workspace").then((m) => ({
+  import("./routes/account/workspace").then((m) => ({
     default: m.AccountWorkspaces,
   })),
 );
 const ProjectSources = lazy(() =>
-  import("./routes/projects/project/sources").then((m) => ({
+  import("./routes/projects/project/sources/index").then((m) => ({
     default: m.ProjectSources,
   })),
 );
@@ -108,10 +108,10 @@ const Onboarding = lazy(() =>
   import("./routes/onboarding").then((m) => ({ default: m.Onboarding })),
 );
 const Overview = lazy(() =>
-  import("./routes/overview").then((m) => ({ default: m.Overview })),
+  import("./routes/workspace/overview").then((m) => ({ default: m.Overview })),
 );
 const MembersPage = lazy(() =>
-  import("./routes/members").then((m) => ({ default: m.MembersPage })),
+  import("./routes/workspace/members").then((m) => ({ default: m.MembersPage })),
 );
 const WorkspaceSettingsLayout = lazy(() =>
   import("./components/layout/workspace-settings-layout").then((m) => ({
@@ -119,7 +119,7 @@ const WorkspaceSettingsLayout = lazy(() =>
   })),
 );
 const WorkspaceSettingsGeneral = lazy(() =>
-  import("./routes/workspace-settings").then((m) => ({
+  import("./routes/workspace/settings/general").then((m) => ({
     default: m.WorkspaceSettingsGeneral,
   })),
 );
@@ -184,7 +184,7 @@ const router = createBrowserRouter(
         <Route path="members/:slug/*" element={<RedirectToProjectWs />} />
 
         {/* Workspace-scoped product routes. */}
-        <Route path=":wrkSlug" element={<WorkspaceScope />}>
+        <Route path="workspace/:wrkSlug" element={<WorkspaceScope />}>
           <Route path="overview" element={<Overview />} />
           <Route path="members" element={<MembersPage />} />
           <Route path="settings" element={<WorkspaceSettingsLayout />}>

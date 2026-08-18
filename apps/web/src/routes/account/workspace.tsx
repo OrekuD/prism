@@ -42,7 +42,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CreateWorkspaceDialog } from "@/components/layout/workspace-switcher";
+import { CreateWorkspaceDialog } from "@/components/workspace/workspace-switcher";
 import { getInitials } from "@/utils/getInitials";
 import { Plus, UserPlus, Trash2, LogOut } from "lucide-react";
 

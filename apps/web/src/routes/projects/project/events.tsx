@@ -1,11 +1,6 @@
 import React from "react";
-import {
-  Card,
-  CardTitle,
-  CardHeader,
-  CardContent,
-  CardDescription,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { PageHeader } from "@/components/public/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorState } from "@/components/ui/error-state";
@@ -26,14 +21,13 @@ export function ProjectEvents() {
   const { data, isLoading, isError, refetch } = useProjectEventsQuery(slug);
 
   return (
-    <Card>
-      <CardHeader className="gap-1">
-        <CardTitle>Events</CardTitle>
-        <CardDescription>
-          Named events captured by the Prism SDK on this project.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+    <div className="grid gap-6">
+      <PageHeader
+        title="Events"
+        description="Named events captured by the Prism SDK on this project."
+      />
+      <Card>
+        <CardContent>
         {isLoading ? (
           <div className="space-y-2">
             <Skeleton className="h-8 w-full" />
@@ -108,7 +102,8 @@ export function ProjectEvents() {
             }
           />
         )}
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

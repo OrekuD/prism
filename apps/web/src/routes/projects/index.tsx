@@ -3,7 +3,8 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useProjectsQuery } from "@/network/queries/useProjectsQuery";
 import { useActiveWorkspace } from "@/lib/workspace";
 import { Frame } from "@/components/public/frame";
-import { IconFolder } from "@/components/layout/icons";
+import { PageHeader } from "@/components/public/page-header";
+import { IconFolder } from "@/components/ui/icons";
 
 const placeholders = Array(3).fill(null);
 
@@ -26,32 +27,18 @@ export function Projects() {
 
   return (
     <>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 16,
-          flexWrap: "wrap",
-        }}
+      <PageHeader
+        title="Projects"
+        description={`Tracked applications in the ${workspaceName ?? "workspace"} workspace.`}
       >
-        <div>
-          <h1 className="font-mono text-[26px] font-[650] leading-[1.18] tracking-[-0.025em] text-text">
-            Projects
-          </h1>
-          <p className="mt-2 text-sm text-text-muted">
-            Tracked applications in the {workspaceName ?? "workspace"}{" "}
-            workspace.
-          </p>
-        </div>
         <button
           type="button"
-          onClick={() => navigate(`/${wrkSlug}/projects/new`)}
+          onClick={() => navigate(`/workspace/${wrkSlug}/projects/new`)}
           className="inline-flex h-9 items-center gap-2 rounded-[2px] bg-accent px-3.5 text-[13px] font-medium text-primary-foreground transition-colors hover:bg-accent-hover"
         >
           New project
         </button>
-      </div>
+      </PageHeader>
 
       <div className="mt-10 mb-3.5 flex items-baseline gap-1.5 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
         All projects
@@ -93,7 +80,7 @@ export function Projects() {
                 className="flex min-h-[128px] flex-col gap-3.5 p-5 transition-colors hover:bg-surface-hover hover:border-border-strong"
               >
                 <Link
-                  to={`/${wrkSlug}/projects/${project.slug}`}
+                  to={`/workspace/${wrkSlug}/projects/${project.slug}`}
                   className="flex h-full flex-col gap-3.5"
                 >
                   <span className="grid size-9 place-items-center rounded-[2px] border border-border bg-surface-raised">

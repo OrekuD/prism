@@ -1,6 +1,7 @@
 import React from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Frame, SectionLabel } from "@/components/public/frame";
+import { PageHeader } from "@/components/public/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
@@ -185,20 +186,20 @@ export function SourceDetail() {
   }
 
   return (
-    <div className="flex flex-1 flex-col py-4 space-y-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">{data.name}</h2>
-          <p className="text-sm text-muted-foreground">
+    <div className="flex flex-1 flex-col space-y-6">
+      <PageHeader
+        title={data.name}
+        description={
+          <>
             {PLATFORM_LABELS[data.platform]} source ·{" "}
             {formatCount(data.telemetry.events)} events
             {data.telemetry.lastReceivedAt
               ? ` · last ${new Date(data.telemetry.lastReceivedAt).toLocaleString()}`
               : ""}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          {canManage && (
+          </>
+        }
+      >
+        {canManage && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="destructive" aria-label="Delete source">
@@ -223,7 +224,7 @@ export function SourceDetail() {
                     onClick={async (event) => {
                       event.preventDefault();
                       await deleteSource.mutateAsync(data.id);
-                      navigate(`/${wrkSlug}/projects/${slug}/sources`);
+                      navigate(`/workspace/${wrkSlug}/projects/${slug}/sources`);
                     }}
                   >
                     {deleteSource.isPending ? (
@@ -237,9 +238,8 @@ export function SourceDetail() {
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
-          )}
-        </div>
-      </div>
+        )}
+      </PageHeader>
 
       <Frame className="p-6">
         <SectionLabel>SDK Setup</SectionLabel>

@@ -1,8 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
-import { Sidebar } from "@/components/layout/Sidebar";
-import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { Sidebar } from "@/components/layout/sidebar";
+import { DashboardLayout } from "@/components/layout/dashboard-layout";
 
 vi.mock("@/lib/authClient", () => ({
   authClient: {
@@ -46,7 +46,7 @@ describe("v2 dashboard shell", () => {
 
   it("renders the Workspace/Project/Data/Configure nav groups in the sidebar", () => {
     render(
-      <MemoryRouter initialEntries={["/wrk_testws/projects/acme-web/events"]}>
+      <MemoryRouter initialEntries={["/workspace/wrk_testws/projects/acme-web/events"]}>
         <Sidebar />
       </MemoryRouter>,
     );
@@ -68,7 +68,7 @@ describe("v2 dashboard shell", () => {
 
   it("mounts the shell with sidebar, toolbar and content regions", () => {
     render(
-      <MemoryRouter initialEntries={["/wrk_testws/projects/acme-web/events"]}>
+      <MemoryRouter initialEntries={["/workspace/wrk_testws/projects/acme-web/events"]}>
         <DashboardLayout />
       </MemoryRouter>,
     );

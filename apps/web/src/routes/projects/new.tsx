@@ -1,5 +1,6 @@
 import React from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { PageHeader } from "@/components/public/page-header";
 import { Loader2 } from "lucide-react";
 import { useCreateProjectMutation } from "@/network/mutations/useCreateProjectMutation";
 import { useActiveWorkspace, useWorkspaces } from "@/lib/workspace";
@@ -58,7 +59,7 @@ export function NewProject() {
     (activeWorkspace as { id?: string; slug?: string } | null) ??
     list[0];
 
-  const projectsPath = `/${wrkSlug ?? ""}/projects`;
+  const projectsPath = `/workspace/${wrkSlug ?? ""}/projects`;
   const isPending = createProjectMutation.isPending;
   const slug = slugify(name);
   const canSubmit = Boolean(name.trim()) && !isPending;
@@ -81,9 +82,7 @@ export function NewProject() {
   return (
     <div className="mx-auto w-full max-w-[720px]">
       <div className="mb-8">
-        <h1 className="font-mono text-[26px] font-[650] leading-[1.18] tracking-[-0.025em] text-text">
-          Create a project
-        </h1>
+        <PageHeader title="Create a project" />
       </div>
 
       <form onSubmit={onSubmit} className="space-y-9">
