@@ -1,13 +1,14 @@
-import type React from "react";
+import React from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { Check, LogOut, Monitor, Plus, ShieldCheck, Sun, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme-provider";
 import { authClient } from "@/lib/authClient";
-import { useActiveWorkspace } from "@/lib/workspace";
+import { useActiveWorkspace, useWorkspaces, workspaceActions } from "@/lib/workspace";
 import { useProjectsQuery } from "@/network/queries/useProjectsQuery";
 import { getInitials } from "@/utils/getInitials";
 import { PrismLogo } from "@/components/brand/prism-logo";
+import { CreateWorkspaceDialog } from "@/components/layout/workspace-switcher";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -68,11 +69,15 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
   const { theme, setTheme } = useTheme();
   const { data: session } = authClient.useSession();
   const { data: activeWorkspace } = useActiveWorkspace();
+  const { data: workspaces } = useWorkspaces();
   const projectsQuery = useProjectsQuery();
 
   const slug = pathname.split("/")[2];
   const project = projectsQuery.data?.find((entry) => entry.slug === slug);
   const workspaceName = (activeWorkspace as { name?: string } | null)?.name;
+  const allWorkspaces = (workspaces ?? []) as Array<{ id: string; name: string }>;
+  const activeWorkspaceId = (activeWorkspace as { id?: string } | null)?.id;
+  const [newWorkspaceOpen, setNewWorkspaceOpen] = React.useState(false);
   const projects = (projectsQuery.data ?? []) as Array<{ name: string; slug: string }>;
 
   const themeOptions = [
@@ -97,6 +102,64 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
         <Link to="/overview" aria-label="Prism home" className="inline-flex items-center gap-2.5 rounded-[2px] transition-opacity hover:opacity-90">
           <PrismLogo size={22} variant="monochrome" className="text-text" />
         </Link>
+      </div>
+
+      <div className="px-3 pb-3">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-haspopup="menu"
+              title="Switch workspace"
+              className="flex h-[34px] w-full items-center gap-2 rounded-[2px] border border-border bg-surface px-2.5 text-[13px] font-medium transition-colors hover:bg-surface-hover"
+            >
+              <I.IconGrid />
+              <span className="flex-1 truncate text-left">
+                {workspaceName ?? "Select a workspace"}
+              </span>
+              <I.IconChevronDown />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" sideOffset={6} className="w-(--radix-dropdown-menu-trigger-width)">
+            <DropdownMenuLabel>Workspaces</DropdownMenuLabel>
+            {allWorkspaces.length === 0 ? (
+              <div className="px-2 py-1.5 text-[13px] text-text-subtle">
+                No workspaces yet.
+              </div>
+            ) : (
+              allWorkspaces.map((ws) => (
+                <DropdownMenuItem
+                  key={ws.id}
+                  className="gap-2"
+                  onClick={() => {
+                    if (ws.id !== activeWorkspaceId) {
+                      void workspaceActions.setActive(ws.id);
+                      navigate("/overview");
+                    }
+                  }}
+                >
+                  <I.IconGrid />
+                  <span className="flex-1 truncate">{ws.name}</span>
+                  {activeWorkspaceId === ws.id ? (
+                    <Check className="size-3.5 text-accent" />
+                  ) : null}
+                </DropdownMenuItem>
+              ))
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="gap-2"
+              onClick={() => setNewWorkspaceOpen(true)}
+            >
+              <Plus className="size-4" />
+              <span className="flex-1">New workspace</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <CreateWorkspaceDialog
+          open={newWorkspaceOpen}
+          onOpenChange={setNewWorkspaceOpen}
+        />
       </div>
 
       <nav className="flex flex-1 flex-col gap-3 overflow-y-auto px-3 pb-4">
