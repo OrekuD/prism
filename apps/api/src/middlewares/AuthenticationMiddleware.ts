@@ -48,6 +48,51 @@ export const AuthenticationMiddleware = createMiddleware(
         // Provisioning retries on the next request; the session itself is
         // valid regardless.
       }
+
+      // If the session has no active organization, default it to the user's
+      // first workspace. Otherwise the Organization plugin's
+      // get-active-member endpoint 400s (NO_ACTIVE_ORGANIZATION), which the
+      // dashboard retries on members/sources pages and can trip the auth
+      // rate limiter (burst of failing calls -> 429s on get-session). This
+      // also auto-selects the first workspace for new/returning sign-ins.
+      // Best-effort and idempotent: once the session is updated, later
+      // requests read the persisted activeOrganizationId and skip this.
+      const hasActiveOrganization = Boolean(
+        (session.session as { activeOrganizationId?: string })
+          .activeOrganizationId,
+      );
+      if (!hasActiveOrganization) {
+        try {
+          // The server API is typed through InferAPI from the base plugin;
+          // the organization plugin's methods aren't in that type, so cast
+          // narrowly to just the two calls we need.
+          const orgApi = (
+            auth.api as unknown as {
+              organization: {
+                listOrganizations: (args: {
+                  headers: Headers;
+                }) => Promise<Array<{ id: string }>>;
+                setActive: (args: {
+                  body: { organizationId: string };
+                  headers: Headers;
+                }) => Promise<unknown>;
+              };
+            }
+          ).organization;
+          const organizations = await orgApi.listOrganizations({
+            headers: ctx.req.raw.headers,
+          });
+          const firstOrganizationId = organizations[0]?.id;
+          if (firstOrganizationId) {
+            await orgApi.setActive({
+              body: { organizationId: firstOrganizationId },
+              headers: ctx.req.raw.headers,
+            });
+          }
+        } catch {
+          // Best-effort; get-active-member degrades gracefully.
+        }
+      }
     } catch {
       return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
     }
