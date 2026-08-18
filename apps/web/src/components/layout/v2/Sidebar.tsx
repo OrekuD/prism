@@ -1,6 +1,6 @@
 import React from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
-import { Check, LogOut, Monitor, Plus, ShieldCheck, Sun, User } from "lucide-react";
+import { Check, Loader2, LogOut, Monitor, Plus, ShieldCheck, Sun, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme-provider";
 import { authClient } from "@/lib/authClient";
@@ -84,6 +84,8 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
   }>;
   const activeWorkspaceId = (activeWorkspace as { id?: string } | null)?.id;
   const [newWorkspaceOpen, setNewWorkspaceOpen] = React.useState(false);
+  const [signingOut, setSigningOut] = React.useState(false);
+  const [userMenuOpen, setUserMenuOpen] = React.useState(false);
   const projects = (projectsQuery.data ?? []) as Array<{ name: string; slug: string }>;
 
   const themeOptions = [
@@ -93,6 +95,17 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
   ];
   const themeLabel =
     theme === "dark" ? "Dark" : theme === "light" ? "Light" : "System";
+
+  async function onSignOut() {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await authClient.signOut();
+      window.location.href = "/auth/log-in";
+    } finally {
+      setSigningOut(false);
+    }
+  }
 
   return (
     <aside
@@ -330,7 +343,13 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
           <span className="font-mono text-[11px] text-text-subtle">{workspaceName ?? "Prism"}</span>
         </div>
         <div className="mt-2 border-t border-border px-1 pt-2">
-          <DropdownMenu>
+          <DropdownMenu
+            open={userMenuOpen}
+            onOpenChange={(open) => {
+              // Keep the menu from closing mid sign-out.
+              if (!signingOut) setUserMenuOpen(open);
+            }}
+          >
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
@@ -372,14 +391,18 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
               <DropdownMenuItem
                 variant="destructive"
                 className="gap-2"
-                onClick={async (e) => {
-                  e.preventDefault();
-                  await authClient.signOut();
-                  window.location.href = "/auth/log-in";
-                }}
+                disabled={signingOut}
+                onSelect={(event) => event.preventDefault()}
+                onClick={() => void onSignOut()}
               >
                 <LogOut className="size-4 text-destructive" />
                 <span className="flex-1">Sign out</span>
+                {signingOut ? (
+                  <Loader2
+                    className="size-4 animate-spin text-destructive"
+                    aria-hidden="true"
+                  />
+                ) : null}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
