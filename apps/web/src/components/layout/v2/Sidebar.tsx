@@ -1,11 +1,21 @@
 import type React from "react";
-import { Link, NavLink, useLocation } from "react-router-dom";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
+import { Check, LogOut, Monitor, Plus, Settings, Sun } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme-provider";
 import { authClient } from "@/lib/authClient";
 import { useActiveWorkspace } from "@/lib/workspace";
 import { useProjectsQuery } from "@/network/queries/useProjectsQuery";
 import { getInitials } from "@/utils/getInitials";
+import { PrismLogo } from "@/components/brand/prism-logo";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import * as I from "./icons";
 
 const VITE_DOCS_URL: string =
@@ -54,6 +64,7 @@ function SoonLink({ label }: { label: string }) {
 
 export function Sidebar({ navOpen }: { navOpen?: boolean }) {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
   const { data: session } = authClient.useSession();
   const { data: activeWorkspace } = useActiveWorkspace();
@@ -62,8 +73,15 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
   const slug = pathname.split("/")[2];
   const project = projectsQuery.data?.find((entry) => entry.slug === slug);
   const workspaceName = (activeWorkspace as { name?: string } | null)?.name;
+  const projects = (projectsQuery.data ?? []) as Array<{ name: string; slug: string }>;
 
-  const isDark = theme === "dark" || theme === "system";
+  const themeOptions = [
+    { value: "light" as const, label: "Light", Icon: Sun },
+    { value: "dark" as const, label: "Dark", Icon: I.IconMoon },
+    { value: "system" as const, label: "System", Icon: Monitor },
+  ];
+  const themeLabel =
+    theme === "dark" ? "Dark" : theme === "light" ? "Light" : "System";
 
   return (
     <aside
@@ -75,11 +93,10 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
         navOpen && "max-[1023px]:translate-x-0 max-[1023px]:shadow-[16px_0_48px_rgb(0_0_0/0.45)]",
       )}
     >
-      <div className="flex items-center gap-2.5 px-3 pb-2.5 pt-3.5">
-        <span className="brand-mark grid size-5 shrink-0 place-items-center rounded-[2px] bg-accent-soft" aria-hidden="true">
-          <I.BrandMark className="text-accent" />
-        </span>
-        <span className="text-sm font-semibold tracking-[-0.01em]">Prism</span>
+      <div className="flex items-center px-3 pb-2.5 pt-3.5">
+        <Link to="/overview" aria-label="Prism home" className="inline-flex items-center gap-2.5 rounded-[2px] transition-opacity hover:opacity-90">
+          <PrismLogo size={22} variant="monochrome" className="text-text" />
+        </Link>
       </div>
 
       <nav className="flex flex-1 flex-col gap-3 overflow-y-auto px-3 pb-4">
@@ -96,15 +113,51 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
           <div className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
             Project
           </div>
-          <Link
-            to="/projects"
-            aria-label="Switch project"
-            className="mb-2 flex h-[34px] w-full items-center gap-2 rounded-[2px] border border-border bg-surface px-2.5 text-[13px] font-medium transition-colors hover:bg-surface-hover"
-          >
-            <I.IconFolder />
-            <span className="flex-1 truncate text-left">{project?.name ?? workspaceName ?? "Select a project"}</span>
-            <I.IconChevronDown />
-          </Link>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-haspopup="menu"
+                className="mb-2 flex h-[34px] w-full items-center gap-2 rounded-[2px] border border-border bg-surface px-2.5 text-[13px] font-medium transition-colors hover:bg-surface-hover"
+              >
+                <I.IconFolder />
+                <span className="flex-1 truncate text-left">
+                  {project?.name ?? workspaceName ?? "Select a project"}
+                </span>
+                <I.IconChevronDown />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" sideOffset={6} className="w-[220px]">
+              <DropdownMenuLabel>Projects</DropdownMenuLabel>
+              {projects.length === 0 ? (
+                <div className="px-2 py-1.5 text-[13px] text-text-subtle">
+                  No projects yet.
+                </div>
+              ) : (
+                projects.map((entry) => (
+                  <DropdownMenuItem
+                    key={entry.slug}
+                    onClick={() => navigate(`/projects/${entry.slug}`)}
+                    className="gap-2"
+                  >
+                    <I.IconFolder />
+                    <span className="flex-1 truncate">{entry.name}</span>
+                    {entry.slug === slug ? (
+                      <Check className="size-3.5 text-accent" />
+                    ) : null}
+                  </DropdownMenuItem>
+                ))
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => navigate("/projects/new")}
+                className="gap-2"
+              >
+                <Plus className="size-4" />
+                <span className="flex-1">New project</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           {project ? (
             <Active to={`/projects/${project.slug}`} end label="Overview" icon={<I.IconChart />} />
           ) : null}
@@ -155,25 +208,98 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
         <a className={LINK_BASE} href={VITE_DOCS_URL} target="_blank" rel="noreferrer">
           <I.IconDoc />Docs
         </a>
-        <button className={LINK_BASE} type="button" onClick={() => setTheme(isDark ? "light" : "dark")}>
-          <I.IconMoon />
-          <span className="flex-1 text-left">Theme</span>
-          <span className="font-mono text-[11px] text-text-subtle">{isDark ? "Dark" : "Light"}</span>
-        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-haspopup="menu"
+              className={cn(LINK_BASE, "w-full")}
+            >
+              <I.IconMoon />
+              <span className="flex-1 text-left">Theme</span>
+              <span className="font-mono text-[11px] text-text-subtle">
+                {themeLabel}
+              </span>
+              <I.IconChevronDown className="size-3" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" sideOffset={6} className="w-[170px]">
+            <DropdownMenuLabel>Theme</DropdownMenuLabel>
+            {themeOptions.map((option) => {
+              const Icon = option.Icon;
+              return (
+                <DropdownMenuItem
+                  key={option.value}
+                  onClick={() => setTheme(option.value)}
+                  className="gap-2"
+                >
+                  <Icon className="size-4" />
+                  <span className="flex-1">{option.label}</span>
+                  {theme === option.value ? (
+                    <Check className="size-3.5 text-accent" />
+                  ) : null}
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
         <div className="flex items-center gap-2 px-1 pt-2">
           <span className="font-mono text-[10px] uppercase tracking-[0.06em] rounded-[2px] border border-border px-[5px] py-0.5 text-text-subtle">Self-hosted</span>
           <span className="font-mono text-[11px] text-text-subtle">{workspaceName ?? "Prism"}</span>
         </div>
-        <div className="mt-2 flex items-center gap-2.5 border-t border-border px-1 pt-2">
-          <Link to="/account/general" aria-label="Account settings" className="flex items-center gap-2.5">
-            <span className="grid size-[26px] shrink-0 place-items-center rounded-full border border-border-strong bg-surface-raised font-mono text-[11px] font-semibold text-text" aria-hidden="true">
-              {getInitials(session?.user?.name ?? "Prism")}
-            </span>
-            <span className="min-w-0">
-              <span className="block text-[13px] font-medium leading-[1.2]">{session?.user?.name ?? "Account"}</span>
-              <span className="block text-[11px] leading-[1.3] text-text-subtle">{session?.user?.email ?? ""}</span>
-            </span>
-          </Link>
+        <div className="mt-2 border-t border-border px-1 pt-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-haspopup="menu"
+                className="flex w-full items-center gap-2.5 rounded-[2px] px-1 py-1 text-left transition-colors hover:bg-surface-hover"
+              >
+                <span
+                  className="grid size-[26px] shrink-0 place-items-center rounded-full border border-border-strong bg-surface-raised font-mono text-[11px] font-semibold text-text"
+                  aria-hidden="true"
+                >
+                  {getInitials(session?.user?.name ?? "Prism")}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-medium leading-[1.2]">
+                    {session?.user?.name ?? "Account"}
+                  </span>
+                  <span className="block truncate text-[11px] leading-[1.3] text-text-subtle">
+                    {session?.user?.email ?? ""}
+                  </span>
+                </span>
+                <I.IconChevronDown className="size-3.5 shrink-0 text-text-subtle" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" sideOffset={6} className="w-[200px]">
+              <DropdownMenuLabel className="font-normal">Account</DropdownMenuLabel>
+              <Link to="/account/general">
+                <DropdownMenuItem className="gap-2">
+                  <Settings className="size-4" />
+                  <span className="flex-1">Account settings</span>
+                </DropdownMenuItem>
+              </Link>
+              <Link to="/account/security">
+                <DropdownMenuItem className="gap-2">
+                  <I.IconSettings />
+                  <span className="flex-1">Security</span>
+                </DropdownMenuItem>
+              </Link>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="gap-2"
+                onClick={async (e) => {
+                  e.preventDefault();
+                  await authClient.signOut();
+                  window.location.href = "/auth/log-in";
+                }}
+              >
+                <LogOut className="size-4" />
+                <span className="flex-1">Sign out</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </aside>
