@@ -118,13 +118,13 @@ export function useCurrentWorkspace(): {
 
 /**
  * Workspace slugs are opaque, URL-safe identifiers in the form
- * `wrk_xxxxxxxxxx` (10 lowercase alphanumerics). They're designed to be
+ * `wrk_xxxxxxxxxxxxxxxx` (16 lowercase alphanumerics). They're designed to be
  * used in the workspace-scoped URL so the selected workspace is explicit
  * in the address bar.
  */
 const WORKSPACE_SLUG_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
 export function newWorkspaceSlug(): string {
-  const bytes = new Uint8Array(10);
+  const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   let slug = "wrk_";
   for (const byte of bytes) {

@@ -43,10 +43,10 @@ function splitName(name: string, email: string) {
  * request instead (also a server-API path, no session needed).
  */
 
-/** Opaque, URL-safe workspace slugs: `wrk_` + 10 lowercase alphanumerics. */
+/** Opaque, URL-safe workspace slugs: `wrk_` + 16 lowercase alphanumerics. */
 const WORKSPACE_SLUG_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
 function newWorkspaceSlug(): string {
-  const bytes = new Uint8Array(10);
+  const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   let slug = "wrk_";
   for (const byte of bytes) {
