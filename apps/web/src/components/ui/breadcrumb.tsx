@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Slot } from "radix-ui"
+import { Slot as SlotPrimitive } from "radix-ui"
 import { ChevronRight, MoreHorizontal } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -36,7 +36,7 @@ function BreadcrumbLink({
 }: React.ComponentPropsWithoutRef<"a"> & {
   asChild?: boolean
 }) {
-  const Comp = (asChild ? Slot : "a") as React.ElementType
+  const Comp = (asChild ? (SlotPrimitive.Root as React.ElementType) : "a") as React.ElementType
   return (
     <Comp
       className={cn("transition-colors hover:text-foreground", className)}
