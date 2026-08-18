@@ -8,7 +8,7 @@ const links = [
   { label: "General", url: "general" },
   { label: "Security", url: "security" },
   // { label: "Authentication", url: "authentication" },
-  { label: "Workspaces", url: "workspace" },
+  // { label: "Workspaces", url: "workspace" },
 ];
 
 export function AccountLayout() {

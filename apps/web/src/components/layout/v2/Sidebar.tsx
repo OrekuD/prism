@@ -1,6 +1,6 @@
 import type React from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
-import { Check, LogOut, Monitor, Plus, Settings, Sun } from "lucide-react";
+import { Check, LogOut, Monitor, Plus, ShieldCheck, Sun, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme-provider";
 import { authClient } from "@/lib/authClient";
@@ -276,18 +276,19 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
               <DropdownMenuLabel className="font-normal">Account</DropdownMenuLabel>
               <Link to="/account/general">
                 <DropdownMenuItem className="gap-2">
-                  <Settings className="size-4" />
-                  <span className="flex-1">Account settings</span>
+                  <User className="size-4" />
+                  <span className="flex-1">Account</span>
                 </DropdownMenuItem>
               </Link>
               <Link to="/account/security">
                 <DropdownMenuItem className="gap-2">
-                  <I.IconSettings />
+                  <ShieldCheck className="size-4" />
                   <span className="flex-1">Security</span>
                 </DropdownMenuItem>
               </Link>
               <DropdownMenuSeparator />
               <DropdownMenuItem
+                variant="destructive"
                 className="gap-2"
                 onClick={async (e) => {
                   e.preventDefault();
@@ -295,7 +296,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
                   window.location.href = "/auth/log-in";
                 }}
               >
-                <LogOut className="size-4" />
+                <LogOut className="size-4 text-destructive" />
                 <span className="flex-1">Sign out</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
