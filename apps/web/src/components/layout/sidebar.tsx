@@ -14,6 +14,7 @@ import {
 import { getInitials } from "@/utils/getInitials";
 import { PrismLogo } from "@/components/brand/prism-logo";
 import { CreateWorkspaceDialog } from "@/components/workspace/workspace-switcher";
+import { CreateProjectDialog } from "@/components/projects/create-project-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -85,6 +86,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
   // Selected project: the URL wins when we're on a project page, otherwise
   // fall back to the per-workspace persisted selection.
   const [persistedSlug, setPersistedSlug] = React.useState<string | null>(null);
+  const [newProjectOpen, setNewProjectOpen] = React.useState(false);
   React.useEffect(() => {
     if (wrkSlug) setPersistedSlug(getSelectedProjectSlug(wrkSlug));
   }, [wrkSlug]);
@@ -271,13 +273,17 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 className="gap-2"
-                onClick={() => navigate(`/workspace/${wrkSlug}/projects/new`)}
+                onClick={() => setNewProjectOpen(true)}
               >
                 <Plus className="size-4" />
                 <span className="flex-1">New project</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          <CreateProjectDialog
+            open={newProjectOpen}
+            onOpenChange={setNewProjectOpen}
+          />
           {project ? (
             <Active to={`/workspace/${wrkSlug}/projects/${project.slug}`} end label="Overview" icon={<I.IconChart />} />
           ) : null}

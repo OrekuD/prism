@@ -4,16 +4,19 @@ import { toast } from "sonner";
 import type {
   CreateProjectRequest,
   ErrorResource,
-  OkResource,
+  ProjectResource,
 } from "@prism-analytics/types";
 import type { AxiosError } from "axios";
 
-async function createProject(payload: CreateProjectRequest) {
-  const response = await axiosInstance.post("/projects", payload);
-
-  if (response.status === 200) {
-    return response.data;
-  }
+async function createProject(
+  payload: CreateProjectRequest,
+): Promise<ProjectResource> {
+  const response = await axiosInstance.post<ProjectResource>(
+    "/projects",
+    payload,
+  );
+  if (response.status === 200) return response.data;
+  throw new Error("create_project_failed");
 }
 
 export function useCreateProjectMutation() {
@@ -21,9 +24,15 @@ export function useCreateProjectMutation() {
 
   return useMutation({
     mutationFn: createProject,
-    onSuccess: (data: OkResource, variables) => {
+    onSuccess: (created: ProjectResource, variables) => {
       toast("Project created successfully");
-      queryClient.invalidateQueries({
+      // The response IS the created project — append it to its workspace's
+      // list cache immediately; the background invalidation keeps truth.
+      queryClient.setQueryData<ProjectResource[]>(
+        ["projects", variables.organizationId],
+        (list) => (list ? [...list, created] : list),
+      );
+      void queryClient.invalidateQueries({
         queryKey: ["projects", variables.organizationId],
       });
     },

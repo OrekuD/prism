@@ -111,7 +111,16 @@ export class ProjectsController {
 
     // Task 13: projects do NOT create ingestion keys — sources do. The
     // Sources page walks the user through the first source + key.
-    return ctx.json(new OkResponse().toJSON());
+    //
+    // The response is the created project (a brand-new project has no
+    // sessions yet, so summary is empty) — the client appends it to its
+    // project list cache immediately instead of refetching.
+    return ctx.json({
+      id: project[0]?.id ?? "",
+      name: data.name,
+      slug: projectSlug,
+      summary: [],
+    });
   }
 
   public static async deleteProject(ctx: Context<HonoConfig>) {

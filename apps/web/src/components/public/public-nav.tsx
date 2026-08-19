@@ -24,7 +24,7 @@ export function PublicNav() {
   const homeSlug = (activeWorkspace as { slug?: string } | null)?.slug;
   // Dashboard goes straight to the scoped overview — never a vanity path
   // that has to re-resolve into a redirect.
-  const dashboardHref = homeSlug ? `/${homeSlug}/overview` : "/";
+  const dashboardHref = homeSlug ? `/workspace/${homeSlug}/overview` : "/";
 
   return (
     <header>

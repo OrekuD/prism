@@ -76,6 +76,10 @@ function errorsOf(result: unknown): string[] {
   return (result as MockResult).__json?.errors ?? [];
 }
 
+function bodyOf(result: unknown): Record<string, unknown> {
+  return (result as MockResult).__json ?? {};
+}
+
 function makeTurso(rows: Array<Record<string, unknown>> = []) {
   const execute = vi.fn(
     async (_opts: { sql: string; args: unknown[] }) => ({ rows }),
@@ -107,6 +111,14 @@ describe("ProjectsController (organization-bound authorization)", () => {
       expect(String((inserts[0]?.[0] as TemplateStringsArray).join("?"))).toMatch(
         /INSERT INTO projects \(name, organization_id, creator_id, slug\)/i,
       );
+      // The response is the created project — appends straight into the
+      // client's project-list cache (no refetch).
+      expect(bodyOf(result)).toMatchObject({
+        id: PROJECT_ID,
+        name: "App",
+        slug: expect.any(String),
+        summary: [],
+      });
     });
 
     it("admin can create a project", async () => {

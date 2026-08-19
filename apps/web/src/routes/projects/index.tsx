@@ -1,29 +1,20 @@
 import React from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useProjectsQuery } from "@/network/queries/useProjectsQuery";
 import { useActiveWorkspace } from "@/lib/workspace";
 import { Frame } from "@/components/public/frame";
+import { CreateProjectDialog } from "@/components/projects/create-project-dialog";
 import { PageHeader } from "@/components/public/page-header";
 import { IconFolder } from "@/components/ui/icons";
 
 const placeholders = Array(3).fill(null);
 
-/** Honest per-project session count from the 7-day daily summaries. */
-function sessionCount(project: {
-  summary?: Array<{ desktop: number; mobile: number }>;
-}): number {
-  return (project.summary ?? []).reduce(
-    (sum, row) => sum + row.desktop + row.mobile,
-    0
-  );
-}
-
 export function Projects() {
-  const navigate = useNavigate();
   const { data: projects, isLoading, isError, refetch } = useProjectsQuery();
   const { data: activeWorkspace } = useActiveWorkspace();
   const workspaceName = (activeWorkspace as { name?: string } | null)?.name;
   const { wrkSlug } = useParams<{ wrkSlug: string }>();
+  const [newProjectOpen, setNewProjectOpen] = React.useState(false);
 
   return (
     <>
@@ -33,12 +24,16 @@ export function Projects() {
       >
         <button
           type="button"
-          onClick={() => navigate(`/workspace/${wrkSlug}/projects/new`)}
+          onClick={() => setNewProjectOpen(true)}
           className="inline-flex h-9 items-center gap-2 rounded-[2px] bg-accent px-3.5 text-[13px] font-medium text-primary-foreground transition-colors hover:bg-accent-hover"
         >
           New project
         </button>
       </PageHeader>
+      <CreateProjectDialog
+        open={newProjectOpen}
+        onOpenChange={setNewProjectOpen}
+      />
 
       <div className="mt-10 mb-3.5 flex items-baseline gap-1.5 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
         All projects
@@ -73,11 +68,10 @@ export function Projects() {
       ) : projects && projects.length > 0 ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {projects.map((project) => {
-            const sessions = sessionCount(project);
             return (
               <Frame
                 key={project.id}
-                className="flex min-h-[128px] flex-col gap-3.5 p-5 transition-colors hover:bg-surface-hover hover:border-border-strong"
+                className="flex min-h-[122px] flex-col gap-3.5 p-5 transition-colors hover:bg-surface-hover hover:border-border-strong"
               >
                 <Link
                   to={`/workspace/${wrkSlug}/projects/${project.slug}`}
@@ -94,25 +88,6 @@ export function Projects() {
                       {project.slug}
                     </span>
                   </p>
-                  <p className="-mt-2">
-                    {sessions > 0 ? (
-                      <>
-                        <span className="font-mono text-[22px] tracking-[-0.05em] text-text tabular-nums">
-                          {sessions.toLocaleString()}
-                        </span>{" "}
-                        <span className="text-[12px] text-text-subtle">
-                          sessions
-                        </span>
-                      </>
-                    ) : (
-                      <span className="font-mono text-[12px] text-text-subtle">
-                        WAITING FOR EVENTS
-                      </span>
-                    )}
-                  </p>
-                  <span className="mt-auto flex items-center gap-1.5 font-mono text-[11px] tracking-[0.06em] text-link">
-                    Open project <Go />
-                  </span>
                 </Link>
               </Frame>
             );
@@ -132,7 +107,7 @@ export function Projects() {
                 and verify your first event.
               </p>
             </div>
-            <Link
+          <Link
               to="/onboarding"
               className="inline-flex h-[30px] shrink-0 items-center gap-2 rounded-[2px] border border-border-strong px-3 text-[13px] font-medium text-text transition-colors hover:bg-surface-hover"
             >
@@ -142,23 +117,5 @@ export function Projects() {
         </Frame>
       )}
     </>
-  );
-}
-
-function Go() {
-  return (
-    <svg
-      style={{ width: 11, height: 11 }}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M5 12h14" />
-      <path d="m12 5 7 7-7 7" />
-    </svg>
   );
 }

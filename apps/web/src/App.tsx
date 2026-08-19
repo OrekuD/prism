@@ -26,9 +26,6 @@ import { lazy } from "react";
 const Projects = lazy(() =>
   import("./routes/projects").then((m) => ({ default: m.Projects })),
 );
-const NewProject = lazy(() =>
-  import("./routes/projects/new").then((m) => ({ default: m.NewProject })),
-);
 const ProjectLayout = lazy(() =>
   import("./components/layout/project-layout").then((m) => ({
     default: m.ProjectLayout,
@@ -193,7 +190,6 @@ const router = createBrowserRouter(
           </Route>
           <Route path="projects">
             <Route path="" element={<Projects />} />
-            <Route path="new" element={<NewProject />} />
             <Route path=":slug" element={<ProjectLayout />}>
               <Route path="" element={<ProjectSummary />} />
               <Route path="events" element={<ProjectEvents />} />
