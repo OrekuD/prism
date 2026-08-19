@@ -42,12 +42,48 @@ export interface ErrorPersistItem {
 export type ErrorPersistOutcome = Array<{ index: number; duplicate: boolean }>;
 
 export class ErrorIngestRepository {
-	private readonly client: Pick<Client, "transaction">;
+	private readonly client: Pick<Client, "transaction" | "execute">;
 
 	constructor(
-		client: Pick<Client, "transaction"> = TursoDatabaseManager.instance,
+		client: Pick<Client, "transaction" | "execute"> = TursoDatabaseManager.instance,
 	) {
 		this.client = client;
+	}
+
+	/** Live issues for a project (storage/abuse cap check). */
+	public async countIssues(projectId: string): Promise<number> {
+		const { rows } = await this.client.execute({
+			sql: "SELECT COUNT(*) AS n FROM error_issues WHERE project_id = ?",
+			args: [projectId],
+		});
+		return Number(rows[0]?.n ?? 0);
+	}
+
+	/** Occurrences for a project+source (storage/abuse cap check). */
+	public async countOccurrences(
+		projectId: string,
+		sourceId: string,
+	): Promise<number> {
+		const { rows } = await this.client.execute({
+			sql: "SELECT COUNT(*) AS n FROM error_occurrences WHERE project_id = ? AND source_id = ?",
+			args: [projectId, sourceId],
+		});
+		return Number(rows[0]?.n ?? 0);
+	}
+
+	/** The ids among `issueIds` that ALREADY exist for the project. */
+	public async existingIssueIds(
+		projectId: string,
+		issueIds: string[],
+	): Promise<Set<string>> {
+		if (issueIds.length === 0) return new Set();
+		const { rows } = await this.client.execute({
+			sql: `SELECT id FROM error_issues WHERE project_id = ? AND id IN (${issueIds
+				.map(() => "?")
+				.join(",")})`,
+			args: [projectId, ...issueIds],
+		});
+		return new Set(rows.map((row) => String(row.id)));
 	}
 
 	public async persistBatch(

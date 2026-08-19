@@ -440,14 +440,23 @@ They are separate data products with their own collection and privacy design.
       JSON rendering that cannot execute payload content.
 - [ ] Add CSP-safe code/stack rendering, escaping, redaction tests, and a
       content-security review for the dashboard detail view.
-- [ ] Rate-limit ingestion and management actions; cap groups/occurrences per
+- [x] Rate-limit ingestion and management actions; cap groups/occurrences per
       source/project as well as batch/payload size.
+      (slice 1 + slice 4: per-project weighted item quota + per-IP soft
+      limiter on ingest; NEW issues beyond maxIssuesPerProject and
+      occurrences beyond maxOccurrencesPerSource are rejected with coarse
+      reasons; workflow-state actions are rate-limited per user; batch/payload
+      caps already enforced by the bounded stream read)
 - [ ] Add retention/pruning jobs with metrics and failure alerts. Pruning must
       be idempotent and safe under concurrent ingestion.
-- [ ] Define operational metrics: accepted/dropped/rejected reports, queue
+- [x] Define operational metrics: accepted/dropped/rejected reports, queue
       delay, grouping latency, database failure, source-map processing status,
       storage volume, and retention deletions. Metrics themselves must not
       carry raw exception text or keys.
+      (slice 4: errorMetrics registry + Prometheus exposition + storage volume
+      in errorMetrics.ts — counters never carry payload text/keys; ingest +
+      retention record into it; source-map status is always idle until that
+      phase starts)
 - [ ] Verify all errors/logs shown to users and operators are non-disclosing.
       A source-key or membership failure must not identify another tenant.
 - [ ] Run security review before exposing error capture in a live deployment.
@@ -581,3 +590,11 @@ and customer payloads out of this document.
   sanitized error occurrences. Key revocation intentionally does not purge
   (previously accepted data stays auditable). Test evidence: projects +
   sources + peopleStore + errorIssues = 60/60 across the four suites.
+- Rate caps + operational metrics: ingest rejects new issues beyond the
+  per-project issue cap and occurrences beyond the per-source cap (coarse
+  reasons, order preserved); workflow-state updates are rate-limited per
+  user; errorMetrics records accepted/rejected/rate-limited/duplicates/
+  oversize/db-failures + latency gauges + storage volume (quantity-only) and
+  renders Prometheus text with no payload/keys. Test evidence:
+  ErrorIngestController 15/15 (incl. cap + metrics tests), errorMetrics 4/4,
+  api errorIssues 19/19 (incl. 429 management-action test).

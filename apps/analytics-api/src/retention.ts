@@ -36,6 +36,7 @@
 import { type Client, type InStatement, createClient } from "@libsql/client";
 import { config } from "dotenv";
 import { logger } from "./utils/logger.js";
+import { errorMetrics } from "./utils/errorMetrics.js";
 
 config();
 
@@ -354,6 +355,10 @@ async function main(): Promise<void> {
 	}
 
 	const result = await applyRetention(client, days, errorDays);
+	errorMetrics.record({
+		retentionDeletedOccurrences: result.deletedErrorOccurrences,
+		retentionDeletedIssues: result.deletedErrorIssues,
+	});
 	logger.info("retention", "deletion applied", result);
 	process.exit(0);
 }

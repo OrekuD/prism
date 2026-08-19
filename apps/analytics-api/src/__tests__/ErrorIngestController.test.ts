@@ -4,13 +4,27 @@ import {
 	ErrorIngestController,
 	errorLimiter,
 } from "../controllers/ErrorIngestController.js";
+import { errorMetrics } from "../utils/errorMetrics.js";
 
 vi.mock("../managers/NeonDatabaseManager.js", () => ({
 	default: { instance: vi.fn() },
 }));
 vi.mock("../managers/TursoDatabaseManager.js", () => ({
 	default: {
-		instance: { execute: vi.fn(), batch: vi.fn(), transaction: vi.fn() },
+		instance: {
+			execute: vi.fn(async (statement: { sql?: string }) => {
+				const sql = String(statement?.sql ?? "");
+				if (sql.includes("COUNT(*) AS n FROM error_issues"))
+					return { rows: [{ n: 0 }] };
+				if (sql.includes("COUNT(*) AS n FROM error_occurrences"))
+					return { rows: [{ n: 0 }] };
+				if (sql.includes("SELECT id FROM error_issues"))
+					return { rows: [] };
+				return { rows: [] };
+			}),
+			batch: vi.fn(async () => []),
+			transaction: vi.fn(),
+		},
 	},
 }));
 vi.mock("../managers/WebSocketManager.js", () => ({
@@ -76,6 +90,21 @@ function streamOf(body: string): ReadableStream<Uint8Array> {
 	});
 }
 
+const instanceExecute = vi.mocked(TursoDatabaseManager.instance.execute);
+
+/** Override the store caps window for a single test (counts the caps see). */
+function setStoreCounts(options: { issues?: number; occurrences?: number }) {
+	instanceExecute.mockImplementation((async (statement: { sql?: string }) => {
+		const sql = String(statement?.sql ?? "");
+		if (sql.includes("COUNT(*) AS n FROM error_issues"))
+			return { rows: [{ n: options.issues ?? 0 }] };
+		if (sql.includes("COUNT(*) AS n FROM error_occurrences"))
+			return { rows: [{ n: options.occurrences ?? 0 }] };
+		if (sql.includes("SELECT id FROM error_issues")) return { rows: [] };
+		return { rows: [] };
+	}) as never);
+}
+
 function makeCtx(body: string, auth: Partial<typeof PROJECT> = PROJECT) {
 	return {
 		req: {
@@ -113,6 +142,7 @@ beforeEach(() => {
 	vi.clearAllMocks();
 	txExecute.mockClear();
 	errorLimiter.reset();
+	errorMetrics.reset();
 });
 
 describe("ErrorIngestController.ingest", () => {
@@ -223,5 +253,51 @@ describe("ErrorIngestController.ingest", () => {
 		)) as unknown as { __json: { error: { code: string } } };
 
 		expect(response.__json.error.code).toBe("rate-limited");
+	});
+
+	it("rejects NEW issues beyond the per-project issue cap", async () => {
+		setStoreCounts({ issues: 10_000, occurrences: 0 });
+		const response = (await ErrorIngestController.ingest(
+			makeCtx(envelope([validItem("evt_caps_3"), validItem("evt_caps_4")])),
+		)) as unknown as { __json: { results: Array<Record<string, unknown>> } };
+
+		expect(response.__json.results.every((r) => r.status === "rejected")).toBe(
+			true,
+		);
+		expect(
+			response.__json.results.every(
+				(r) => r.reason === "project-issue-limit",
+			),
+		).toBe(true);
+		// nothing reached the persist transaction
+		expect(statementContaining("INSERT INTO error_occurrences")).toBeUndefined();
+	});
+
+	it("rejects excess occurrences beyond the per-source cap", async () => {
+		setStoreCounts({ occurrences: 499_999 });
+		const response = (await ErrorIngestController.ingest(
+			makeCtx(envelope([validItem("evt_caps_5"), validItem("evt_caps_6")])),
+		)) as unknown as { __json: { results: Array<Record<string, unknown>> } };
+
+		expect(response.__json.results[0]?.status).toBe("accepted");
+		expect(response.__json.results[1]?.status).toBe("rejected");
+		expect(response.__json.results[1]?.reason).toBe("source-occurrence-limit");
+	});
+
+	it("records coarse ingest metrics (accepted + rejected) with no payload content", async () => {
+		const response = (await ErrorIngestController.ingest(
+			makeCtx(
+				envelope([validItem("evt_metrics_1"), { ...validItem("bad"), boom: 1 }]),
+			),
+		)) as unknown as { __json: { results: unknown[] } };
+
+		expect(response.__json.results).toHaveLength(2);
+		const snapshot = errorMetrics.snapshot();
+		expect(snapshot.accepted).toBe(1);
+		expect(snapshot.rejected).toBe(1);
+		expect(snapshot.retentionDeletedOccurrences).toBe(0);
+		// the exported text is coarse — never contains payload text
+		expect(errorMetrics.renderPrometheus()).not.toContain("hunter2");
+		expect(errorMetrics.renderPrometheus()).not.toContain("boom");
 	});
 });

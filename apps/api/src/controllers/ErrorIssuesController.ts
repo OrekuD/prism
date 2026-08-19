@@ -17,7 +17,11 @@ import {
 	projectIssueResources,
 	updateIssueStatus,
 } from "../utils/errorIssuesStore";
+import { RateLimiter } from "../utils/RateLimiter";
 import { getWorkspaceRole, isAdminRole } from "../utils/workspaceAuth";
+
+/** Management-action soft limit: 60 issue-state changes per user / minute. */
+export const issueWorkflowLimiter = new RateLimiter(60_000, 60);
 
 const STATUS_VALUES: ReadonlySet<string> = new Set<ErrorIssueStatus>([
 	"unresolved",
@@ -195,6 +199,14 @@ export class ErrorIssuesController {
 		// task-15.md; the dashboard gates the controls the same way).
 		if (!isAdminRole(role)) {
 			return ctx.json(new ErrorResponse("cannot_update_issue").toJSON(), 403);
+		}
+		// Management-action soft rate limit (per user, in-memory) so a
+		// scripted caller cannot churn issue state. Rejected hits do not
+		// consume quota.
+		const { allowed, retryAfterSeconds } = issueWorkflowLimiter.hit(user.id);
+		if (!allowed) {
+			ctx.header("Retry-After", String(retryAfterSeconds));
+			return ctx.json(new ErrorResponse("rate_limited").toJSON(), 429);
 		}
 
 		const body = (await ctx.req

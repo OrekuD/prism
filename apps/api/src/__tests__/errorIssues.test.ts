@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ErrorIssuesController } from "../controllers/ErrorIssuesController";
+import {
+	ErrorIssuesController,
+	issueWorkflowLimiter,
+} from "../controllers/ErrorIssuesController";
 import { errorRangeDays, issueDelta } from "../utils/errorIssuesStore";
 import { makeCtx } from "./helpers";
 
@@ -164,6 +167,7 @@ describe("errorIssuesStore", () => {
 describe("ErrorIssuesController", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		issueWorkflowLimiter.reset();
 	});
 	afterEach(() => {
 		vi.useRealTimers();
@@ -353,6 +357,22 @@ describe("ErrorIssuesController", () => {
 			expect(args[4]).toBe("resolved"); // action
 			expect(args[5]).toBe("unresolved"); // prior_state
 			expect(args[6]).toBe("resolved"); // new_state
+		});
+
+		it("rate-limits a management-action storm (429)", async () => {
+			const neon = makeStore("owner");
+			getInstance.mockReturnValue(neon as never);
+			makeTurso({ issues: [{ ...webIssue, status: "resolved" }] });
+			issueWorkflowLimiter.hit(USER_ID, 60);
+
+			const result = await ErrorIssuesController.update(
+				ctxFor(
+					USER_ID,
+					{ slug: SLUG, issueId: ISSUE_ID },
+					{ status: "resolved" },
+				),
+			);
+			expect(statusOf(result)).toBe(429);
 		});
 
 		it("an idempotent same-status update writes no activity row", async () => {

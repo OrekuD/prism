@@ -36,6 +36,7 @@ export function makeCtx(
       __json: value,
       __status: status,
     })),
+    header: vi.fn(() => undefined),
     get: (key: string) => vars[key],
     set: (key: string, value: unknown) => {
       vars[key] = value;

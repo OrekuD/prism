@@ -37,6 +37,10 @@ export const ERROR_INGEST_LIMITS = {
 	maxClientEventIdLength: 128,
 	/** Max anonymous id length (ids are opaque strings). */
 	maxAnonymousIdLength: 128,
+	/** Storage/abuse cap: live issues per project (new groups rejected above). */
+	maxIssuesPerProject: 10_000,
+	/** Storage/abuse cap: occurrences per project+source (excess rejected). */
+	maxOccurrencesPerSource: 500_000,
 } as const;
 
 /** Rejected/dropped-item reason codes (never echo submitted values). */
