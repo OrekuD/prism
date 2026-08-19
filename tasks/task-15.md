@@ -485,9 +485,18 @@ They are separate data products with their own collection and privacy design.
 - [ ] Add an error-health reading to Project overview only after the Errors
       list/detail is correct: unresolved issue count and errors in selected
       range, with honest loading/empty/error states.
-- [ ] Add per-source error collection configuration and status under Sources.
+- [x] Add per-source error collection configuration and status under Sources.
       Make global browser handlers, breadcrumb classes, sampling, and release
       metadata explicit opt-ins with clear privacy explanations.
+      (slice 8: source_error_settings table (migration 011) + GET/PATCH
+      /sources/:sourceId/error-settings (member read, owner/admin write,
+      whole-patch 400 on any invalid field); the Sources detail page shows a
+      live status (30-day error count + last error — real ingestion numbers,
+      never fabricated) and owner/admin toggles for collection mode
+      (off/manual/manual+global), global handlers, breadcrumbs, client
+      sampling, and release — each with an inline privacy explanation. The
+      SDK still enforces its own explicit opt-in: these rows document the
+      dashboard intent + status, never collection authority)
 - [x] Do not surface a public key, source-map upload secret, or unredacted
       report in overview widgets, screenshots, toasts, or support logs.
 
@@ -754,3 +763,26 @@ and customer payloads out of this document.
   they exist. Copy buttons build text only from currently visible, authorized,
   sanitized rows.
 - Test evidence: web tsc clean, web vitest 32/32, vite build OK.
+
+
+### 2026-08-19 — per-source error collection config + status (slice 8)
+
+- Migration 011 `source_error_settings` (analytics store, auto-discovered by
+  the migration runner, dropped by reset.ts): source_id PK + mode
+  (off/manual/all), capture_global_errors, breadcrumbs_enabled, sampling_rate,
+  release, updated_at. migrations tests 11/11.
+- API: GET + PATCH `/projects/:slug/sources/:sourceId/error-settings` —
+  member-readable; owner/admin write; any invalid field rejects the WHOLE
+  patch with 400 (never a partial write or a silent privacy default). Reads
+  AND writes go through the Turso seam with parameterized SQL and an upsert
+  (ON CONFLICT). Merges live status from error_occurrences (30-day count +
+  last error time) so the response is config + real status in one call.
+- Web: the source detail page gains an `Error collection` section — live
+  status line, mode / global-handlers / breadcrumbs / client-sampling /
+  release controls gated owner/admin with per-control privacy explanations,
+  and a save button that persists only on explicit intent. The SDK enforces
+  its own opt-in; these rows are the documented dashboard intent + status,
+  never collection authority.
+- Test evidence: api sources 16/16 (defaults + live status read, owner/admin
+  update reflects the saved row, member write 403, invalid patch 400); web
+  tsc/vitest 32/32/vite build clean.

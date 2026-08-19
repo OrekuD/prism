@@ -337,4 +337,107 @@ describe("SourcesController (organization-bound source + key management)", () =>
       expect(statusOf(result)).toBe(404);
     });
   });
+
+  describe("errorSettings (per-source error collection)", () => {
+    type MockResult2 = { __json?: unknown; __status?: number };
+    const jsonOf = (result: unknown): unknown =>
+      (result as MockResult2).__json;
+
+    function tursoRouting(
+      settingsRows: Array<Record<string, unknown>>,
+      statusRows: Array<Record<string, unknown>>,
+    ) {
+      const state: Array<Record<string, unknown>> = [...settingsRows];
+      const execute = vi.fn(
+        async (input: { sql: string; args?: unknown[] }) => {
+          const sql = String(input.sql).replace(/\s+/g, " ");
+          if (sql.includes("INSERT INTO source_error_settings")) {
+            const args = (input.args ?? []) as Array<unknown>;
+            if (state.length === 0) state.push({});
+            const row = state[0] as Record<string, unknown>;
+            row.mode = String(args[1]);
+            row.capture_global_errors = Number(args[2]);
+            row.breadcrumbs_enabled = Number(args[3]);
+            row.sampling_rate = Number(args[4]);
+            row.release = args[5];
+            return { rows: [] };
+          }
+          if (sql.includes("FROM source_error_settings")) {
+            return { rows: state };
+          }
+          if (sql.includes("FROM error_occurrences")) {
+            return { rows: statusRows };
+          }
+          return { rows: [] };
+        },
+      );
+      getTursoInstance.mockReturnValue({ execute } as never);
+      return execute;
+    }
+
+    it("member reads defaults + live status when no settings row exists", async () => {
+      getInstance.mockReturnValue(makeStore({ role: "member" }) as never);
+      tursoRouting([], [{ last_seen: 123, n: 5 }]);
+      const result = await SourcesController.errorSettings(
+        ctxFor(USER_ID, { slug: SLUG, sourceId: SOURCE_ID }),
+      );
+      expect(statusOf(result) ?? 200).toBe(200);
+      const json = jsonOf(result) as Record<string, unknown>;
+      expect(json.mode).toBe("manual");
+      expect(json.captureGlobalErrors).toBe(false);
+      expect(json.samplingRate).toBe(100);
+      expect(json.errorCount30d).toBe(5);
+      expect(json.lastSeenErrorAt).toBe(123);
+    });
+
+    it("owner/admin updates settings and the response reflects the saved row", async () => {
+      getInstance.mockReturnValue(makeStore({ role: "owner" }) as never);
+      tursoRouting(
+        [
+          {
+            mode: "all",
+            capture_global_errors: 1,
+            breadcrumbs_enabled: 1,
+            sampling_rate: 50,
+            release: "web@1.0.0",
+          },
+        ],
+        [{ last_seen: null, n: 0 }],
+      );
+      const result = await SourcesController.updateErrorSettings(
+        ctxFor(
+          USER_ID,
+          { slug: SLUG, sourceId: SOURCE_ID },
+          { mode: "all", samplingRate: 10, release: "web@2.0.0" },
+        ),
+      );
+      expect(statusOf(result) ?? 200).toBe(200);
+      const json = jsonOf(result) as Record<string, unknown>;
+      expect(json.mode).toBe("all");
+      expect(json.samplingRate).toBe(10);
+      expect(json.release).toBe("web@2.0.0");
+    });
+
+    it("member write is forbidden (403)", async () => {
+      getInstance.mockReturnValue(makeStore({ role: "member" }) as never);
+      tursoRouting([], []);
+      const result = await SourcesController.updateErrorSettings(
+        ctxFor(USER_ID, { slug: SLUG, sourceId: SOURCE_ID }, { mode: "all" }),
+      );
+      expect(statusOf(result)).toBe(403);
+    });
+
+    it("invalid patch is rejected with 400 (never a partial write)", async () => {
+      getInstance.mockReturnValue(makeStore({ role: "owner" }) as never);
+      tursoRouting([], []);
+      const result = await SourcesController.updateErrorSettings(
+        ctxFor(
+          USER_ID,
+          { slug: SLUG, sourceId: SOURCE_ID },
+          { samplingRate: 150 },
+        ),
+      );
+      expect(statusOf(result)).toBe(400);
+    });
+  });
 });

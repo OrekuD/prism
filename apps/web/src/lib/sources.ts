@@ -143,3 +143,28 @@ const prism = await createBrowserClient({
 
 await prism.track("page_viewed", { url: window.location.href });`;
 }
+
+/**
+ * Per-source error collection configuration + live status (task-15 item 440).
+ * The SDK always enforces its own explicit opt-in; these rows record the
+ * dashboard intent (reflected in the setup snippet) + ingestion status.
+ */
+export type SourceErrorMode = "off" | "manual" | "all";
+
+export type SourceErrorSettings = {
+	sourceId: string;
+	mode: SourceErrorMode;
+	captureGlobalErrors: boolean;
+	breadcrumbsEnabled: boolean;
+	/** Client-side sampling percent (0-100; 100 = collect all). */
+	samplingRate: number;
+	release: string | null;
+	lastSeenErrorAt: number | null;
+	errorCount30d: number;
+};
+
+export const SOURCE_ERROR_MODE_LABELS: Record<SourceErrorMode, string> = {
+	off: "Off",
+	manual: "Manual only",
+	all: "Manual + global handlers",
+};

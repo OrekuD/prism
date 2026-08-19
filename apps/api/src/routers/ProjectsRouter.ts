@@ -39,6 +39,14 @@ router.get("/:slug/sources", SourcesController.list);
 router.post("/:slug/sources", SourcesController.create);
 router.get("/:slug/sources/:sourceId", SourcesController.detail);
 router.patch("/:slug/sources/:sourceId", SourcesController.update);
+router.get(
+	"/:slug/sources/:sourceId/error-settings",
+	SourcesController.errorSettings,
+);
+router.patch(
+	"/:slug/sources/:sourceId/error-settings",
+	SourcesController.updateErrorSettings,
+);
 router.delete("/:slug/sources/:sourceId", SourcesController.remove);
 router.post("/:slug/sources/:sourceId/keys", SourcesController.createKey);
 router.post(

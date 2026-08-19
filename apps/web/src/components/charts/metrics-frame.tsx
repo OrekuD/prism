@@ -1,4 +1,4 @@
-import { Activity, Users, Zap } from "lucide-react";
+import { Activity, TriangleAlert, Users, Zap } from "lucide-react";
 import React from "react";
 import { cn } from "@/lib/utils";
 import { Frame } from "@/components/public/frame";
@@ -12,7 +12,7 @@ import { Frame } from "@/components/public/frame";
 export type MetricCell = {
   id: string;
   label: string;
-  icon: "visitors" | "sessions" | "events";
+  icon: "visitors" | "sessions" | "events" | "error";
   value: number;
   unit?: string;
 };
@@ -21,12 +21,14 @@ const icons = {
   visitors: Users,
   sessions: Activity,
   events: Zap,
+  error: TriangleAlert,
 } as const;
 
 const iconTone = {
   visitors: "text-success",
   sessions: "text-accent",
   events: "text-warning",
+  error: "text-danger",
 } as const;
 
 export function MetricsFrame({

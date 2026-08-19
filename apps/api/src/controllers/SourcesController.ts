@@ -4,6 +4,11 @@ import type { HonoConfig } from "../types/types";
 import { DatabaseManager } from "../managers/DatabaseManager";
 import { TursoDatabaseManager } from "../managers/TursoDatabaseManager";
 import { purgeSourceErrorData } from "../utils/analyticsErrorPurge";
+import {
+	readSourceErrorSettings,
+	updateSourceErrorSettings,
+	validateErrorSettingsPatch,
+} from "../utils/sourceErrorSettings";
 import { ErrorResponse } from "../network/responses/ErrorResponse";
 import { OkResponse } from "../network/responses/OkResponse";
 import { generateApiKey } from "../utils/generateApiKey";
@@ -490,4 +495,78 @@ export class SourcesController {
     }
     return ctx.json({ value: key.key });
   }
+
+	/**
+	 * Per-source error collection configuration + live status (task-15 item
+	 * 440). Member-readable. Defaults when no row exists; status always comes
+	 * from the analytics store (never fabricated).
+	 */
+	public static async errorSettings(ctx: Context<HonoConfig>) {
+		const project = await SourcesController.projectForSlug(
+			ctx,
+			ctx.req.param("slug") ?? "",
+		);
+		if (!project) {
+			return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
+		}
+		const source = await SourcesController.sourceForProject(
+			ctx,
+			project.projectId,
+			ctx.req.param("sourceId") ?? "",
+		);
+		if (!source) {
+			return ctx.json(new ErrorResponse("source_not_found").toJSON(), 404);
+		}
+		const settings = await readSourceErrorSettings(
+			TursoDatabaseManager.getInstance(ctx),
+			source.id,
+		);
+		return ctx.json(settings);
+	}
+
+	/**
+	 * Update per-source error collection configuration (owner/admin only).
+	 * Unknown/invalid fields reject the WHOLE patch with 400 — never a
+	 * partial write, never a privacy-relevant silent default.
+	 */
+	public static async updateErrorSettings(ctx: Context<HonoConfig>) {
+		const project = await SourcesController.projectForSlug(
+			ctx,
+			ctx.req.param("slug") ?? "",
+		);
+		if (!project) {
+			return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
+		}
+		if (!isAdminRole(project.role)) {
+			return ctx.json(new ErrorResponse("cannot_update_source").toJSON(), 403);
+		}
+		const source = await SourcesController.sourceForProject(
+			ctx,
+			project.projectId,
+			ctx.req.param("sourceId") ?? "",
+		);
+		if (!source) {
+			return ctx.json(new ErrorResponse("source_not_found").toJSON(), 404);
+		}
+		let body: unknown;
+		try {
+			body = await ctx.req.json();
+		} catch {
+			return ctx.json(new ErrorResponse("invalid_json").toJSON(), 400);
+		}
+		const patch = validateErrorSettingsPatch(body);
+		if (!patch) {
+			return ctx.json(
+				new ErrorResponse("invalid_error_settings").toJSON(),
+				400,
+			);
+		}
+		const settings = await updateSourceErrorSettings(
+			TursoDatabaseManager.getInstance(ctx),
+			source.id,
+			patch,
+		);
+		return ctx.json(settings);
+	}
+
 }
