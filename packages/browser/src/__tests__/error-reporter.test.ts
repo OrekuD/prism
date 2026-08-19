@@ -317,4 +317,92 @@ describe("createBrowserErrorReporter", () => {
     await bound.shutdown();
     expect(true).toBe(true); // completed without throwing
   });
+
+  it("drops queued reports permanently on a revoked key (401)", async () => {
+    installFetchMock(async () => okResponse(401));
+    const bound = await createBrowserErrorReporter({
+      ...BASE,
+      queue: { maxRetries: 3 },
+    });
+    bound.captureException(new Error("revoked"));
+    const diags: Array<{ code: string }> = [];
+    bound.onDiagnostic((d) => diags.push(d));
+    await bound.flush();
+    expect(bound.pendingCount).toBe(0); // permanent — removed, not retried
+    expect(diags.some((d) => d.code === "error_batch_rejected")).toBe(true);
+    await bound.shutdown();
+  });
+
+  it("drops queued reports permanently on a wrong-origin response (403)", async () => {
+    installFetchMock(async () => okResponse(403));
+    const bound = await createBrowserErrorReporter(BASE);
+    bound.captureException(new Error("bad origin"));
+    await bound.flush();
+    expect(bound.pendingCount).toBe(0); // 403 is non-retryable
+    await bound.shutdown();
+  });
+
+  it("throws on a structurally invalid passthrough payload", async () => {
+    installFetchMock(async () => okResponse());
+    const bound = await createBrowserErrorReporter(BASE);
+    // a report-shaped object with an EMPTY exception type is rejected by
+    // the core contract (mirrors core: { exception: { type: "" } } throws)
+    expect(() =>
+      bound.captureException({ exception: { type: "" } } as never),
+    ).toThrow();
+    // a message-only object is NOT report-shaped: the adapter summarizes it
+    // as an opaque rejection instead of crashing the caller
+    expect(() =>
+      bound.captureException({ exception: { message: "no type" } } as never),
+    ).not.toThrow();
+    await bound.shutdown();
+  });
+
+  it("retries a network failure with backoff, then drops after maxRetries", async () => {
+    const onFetch = vi.fn(async () => {
+      throw new TypeError("network down");
+    });
+    installFetchMock(onFetch as never);
+    const bound = await createBrowserErrorReporter({
+      ...BASE,
+      queue: { maxRetries: 2, flushIntervalMs: 60_000 }, // backoff won't fire in-test
+    });
+    bound.captureException(new Error("offline"));
+    const diags: Array<{ code: string }> = [];
+    bound.onDiagnostic((d) => diags.push(d));
+    await bound.flush().catch(() => undefined);
+    expect(bound.pendingCount).toBe(1); // failure kept for retry
+    await bound.flush().catch(() => undefined);
+    expect(bound.pendingCount).toBe(0); // exhausted -> dropped
+    expect(diags.some((d) => d.code === "error_batch_dropped")).toBe(true);
+    await bound.shutdown();
+  });
+
+  it("flushes queued reports on before-unload via an authenticated keepalive request", async () => {
+    const inits: Array<RequestInit> = [];
+    installFetchMock(async (_url, init) => {
+      inits.push(init);
+      return okResponse();
+    });
+    const bound = await createBrowserErrorReporter(BASE);
+    bound.captureException(new Error("leaving"));
+    bound.captureException(new Error("also leaving"));
+    expect(bound.pendingCount).toBe(2);
+    expect(inits).toHaveLength(0);
+
+    window.dispatchEvent(new Event("beforeunload"));
+    await sleep(0);
+    await sleep(0); // let the lifecycle-triggered tick complete
+
+    expect(bound.pendingCount).toBe(0);
+    expect(inits.length).toBe(1);
+    // authenticated keepalive — never an unauthenticated sendBeacon fallback
+    expect(inits[0]?.keepalive).toBe(true);
+    const headers = (inits[0]?.headers ?? {}) as Record<string, string>;
+    const auth = Object.values(headers).find((value) =>
+      String(value).toLowerCase().startsWith("bearer"),
+    );
+    expect(auth).toBeDefined(); // authenticated keepalive
+    await bound.shutdown();
+  });
 });

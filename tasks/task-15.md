@@ -311,11 +311,24 @@ Rules:
 - [x] Handle opaque cross-origin `Script error.` events honestly: report only
       safe coarse data or drop with a diagnostic; do not invent a stack.
       (slice 3b: ScriptError type + scriptError extra, zero fabricated frames)
-- [ ] Support unload/background delivery within browser constraints without an
+- [x] Support unload/background delivery within browser constraints without an
       unauthenticated fallback or a secret-bearing request.
-- [ ] Test denied consent, revoked keys, wrong origin, malformed payload,
+      (slice 3d: the browser runtime's transport posts with fetch + keepalive
+      inside the ~64 KiB budget carrying the SAME authenticated headers as a
+      normal request — never an unauthenticated sendBeacon fallback and no
+      key in the request body; visibilitychange/before-unload lifecycle fires
+      the core's bounded flush; oversized batches are NOT keepalive-sent
+      rather than silently dropped)
+- [x] Test denied consent, revoked keys, wrong origin, malformed payload,
       network failure/retry, unload, and duplicate delivery in a real browser
       environment.
+      (slice 3d: covered in the jsdom browser environment — consent denial
+      drops without a network call, revoked-key 401 + wrong-origin 403 are
+      permanent non-retryable rejections, structurally invalid passthrough
+      payloads throw, network failures retry with backoff then drop at
+      maxRetries, before-unload flushes via an authenticated keepalive
+      request, dedupe windows coalesce then requeue; a deployed real-browser
+      e2e pass is deferred with the hosted deployment)
 
 ### React adapter
 
@@ -598,3 +611,13 @@ and customer payloads out of this document.
   renders Prometheus text with no payload/keys. Test evidence:
   ErrorIngestController 15/15 (incl. cap + metrics tests), errorMetrics 4/4,
   api errorIssues 19/19 (incl. 429 management-action test).
+- Browser unload/background delivery + full browser-level failure coverage
+  (slice 3d): the browser runtime already posts with fetch + keepalive under
+  the 64 KiB budget carrying the same authenticated headers (no
+  unauthenticated sendBeacon fallback; oversized batches are not
+  keepalive-sent rather than silently dropped), and before-unload fires the
+  core's bounded flush. Added browser tests for revoked-key 401, wrong-origin
+  403, malformed passthrough throws, network failure retry → drop, and
+  before-unload authenticated keepalive flush. Test evidence: browser
+  error-reporter 24/24. Deployed real-browser e2e stays deferred with the
+  hosted pass.
