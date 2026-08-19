@@ -88,6 +88,8 @@ export interface RetentionStats {
 		occurrences: { total: number; expired: number };
 		/** issues whose occurrences are ALL expired (pruned with them) */
 		orphanedIssues: number;
+		/** workflow-activity rows on issues that are fully expired (pruned) */
+		orphanedActivity: number;
 	};
 }
 
@@ -160,6 +162,13 @@ export async function retentionStats(
 						args: [errorCutoffMs],
 					})
 				: none,
+			hasErrorTables && errorDays > 0
+				? client.execute({
+						sql: `SELECT COUNT(*) AS n FROM error_issue_activity WHERE issue_id NOT IN (
+              SELECT DISTINCT issue_id FROM error_occurrences)`,
+						args: [],
+					})
+				: none,
 		]),
 	]);
 
@@ -172,6 +181,7 @@ export async function retentionStats(
 		errors: {
 			occurrences: { total: countOf(errors[0]), expired: countOf(errors[1]) },
 			orphanedIssues: countOf(errors[2]),
+			orphanedActivity: countOf(errors[3]),
 		},
 	};
 }
@@ -182,6 +192,7 @@ export interface RetentionResult {
 	deletedPeople: number;
 	deletedErrorOccurrences: number;
 	deletedErrorUsers: number;
+	deletedErrorActivity: number;
 	deletedErrorIssues: number;
 }
 
@@ -204,6 +215,7 @@ export async function applyRetention(
 			deletedPeople: 0,
 			deletedErrorOccurrences: 0,
 			deletedErrorUsers: 0,
+			deletedErrorActivity: 0,
 			deletedErrorIssues: 0,
 		};
 	}
@@ -238,6 +250,7 @@ export async function applyRetention(
 	];
 	let errorOccurrenceIndex = -1;
 	let errorUsersIndex = -1;
+	let errorActivityIndex = -1;
 	let errorIssuesIndex = -1;
 	if (hasErrorTables && errorDays > 0) {
 		errorOccurrenceIndex = statements.length;
@@ -248,6 +261,12 @@ export async function applyRetention(
 		errorUsersIndex = statements.length;
 		statements.push({
 			sql: `DELETE FROM error_issue_users WHERE issue_id NOT IN (
+        SELECT DISTINCT issue_id FROM error_occurrences)`,
+			args: [],
+		});
+		errorActivityIndex = statements.length;
+		statements.push({
+			sql: `DELETE FROM error_issue_activity WHERE issue_id NOT IN (
         SELECT DISTINCT issue_id FROM error_occurrences)`,
 			args: [],
 		});
@@ -270,6 +289,10 @@ export async function applyRetention(
 				: 0,
 		deletedErrorUsers:
 			errorUsersIndex >= 0 ? (results[errorUsersIndex]?.rowsAffected ?? 0) : 0,
+		deletedErrorActivity:
+			errorActivityIndex >= 0
+				? (results[errorActivityIndex]?.rowsAffected ?? 0)
+				: 0,
 		deletedErrorIssues:
 			errorIssuesIndex >= 0
 				? (results[errorIssuesIndex]?.rowsAffected ?? 0)

@@ -555,3 +555,13 @@ and customer payloads out of this document.
 - Store reads stay parameterized and project-scoped; the read path derives
   summaries from the already-sanitized persisted payload (never raw client
   input). Test evidence: api errorIssues 18/18, analytics migrations 11/11.
+
+### 2026-08-19 — retention prunes workflow activity (slice 4)
+
+- `applyRetention` now deletes `error_issue_activity` rows whose issue has no
+  remaining occurrences (same atomic batch as occurrences -> user links ->
+  issues), so workflow history never survives its issue. `retentionStats`
+  reports orphaned activity, and the CLI result carries `deletedErrorActivity`.
+  Test evidence: retention 10/10 (a dedicated pruning test seeds an expired +
+  fresh issue pair and proves the expired issue, its users AND its activity
+  are pruned while the fresh issue keeps its rows and status).

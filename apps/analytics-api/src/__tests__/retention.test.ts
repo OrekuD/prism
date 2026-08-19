@@ -96,6 +96,7 @@ describe("applyRetention", () => {
 			deletedPeople: 0,
 			deletedErrorOccurrences: 0,
 			deletedErrorUsers: 0,
+			deletedErrorActivity: 0,
 			deletedErrorIssues: 0,
 		});
 		const stats = await retentionStats(client, 0);
@@ -125,6 +126,7 @@ describe("applyRetention", () => {
 			deletedPeople: 0,
 			deletedErrorOccurrences: 0,
 			deletedErrorUsers: 0,
+			deletedErrorActivity: 0,
 			deletedErrorIssues: 0,
 		});
 		const stats = await retentionStats(client, 7);
@@ -141,7 +143,56 @@ describe("applyRetention", () => {
 			deletedPeople: 0,
 			deletedErrorOccurrences: 0,
 			deletedErrorUsers: 0,
+			deletedErrorActivity: 0,
 			deletedErrorIssues: 0,
 		});
+	});
+
+	it("prunes expired error occurrences and ORPHANS their issues + activity", async () => {
+		const OLD = Date.now() - 10 * 86_400_000;
+		const NEW = Date.now() - 86_400_000;
+		await client.execute({
+			sql: `INSERT INTO error_issues (id, project_id, platform, fingerprint_version,
+              fingerprint, level, status, title, first_seen_at, last_seen_at, occurrence_count)
+            VALUES ('issue-old', 'p1', 'web', 1, 'a', 'error', 'unresolved', 'Old boom', ?, ?, 1)`,
+			args: [OLD, OLD],
+		});
+		await client.execute({
+			sql: `INSERT INTO error_issues (id, project_id, platform, fingerprint_version,
+              fingerprint, level, status, title, first_seen_at, last_seen_at, occurrence_count)
+            VALUES ('issue-fresh', 'p1', 'web', 1, 'b', 'error', 'resolved', 'Fresh boom', ?, ?, 1)`,
+			args: [NEW, NEW],
+		});
+		await client.execute({
+			sql: "INSERT INTO error_occurrences (id, client_event_id, issue_id, project_id, source_id, platform, level, handled, occurred_at, received_at, anonymous_id, payload) VALUES ('occ-old', 'c1', 'issue-old', 'p1', 's1', 'web', 'error', 1, ?, ?, 'anon-old', '{}')",
+			args: [OLD, OLD],
+		});
+		await client.execute({
+			sql: "INSERT INTO error_occurrences (id, client_event_id, issue_id, project_id, source_id, platform, level, handled, occurred_at, received_at, anonymous_id, payload) VALUES ('occ-fresh', 'c2', 'issue-fresh', 'p1', 's1', 'web', 'error', 1, ?, ?, 'anon-fresh', '{}')",
+			args: [NEW, NEW],
+		});
+		await client.execute({
+			sql: "INSERT INTO error_issue_users (issue_id, anonymous_id) VALUES ('issue-old', 'anon-old'), ('issue-fresh', 'anon-fresh')",
+		});
+		await client.execute({
+			sql: "INSERT INTO error_issue_activity (id, issue_id, project_id, actor_id, actor_type, action, prior_state, new_state, timestamp) VALUES ('act-old', 'issue-old', 'p1', NULL, 'member', 'resolved', 'unresolved', 'resolved', ?), ('act-fresh', 'issue-fresh', 'p1', NULL, 'member', 'resolved', 'unresolved', 'resolved', ?)",
+			args: [OLD, NEW],
+		});
+
+		const result = await applyRetention(client, 7, 7);
+		expect(result.deletedErrorOccurrences).toBe(1);
+		expect(result.deletedErrorUsers).toBe(1);
+		expect(result.deletedErrorActivity).toBe(1);
+		expect(result.deletedErrorIssues).toBe(1);
+
+		const stats = await retentionStats(client, 7, 7);
+		expect(stats.errors.occurrences.total).toBe(1);
+		expect(stats.errors.orphanedIssues).toBe(0);
+		expect(stats.errors.orphanedActivity).toBe(0);
+
+		const freshIssue = await client.execute({
+			sql: "SELECT status FROM error_issues WHERE id = 'issue-fresh'",
+		});
+		expect(freshIssue.rows[0]?.status).toBe("resolved");
 	});
 });
