@@ -1,0 +1,37 @@
+{
+  "name": "@prism-analytics/node",
+  "version": "0.0.1",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "lint": "tsc",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "test:coverage": "vitest run --coverage"
+  },
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@prism-analytics/core": "*"
+  },
+  "devDependencies": {
+    "@prism-analytics/typescript-config": "*",
+    "@vitest/coverage-v8": "^3.2.7",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7",
+    "@types/node": "^22.5.0"
+  }
+}

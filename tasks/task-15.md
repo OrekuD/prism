@@ -359,15 +359,30 @@ Rules:
 
 ### Server adapter and source maps, after the browser/React vertical slice
 
-- [ ] Design a Node/server adapter with explicit `captureException` and
+- [x] Design a Node/server adapter with explicit `captureException` and
       request-context integration. It must not attach global `uncaughtException`
       or `unhandledRejection` handlers by default, because applications own
       crash/restart policy.
-- [ ] Add framework integrations only after the base Node adapter has a stable
+      (slice 5: @prism-analytics/node — createNodeErrorReporter + Node runtime;
+      NO uncaughtException/unhandledRejection by default; captureProcessErrors()
+      is the explicit opt-in returning an uninstall handle and NEVER rethrows or
+      changes exit behavior; per-request context is EXPLICIT per capture because
+      Node is concurrent — there is intentionally no ambient request-scoped
+      global that could leak identity/auth across requests)
+- [x] Add framework integrations only after the base Node adapter has a stable
       lifecycle and flush-on-shutdown contract. Hono is the first candidate
       because Prism already uses it; do not couple the generic package to it.
-- [ ] Define releases, distributions, app versions, and environment fields
+      (slice 5: the base adapter owns a stable flush-on-shutdown contract
+      (beforeExit/SIGINT/SIGTERM best-effort + deterministic shutdown());
+      the generic package ships a framework-agnostic `reportError(reporter,
+      err, {context})` helper for error-handler middleware — never coupled to
+      Hono, so Hono/Express/Fastify/plain http can each wrap a handler)
+- [x] Define releases, distributions, app versions, and environment fields
       consistently across Web, React Native, native mobile, and server sources.
+      (slice 3/5: release + environment are OPTIONAL first-class fields on
+      ErrorReportInput / ErrorReport / WireErrorItem; the browser, React, and
+      Node adapters all stamp them identically (per-capture > adapter default >
+      input), and the ingest stores them into the issue's release bounds)
 - [ ] Introduce source-map artifact upload using a dedicated deployment/upload
       credential or authenticated management flow, never a browser publishable
       ingest key. Verify checksums, source ownership, size limits, retention,
@@ -523,7 +538,10 @@ They are separate data products with their own collection and privacy design.
 
 ### Phase 4: Server support and symbolication
 
-- [ ] Add the explicit Node/server adapter and a focused framework integration.
+- [x] Add the explicit Node/server adapter and a focused framework integration.
+      (slice 5: @prism-analytics/node adapter + framework-agnostic reportError
+      helper done, 8/8 tests; the secure release/source-map upload and a live
+      deployed server consumer ride the remaining source-map phase)
 - [ ] Add secure release/source-map upload and symbolication only after its
       privacy and authorization gates pass.
 
@@ -649,3 +667,27 @@ and customer payloads out of this document.
 - Test evidence: prism-react 27/27 (boundary matrix + insights suite incl.
   strict/consent/teardown/hook/async-documentation + the react@18 packed
   fixture).
+
+### 2026-08-19 — Node/server adapter + framework-agnostic error helper (slice 5, Phase 4)
+
+- New `@prism-analytics/node` package: `createNodeErrorReporter` drives the
+  SAME runtime-neutral core lane via a Node runtime adapter (global fetch
+  transport with real AbortController bridging + request timeout, setTimeout
+  scheduling, server context = platform/kind + Node runtime version — no
+  env/cwd/args captured). In-memory queue only; no persistent storage.
+- Explicit policy (matches the task item): the factory attaches NO global
+  `uncaughtException`/`unhandledRejection` handlers by default — the
+  application owns crash/restart policy. `captureProcessErrors()` is the
+  explicit opt-in, idempotent, returns an uninstall handle, observes but
+  never rethrows and never changes process exit behavior.
+- Request-context integration is EXPLICIT per capture (Node concurrency —
+  no ambient request-scoped global that could leak a user id or auth header
+  across concurrent requests). `reportError(reporter, err, {context})` is a
+  framework-agnostic helper for error-handler middleware (Hono/Express/
+  Fastify/plain http), satisfying the "Hono first but don't couple the
+  generic package" rule.
+- release/environment stamp identically across browser + node adapters
+  (per-capture > adapter default > input) and reach the ingest as-is.
+- Test evidence: node adapter 8/8 (normalization + frames, no-default process
+  handlers, explicit opt-in + uninstall deltas, consent gate, release/env +
+  request-context on the wire, shutdown drains then drops new, reportError).
