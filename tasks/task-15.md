@@ -250,8 +250,15 @@ Rules:
       only owner/admin may change project-wide error workflow/configuration
       unless a later role model deliberately expands that permission.
       (slice 2: enforced server-side via getWorkspaceRole + isAdminRole)
-- [ ] Extend project deletion, source deletion/revocation, access removal, and
+- [x] Extend project deletion, source deletion/revocation, access removal, and
       export/delete workflows to error data and subscriptions.
+      (slice 4: purgeProjectErrorData / purgeSourceErrorData / person error
+      purge in analyticsErrorPurge.ts — project deletion purges all error
+      tables atomically, source removal purges its occurrences + orphans,
+      person deletion drops their error occurrences/user links + recounts
+      users_affected + prunes orphaned issues/activity in the SAME batch as
+      the identity deletion, and the person export now includes sanitized
+      error occurrences; key revocation intentionally does not purge)
 - [ ] Do not add alerts, webhooks, Slack/Jira sync, or issue assignment until
       issue state and authorization are stable.
 
@@ -565,3 +572,12 @@ and customer payloads out of this document.
   Test evidence: retention 10/10 (a dedicated pruning test seeds an expired +
   fresh issue pair and proves the expired issue, its users AND its activity
   are pruned while the fresh issue keeps its rows and status).
+- Deletion/export workflows extended to error data: project deletion purges
+  all error tables (activity, occurrences, user links, issues) in one atomic
+  batch before the product row is removed; source removal purges that source's
+  occurrences and orphans; person deletion removes their error occurrences +
+  user links, recounts users_affected, and prunes orphaned issues/activity in
+  the same batch as the identity deletion; the person export now includes
+  sanitized error occurrences. Key revocation intentionally does not purge
+  (previously accepted data stays auditable). Test evidence: projects +
+  sources + peopleStore + errorIssues = 60/60 across the four suites.

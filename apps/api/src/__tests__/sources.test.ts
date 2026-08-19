@@ -281,4 +281,60 @@ describe("SourcesController (organization-bound source + key management)", () =>
       expect(statusOf(result)).toBe(404);
     });
   });
+
+  describe("remove", () => {
+    it("admin removing a source purges its error data + orphaned issues", async () => {
+      const neon = makeStore({
+        role: "admin",
+        sources: [
+          {
+            id: SOURCE_ID,
+            project_id: PROJECT_ID,
+            name: "Web",
+            platform: "web",
+            allowed_origins: "[]",
+          },
+        ],
+      });
+      getInstance.mockReturnValue(neon as never);
+      const batch = vi.fn(async (_statements: Array<{ sql: string; args: unknown[] }>) => []);
+      getTursoInstance.mockReturnValue({
+        execute: vi.fn(async () => ({ rows: [] })),
+        batch,
+      } as never);
+
+      const result = await SourcesController.remove(
+        ctxFor(USER_ID, { slug: SLUG, sourceId: SOURCE_ID }),
+      );
+      expect(statusOf(result) ?? 200).toBe(200);
+      const deleteCall = neon.mock.calls.find(([sql]) =>
+        String((sql as TemplateStringsArray).join("?")).includes(
+          "DELETE FROM project_sources",
+        ),
+      );
+      expect(deleteCall).toBeDefined();
+      const statements = (batch.mock.calls[0]?.[0] ?? []) as Array<{
+        sql: string;
+        args: unknown[];
+      }>;
+      const occurrenceDelete = statements.find((s) =>
+        s.sql.includes("DELETE FROM error_occurrences"),
+      );
+      expect(occurrenceDelete).toBeDefined();
+      expect(occurrenceDelete?.args).toEqual([PROJECT_ID, SOURCE_ID]);
+    });
+
+    it("member cannot remove a source (404, non-disclosing)", async () => {
+      const neon = makeStore({ role: "member", sources: [] });
+      getInstance.mockReturnValue(neon as never);
+      getTursoInstance.mockReturnValue({
+        execute: vi.fn(),
+        batch: vi.fn(),
+      } as never);
+      const result = await SourcesController.remove(
+        ctxFor(USER_ID, { slug: SLUG, sourceId: SOURCE_ID }),
+      );
+      expect(statusOf(result)).toBe(404);
+    });
+  });
 });

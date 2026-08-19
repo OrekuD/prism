@@ -188,9 +188,12 @@ describe("ProjectsController (organization-bound authorization)", () => {
   });
 
   describe("deleteProject", () => {
-    it("owner can delete a project", async () => {
+    it("owner can delete a project and purges its error data", async () => {
       const neon = makeStore("owner");
       getInstance.mockReturnValue(neon as never);
+      const execute = vi.fn(async () => ({ rows: [], rowsAffected: 0 }));
+      const batch = vi.fn(async (_statements: Array<{ sql: string; args: unknown[] }>) => []);
+      getTursoInstance.mockReturnValue({ execute, batch } as never);
       const result = await ProjectsController.deleteProject(
         ctxFor(USER_ID, { projectId: PROJECT_ID }),
       );
@@ -199,11 +202,41 @@ describe("ProjectsController (organization-bound authorization)", () => {
         String((sql as TemplateStringsArray).join("?")).startsWith("DELETE"),
       );
       expect(deleteCall).toBeDefined();
+      // the analytics purge fired in one atomic batch, scoped to the project
+      const statements = (batch.mock.calls[0]?.[0] ?? []) as Array<{
+        sql: string;
+        args: unknown[];
+      }>;
+      expect(
+        statements.some(
+          (s) =>
+            s.sql.includes("DELETE FROM error_occurrences") &&
+            s.args[0] === PROJECT_ID,
+        ),
+      ).toBe(true);
+      expect(
+        statements.some(
+          (s) =>
+            s.sql.includes("DELETE FROM error_issue_activity") &&
+            s.args[0] === PROJECT_ID,
+        ),
+      ).toBe(true);
+      expect(
+        statements.some(
+          (s) =>
+            s.sql.includes("DELETE FROM error_issues") &&
+            s.args[0] === PROJECT_ID,
+        ),
+      ).toBe(true);
     });
 
     it("member cannot delete (404, non-disclosing)", async () => {
       const neon = makeStore("member");
       getInstance.mockReturnValue(neon as never);
+      getTursoInstance.mockReturnValue({
+        execute: vi.fn(),
+        batch: vi.fn(),
+      } as never);
       const result = await ProjectsController.deleteProject(
         ctxFor(USER_ID, { projectId: PROJECT_ID }),
       );

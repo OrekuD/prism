@@ -7,6 +7,8 @@ import type {
   TotalsResource,
 } from "@prism-analytics/types";
 
+import { personErrorPurgeStatements } from "./analyticsErrorPurge";
+
 /**
  * People + baseline query store (task-10 §5): bounded, parameterized,
  * project-scoped reads over the identity tables. Every read is scoped by
@@ -428,6 +430,18 @@ export async function personExists(
 // ---------------------------------------------------------------------------
 
 /** Person export: identity references, traits, sessions, events — documented analytics data only. */
+/** A bounded error-occurrence row for a person's export (sanitized payload). */
+export type ErrorOccurrenceExport = {
+  occurredAt: number;
+  level: string;
+  handled: boolean;
+  release?: string;
+  environment?: string;
+  issueTitle: string;
+  exceptionType?: string;
+  message?: string;
+};
+
 export interface PersonExport {
   projectId: string;
   personId: string;
@@ -437,12 +451,68 @@ export interface PersonExport {
   traits: Record<string, unknown>;
   sessions: Array<{ sessionId: string; startedAt: number; lastSeenAt: number }>;
   events: EventResource[];
+  errorOccurrences: ErrorOccurrenceExport[];
+}
+
+/**
+ * Exhaustive, bounded error-occurrence export for a person's anonymous ids:
+ * one row per sanitized occurrence (type/message from the persisted payload,
+ * handled/release/environment, owning issue title). Pages internally until
+ * every row is included — a privacy export must not silently truncate.
+ */
+export async function personErrorOccurrences(
+  client: AnalyticsClient,
+  projectId: string,
+  anonymousIds: string[],
+): Promise<ErrorOccurrenceExport[]> {
+  if (anonymousIds.length === 0) return [];
+  const placeholders = anonymousIds.map(() => "?").join(",");
+  const rows: Array<Record<string, unknown>> = [];
+  const PAGE = 500;
+  for (let offset = 0; ; offset += PAGE) {
+    const { rows: page } = await client.execute({
+      sql: `SELECT o.occurred_at AS occurred_at, o.level AS level,
+              o.handled AS handled, o.release AS release,
+              o.environment AS environment, i.title AS issue_title,
+              o.payload AS payload
+            FROM error_occurrences o
+            JOIN error_issues i ON i.id = o.issue_id
+            WHERE o.project_id = ? AND o.anonymous_id IN (${placeholders})
+            ORDER BY o.received_at DESC
+            LIMIT ? OFFSET ?`,
+      args: [projectId, ...anonymousIds, PAGE, offset],
+    });
+    rows.push(...page);
+    if (page.length < PAGE) break;
+  }
+  return rows.map((row) => {
+    let exception: Record<string, unknown> | null = null;
+    try {
+      exception = (
+        JSON.parse(String(row.payload)) as { exception?: Record<string, unknown> }
+      ).exception ?? null;
+    } catch {
+      exception = null;
+    }
+    return {
+      occurredAt: Number(row.occurred_at ?? 0),
+      level: String(row.level ?? ""),
+      handled: row.handled === 1,
+      ...(row.release ? { release: String(row.release) } : {}),
+      ...(row.environment ? { environment: String(row.environment) } : {}),
+      issueTitle: String(row.issue_title ?? ""),
+      ...(exception?.type ? { exceptionType: String(exception.type) } : {}),
+      ...(typeof exception?.message === "string"
+        ? { message: exception.message }
+        : {}),
+    };
+  });
 }
 
 /**
  * Build a person's export (bounded — a documented analytics-data export:
- * identity references, traits, sessions, and events; never keys, tokens,
- * raw IPs, or other users' data).
+ * identity references, traits, sessions, events, and error occurrences;
+ * never keys, tokens, raw IPs, or other users' data).
  */
 export async function exportPerson(
   client: AnalyticsClient,
@@ -478,6 +548,12 @@ export async function exportPerson(
     offset += PAGE;
   }
 
+  const errorOccurrences = await personErrorOccurrences(
+    client,
+    projectId,
+    person.anonymousIds,
+  );
+
   return {
     projectId,
     personId,
@@ -487,6 +563,7 @@ export async function exportPerson(
     traits: person.traits,
     sessions,
     events,
+    errorOccurrences,
   };
 }
 
@@ -539,6 +616,14 @@ export async function deletePerson(
           },
         ]
       : [];
+  // Task-15: error associations for the person's anonymous ids are removed
+  // in the SAME atomic batch (occurrences, user links, users_affected
+  // recount, then orphaned issues + their activity).
+  const errorPurgeStatements = await personErrorPurgeStatements(
+    client,
+    projectId,
+    anonIds,
+  );
   // R7-F1: tombstone every linked credential so a stale post-deletion
   // event can never be reassigned into a later identity generation.
   const credentialTombstones = [
@@ -559,6 +644,7 @@ export async function deletePerson(
       { sql: "DELETE FROM events WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
       { sql: "DELETE FROM people WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
       { sql: "INSERT INTO deleted_people (project_id, person_id, deleted_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING", args: [projectId, personId, Date.now()] },
+      ...errorPurgeStatements,
     ],
     "write",
   );

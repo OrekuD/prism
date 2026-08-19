@@ -22,6 +22,7 @@ import {
   projectEvents,
 } from "../utils/analyticsStore";
 import { TursoDatabaseManager } from "../managers/TursoDatabaseManager";
+import { purgeProjectErrorData } from "../utils/analyticsErrorPurge";
 import {
   getProjectRole,
   getWorkspaceRole,
@@ -145,7 +146,14 @@ export class ProjectsController {
     }
 
     // The project's analytics are removed by the cascade cleanup in the
-    // analytics store (project deletion cleans its Turso data).
+    // analytics store (project deletion cleans its Turso data): error
+    // tracking rows are purged here, in ONE atomic batch, BEFORE the
+    // product row is removed — a purge failure fails the deletion closed
+    // rather than leaving orphaned diagnostic data behind.
+    await purgeProjectErrorData(
+      TursoDatabaseManager.getInstance(ctx),
+      projectId,
+    );
     await DatabaseManager.getInstance(
       ctx,
     )`DELETE FROM projects WHERE id = ${projectId}`;

@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { HonoConfig } from "../types/types";
 import { DatabaseManager } from "../managers/DatabaseManager";
 import { TursoDatabaseManager } from "../managers/TursoDatabaseManager";
+import { purgeSourceErrorData } from "../utils/analyticsErrorPurge";
 import { ErrorResponse } from "../network/responses/ErrorResponse";
 import { OkResponse } from "../network/responses/OkResponse";
 import { generateApiKey } from "../utils/generateApiKey";
@@ -376,6 +377,15 @@ export class SourcesController {
     if (!source) {
       return ctx.json(new ErrorResponse("source_not_found").toJSON(), 404);
     }
+    // Removing a source purges its error occurrences and any issues left
+    // without occurrences (privacy default). Key REVOCATION does not purge —
+    // previously accepted occurrences stay auditable, matching the issue
+    // lifecycle rule that ignored/resolved data remains searchable.
+    await purgeSourceErrorData(
+      TursoDatabaseManager.getInstance(ctx),
+      project.projectId,
+      source.id,
+    );
     await DatabaseManager.getInstance(
       ctx,
     )`DELETE FROM project_sources WHERE id = ${source.id}`;
