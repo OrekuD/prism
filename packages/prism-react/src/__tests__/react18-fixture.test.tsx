@@ -48,7 +48,10 @@ describe("React 18 peer compatibility", () => {
         if (!coreTarball || !reactTarball) throw new Error("npm pack produced no tarball");
 
         execSync(
-          "npm install --no-audit --no-fund --ignore-scripts " +
+          // --omit=dev: dev-only deps of the packed tarball (a test-scoped
+          // reference to @prism-analytics/browser) must not be resolved from
+          // the registry — the fixture installs the production surface.
+          "npm install --no-audit --no-fund --ignore-scripts --omit=dev " +
             cache +
             " react@18 react-dom@18 " +
             join(packDir, coreTarball.filename) +

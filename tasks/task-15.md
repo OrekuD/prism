@@ -337,16 +337,25 @@ Rules:
       React component stack and renders the application's supplied fallback.
       (slice 3b: opt-in class boundary, handled:true, bounded component stack,
       function/static fallback)
-- [ ] Do not claim that the boundary catches asynchronous errors or event
+- [x] Do not claim that the boundary catches asynchronous errors or event
       handler errors; document global-handler/explicit capture behavior
       accurately.
-- [ ] Ensure Strict Mode does not install duplicate global listeners, report a
+- [x] Ensure Strict Mode does not install duplicate global listeners, report a
       boundary error twice, or create a second reporter/client.
-- [ ] Provide a hook/facade only when it has stable ownership and error-state
+      (slice 3e: providers register zero effects; Strict Mode single crash
+      delivers ONE report via the browser dedupe window — proven with the real
+      reporter + tests)
+- [x] Provide a hook/facade only when it has stable ownership and error-state
       semantics. It must throw a helpful error outside the relevant provider.
-- [ ] Test component crash, fallback recovery/remount, manual capture, global
+      (slice 3e: <PrismErrorBoundaryProvider> publishes ONE reporter;
+      usePrismErrorReporter() throws a specific error outside the provider;
+      boundary takes prop OR context — no second client)
+- [x] Test component crash, fallback recovery/remount, manual capture, global
       error interaction, consent changes, and teardown with React testing and
       a real consumer fixture.
+      (slice 3e: 27/27 React tests — crash+fallback+reset, manual capture,
+      consent-denied fallback, shutdown drains then stops, Strict Mode, and
+      the react@18 clean-install fixture from the PACKED package)
 
 ### Server adapter and source maps, after the browser/React vertical slice
 
@@ -440,7 +449,7 @@ They are separate data products with their own collection and privacy design.
 - [ ] Add per-source error collection configuration and status under Sources.
       Make global browser handlers, breadcrumb classes, sampling, and release
       metadata explicit opt-ins with clear privacy explanations.
-- [ ] Do not surface a public key, source-map upload secret, or unredacted
+- [x] Do not surface a public key, source-map upload secret, or unredacted
       report in overview widgets, screenshots, toasts, or support logs.
 
 ## Security, privacy, and operational checklist
@@ -448,7 +457,7 @@ They are separate data products with their own collection and privacy design.
 - [ ] Perform a dedicated threat-model review covering hostile client payloads,
       source-key theft, XSS through frames/context, multi-tenant issue access,
       stored payload size attacks, source-map access, and deletion/retention.
-- [ ] Validate all untrusted payload fields with schema limits before JSON
+- [x] Validate all untrusted payload fields with schema limits before JSON
       parsing/fingerprinting where feasible; use parameterized storage and safe
       JSON rendering that cannot execute payload content.
 - [ ] Add CSP-safe code/stack rendering, escaping, redaction tests, and a
@@ -460,7 +469,7 @@ They are separate data products with their own collection and privacy design.
       occurrences beyond maxOccurrencesPerSource are rejected with coarse
       reasons; workflow-state actions are rate-limited per user; batch/payload
       caps already enforced by the bounded stream read)
-- [ ] Add retention/pruning jobs with metrics and failure alerts. Pruning must
+- [x] Add retention/pruning jobs with metrics and failure alerts. Pruning must
       be idempotent and safe under concurrent ingestion.
 - [x] Define operational metrics: accepted/dropped/rejected reports, queue
       delay, grouping latency, database failure, source-map processing status,
@@ -470,7 +479,7 @@ They are separate data products with their own collection and privacy design.
       in errorMetrics.ts — counters never carry payload text/keys; ingest +
       retention record into it; source-map status is always idle until that
       phase starts)
-- [ ] Verify all errors/logs shown to users and operators are non-disclosing.
+- [x] Verify all errors/logs shown to users and operators are non-disclosing.
       A source-key or membership failure must not identify another tenant.
 - [ ] Run security review before exposing error capture in a live deployment.
 
@@ -487,15 +496,15 @@ They are separate data products with their own collection and privacy design.
 
 ### Phase 1: Storage and secure ingestion
 
-- [ ] Add migration-owned error schema, idempotent issue/occurrence persistence,
+- [x] Add migration-owned error schema, idempotent issue/occurrence persistence,
       source-aware auth reuse, grouping, retention configuration, and focused
       real-store tests.
-- [ ] Prove one source cannot write/read another project's errors and that a
+- [x] Prove one source cannot write/read another project's errors and that a
       duplicate request never advances counts or last-seen state.
 
 ### Phase 2: Core and browser error delivery
 
-- [ ] Implement the runtime-neutral reporter and browser adapter with explicit
+- [x] Implement the runtime-neutral reporter and browser adapter with explicit
       capture/global-handler opt-in, consent behavior, queueing, retry, and
       diagnostics.
 - [ ] Prove it through packed-package installation in the Task 14 React fixture
@@ -531,12 +540,12 @@ They are separate data products with their own collection and privacy design.
       200; grouping + retry dedupe proven in flows tests)
 - [ ] The dashboard provides a real Errors page and issue lifecycle workflow;
       it does not treat normal analytics events as errors.
-- [ ] Consent, source-key revocation, allowed origin checks, retention,
+- [x] Consent, source-key revocation, allowed origin checks, retention,
       deletion, and access removal behave correctly for diagnostic data.
 - [ ] Packed SDK artifacts and a deployed external consumer prove the browser/
       React path end-to-end; server/source-map support is either complete with
       its own evidence or clearly left in its unchecked phase.
-- [ ] No generic Logs/Performance/Replays sidebar entries or SDK promises ship
+- [x] No generic Logs/Performance/Replays sidebar entries or SDK promises ship
       before their separate contracts and ingestion paths exist.
 
 ## Progress log
@@ -621,3 +630,22 @@ and customer payloads out of this document.
   before-unload authenticated keepalive flush. Test evidence: browser
   error-reporter 24/24. Deployed real-browser e2e stays deferred with the
   hosted pass.
+
+### 2026-08-19 — React ownership surface + Strict Mode + full matrix (slice 3e)
+
+- `<PrismErrorBoundaryProvider>` publishes ONE already-created reporter;
+  `usePrismErrorReporter()` returns it and throws a specific error outside the
+  provider. The boundary accepts the reporter prop OR the provider context
+  (prop wins), so consumers share a single reporter without prop-drilling —
+  no second client/queue can exist. Providers register zero effects.
+- Boundary docs are now explicit: it catches ONLY render/lifecycle errors in
+  its own tree; async/timer/promise/event-handler/other-tree errors are the
+  job of explicit capture or the opt-in global handlers. Strict Mode remounts
+  never duplicate global listeners, and a Strict Mode single crash delivers
+  ONE report via the browser dedupe window (real-reporter test).
+- `@prism-analytics/browser` is a dev-only dependency of the React package
+  (test-only import; the react@18 clean-install fixture installs with
+  --omit=dev so it never resolves a sibling package from the registry).
+- Test evidence: prism-react 27/27 (boundary matrix + insights suite incl.
+  strict/consent/teardown/hook/async-documentation + the react@18 packed
+  fixture).

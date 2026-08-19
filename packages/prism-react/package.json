@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit",
     "test:coverage": "vitest run --coverage"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -36,6 +38,7 @@
     "react-dom": "^19.2.8",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.7"
+    "vitest": "^3.2.7",
+    "@prism-analytics/browser": "*"
   }
 }

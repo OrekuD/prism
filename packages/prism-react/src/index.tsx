@@ -63,6 +63,11 @@ export interface PrismReactFacade {
 /** Context carries the READY client — never an initialization config. */
 export const PrismContext = createContext<PrismClient | null>(null);
 
+/** Context that optionally carries an already-created error reporter. */
+export const PrismErrorBoundaryContext = createContext<PrismErrorReporter | null>(
+  null,
+);
+
 export interface PrismProviderProps {
   /** An already-created, ready client (createPrismClient/createBrowserClient). */
   client: PrismClient;
@@ -73,6 +78,44 @@ export interface PrismProviderProps {
 export function PrismProvider({ client, children }: PrismProviderProps) {
   const value = useMemo(() => client, [client]);
   return <PrismContext.Provider value={value}>{children}</PrismContext.Provider>;
+}
+
+export interface PrismErrorBoundaryProviderProps {
+  /** An already-created, ready error reporter (createBrowserErrorReporter). */
+  reporter: PrismErrorReporter;
+  children?: ReactNode;
+}
+
+/**
+ * Zero-effect provider: publishes an already-created reporter so any
+ * descendant <PrismErrorBoundary> (or the usePrismErrorReporter hook) can
+ * share ONE reporter without prop-drilling. Strict Mode remounts are
+ * harmless — this provider registers no effects or listeners.
+ */
+export function PrismErrorBoundaryProvider({
+  reporter,
+  children,
+}: PrismErrorBoundaryProviderProps) {
+  const value = useMemo(() => reporter, [reporter]);
+  return (
+    <PrismErrorBoundaryContext.Provider value={value}>
+      {children}
+    </PrismErrorBoundaryContext.Provider>
+  );
+}
+
+/**
+ * Returns the reporter from the nearest <PrismErrorBoundaryProvider>.
+ * Throws a specific error outside a provider so misconfiguration is loud.
+ */
+export function usePrismErrorReporter(): PrismErrorReporter {
+  const reporter = useContext(PrismErrorBoundaryContext);
+  if (!reporter) {
+    throw new Error(
+      "usePrismErrorReporter must be used inside a <PrismErrorBoundaryProvider reporter={…}> with a ready reporter",
+    );
+  }
+  return reporter;
 }
 
 function createFacade(client: PrismClient): PrismReactFacade {
@@ -131,8 +174,11 @@ export type PrismErrorBoundaryFallback =
   | ((error: Error, reset: () => void) => ReactNode);
 
 export interface PrismErrorBoundaryProps {
-  /** An ALREADY-CREATED, ready error reporter (createBrowserErrorReporter). */
-  reporter: PrismErrorReporter;
+  /**
+   * An ALREADY-CREATED, ready error reporter (createBrowserErrorReporter).
+   * Optional when the boundary sits under a <PrismErrorBoundaryProvider>.
+   */
+  reporter?: PrismErrorReporter;
   /** Rendered when an error is captured. Defaults to `null`. */
   fallback?: PrismErrorBoundaryFallback;
   /** Side-effect hook (e.g. UI toast) called after the capture is enqueued. */
@@ -141,18 +187,40 @@ export interface PrismErrorBoundaryProps {
 }
 
 /**
- * OPT-IN error boundary (task-15 slice 3b). Catches render/lifecycle
- * errors and enqueues them into the reporter with `handled: true` plus a
- * bounded component stack — a thin, zero-logic bridge. It never rethrows
- * and never installs anything globally; React Strict Mode double-captures
- * are coalesced by the reporter's dedupe window. A failing reporter must
- * never break the boundary, so the capture call is guarded.
+ * OPT-IN error boundary (task-15 slice 3b). Catches RENDER + lifecycle
+ * errors in its own descendant tree and enqueues them into the reporter
+ * with `handled: true` plus a bounded component stack — a thin, zero-logic
+ * bridge. It never rethrows and never installs anything globally.
+ *
+ * Honest boundary limits (task-15 slice 3e): it does NOT catch asynchronous
+ * errors, promise rejections, timers, event-handler errors, or errors in
+ * OTHER trees. Those are captured explicitly (reporter.captureException)
+ * or by the browser global handlers (createBrowserErrorReporter's opt-in
+ * install()). Do not claim otherwise.
+ *
+ * React Strict Mode double-renders; if a crash is captured twice inside a
+ * strict subtree, the reporter's dedupe window (browser adapter, default
+ * 1s) collapses the duplicate into one, so Strict Mode never double-reports
+ * a single boundary error. A failing reporter must never break the
+ * boundary, so the capture call is guarded.
  */
 export class PrismErrorBoundary extends Component<
   PrismErrorBoundaryProps,
   PrismErrorBoundaryState
 > {
   state: PrismErrorBoundaryState = { error: null };
+
+  static contextType = PrismErrorBoundaryContext;
+
+  /** The reporter: explicit prop wins; otherwise the provider context. */
+  private resolvedReporter(): PrismErrorReporter {
+    if (this.props.reporter) return this.props.reporter;
+    const fromContext = this.context as PrismErrorReporter | null;
+    if (fromContext) return fromContext;
+    throw new Error(
+      "PrismErrorBoundary needs a reporter prop or a <PrismErrorBoundaryProvider reporter={…}> ancestor",
+    );
+  }
 
   static getDerivedStateFromError(error: Error): PrismErrorBoundaryState {
     return { error };
@@ -161,7 +229,7 @@ export class PrismErrorBoundary extends Component<
   componentDidCatch(error: Error, info: ErrorInfo): void {
     this.props.onCapture?.(error, info);
     try {
-      this.props.reporter.captureException({
+      this.resolvedReporter().captureException({
         exception: errorToException(error),
         handled: true,
         context: {
