@@ -175,3 +175,70 @@ export type ErrorIssueResource = {
 export type ErrorIssueStateRequest = {
 	status: ErrorIssueStatus;
 };
+
+/** A sanitized, URL-cleaned stack frame from a persisted occurrence. */
+export type ErrorStackFrame = {
+	file: string | null;
+	function?: string;
+	line: number | null;
+	column: number | null;
+	inApp: boolean;
+};
+
+/**
+ * Bounded one-exception summary for an occurrence inside an issue detail.
+ * Worst case this is the sanitized exception type/message plus the first 12
+ * frames of the top exception — never raw secrets, cookies, bodies, or
+ * headers (those are stripped at ingestion, before persistence).
+ */
+export type ErrorOccurrenceSummary = {
+	id: string;
+	occurredAt: number;
+	receivedAt: number;
+	level: ErrorIssueLevel;
+	handled: boolean;
+	release?: string;
+	environment?: string;
+	anonymousId?: string;
+	exception: {
+		type: string;
+		message?: string;
+		frames: Array<ErrorStackFrame>;
+		hasCause: boolean;
+	};
+	tagsCount: number;
+	extrasCount: number;
+	breadcrumbsCount: number;
+};
+
+export type ErrorIssueActivityAction = "resolved" | "ignored" | "reopened";
+
+/** One auditable, user-initiated issue state change. */
+export type ErrorIssueActivityItem = {
+	id: string;
+	action: ErrorIssueActivityAction;
+	priorState: ErrorIssueStatus;
+	newState: ErrorIssueStatus;
+	actorType: "member" | "system";
+	actorId?: string;
+	timestamp: number;
+	note?: string;
+};
+
+/**
+ * Issue detail (task-15 slice 4): the windowed list resource plus a bounded
+ * page of sanitized occurrence summaries, workflow history, and safe
+ * all-time aggregate counts. Occurrence ids are unguessable UUIDs reached
+ * only through an authorized (project, issue) parent — there is no occurrence
+ * endpoint, so nothing is globally enumerable.
+ */
+export type ErrorIssueDetailResource = {
+	issue: ErrorIssueResource;
+	occurrences: Array<ErrorOccurrenceSummary>;
+	hasMoreOccurrences: boolean;
+	activity: Array<ErrorIssueActivityItem>;
+	occurrenceCountAll: number;
+	usersAffectedAll: number;
+	firstRelease?: string;
+	lastRelease?: string;
+};

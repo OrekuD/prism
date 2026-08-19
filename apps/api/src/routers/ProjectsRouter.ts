@@ -17,8 +17,12 @@ router.use(AuthenticationMiddleware);
 router.get("", ProjectsController.listProjects);
 router.get("/:slug", ProjectsController.getProjectBySlug);
 router.get("/:slug/events", ProjectsController.getProjectEvents);
-// Error tracking (task-15 slice 2): issue list + workflow state.
+// Error tracking (task-15 slices 2 + 4): issue list + detail + workflow
+// state. Detail summarizes sanitized occurrences and workflow history with
+// no occurrence endpoint (occurrence ids are unguessable UUIDs, only ever
+// reached through an authorized project+issue parent).
 router.get("/:slug/errors", ErrorIssuesController.list);
+router.get("/:slug/errors/:issueId", ErrorIssuesController.detail);
 router.patch("/:slug/errors/:issueId", ErrorIssuesController.update);
 // People + baseline query APIs (task-10 §5)
 router.get("/:slug/people", PeopleController.list);

@@ -227,16 +227,25 @@ Rules:
       and windowed counts/delta (state/source/platform/level filters run
       client-side on the list; details/pagination follow the detail view).
       (slice 2: GET /projects/:slug/errors)
-- [ ] Add issue detail endpoint with summarized occurrence list, sanitized
+- [x] Add issue detail endpoint with summarized occurrence list, sanitized
       exception/frame context, workflow history, and safe aggregate counts.
-- [ ] Add occurrence detail endpoint only if needed; authorize it through the
+      (slice 4: GET /projects/:slug/errors/:issueId — windowed issue resource +
+      bounded occurrence page with sanitized exception/frames/tag-extras-
+      breadcrumb counts, all-time aggregates, release bounds, and
+      error_issue_activity workflow history; member-readable, project-scoped)
+- [x] Add occurrence detail endpoint only if needed; authorize it through the
       parent issue/project and never use a globally enumerable occurrence ID.
+      (slice 4: no occurrence endpoint — summaries arrive inside the issue
+      detail; occurrence ids are unguessable random hex only ever reached
+      through the authorized (project, issue) parent)
 - [x] Add resolve, ignore, and reopen actions with role checks, optimistic
       concurrency or equivalent conflict protection, auditable actor/timestamp,
       and clear reopen-on-new-occurrence behavior.
-      (slice 2: PATCH /projects/:slug/errors/:issueId — owner/admin only,
-      atomic UPDATE with resolved_by/at + ignored_by/at; reopen-on-new-
-      occurrence is drive by slice-1 ingestion)
+      (slice 2 + slice 4: PATCH /projects/:slug/errors/:issueId — owner/admin
+      only, atomic UPDATE with resolved_by/at + ignored_by/at; slice 4 records
+      each transition in error_issue_activity (resolved/ignored/reopened,
+      prior -> new, actor, timestamp); reopening clears resolved/ignored
+      metadata; reopen-on-new-occurrence driven by slice-1 ingestion)
 - [x] Define permission mapping: members may read permitted diagnostic data;
       only owner/admin may change project-wide error workflow/configuration
       unless a later role model deliberately expands that permission.
@@ -528,3 +537,21 @@ and customer payloads out of this document.
   await the `GET /errors/:id` detail endpoint (first box under "Read and
   workflow APIs"). Slices 3b-3c browser/React/detail work remains uncommitted;
   the owner holds commits until specified.
+
+### 2026-08-19 — issue detail API + workflow activity (slice 4)
+
+- `GET /projects/:slug/errors/:issueId` (member-readable, project-scoped)
+  returns the windowed issue resource plus a bounded page of sanitized
+  occurrence summaries (exception type/message, first frames, handled state,
+  release/environment, tag-extras-breadcrumb counts), all-time aggregate
+  counts + release bounds, and a new workflow-history array. Occurrence ids
+  are unguessable random hex reached only through the authorized parent; there
+  is no occurrence endpoint, so nothing is globally enumerable.
+- New `error_issue_activity` table (migration 010) records user-initiated
+  transitions (resolved/ignored/reopened, prior -> new, actor, timestamp).
+  `updateIssueStatus` now writes one activity row per real transition; an
+  idempotent same-status update writes nothing. Ingestion's system reopen is
+  intentionally not duplicated into the user-action log.
+- Store reads stay parameterized and project-scoped; the read path derives
+  summaries from the already-sanitized persisted payload (never raw client
+  input). Test evidence: api errorIssues 18/18, analytics migrations 11/11.

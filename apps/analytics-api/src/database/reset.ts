@@ -82,6 +82,7 @@ const DROP_STATEMENTS = [
 	"DROP TABLE IF EXISTS error_issues",
 	"DROP TABLE IF EXISTS error_occurrences",
 	"DROP TABLE IF EXISTS error_issue_users",
+	"DROP TABLE IF EXISTS error_issue_activity",
 	"DROP TABLE IF EXISTS schema_migrations",
 ];
 

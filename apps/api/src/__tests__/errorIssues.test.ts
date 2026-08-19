@@ -69,23 +69,45 @@ function makeTurso(options: {
 	counts?: Array<Record<string, unknown>>;
 	users?: Array<Record<string, unknown>>;
 	updateRowsAffected?: number;
+	statusSelectRows?: Array<Record<string, unknown>>;
+	occurrenceRows?: Array<Record<string, unknown>>;
+	activityRows?: Array<Record<string, unknown>>;
+	aggregateRow?: Record<string, unknown> | null;
 }) {
 	const {
 		issues = [],
 		counts = [],
 		users = [],
 		updateRowsAffected = 0,
+		statusSelectRows,
+		occurrenceRows,
+		activityRows,
+		aggregateRow,
 	} = options;
 	const execute = vi.fn(async (input: { sql: string; args: unknown[] }) => {
 		const sql = input.sql.replace(/\s+/g, " ");
 		if (sql.includes("UPDATE error_issues")) {
 			return { rows: [], rowsAffected: updateRowsAffected };
 		}
+		if (statusSelectRows && sql.includes("SELECT status FROM error_issues")) {
+			return { rows: statusSelectRows, rowsAffected: statusSelectRows.length };
+		}
+		// Windowed counters ALSO read FROM error_occurrences, so they must be
+		// matched before the occurrence-page branch below.
+		if (sql.includes("SUM(CASE WHEN received_at >=")) {
+			return { rows: counts, rowsAffected: 1 };
+		}
 		if (sql.includes("COUNT(DISTINCT anonymous_id)")) {
 			return { rows: users, rowsAffected: 1 };
 		}
-		if (sql.includes("SUM(CASE WHEN received_at >=")) {
-			return { rows: counts, rowsAffected: 1 };
+		if (sql.includes("FROM error_issue_activity")) {
+			return { rows: activityRows ?? [], rowsAffected: activityRows?.length ?? 0 };
+		}
+		if (sql.includes("FROM error_occurrences")) {
+			return { rows: occurrenceRows ?? [], rowsAffected: occurrenceRows?.length ?? 0 };
+		}
+		if (sql.includes("SELECT occurrence_count")) {
+			return { rows: aggregateRow ? [aggregateRow] : [], rowsAffected: aggregateRow ? 1 : 0 };
 		}
 		if (sql.includes("FROM error_issues")) {
 			return { rows: issues, rowsAffected: 1 };
@@ -298,6 +320,219 @@ describe("ErrorIssuesController", () => {
 					{ slug: SLUG, issueId: "nope" },
 					{ status: "resolved" },
 				),
+			);
+			expect(statusOf(result)).toBe(404);
+		});
+
+		it("records an auditable activity row for a resolved transition", async () => {
+			const neon = makeStore("owner");
+			getInstance.mockReturnValue(neon as never);
+			const execute = makeTurso({
+				issues: [{ ...webIssue, status: "resolved" }],
+				statusSelectRows: [{ status: "unresolved" }],
+				updateRowsAffected: 1,
+			});
+
+			await ErrorIssuesController.update(
+				ctxFor(
+					USER_ID,
+					{ slug: SLUG, issueId: ISSUE_ID },
+					{ status: "resolved" },
+				),
+			);
+
+			const insert = execute.mock.calls.find(([input]) =>
+				String((input as { sql: string }).sql).includes(
+					"INSERT INTO error_issue_activity",
+				),
+			);
+			expect(insert).toBeDefined();
+			const args = (insert?.[0] as { args: Array<unknown> }).args;
+			expect(args[2]).toBe(PROJECT_ID); // project_id
+			expect(args[3]).toBe(USER_ID); // actor_id
+			expect(args[4]).toBe("resolved"); // action
+			expect(args[5]).toBe("unresolved"); // prior_state
+			expect(args[6]).toBe("resolved"); // new_state
+		});
+
+		it("an idempotent same-status update writes no activity row", async () => {
+			const neon = makeStore("owner");
+			getInstance.mockReturnValue(neon as never);
+			const execute = makeTurso({
+				issues: [{ ...webIssue, status: "resolved" }],
+				statusSelectRows: [{ status: "resolved" }],
+			});
+
+			await ErrorIssuesController.update(
+				ctxFor(
+					USER_ID,
+					{ slug: SLUG, issueId: ISSUE_ID },
+					{ status: "resolved" },
+				),
+			);
+
+			expect(
+				execute.mock.calls.some(([input]) =>
+					String((input as { sql: string }).sql).includes(
+						"UPDATE error_issues",
+					),
+				),
+			).toBe(false);
+			expect(
+				execute.mock.calls.some(([input]) =>
+					String((input as { sql: string }).sql).includes(
+						"INSERT INTO error_issue_activity",
+					),
+				),
+			).toBe(false);
+		});
+	});
+
+	describe("detail", () => {
+		const occurrenceRow = {
+			id: "occ-0001",
+			occurred_at: now - 500,
+			received_at: now - 500,
+			level: "error",
+			handled: 1,
+			release: "web@1.2.3",
+			environment: null,
+			anonymous_id: "anon-a",
+			payload: JSON.stringify({
+				exception: {
+					type: "TypeError",
+					message: "Cannot read properties of null",
+					frames: [
+						{ file: "https://example.com/app.js", line: 203, column: 9, inApp: true },
+					],
+				},
+				context: { tags: { area: "checkout" }, extras: { order: 42 } },
+				breadcrumbs: [{ type: "navigation", message: "cart" }],
+			}),
+		};
+		const aggregateRow = {
+			occurrence_count: 7,
+			users_affected: 2,
+			first_release: "web@1.0.0",
+			last_release: "web@1.2.3",
+		};
+		const activityRow = {
+			id: "act-1",
+			actor_id: USER_ID,
+			actor_type: "member",
+			action: "resolved",
+			prior_state: "unresolved",
+			new_state: "resolved",
+			timestamp: now - 1000,
+			note: null,
+		};
+
+		it("a member reads a detail with sanitized occurrences + activity + aggregates", async () => {
+			const neon = makeStore("member");
+			getInstance.mockReturnValue(neon as never);
+			makeTurso({
+				issues: [webIssue],
+				counts: [{ issue_id: ISSUE_ID, current_count: 5, previous_count: 0 }],
+				users: [{ issue_id: ISSUE_ID, users: 2 }],
+				occurrenceRows: [occurrenceRow],
+				activityRows: [activityRow],
+				aggregateRow,
+			});
+
+			const result = await ErrorIssuesController.detail(
+				ctxFor(USER_ID, { slug: SLUG, issueId: ISSUE_ID }),
+			);
+			expect(statusOf(result) ?? 200).toBe(200);
+			const detail = jsonOf(result) as Record<string, unknown>;
+			const issue = detail.issue as Record<string, unknown>;
+			expect(issue.id).toBe(ISSUE_ID);
+			expect(issue.count).toBe(5);
+			expect(issue.delta).toBe("new");
+
+			const occurrences = detail.occurrences as Array<Record<string, unknown>>;
+			expect(occurrences).toHaveLength(1);
+			const occ = occurrences[0] as Record<string, unknown>;
+			const exception = occ.exception as Record<string, unknown>;
+			expect(exception.type).toBe("TypeError");
+			const frames = exception.frames as Array<Record<string, unknown>>;
+			expect(frames[0]?.file).toBe("https://example.com/app.js");
+			expect(frames[0]?.line).toBe(203);
+			expect(occ.tagsCount).toBe(1);
+			expect(occ.extrasCount).toBe(1);
+			expect(occ.breadcrumbsCount).toBe(1);
+			expect(detail.hasMoreOccurrences).toBe(false);
+
+			const activity = detail.activity as Array<Record<string, unknown>>;
+			expect(activity[0]?.action).toBe("resolved");
+			expect(activity[0]?.actorId).toBe(USER_ID);
+
+			expect(detail.occurrenceCountAll).toBe(7);
+			expect(detail.usersAffectedAll).toBe(2);
+			expect(detail.firstRelease).toBe("web@1.0.0");
+			expect(detail.lastRelease).toBe("web@1.2.3");
+		});
+
+		it("flags when more occurrences exist past the page", async () => {
+			const neon = makeStore("member");
+			getInstance.mockReturnValue(neon as never);
+			const execute = makeTurso({
+				issues: [webIssue],
+				occurrenceRows: [occurrenceRow, occurrenceRow, occurrenceRow],
+				aggregateRow,
+			});
+
+			await ErrorIssuesController.detail(
+				ctxFor(USER_ID, { slug: SLUG, issueId: ISSUE_ID }),
+			);
+			const occCall = execute.mock.calls.find(([input]) =>
+				String((input as { sql: string }).sql).includes(
+					"FROM error_occurrences",
+				),
+			);
+			// 15+1 cap: the row fixture short-circuits the LIMIT in the mock,
+			// but the page still cuts to the bound and reports hasMore.
+			expect(occCall).toBeDefined();
+		});
+
+		it("a member sees hasMore=true when the page is full", async () => {
+			const neon = makeStore("member");
+			getInstance.mockReturnValue(neon as never);
+			const many = Array.from({ length: 16 }, (_, index) => ({
+				...occurrenceRow,
+				id: `occ-${String(index).padStart(4, "0")}`,
+			}));
+			makeTurso({
+				issues: [webIssue],
+				occurrenceRows: many,
+				aggregateRow,
+			});
+
+			const result = await ErrorIssuesController.detail(
+				ctxFor(USER_ID, { slug: SLUG, issueId: ISSUE_ID }),
+			);
+			const detail = jsonOf(result) as Record<string, unknown>;
+			expect(detail.hasMoreOccurrences).toBe(true);
+			expect((detail.occurrences as Array<unknown>)).toHaveLength(15);
+		});
+
+		it("a non-member cannot read detail (non-disclosing 404)", async () => {
+			const neon = makeStore("member");
+			getInstance.mockReturnValue(neon as never);
+			makeTurso({});
+
+			const result = await ErrorIssuesController.detail(
+				ctxFor(STRANGER_ID, { slug: SLUG, issueId: ISSUE_ID }),
+			);
+			expect(statusOf(result)).toBe(404);
+		});
+
+		it("a missing issue is a non-disclosing 404", async () => {
+			const neon = makeStore("member");
+			getInstance.mockReturnValue(neon as never);
+			makeTurso({ issues: [], aggregateRow: null });
+
+			const result = await ErrorIssuesController.detail(
+				ctxFor(USER_ID, { slug: SLUG, issueId: "nope" }),
 			);
 			expect(statusOf(result)).toBe(404);
 		});

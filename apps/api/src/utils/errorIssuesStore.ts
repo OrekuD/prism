@@ -1,15 +1,18 @@
 import type {
+	ErrorIssueActivityItem,
 	ErrorIssueDelta,
 	ErrorIssueLevel,
 	ErrorIssuePlatform,
 	ErrorIssueResource,
 	ErrorIssueStatus,
+	ErrorOccurrenceSummary,
+	ErrorStackFrame,
 } from "@prism-analytics/types";
 
 /**
- * Bounded error-tracking reads (task-15 slice 2). All dashboard aggregates
- * are computed in the database (parameterized, project-scoped, windowed)
- * instead of loading occurrence rows into application memory.
+ * Bounded error-tracking reads (task-15 slices 2 + 4). All dashboard
+ * aggregates are computed in the database (parameterized, project-scoped,
+ * windowed) instead of loading occurrence rows into application memory.
  *
  * Honest semantics:
  * - `count` / `users` are WINDOWED against the Errors page range selector:
@@ -23,10 +26,16 @@ import type {
  * - `firstSeen`/`lastSeen` are the issue's all-time bounds (the durable group
  *   timestamps), never inflected by the selected range.
  * - State writes are owner/admin-only (enforced in the controller) and keep
- *   an auditable actor + timestamp on the issue row itself.
+ *   an auditable actor + timestamp on the issue row itself plus a row in
+ *   error_issue_activity (slice 4) for the dashboard workflow history.
  */
 
 const DAY_MS = 86_400_000;
+
+/** Bounded page of occurrence summaries returned by the detail endpoint. */
+const OCCURRENCE_PAGE_SIZE = 15;
+/** Frames surfaced per occurrence summary (bounded; full chain stays opaque). */
+const SUMMARY_FRAMES = 12;
 
 /** Days per Errors-page range key (unknown values fall back to 30). */
 const RANGE_DAYS: Record<string, number> = {
@@ -220,9 +229,11 @@ export async function projectIssueResources(
 
 /**
  * Applies a workflow status transition for an issue in ONE atomic UPDATE
- * with an auditable actor + timestamp. Reopening clears the resolved /
+ * with an auditable actor + timestamp, then records the user-initiated
+ * transition in error_issue_activity. Reopening clears the resolved /
  * ignored metadata. Returns false when the (project, issue id) pair does
- * not exist — the caller maps that to a non-disclosing 404.
+ * not exist — the caller maps that to a non-disclosing 404. An idempotent
+ * no-op (same status) returns true without writing an activity row.
  */
 export async function updateIssueStatus(
 	client: ErrorAnalyticsClient,
@@ -231,6 +242,17 @@ export async function updateIssueStatus(
 	status: ErrorIssueStatus,
 	actorId: string,
 ): Promise<boolean> {
+	// Read the prior state first so the activity log records the transition
+	// and an unchanged status is treated as an idempotent success.
+	const prior = await client.execute({
+		sql: "SELECT status FROM error_issues WHERE id = ? AND project_id = ?",
+		args: [issueId, projectId],
+	});
+	const priorRow = prior.rows[0] as { status?: string } | undefined;
+	if (!priorRow) return false;
+	const priorStatus = priorRow.status as ErrorIssueStatus;
+	if (priorStatus === status) return true;
+
 	const now = Date.now();
 	const result = await client.execute({
 		sql: `UPDATE error_issues
@@ -254,5 +276,209 @@ export async function updateIssueStatus(
 			projectId,
 		],
 	});
-	return Number(result.rowsAffected ?? 0) > 0;
+	if (Number(result.rowsAffected ?? 0) === 0) return false;
+
+	const action =
+		status === "resolved"
+			? "resolved"
+			: status === "ignored"
+				? "ignored"
+				: "reopened"; // new === unresolved, prior !== unresolved
+	await client.execute({
+		sql: `INSERT INTO error_issue_activity
+          (id, issue_id, project_id, actor_id, actor_type, action,
+           prior_state, new_state, timestamp)
+          VALUES (?, ?, ?, ?, 'member', ?, ?, ?, ?)`,
+		args: [
+			`act_${randomHex()}`,
+			issueId,
+			projectId,
+			actorId,
+			action,
+			priorStatus,
+			status,
+			now,
+		],
+	});
+	return true;
+}
+
+/** Cryptographically-random hex id (Node ≥19 has globalThis.crypto). */
+function randomHex(): string {
+	const bytes = new Uint8Array(16);
+	if (
+		globalThis.crypto &&
+		typeof globalThis.crypto.getRandomValues === "function"
+	) {
+		globalThis.crypto.getRandomValues(bytes);
+	} else {
+		for (let i = 0; i < bytes.length; i += 1) {
+			bytes[i] = Math.floor(Math.random() * 256);
+		}
+	}
+	return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+		"",
+	);
+}
+
+type OccurrenceRow = {
+	id: string;
+	occurred_at: number;
+	received_at: number;
+	level: string;
+	handled: number;
+	release: string | null;
+	environment: string | null;
+	anonymous_id: string | null;
+	payload: string;
+};
+
+function exceptionFromPayload(
+	payload: unknown,
+): ErrorOccurrenceSummary["exception"] {
+	const exception = (payload as { exception?: unknown } | null)?.exception;
+	if (!exception || typeof exception !== "object") {
+		return { type: "(unknown)", frames: [], hasCause: false };
+	}
+	const record = exception as Record<string, unknown>;
+	const frames = (Array.isArray(record.frames) ? record.frames : [])
+		.slice(0, SUMMARY_FRAMES)
+		.map((frame) => {
+			const f = frame as Record<string, unknown>;
+			return {
+				file: typeof f.file === "string" ? f.file : null,
+				...(typeof f.function === "string" && f.function !== ""
+					? { function: f.function }
+					: {}),
+				line: typeof f.line === "number" ? f.line : null,
+				column: typeof f.column === "number" ? f.column : null,
+				inApp: f.inApp === true,
+			} as ErrorStackFrame;
+		});
+	const cause = record.cause ?? null;
+	return {
+		type: typeof record.type === "string" ? record.type : "(unknown)",
+		...(typeof record.message === "string" && record.message !== ""
+			? { message: record.message }
+			: {}),
+		frames,
+		hasCause: cause !== null && typeof cause === "object",
+	};
+}
+
+/**
+ * A bounded page of sanitized occurrence summaries for one issue, newest
+ * first, plus whether more occurrences exist past the page. The summary is
+ * derived from the ALREADY-sanitized persisted payload — reading it back is
+ * safe, and the read path never re-fetches raw client input.
+ */
+export async function issueOccurrenceSummaries(
+	client: ErrorAnalyticsClient,
+	projectId: string,
+	issueId: string,
+): Promise<{ summaries: ErrorOccurrenceSummary[]; hasMore: boolean }> {
+	const { rows } = await client.execute({
+		sql: `SELECT id, occurred_at, received_at, level, handled, release,
+              environment, anonymous_id, payload
+            FROM error_occurrences
+            WHERE project_id = ? AND issue_id = ?
+            ORDER BY received_at DESC
+            LIMIT ?`,
+		args: [projectId, issueId, OCCURRENCE_PAGE_SIZE + 1],
+	});
+	const page = rows as unknown as OccurrenceRow[];
+	const hasMore = page.length > OCCURRENCE_PAGE_SIZE;
+	const summaries = page
+		.slice(0, OCCURRENCE_PAGE_SIZE)
+		.map((row): ErrorOccurrenceSummary => {
+			let payload: unknown = {};
+			try {
+				payload = JSON.parse(row.payload) as unknown;
+			} catch {
+				payload = {};
+			}
+			const record = payload as {
+				context?: {
+					tags?: Record<string, unknown>;
+					extras?: Record<string, unknown>;
+				};
+				breadcrumbs?: Array<unknown>;
+			};
+			const tagsCount = record.context?.tags
+				? Object.keys(record.context.tags).length
+				: 0;
+			const extrasCount = record.context?.extras
+				? Object.keys(record.context.extras).length
+				: 0;
+			const breadcrumbsCount = Array.isArray(record.breadcrumbs)
+				? record.breadcrumbs.length
+				: 0;
+			return {
+				id: row.id,
+				occurredAt: Number(row.occurred_at),
+				receivedAt: Number(row.received_at),
+				level: row.level as ErrorIssueLevel,
+				handled: row.handled === 1,
+				...(row.release ? { release: row.release } : {}),
+				...(row.environment ? { environment: row.environment } : {}),
+				...(row.anonymous_id ? { anonymousId: row.anonymous_id } : {}),
+				exception: exceptionFromPayload(payload),
+				tagsCount,
+				extrasCount,
+				breadcrumbsCount,
+			};
+		});
+	return { summaries, hasMore };
+}
+
+/** Bounded workflow history for one issue, newest first. */
+export async function issueActivity(
+	client: ErrorAnalyticsClient,
+	projectId: string,
+	issueId: string,
+	limit = 50,
+): Promise<ErrorIssueActivityItem[]> {
+	const { rows } = await client.execute({
+		sql: `SELECT id, actor_id, actor_type, action, prior_state, new_state,
+              timestamp, note
+            FROM error_issue_activity
+            WHERE project_id = ? AND issue_id = ?
+            ORDER BY timestamp DESC
+            LIMIT ?`,
+		args: [projectId, issueId, limit],
+	});
+	return (rows as Array<Record<string, unknown>>).map((row) => ({
+		id: String(row.id),
+		action: String(row.action) as ErrorIssueActivityItem["action"],
+		priorState: String(row.prior_state) as ErrorIssueStatus,
+		newState: String(row.new_state) as ErrorIssueStatus,
+		actorType:
+			row.actor_type === "system" ? ("system" as const) : ("member" as const),
+		...(row.actor_id ? { actorId: String(row.actor_id) } : {}),
+		timestamp: Number(row.timestamp),
+		...(row.note ? { note: String(row.note) } : {}),
+	}));
+}
+
+export type IssueAggregateRow = {
+	occurrence_count: number;
+	users_affected: number;
+	first_release: string | null;
+	last_release: string | null;
+};
+
+/** Safe all-time aggregates for one issue (counts, users, release bounds). */
+export async function issueAggregates(
+	client: ErrorAnalyticsClient,
+	projectId: string,
+	issueId: string,
+): Promise<IssueAggregateRow | null> {
+	const { rows } = await client.execute({
+		sql: `SELECT occurrence_count, users_affected, first_release, last_release
+            FROM error_issues
+            WHERE project_id = ? AND id = ?`,
+		args: [projectId, issueId],
+	});
+	const row = rows[0] as IssueAggregateRow | undefined;
+	return row ?? null;
 }
