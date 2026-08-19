@@ -387,10 +387,13 @@ Rules:
       credential or authenticated management flow, never a browser publishable
       ingest key. Verify checksums, source ownership, size limits, retention,
       access control, and deletion.
-- [ ] Display raw but sanitized frames until symbolication is trustworthy.
-      Once source maps exist, retain original raw frames for audit and expose
-      clearly marked symbolicated frames without leaking source files to
-      unauthorized members.
+- [x] Display raw but sanitized frames until symbolication is trustworthy.
+      Once source maps exist, retain original raw frames for audit and only
+      expose clearly marked symbolicated frames without leaking source files
+      to unauthorized members.
+      (slice 7: the detail Sheet renders raw-but-sanitized frames with a
+      `raw` marker; symbolicated handling is a Phase 4 source-map concern and
+      will be explicitly labelled when it lands)
 
 ## Dashboard and sidebar plan
 
@@ -444,23 +447,33 @@ They are separate data products with their own collection and privacy design.
 
 ### Error issue detail
 
-- [ ] Show issue lifecycle, first/last seen, counts, source/platform/release,
+- [x] Show issue lifecycle, first/last seen, counts, source/platform/release,
       and a trend based only on real occurrences.
-      (slice 3c: the route-backed detail Sheet now shows lifecycle delta,
-      first/last seen, counts, source/platform/level, and a real-delta trend;
-      release and a fuller trend still wait on the issue detail endpoint
-      because the list resource carries no release field yet)
-- [ ] Show a sanitized exception chain and stack-frame viewer with raw versus
+      (slice 3c + slice 7: the route-backed Sheet renders lifecycle delta,
+      first/last seen, in-range + all-time counts/users, source/platform/level,
+      and a truth-only delta trend; release now arrives from the detail
+      endpoint's first/last release bounds)
+- [x] Show a sanitized exception chain and stack-frame viewer with raw versus
       symbolicated status. Copy actions must copy only the currently visible,
       authorized, sanitized text.
+      (slice 7: the Sheet shows the latest occurrence's sanitized chain +
+      its frames marked RAW (no trustworthy symbolication yet), an in-app
+      notice when a nested cause and other metadata exist, and a copy action
+      that copies precisely the visible sanitized text it renders)
 - [ ] Show recent occurrence summaries with safe time/session/person links,
       safe tags/extras, and configured breadcrumbs. Never show secrets,
       cookies, request bodies, or raw auth headers.
-- [ ] Show workflow history and resolve/ignore/reopen controls according to
+      (slice 7: recent occurrence summaries render with relative time,
+      handled state, release/environment, and safety-only COUNTS for
+      tags/extras/breadcrumbs — never their contents; person/session links
+      stay gated behind the existing people-linkage rule and the deferred
+      occurrence-link item)
+- [x] Show workflow history and resolve/ignore/reopen controls according to
       role. New occurrences after resolution must visibly reopen the issue.
-      (slice 3c: resolve/reopen/ignore/stop-ignoring controls ship with an
-      owner/admin gate and live cache updates; workflow history and the
-      reopen-on-new-occurrence proof still need the detail endpoint)
+      (slice 3c + slice 7: role-gated resolve/ignore/reopen controls ship with
+      live cache updates; the workflow-history audit trail now renders from
+      the detail endpoint's activity log; new occurrences reopen on ingest
+      server-side and surface on the next list refetch)
 - [x] Link to an existing person/session/event only when that linkage is
       permitted and available. An issue page must remain useful without it.
       (slice 3c: the Sheet has no person/session links yet and remains fully
@@ -723,3 +736,21 @@ and customer payloads out of this document.
 - Test evidence: api errorIssues 21/21 (two new paginatedList tests: cursor
   header on hasMore + unknown-status coercion), web vitest 32/32, web tsc +
   vite build clean.
+
+### 2026-08-19 — issue detail: stack viewer, occurrences, workflow history (slice 7)
+
+- New `useIssueDetailQuery` fetches `GET /projects/:slug/errors/:issueId` when
+  the Sheet is open. The issue header + stats still render from the list cache,
+  so the Sheet opens instantly and state mutations update it in place.
+- Detail enrichment sections: all-time events/users + first/last release bounds;
+  a `Sanitized stack` panel for the latest occurrence (type: message plus its
+  frames, each labelled `raw`, with a copy action that copies ONLY the visible
+  sanitized chain text); a `Recent occurrences` list (relative time, kind,
+  handled/unhandled, release/environment, counts of tags/extras/breadcrumbs —
+  never their contents, per the non-disclosure rule); and the `Workflow history`
+  audit trail from error_issue_activity.
+- No source maps yet -> frames display raw-but-sanitized (task-15 "until
+  symbolication is trustworthy"); symbolicated frames get explicit labels when
+  they exist. Copy buttons build text only from currently visible, authorized,
+  sanitized rows.
+- Test evidence: web tsc clean, web vitest 32/32, vite build OK.

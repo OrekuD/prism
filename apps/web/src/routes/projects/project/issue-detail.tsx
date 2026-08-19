@@ -1,7 +1,12 @@
 import type {
+	ErrorIssueActivityAction,
+	ErrorIssueActivityItem,
 	ErrorIssueDelta,
+	ErrorIssueDetailResource,
 	ErrorIssueResource,
 	ErrorIssueStatus,
+	ErrorOccurrenceSummary,
+	ErrorStackFrame,
 } from "@prism-analytics/types";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useSyncExternalStore } from "react";
@@ -27,6 +32,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { STATUS_LABELS } from "@/lib/errorIssues";
 import { useActiveMember } from "@/lib/workspace";
+import { useIssueDetailQuery } from "@/network/queries/useIssueDetailQuery";
 import { useIssueStateMutation } from "@/network/mutations/useIssueStateMutation";
 
 /**
@@ -38,8 +44,11 @@ import { useIssueStateMutation } from "@/network/mutations/useIssueStateMutation
  * navigates deterministically to the list base (never `navigate(-1)`, per
  * the React Router guidance on history-delta navigation).
  *
- * The data-rendering <IssueDetails /> is separated from the sheet shell so
- * it can later render inside a full page, dialog, or mobile view too.
+ * The header + stats render from the list cache (instant open, in-place
+ * mutation updates); the SANITIZED stack, recent occurrences, and workflow
+ * history come from the issue-detail endpoint (slice 4) once the Sheet is
+ * open. Frames are displayed RAW-but-sanitized until symbolication is
+ * trustworthy (task-15 "display raw but sanitized frames").
  */
 
 /** Keep the labels/dates on one formatter for the sheet body. */
@@ -99,6 +108,118 @@ const DELTA_CAPTION: Record<Exclude<ErrorIssueDelta, null>, string> = {
 	declining: "Fewer events than the previous window.",
 };
 
+const ACTION_LABEL: Record<ErrorIssueActivityAction, string> = {
+	resolved: "Resolved",
+	ignored: "Ignored",
+	reopened: "Reopened",
+};
+
+/** Compact relative time ("3m ago") using real elapsed time. */
+const relativeTime = (ts: number): string => {
+	const seconds = Math.round((ts - Date.now()) / 1000);
+	const abs = Math.abs(seconds);
+	if (abs < 60) return "just now";
+	if (abs < 3600) return `${Math.round(abs / 60)}m ago`;
+	if (abs < 86400) return `${Math.round(abs / 3600)}h ago`;
+	return `${Math.round(abs / 86400)}d ago`;
+};
+
+/** Build the sanitized, currently-visible text of an exception chain. */
+function chainText(occurrence: ErrorOccurrenceSummary): string {
+	const lines = [`${occurrence.exception.type}: ${occurrence.exception.message ?? ""}`];
+	for (const frame of occurrence.exception.frames) {
+		const at = frame.function ? `at ${frame.function}` : "at <anonymous>";
+		const where =
+			frame.file && frame.line !== null
+				? ` (${frame.file}:${frame.line}${frame.column !== null ? `:${frame.column}` : ""})`
+				: "";
+		lines.push(`  ${at}${where}`);
+	}
+	return lines.join("\n");
+}
+
+/** One sanitized stack frame — RAW (not symbolicated) until source maps land. */
+function FrameRow({ frame, index }: { frame: ErrorStackFrame; index: number }) {
+	const where =
+		frame.file && frame.line !== null
+			? `${frame.file}:${frame.line}${frame.column !== null ? `:${frame.column}` : ""}`
+			: frame.file ?? "<unknown>";
+	return (
+		<div className="flex items-baseline gap-2 rounded-[2px] border border-border bg-surface px-2.5 py-1.5 font-mono text-[11px]">
+			<span className="text-[10px] text-text-subtle">{index}</span>
+			<span className="min-w-0 flex-1 truncate text-text">
+				<span className="text-text-muted">{frame.function ?? "<anonymous>"}</span>
+				{" · "}
+				{where}
+			</span>
+			<span className="shrink-0 text-[10px] text-text-subtle">raw</span>
+		</div>
+	);
+}
+
+function OccurrenceCard({
+	occurrence,
+	latest,
+}: {
+	occurrence: ErrorOccurrenceSummary;
+	latest: boolean;
+}) {
+	return (
+		<div className="space-y-1.5 rounded-[2px] border border-border p-2.5">
+			<div className="flex items-center gap-2">
+				<span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-text">
+					{occurrence.exception.type}
+					{occurrence.exception.message
+						? `: ${occurrence.exception.message}`
+						: ""}
+				</span>
+				<span className="shrink-0 font-mono text-[10.5px] text-text-subtle">
+					{relativeTime(occurrence.receivedAt)}
+				</span>
+			</div>
+			<div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[10.5px] text-text-muted">
+				<span>{occurrence.handled ? "handled" : "unhandled"}</span>
+				{occurrence.release ? (
+					<span className="font-mono">{occurrence.release}</span>
+				) : null}
+				{occurrence.environment ? (
+					<span className="font-mono">{occurrence.environment}</span>
+				) : null}
+				{latest ? (
+					<span className="font-medium text-accent">latest</span>
+				) : null}
+				{occurrence.tagsCount > 0 || occurrence.extrasCount > 0 ? (
+					<span>
+						{occurrence.tagsCount} tags · {occurrence.extrasCount} extras
+					</span>
+				) : null}
+				{occurrence.breadcrumbsCount > 0 ? (
+					<span>{occurrence.breadcrumbsCount} breadcrumbs</span>
+				) : null}
+				{occurrence.exception.hasCause ? (
+					<span className="text-text-subtle">has cause</span>
+				) : null}
+			</div>
+		</div>
+	);
+}
+
+function ActivityItem({ item }: { item: ErrorIssueActivityItem }) {
+	return (
+		<div className="flex items-center gap-2 py-1.5 text-[11.5px]">
+			<span className="font-medium text-text">
+				{ACTION_LABEL[item.action]}
+			</span>
+			<span className="font-mono text-[10.5px] text-text-muted">
+				{item.priorState} → {item.newState}
+			</span>
+			<span className="flex-1 truncate text-right font-mono text-[10.5px] text-text-subtle">
+				{relativeTime(item.timestamp)}
+			</span>
+		</div>
+	);
+}
+
 /** Data + state-workflow body; deliberately decoupled from the Sheet shell. */
 function IssueDetails({
 	issue,
@@ -107,12 +228,15 @@ function IssueDetails({
 	issue: ErrorIssueResource;
 	base: string;
 }) {
-	const { slug } = useParams();
+	const { slug, issueId } = useParams();
 	const mutation = useIssueStateMutation(slug);
 	const activeMember = useActiveMember();
 	const canManage =
 		activeMember?.data?.role === "owner" ||
 		activeMember?.data?.role === "admin";
+	const detail = useIssueDetailQuery(slug, issueId);
+	const detailData: ErrorIssueDetailResource | null | undefined =
+		detail.data ?? null;
 
 	const setStatus = (status: ErrorIssueStatus) => {
 		if (mutation.isPending) return;
@@ -132,6 +256,10 @@ function IssueDetails({
 		issue.delta === null
 			? "No previous window to compare against."
 			: DELTA_CAPTION[issue.delta];
+
+	const latest = detailData?.occurrences[0];
+	const occurrences = detailData?.occurrences.slice(1, 5) ?? [];
+	const activity = detailData?.activity ?? [];
 
 	return (
 		<>
@@ -155,6 +283,29 @@ function IssueDetails({
 					<Stat label="Users affected" value={fmt.format(issue.users)} />
 					<Stat label="First seen" value={dateLabel(issue.firstSeen)} />
 					<Stat label="Last seen" value={dateLabel(issue.lastSeen)} />
+					{detailData ? (
+						<>
+							<Stat
+								label="All-time events"
+								value={fmt.format(detailData.occurrenceCountAll)}
+							/>
+							<Stat
+								label="All-time users"
+								value={fmt.format(detailData.usersAffectedAll)}
+							/>
+							{detailData.firstRelease || detailData.lastRelease ? (
+								<Stat
+									label="Releases"
+									value={`${detailData.firstRelease ?? "—"} → ${detailData.lastRelease ?? "—"}`}
+								/>
+							) : null}
+						</>
+					) : (
+						<>
+							<Skeleton className="h-[24px] w-full" />
+							<Skeleton className="h-[24px] w-full" />
+						</>
+					)}
 				</div>
 
 				<section className="space-y-2">
@@ -181,12 +332,77 @@ function IssueDetails({
 					</div>
 				</section>
 
-				{issue.location ? (
+				{latest ? (
 					<section className="space-y-2">
-						<SectionLabel>Location</SectionLabel>
-						<code className="block overflow-x-auto rounded-[2px] border border-border bg-surface px-2.5 py-1.5 font-mono text-[11.5px] whitespace-nowrap text-text">
-							{issue.location}
-						</code>
+						<div className="flex items-center justify-between gap-2">
+							<SectionLabel>Sanitized stack</SectionLabel>
+							<CopyButton
+								value={chainText(latest)}
+								label="stack trace"
+								iconOnly
+							/>
+						</div>
+						<div className="space-y-1">
+							<code className="block rounded-[2px] border border-border bg-surface px-2.5 py-1.5 font-mono text-[11.5px] whitespace-pre-wrap break-words text-text">
+								{latest.exception.type}
+								{latest.exception.message
+									? `: ${latest.exception.message}`
+									: ""}
+							</code>
+							{latest.exception.frames.length > 0 ? (
+								<div className="space-y-1">
+									{latest.exception.frames.map((frame, index) => (
+										<FrameRow key={index} frame={frame} index={index} />
+									))}
+								</div>
+							) : (
+								<p className="px-1 text-[11px] text-text-subtle">
+									No captured stack frames for this occurrence.
+								</p>
+							)}
+							{latest.exception.hasCause ? (
+								<p className="px-1 text-[10.5px] text-text-subtle">
+									This occurrence has a nested cause (captured; redacted
+									content is never shown).
+								</p>
+							) : null}
+						</div>
+					</section>
+				) : detail?.isFetching ? (
+					<section className="space-y-2">
+						<SectionLabel>Sanitized stack</SectionLabel>
+						<Skeleton className="h-[120px] w-full" />
+					</section>
+				) : null}
+
+				{occurrences.length > 0 ? (
+					<section className="space-y-2">
+						<SectionLabel>Recent occurrences</SectionLabel>
+						<div className="space-y-1.5">
+							{occurrences.map((occurrence) => (
+								<OccurrenceCard
+									key={occurrence.id}
+									occurrence={occurrence}
+									latest={false}
+								/>
+							))}
+						</div>
+						{detailData?.hasMoreOccurrences ? (
+							<p className="px-1 font-mono text-[10.5px] text-text-subtle">
+								Only the most recent occurrences are shown.
+							</p>
+						) : null}
+					</section>
+				) : null}
+
+				{activity.length > 0 ? (
+					<section className="space-y-1">
+						<SectionLabel>Workflow history</SectionLabel>
+						<div className="divide-y divide-border rounded-[2px] border border-border px-2.5">
+							{activity.map((item) => (
+								<ActivityItem key={item.id} item={item} />
+							))}
+						</div>
 					</section>
 				) : null}
 			</div>
