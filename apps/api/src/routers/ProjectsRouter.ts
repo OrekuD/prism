@@ -1,10 +1,11 @@
 import { Hono } from "hono";
+import { ErrorIssuesController } from "../controllers/ErrorIssuesController";
 import { PeopleController } from "../controllers/PeopleController";
 import { ProjectsController } from "../controllers/ProjectsController";
 import { SourcesController } from "../controllers/SourcesController";
 import {
-  AuthenticationMiddleware,
-  RequireVerifiedEmailMiddleware,
+	AuthenticationMiddleware,
+	RequireVerifiedEmailMiddleware,
 } from "../middlewares/AuthenticationMiddleware";
 
 const router = new Hono();
@@ -16,6 +17,9 @@ router.use(AuthenticationMiddleware);
 router.get("", ProjectsController.listProjects);
 router.get("/:slug", ProjectsController.getProjectBySlug);
 router.get("/:slug/events", ProjectsController.getProjectEvents);
+// Error tracking (task-15 slice 2): issue list + workflow state.
+router.get("/:slug/errors", ErrorIssuesController.list);
+router.patch("/:slug/errors/:issueId", ErrorIssuesController.update);
 // People + baseline query APIs (task-10 §5)
 router.get("/:slug/people", PeopleController.list);
 router.get("/:slug/people/:personId", PeopleController.detail);
@@ -34,17 +38,17 @@ router.patch("/:slug/sources/:sourceId", SourcesController.update);
 router.delete("/:slug/sources/:sourceId", SourcesController.remove);
 router.post("/:slug/sources/:sourceId/keys", SourcesController.createKey);
 router.post(
-  "/:slug/sources/:sourceId/keys/:keyId/revoke",
-  SourcesController.revokeKey,
+	"/:slug/sources/:sourceId/keys/:keyId/revoke",
+	SourcesController.revokeKey,
 );
 router.post(
-  "/:slug/sources/:sourceId/keys/:keyId/reveal",
-  SourcesController.revealKey,
+	"/:slug/sources/:sourceId/keys/:keyId/reveal",
+	SourcesController.revealKey,
 );
 router.post(
-  "/",
-  RequireVerifiedEmailMiddleware,
-  ProjectsController.createProject,
+	"/",
+	RequireVerifiedEmailMiddleware,
+	ProjectsController.createProject,
 );
 router.patch("/:projectId", ProjectsController.renameProject);
 router.delete("/:projectId", ProjectsController.deleteProject);

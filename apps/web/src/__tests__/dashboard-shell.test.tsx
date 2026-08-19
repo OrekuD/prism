@@ -34,6 +34,10 @@ vi.mock("@/network/queries/useProjectsQuery", () => ({
   }),
 }));
 
+vi.mock("@/network/queries/useSourcesQuery", () => ({
+  useSourcesQuery: () => ({ data: [], isLoading: false }),
+}));
+
 /**
  * v2 dashboard shell (task-14 layout): asserts the 240px sidebar renders
  * the v2 group/nav structure and the DashboardLayout mounts the shell +

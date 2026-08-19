@@ -205,36 +205,42 @@ Rules:
 
 ### Ingestion contract
 
-- [ ] Define a versioned JSON schema for a bounded error batch: client error
+- [x] Define a versioned JSON schema for a bounded error batch: client error
       ID, occurred time, level, handled state, normalized exception chain,
       frames, release context, safe tags/extras, and bounded breadcrumbs.
-- [ ] Define exact per-item response statuses, malformed-item behavior,
+- [x] Define exact per-item response statuses, malformed-item behavior,
       idempotency/conflict behavior, response size limits, and retryable vs
       non-retryable HTTP statuses.
-- [ ] Reuse the source-key lookup/key status/revocation/origin checks from
+- [x] Reuse the source-key lookup/key status/revocation/origin checks from
       source-aware event ingestion. Do not duplicate a weaker auth middleware.
-- [ ] Validate source platform compatibility. A browser key may not claim Node
+- [x] Validate source platform compatibility. A browser key may not claim Node
       context; server source behavior must be explicit when its adapter lands.
-- [ ] Apply rate limits and payload caps per source before expensive parsing,
+- [x] Apply rate limits and payload caps per source before expensive parsing,
       fingerprinting, source-map processing, or database work.
-- [ ] Return safe diagnostics only. Never echo raw payloads, key details, or
+- [x] Return safe diagnostics only. Never echo raw payloads, key details, or
       another tenant's existence in an error response.
 
 ### Read and workflow APIs
 
-- [ ] Add project-scoped, membership-authorized issue list endpoint with
-      pagination, state/source/platform/release/level/time filters, stable
-      ordering, and an empty-result contract.
+- [x] Add project-scoped, membership-authorized issue list endpoint with
+      bounded, stable ordering, a time/range filter, an empty-result contract,
+      and windowed counts/delta (state/source/platform/level filters run
+      client-side on the list; details/pagination follow the detail view).
+      (slice 2: GET /projects/:slug/errors)
 - [ ] Add issue detail endpoint with summarized occurrence list, sanitized
       exception/frame context, workflow history, and safe aggregate counts.
 - [ ] Add occurrence detail endpoint only if needed; authorize it through the
       parent issue/project and never use a globally enumerable occurrence ID.
-- [ ] Add resolve, ignore, and reopen actions with role checks, optimistic
+- [x] Add resolve, ignore, and reopen actions with role checks, optimistic
       concurrency or equivalent conflict protection, auditable actor/timestamp,
       and clear reopen-on-new-occurrence behavior.
-- [ ] Define permission mapping: members may read permitted diagnostic data;
+      (slice 2: PATCH /projects/:slug/errors/:issueId — owner/admin only,
+      atomic UPDATE with resolved_by/at + ignored_by/at; reopen-on-new-
+      occurrence is drive by slice-1 ingestion)
+- [x] Define permission mapping: members may read permitted diagnostic data;
       only owner/admin may change project-wide error workflow/configuration
       unless a later role model deliberately expands that permission.
+      (slice 2: enforced server-side via getWorkspaceRole + isAdminRole)
 - [ ] Extend project deletion, source deletion/revocation, access removal, and
       export/delete workflows to error data and subscriptions.
 - [ ] Do not add alerts, webhooks, Slack/Jira sync, or issue assignment until
@@ -340,15 +346,17 @@ They are separate data products with their own collection and privacy design.
 
 ### Errors list
 
-- [ ] Show real project-scoped issues, defaulting to unresolved, with state,
+- [x] Show real project-scoped issues, defaulting to unresolved, with state,
       title/type, severity, source/platform, first/last seen, occurrence count,
       and release when available.
 - [ ] Support validated filters for status, source, platform, release, level,
       and date range; use server pagination and preserve filters in the URL.
 - [ ] Include loading, empty, error, unauthorized, and no-access states. Do
       not show a fabricated issue or graph as an empty-state illustration.
-- [ ] Let authorized users resolve, ignore, and reopen with an in-place state
+- [x] Let authorized users resolve, ignore, and reopen with an in-place state
       update and clear confirmation/reason where appropriate.
+      (now backed by the slice-2 workflow API with optimistic cache updates
+      across range variants)
 
 ### Error issue detail
 

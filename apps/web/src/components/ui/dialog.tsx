@@ -1,11 +1,11 @@
 "use client";
 
-import type * as React from "react";
 import { XIcon } from "lucide-react";
 import { Dialog as DialogPrimitive } from "radix-ui";
+import type * as React from "react";
 
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 function Dialog({
 	...props
@@ -103,7 +103,7 @@ function DialogFooter({
 		<div
 			data-slot="dialog-footer"
 			className={cn(
-				"flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
+				"-mx-6 -mb-6 mt-4 flex flex-col-reverse gap-2 border-t border-border px-6 pt-4 pb-5 sm:flex-row sm:justify-end",
 				className,
 			)}
 			{...props}
@@ -125,7 +125,10 @@ function DialogTitle({
 	return (
 		<DialogPrimitive.Title
 			data-slot="dialog-title"
-			className={cn("text-lg leading-none font-semibold", className)}
+			className={cn(
+				"font-mono text-[15px] font-[550] leading-snug tracking-[-0.01em]",
+				className,
+			)}
 			{...props}
 		/>
 	);
@@ -138,7 +141,10 @@ function DialogDescription({
 	return (
 		<DialogPrimitive.Description
 			data-slot="dialog-description"
-			className={cn("text-sm text-muted-foreground", className)}
+			className={cn(
+				"font-mono text-[13px] leading-[1.5] text-muted-foreground",
+				className,
+			)}
 			{...props}
 		/>
 	);

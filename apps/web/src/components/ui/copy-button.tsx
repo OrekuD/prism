@@ -1,10 +1,10 @@
 "use client";
 
-import React from "react";
-import { Check, Copy } from "lucide-react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { Check, Copy } from "lucide-react";
+import React from "react";
+import { toast } from "sonner";
 
 /**
  * Clipboard write with transient "copied" feedback (1500ms). Every copy
@@ -12,19 +12,19 @@ import { cn } from "@/lib/utils";
  * app-wide.
  */
 export function useCopy(value: string) {
-  const [copied, setCopied] = React.useState(false);
+	const [copied, setCopied] = React.useState(false);
 
-  const onCopy = React.useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      toast.error("Could not copy");
-    }
-  }, [value]);
+	const onCopy = React.useCallback(async () => {
+		try {
+			await navigator.clipboard.writeText(value);
+			setCopied(true);
+			window.setTimeout(() => setCopied(false), 1500);
+		} catch {
+			toast.error("Could not copy");
+		}
+	}, [value]);
 
-  return { copied, onCopy };
+	return { copied, onCopy };
 }
 
 /**
@@ -33,34 +33,40 @@ export function useCopy(value: string) {
  * (e.g. "Copy" — it never becomes "Copied").
  */
 export function CopyButton({
-  value,
-  label = "Copy",
-  className,
+	value,
+	label = "Copy",
+	iconOnly = false,
+	className,
 }: {
-  value: string;
-  label?: string;
-  className?: string;
+	value: string;
+	label?: string;
+	/** Icon-only ghost button for dense rows (e.g. table actions). */
+	iconOnly?: boolean;
+	className?: string;
 }) {
-  const { copied, onCopy } = useCopy(value);
+	const { copied, onCopy } = useCopy(value);
 
-  return (
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={onCopy}
-      aria-label={copied ? "Copied" : `Copy ${label}`}
-      className={cn(
-        copied &&
-          "border-success/50 text-success hover:bg-success/10 hover:text-success",
-        className,
-      )}
-    >
-      {copied ? (
-        <Check className="size-3.5 text-success" aria-hidden="true" />
-      ) : (
-        <Copy className="size-3.5" aria-hidden="true" />
-      )}
-      {label}
-    </Button>
-  );
+	return (
+		<Button
+			variant={iconOnly ? "ghost" : "outline"}
+			size={iconOnly ? "icon-sm" : "sm"}
+			onClick={onCopy}
+			aria-label={copied ? "Copied" : `Copy ${label}`}
+			title={`Copy ${label}`}
+			className={cn(
+				copied &&
+					(iconOnly
+						? "text-success"
+						: "border-success/50 text-success hover:bg-success/10 hover:text-success"),
+				className,
+			)}
+		>
+			{copied ? (
+				<Check className="size-3.5 text-success" aria-hidden="true" />
+			) : (
+				<Copy className="size-3.5" aria-hidden="true" />
+			)}
+			{iconOnly ? null : label}
+		</Button>
+	);
 }
