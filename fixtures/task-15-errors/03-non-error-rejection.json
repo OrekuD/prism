@@ -1,0 +1,19 @@
+{
+  "name": "non-error-rejection",
+  "description": "A Promise rejection whose reason is NOT an Error — a plain string. The browser/node adapters summarize opaque reasons (UnhandledRejection) instead of throwing or fabricating a stack.",
+  "sourcePlatform": "web",
+  "release": "web@1.2.0",
+  "environment": "production",
+  "wire": {
+    "id": "fxtr-opaque-rejection-0003",
+    "occurredAt": 1755540200000,
+    "level": "error",
+    "handled": false,
+    "exception": {
+      "type": "UnhandledRejection",
+      "message": "the payment widget refused to initialize",
+      "frames": []
+    },
+    "anonymousId": "anon-opaque-rejection"
+  }
+}

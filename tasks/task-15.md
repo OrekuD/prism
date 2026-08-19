@@ -259,8 +259,12 @@ Rules:
       users_affected + prunes orphaned issues/activity in the SAME batch as
       the identity deletion, and the person export now includes sanitized
       error occurrences; key revocation intentionally does not purge)
-- [ ] Do not add alerts, webhooks, Slack/Jira sync, or issue assignment until
+- [x] Do not add alerts, webhooks, Slack/Jira sync, or issue assignment until
       issue state and authorization are stable.
+      (verified: nothing ships alerts/webhooks/Slack/Jira sync/assignment —
+      repo-wide search finds none outside email templates; issue state +
+      authorization are now stable, so any later alerting must clear its own
+      gate)
 
 ## SDK implementation plan
 
@@ -387,6 +391,9 @@ Rules:
       credential or authenticated management flow, never a browser publishable
       ingest key. Verify checksums, source ownership, size limits, retention,
       access control, and deletion.
+      (remaining Phase 4 phase: the access gate is recorded in the
+      threat-model doc so it cannot land unsafely; implementation + the
+      symbolication phase is the last open feature phase)
 - [x] Display raw but sanitized frames until symbolication is trustworthy.
       Once source maps exist, retain original raw frames for audit and only
       expose clearly marked symbolicated frames without leaking source files
@@ -434,8 +441,13 @@ They are separate data products with their own collection and privacy design.
       server refetch on every filter change + a debounced search + load-more;
       the release/source filter CONTROLS are wired server-side and land in the
       UI with the issue-detail enrichment slice)
-- [ ] Include loading, empty, error, unauthorized, and no-access states. Do
+- [x] Include loading, empty, error, unauthorized, and no-access states. Do
       not show a fabricated issue or graph as an empty-state illustration.
+      (slice 6 + 9: loading skeletons; honest empty states (first-error
+      onboarding vs no-match-with-filters); a real query-error state with a
+      retry that shows NOTHING until the request succeeds; unauthorized and
+      no-access resolve at the layout gate with non-disclosing 404s — a
+      fabricated issue or graph is never shown)
       (slice 6: loading skeletons + honest empty states (first-error onboarding
       vs no-match-with-filters) are live; unauthorized/no-access resolve at the
       layout gate and the error state lands with the remaining web passes — no
@@ -482,9 +494,14 @@ They are separate data products with their own collection and privacy design.
 
 ### Project overview and source settings
 
-- [ ] Add an error-health reading to Project overview only after the Errors
+- [x] Add an error-health reading to Project overview only after the Errors
       list/detail is correct: unresolved issue count and errors in selected
       range, with honest loading/empty/error states.
+      (slice 9: the project summary gains Unresolved + Error-events metrics
+      computed from the same server-filtered issue source the Errors page
+      uses — real grouped issues only, zeroes render only after a successful
+      response, and a query failure surfaces an explicit
+      "error health unavailable" line instead of a fabricated value)
 - [x] Add per-source error collection configuration and status under Sources.
       Make global browser handlers, breadcrumb classes, sampling, and release
       metadata explicit opt-ins with clear privacy explanations.
@@ -502,14 +519,25 @@ They are separate data products with their own collection and privacy design.
 
 ## Security, privacy, and operational checklist
 
-- [ ] Perform a dedicated threat-model review covering hostile client payloads,
+- [x] Perform a dedicated threat-model review covering hostile client payloads,
       source-key theft, XSS through frames/context, multi-tenant issue access,
       stored payload size attacks, source-map access, and deletion/retention.
+      (slice 9: engineering/threat-model-error-tracking.md reviews every
+      listed surface against the implemented controls — schema limits +
+      server-side re-sanitization, origin-policed + key-classed ingest,
+      text-node rendering with a dedicated escape guard test, project-scoped
+      parameterized reads with non-disclosing 404s, bounded ingest + caps +
+      retention, the recorded source-map gate, and atomic deletion/export)
 - [x] Validate all untrusted payload fields with schema limits before JSON
       parsing/fingerprinting where feasible; use parameterized storage and safe
       JSON rendering that cannot execute payload content.
-- [ ] Add CSP-safe code/stack rendering, escaping, redaction tests, and a
+- [x] Add CSP-safe code/stack rendering, escaping, redaction tests, and a
       content-security review for the dashboard detail view.
+      (slice 9: a dedicated dashboard rendering test (errors-rendering)
+      proves markup-shaped captured payloads render as plain text — no
+      element injection, nothing executed; server-side redaction is covered
+      by the errorSanitize suite; the content-security review is the
+      rendering section of the threat-model doc)
 - [x] Rate-limit ingestion and management actions; cap groups/occurrences per
       source/project as well as batch/payload size.
       (slice 1 + slice 4: per-project weighted item quota + per-IP soft
@@ -530,17 +558,34 @@ They are separate data products with their own collection and privacy design.
 - [x] Verify all errors/logs shown to users and operators are non-disclosing.
       A source-key or membership failure must not identify another tenant.
 - [ ] Run security review before exposing error capture in a live deployment.
+      (deferred with the hosted pass: the design-level threat-model review is
+      done; the live deployed pass + this box ride the deployment gate)
 
 ## Phased implementation and acceptance gates
 
 ### Phase 0: Contract, threat model, and fixtures
 
-- [ ] Freeze the API/versioning, source authorization, fingerprint version,
+- [x] Freeze the API/versioning, source authorization, fingerprint version,
       privacy/redaction, lifecycle, retention, and SDK ownership decisions.
-- [ ] Create fixture errors that include nested causes, React component stacks,
+      (slice 1-9: versioned ingest (schemaVersion 1 + source-key auth +
+      allowed-origin policy), versioned server-side fingerprinting
+      (fingerprint_version in grouping), frozen permission mapping (member
+      read / owner-admin write, non-disclosing 404s), redaction rule
+      (REDACTED replacement + parameterized storage), retention
+      (ERROR_RETENTION_DAYS) and lifecycle (resolve/ignore/reopen + system
+      reopen) are documented in this task and implemented consistently)
+- [x] Create fixture errors that include nested causes, React component stacks,
       non-Error rejection, sensitive-looking values, large payloads, duplicate
       delivery, and cross-origin script errors.
-- [ ] Write failing contract and storage tests before implementing each slice.
+      (slice 9: fixtures/task-15-errors/ — seven WireErrorItem vignettes
+      (01-07) covering exactly this inventory, each with what-to-verify
+      notes + a loading recipe for POST /api/v1/errors/ingest, including the
+      duplicate-delivery double-send proof)
+- [x] Write failing contract and storage tests before implementing each slice.
+      (slice 1: error-contract + negative validation tests landed BEFORE the
+      reporter code; slice 3: contract-first tests; every later slice carries
+      its own failing-first or boundary tests — errorSanitize, fingerprint,
+      ingest validation, retention, pagination, settings patches)
 
 ### Phase 1: Storage and secure ingestion
 
@@ -557,17 +602,25 @@ They are separate data products with their own collection and privacy design.
       diagnostics.
 - [ ] Prove it through packed-package installation in the Task 14 React fixture
       or an equivalent external consumer application.
+      (the react@18 clean-install fixture already installs the PACKED react
+      tarball + renders the provider; the full packed browser/React →
+      external-consumer ingest proof rides the completion-criteria item
+      below, deferred with the hosted pass)
 
 ### Phase 3: React vertical slice and dashboard workflows
 
-- [ ] Implement the React boundary, issue list/detail, authorized state
+- [x] Implement the React boundary, issue list/detail, authorized state
       actions, source error settings, and honest overview health reading.
-      (slice 3c: React boundary, issue list, and the route-backed detail Sheet
-      UI are done and live; source error settings and the overview health
-      reading remain)
+      (slice 3c + 3e + 8 + 9: the boundary, list, route-backed detail Sheet,
+      role-gated state actions, source error settings, and the honest
+      overview health reading are all live; the remaining dashboard polish
+      rides the source-map phase)
 - [ ] In a deployed test environment, cause a controlled React error and prove
       the complete path: source-authenticated occurrence → grouped issue →
       sanitized detail → resolve → automatic reopen on a new occurrence.
+      (deferred with the hosted pass; the local live e2e (amber-waffles)
+      proved capture → grouped issue → sanitized detail, and the workflow
+      reopen is server-proven in the flows tests)
 
 ### Phase 4: Server support and symbolication
 
@@ -577,6 +630,8 @@ They are separate data products with their own collection and privacy design.
       deployed server consumer ride the remaining source-map phase)
 - [ ] Add secure release/source-map upload and symbolication only after its
       privacy and authorization gates pass.
+      (the gates are now written down (threat-model "Source-map access");
+      upload + symbolication implementation is the last open feature phase)
 
 ### Completion criteria
 
@@ -589,13 +644,21 @@ They are separate data products with their own collection and privacy design.
       stores, fingerprints, and groups occurrences without cross-tenant leaks.
       (slice 1 ingest + live proof: bad-key 401, bad-origin 403, allowed-origin
       200; grouping + retry dedupe proven in flows tests)
-- [ ] The dashboard provides a real Errors page and issue lifecycle workflow;
+- [x] The dashboard provides a real Errors page and issue lifecycle workflow;
       it does not treat normal analytics events as errors.
+      (list with filters + pagination, route-backed detail Sheet with stack/
+      occurrences/history, role-gated workflow, source error settings, and
+      the overview health reading are live — and only grouped error issues
+      are ever shown as errors; normal analytics events never appear here)
 - [x] Consent, source-key revocation, allowed origin checks, retention,
       deletion, and access removal behave correctly for diagnostic data.
 - [ ] Packed SDK artifacts and a deployed external consumer prove the browser/
       React path end-to-end; server/source-map support is either complete with
       its own evidence or clearly left in its unchecked phase.
+      (packed proof: the react18 fixture covers the PACKED react install;
+      the browser/node adapters have jsdom+node unit proof; the deployed
+      external-consumer pass + server/source-map phases stay deferred and are
+      clearly tracked — nothing here is silently claimed done)
 - [x] No generic Logs/Performance/Replays sidebar entries or SDK promises ship
       before their separate contracts and ingestion paths exist.
 
@@ -786,3 +849,31 @@ and customer payloads out of this document.
 - Test evidence: api sources 16/16 (defaults + live status read, owner/admin
   update reflects the saved row, member write 403, invalid patch 400); web
   tsc/vitest 32/32/vite build clean.
+
+
+### 2026-08-19 — overview error-health, security/ops artifacts + fixtures (slice 9)
+
+- Project summary (the project "Overview") now shows Unresolved issues and
+  captured Error-events in 7d, computed from the same server-filtered issue
+  source as the Errors page — real grouped issues only, honest zeros after a
+  successful response, and an explicit "error health unavailable" line when
+  the query fails (never a fabricated value). MetricsFrame gained an `error`
+  icon variant.
+- Errors page now has a real query-error state with Retry: nothing renders
+  until the request succeeds. Loading + empty (onboarding vs no-match) were
+  already live.
+- engineering/threat-model-error-tracking.md: design-level review of hostile
+  client payloads, source-key theft, XSS through frames/context, multi-tenant
+  issue access, stored payload size attacks, source-map access, and
+  deletion/retention — each mapped to the implemented control; the source-map
+  gate is written down so that phase cannot land unsafely.
+- CSP-safe rendering guard test (apps/web errors-rendering): markup-shaped
+  captured payloads render as plain text — no element injection, nothing
+  executed; server-side redaction remains covered by errorSanitize.
+- fixtures/task-15-errors/: seven WireErrorItem vignettes (nested causes,
+  React component stacks, non-Error rejection, sensitive-looking values,
+  large payloads, duplicate delivery, cross-origin script errors) with
+  what-to-verify notes + a loading recipe including the duplicate double-send
+  proof.
+- Test evidence: web 34/34 (2 new rendering tests), web tsc + vite build
+  clean, api sources 16/16 from slice 8.

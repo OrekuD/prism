@@ -1,0 +1,29 @@
+{
+  "name": "sensitive-looking-values",
+  "description": "A payload full of credential-shaped values. The ingest must REDACT credential-shaped strings before persistence; the dashboard must never show them (only the redaction marker + safety counts).",
+  "sourcePlatform": "web",
+  "release": "web@1.2.0",
+  "environment": "production",
+  "wire": {
+    "id": "fxtr-sensitive-0004",
+    "occurredAt": 1755540300000,
+    "level": "error",
+    "handled": true,
+    "exception": {
+      "type": "Error",
+      "message": "Request failed: Authorization header rejected",
+      "frames": [
+        { "file": "src/api/client.ts", "function": "request", "line": 88, "column": 5, "inApp": true }
+      ]
+    },
+    "context": {
+      "tags": { "authorization": "Bearer sk_live_0123456789abcdef" },
+      "extras": {
+        "cookie": "session=deadbeef; secret=abc123",
+        "apiKey": "aws-access-key-example-0123456789abcdef",
+        "body": "{\"password\":\"hunter2\"}"
+      }
+    },
+    "anonymousId": "anon-sensitive"
+  }
+}

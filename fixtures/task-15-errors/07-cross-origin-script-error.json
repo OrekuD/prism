@@ -1,0 +1,20 @@
+{
+  "name": "cross-origin-script-error",
+  "description": "The opaque cross-origin marker: the browser adapter captures 'Script error.' HONESTLY as its own ScriptError type with zero fabricated frames, so it groups distinctly instead of being dropped or faked.",
+  "sourcePlatform": "web",
+  "release": "web@1.2.0",
+  "environment": "production",
+  "wire": {
+    "id": "fxtr-script-error-0007",
+    "occurredAt": 1755540600000,
+    "level": "error",
+    "handled": false,
+    "exception": {
+      "type": "ScriptError",
+      "message": "Script error.",
+      "frames": []
+    },
+    "context": { "extras": { "scriptError": true } },
+    "anonymousId": "anon-cross-origin"
+  }
+}

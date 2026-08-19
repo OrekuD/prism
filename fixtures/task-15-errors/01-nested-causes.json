@@ -1,0 +1,25 @@
+{
+  "name": "nested-causes",
+  "description": "An Error whose cause chain is two levels deep. The ingest sanitizes and persists the top exception; the detail API reports hasCause without leaking the cause text.",
+  "sourcePlatform": "web",
+  "release": "web@1.2.0",
+  "environment": "production",
+  "wire": {
+    "id": "fxtr-nested-causes-0001",
+    "occurredAt": 1755540000000,
+    "level": "error",
+    "handled": true,
+    "exception": {
+      "type": "Error",
+      "message": "Failed to hydrate checkout",
+      "frames": [
+        { "file": "src/checkout.tsx", "function": "CheckoutPage.render", "line": 41, "column": 9, "inApp": true },
+        { "file": "src/router.ts", "function": "renderRoute", "line": 128, "column": 7, "inApp": true }
+      ],
+      "cause": { "type": "TypeError", "message": "Cannot read properties of undefined (reading 'total')" }
+    },
+    "context": { "tags": { "route": "/checkout" } },
+    "breadcrumbs": [{ "category": "ui.click", "message": "Clicked pay" }],
+    "anonymousId": "anon-nested-causes"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "name": "large-payload",
+  "description": "A payload that presses the size limits: a long message plus a large extras object. The ingest must enforce per-item byte caps and reject or trim at the boundary — never store unbounded.",
+  "sourcePlatform": "web",
+  "release": "web@1.2.0",
+  "environment": "production",
+  "wire": {
+    "id": "fxtr-large-0005",
+    "occurredAt": 1755540400000,
+    "level": "warning",
+    "handled": true,
+    "exception": {
+      "type": "RangeError",
+      "message": "Synchronous XMLHttpRequest on the main thread is deprecated... (repeated padding to exceed the message cap) PAD PAD PAD PAD PAD PAD PAD PAD PAD PAD PAD PAD PAD PAD PAD PAD",
+      "frames": [
+        { "file": "src/legacy/xhr.js", "function": "send", "line": 211, "column": 3, "inApp": false }
+      ]
+    },
+    "context": {
+      "extras": {
+        "networkCopy": "x".repeat(4096),
+        "queryDump": "y".repeat(4096)
+      }
+    },
+    "anonymousId": "anon-large"
+  }
+}

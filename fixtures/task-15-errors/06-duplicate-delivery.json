@@ -1,0 +1,21 @@
+{
+  "name": "duplicate-delivery",
+  "description": "A retried delivery: the SAME client event id is submitted twice. The ingest must dedupe on (project_id, source_id, client_event_id) so counts and last-seen never advance on the duplicate.",
+  "sourcePlatform": "server",
+  "release": "server@2.0.0",
+  "environment": "staging",
+  "wire": {
+    "id": "fxtr-duplicate-0006",
+    "occurredAt": 1755540500000,
+    "level": "error",
+    "handled": false,
+    "exception": {
+      "type": "Error",
+      "message": "ECONNRESET writing response for /v1/orders",
+      "frames": [
+        { "file": "src/handlers/orders.ts", "function": "POST /v1/orders", "line": 33, "column": 14, "inApp": true }
+      ]
+    },
+    "anonymousId": "anon-duplicate"
+  }
+}

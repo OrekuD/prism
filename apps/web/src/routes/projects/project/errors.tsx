@@ -134,7 +134,10 @@ export function ProjectErrors() {
 		platform: platform === "all" ? undefined : platform,
 		q: query || undefined,
 	};
-	const { data, isLoading } = useIssuesQuery(slug, queryParams);
+	const { data, isLoading, isError, refetch } = useIssuesQuery(
+		slug,
+		queryParams,
+	);
 	const projectQuery = useProjectQuery({ slug, duration: "seven-days" });
 	const activeMember = useActiveMember();
 
@@ -324,7 +327,24 @@ export function ProjectErrors() {
 			</div>
 
 			<div className="mt-5 mb-14">
-				{isLoading ? (
+				{isError ? (
+					<Frame className="flex flex-col items-center justify-center gap-2.5 p-10 text-center">
+						<TriangleAlert
+							className="size-[22px] text-text-subtle"
+							aria-hidden="true"
+						/>
+						<p className="font-mono text-[13px] text-text-muted">
+							Could not load issues.
+						</p>
+						<span className="max-w-[400px] text-[12px] leading-[1.5] text-text-subtle">
+							The error list is unavailable right now. Nothing is shown until
+							the request succeeds — no fabricated issues or graphs.
+						</span>
+						<Button variant="outline" size="sm" onClick={() => refetch()}>
+							Retry
+						</Button>
+					</Frame>
+				) : isLoading ? (
 					<div className="space-y-2">
 						<Skeleton className="h-12 w-full" />
 						<Skeleton className="h-12 w-full" />

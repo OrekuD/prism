@@ -1,0 +1,24 @@
+{
+  "name": "react-component-stack",
+  "description": "A render crash carrying a React component stack in the frames. Proves frames render raw-but-sanitized with the component stack visible in the sheet.",
+  "sourcePlatform": "web",
+  "release": "web@1.2.0",
+  "environment": "production",
+  "wire": {
+    "id": "fxtr-react-stack-0002",
+    "occurredAt": 1755540100000,
+    "level": "error",
+    "handled": true,
+    "exception": {
+      "type": "TypeError",
+      "message": "Cannot read properties of null (reading 'items')",
+      "frames": [
+        { "file": "src/cart/CartList.tsx", "function": "CartList", "line": 17, "column": 20, "inApp": true },
+        { "file": "src/cart/CartList.tsx", "function": "CartList", "line": 17, "column": 20, "inApp": true },
+        { "file": "src/App.tsx", "function": "App", "line": 9, "column": 11, "inApp": true }
+      ]
+    },
+    "context": { "extras": { "reactStrictMode": true } },
+    "anonymousId": "anon-react-stack"
+  }
+}
