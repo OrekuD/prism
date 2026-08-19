@@ -5,6 +5,7 @@ export { createPrismClient } from "./core";
 // Error reporting (task-15 slice 3) — a SEPARATE lane from analytics.
 export { createPrismErrorReporter } from "./error-reporter";
 export { ERROR_LIMITS } from "./error-limits";
+export { errorToException, framesFromStack } from "./error-frames";
 export type {
 	ErrorBeforeSend,
 	ErrorBreadcrumb,

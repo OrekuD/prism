@@ -1,5 +1,5 @@
-import { createContext, useContext, useMemo } from "react";
-import type { ReactNode } from "react";
+import { Component, createContext, useContext, useMemo } from "react";
+import type { ErrorInfo, ReactNode } from "react";
 import type {
   GlobalPropertyResult,
   GlobalPropertyScope,
@@ -9,9 +9,11 @@ import type {
   PrismClient,
   PrismDiagnostic,
   PrismDiagnosticHandle,
+  PrismErrorReporter,
   PrismSessionHandle,
   ResetResult,
 } from "@prism-analytics/core";
+import { errorToException } from "@prism-analytics/core";
 
 /**
  * @prism-analytics/react — the thin provider/hook layer over @prism-analytics/core (task-9
@@ -22,9 +24,14 @@ import type {
  *
  * - The provider registers NO effects, listeners, or timers — React
  *   Strict Mode double-mounting can never duplicate work.
- * - It is NOT an error boundary or an exception SDK, and it performs no
- *   console-only error handling.
  * - Automatic route/page tracking is a later task.
+ *
+ * The package ALSO exports an OPT-IN <PrismErrorBoundary> (task-15 slice
+ * 3b): a standalone class component that captures render/lifecycle errors
+ * into an already-created reporter. It is off by default — nothing is
+ * installed unless a consumer renders it. The core reporter lane is the
+ * single source of consent/dedup/queueing semantics; the boundary is a
+ * thin, zero-logic bridge (dedup coalesces Strict Mode double-captures).
  */
 
 /** The stable imperative facade exposed by `usePrism`. */
@@ -110,3 +117,82 @@ export function usePrism(): PrismReactFacade {
 
 /** Session handle type re-exported for consumers of the facade. */
 export type { PrismSessionHandle };
+
+const COMPONENT_STACK_LIMIT = 8_000;
+
+/** The boundary's captured-error state — null means "rendering normally". */
+interface PrismErrorBoundaryState {
+  error: Error | null;
+}
+
+/** `fallback` may be static ReactNode or a function receiving (error, reset). */
+export type PrismErrorBoundaryFallback =
+  | ReactNode
+  | ((error: Error, reset: () => void) => ReactNode);
+
+export interface PrismErrorBoundaryProps {
+  /** An ALREADY-CREATED, ready error reporter (createBrowserErrorReporter). */
+  reporter: PrismErrorReporter;
+  /** Rendered when an error is captured. Defaults to `null`. */
+  fallback?: PrismErrorBoundaryFallback;
+  /** Side-effect hook (e.g. UI toast) called after the capture is enqueued. */
+  onCapture?: (error: Error, info: ErrorInfo) => void;
+  children?: ReactNode;
+}
+
+/**
+ * OPT-IN error boundary (task-15 slice 3b). Catches render/lifecycle
+ * errors and enqueues them into the reporter with `handled: true` plus a
+ * bounded component stack — a thin, zero-logic bridge. It never rethrows
+ * and never installs anything globally; React Strict Mode double-captures
+ * are coalesced by the reporter's dedupe window. A failing reporter must
+ * never break the boundary, so the capture call is guarded.
+ */
+export class PrismErrorBoundary extends Component<
+  PrismErrorBoundaryProps,
+  PrismErrorBoundaryState
+> {
+  state: PrismErrorBoundaryState = { error: null };
+
+  static getDerivedStateFromError(error: Error): PrismErrorBoundaryState {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo): void {
+    this.props.onCapture?.(error, info);
+    try {
+      this.props.reporter.captureException({
+        exception: errorToException(error),
+        handled: true,
+        context: {
+          extras: {
+            boundary: "PrismErrorBoundary",
+            componentStack: (info.componentStack ?? "").slice(
+              0,
+              COMPONENT_STACK_LIMIT,
+            ),
+          },
+        },
+      });
+    } catch {
+      // a failing reporter must never break the boundary
+    }
+  }
+
+  /** Re-render the subtree (the fallback calls this to recover). */
+  reset = (): void => {
+    this.setState({ error: null });
+  };
+
+  render(): ReactNode {
+    const error = this.state.error;
+    if (error === null) return this.props.children;
+    const fallback = this.props.fallback;
+    if (fallback) {
+      return typeof fallback === "function"
+        ? fallback(error, this.reset)
+        : fallback;
+    }
+    return null;
+  }
+}

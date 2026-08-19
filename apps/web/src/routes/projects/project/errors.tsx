@@ -1,6 +1,6 @@
 import { Search, TriangleAlert } from "lucide-react";
 import React from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, Outlet, useNavigate, useParams } from "react-router-dom";
 
 import { Frame } from "@/components/public/frame";
 import { MetricCard } from "@/components/public/metric-card";
@@ -17,14 +17,18 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 import {
-	ERROR_PLATFORM_LABELS,
-	type ErrorIssueLevel,
-	type ErrorIssuePlatform,
-	type ErrorIssueResource,
-	type ErrorIssueStatus,
-	LEVEL_LABELS,
-	STATUS_LABELS,
+	DeltaTag,
+	LevelTag,
+	PlatformLevelTag,
+	dateLabel,
+} from "@/components/errors/issue-visuals";
+import type {
+	ErrorIssueLevel,
+	ErrorIssuePlatform,
+	ErrorIssueResource,
+	ErrorIssueStatus,
 } from "@/lib/errorIssues";
+import { STATUS_LABELS } from "@/lib/errorIssues";
 import { useActiveMember } from "@/lib/workspace";
 import { useIssueStateMutation } from "@/network/mutations/useIssueStateMutation";
 import { useIssuesQuery } from "@/network/queries/useIssuesQuery";
@@ -51,54 +55,8 @@ const RANGE_LABEL: Record<string, string> = {
 const TH =
 	"px-3.5 py-2.5 text-left font-mono text-[11px] font-medium uppercase tracking-[0.09em]";
 
-const TAG =
-	"inline-flex h-[18px] items-center rounded-[2px] border px-[6px] font-mono text-[10px] font-medium uppercase tracking-[0.05em]";
-
 const fmt = new Intl.NumberFormat();
 
-function dateLabel(value: number) {
-	const date = new Date(value);
-	return Number.isNaN(date.getTime()) ? "–" : date.toLocaleDateString();
-}
-
-function LevelTag({ level }: { level: ErrorIssueLevel }) {
-	return (
-		<span
-			className={cn(
-				TAG,
-				level === "error"
-					? "border-danger/40 bg-danger/10 text-danger"
-					: "border-warning/40 bg-warning/10 text-warning",
-			)}
-		>
-			{LEVEL_LABELS[level]}
-		</span>
-	);
-}
-
-function DeltaTag({ delta }: { delta: ErrorIssueResource["delta"] }) {
-	if (delta === "new")
-		return (
-			<span className={cn(TAG, "border-accent/40 bg-accent/10 text-accent")}>
-				New
-			</span>
-		);
-	if (delta === "regressing")
-		return (
-			<span className={cn(TAG, "border-danger/40 bg-danger/10 text-danger")}>
-				Regressing
-			</span>
-		);
-	if (delta === "declining")
-		return (
-			<span className={cn(TAG, "border-success/40 bg-success/10 text-success")}>
-				Resolving
-			</span>
-		);
-	return <span className="font-mono text-[12px] text-text-subtle">–</span>;
-}
-
-/** v2 row action: Resolve / Reopen / Stop ignoring, revealed on hover. */
 function IssueAction({
 	issue,
 	slug,
@@ -134,6 +92,7 @@ function IssueAction({
 
 export function ProjectErrors() {
 	const { slug, wrkSlug } = useParams<{ slug: string; wrkSlug: string }>();
+	const navigate = useNavigate();
 	// Range is declared first: the issue query keys on it (windowed data).
 	const [range, setRange] = React.useState<string>("seven-days");
 	const { data, isLoading } = useIssuesQuery(slug, range);
@@ -328,25 +287,27 @@ export function ProjectErrors() {
 							</thead>
 							<tbody>
 								{filtered.map((issue) => (
-									<tr key={issue.id} className="group border-t border-border">
+									<tr
+										key={issue.id}
+										className="group cursor-pointer border-t border-border"
+										onClick={() => navigate(issue.id)}
+									>
 										<td className="max-w-[300px] px-3.5 py-2.5">
-											<div className="truncate font-mono text-[13px] font-[550] text-text">
+											<Link
+												to={issue.id}
+												onClick={(event) => event.stopPropagation()}
+												className="block truncate font-mono text-[13px] font-[550] text-text transition-colors hover:text-link"
+												aria-label={`Open issue: ${issue.title}`}
+											>
 												{issue.title}
-											</div>
+											</Link>
 											<div className="mt-1 flex items-center gap-2">
-												<span
-													className={cn(
-														TAG,
-														issue.level === "error"
-															? "border-danger/40 bg-danger/10 text-danger"
-															: "border-warning/40 bg-warning/10 text-warning",
-													)}
-												>
-													{ERROR_PLATFORM_LABELS[issue.platform]} ·{" "}
-													{LEVEL_LABELS[issue.level]}
-												</span>
+												<PlatformLevelTag
+													platform={issue.platform}
+													level={issue.level}
+												/>
 												{issue.location ? (
-													<span className="truncate font-mono text-[11px] text-text-subtle">
+													<span className="min-w-0 truncate font-mono text-[11px] text-text-subtle">
 														{issue.location}
 													</span>
 												) : null}
@@ -364,14 +325,17 @@ export function ProjectErrors() {
 										<td className="px-3.5 py-2.5">
 											<LevelTag level={issue.level} />
 										</td>
-										<td className="px-3.5 py-2.5 text-[12px] text-text-muted">
+										<td className="px-3.5 py-2.5 text-[12px] whitespace-nowrap text-text-muted">
 											{dateLabel(issue.firstSeen)}
 										</td>
-										<td className="px-3.5 py-2.5 text-[12px] text-text-muted">
+										<td className="px-3.5 py-2.5 text-[12px] whitespace-nowrap text-text-muted">
 											{dateLabel(issue.lastSeen)}
 										</td>
 										<td className="px-3.5 py-2.5">
-											<span className="flex items-center justify-end opacity-100 transition-opacity focus-within:opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
+											<span
+												onClick={(event) => event.stopPropagation()}
+												className="flex items-center justify-end opacity-100 transition-opacity focus-within:opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+											>
 												<IssueAction
 													issue={issue}
 													slug={slug}
@@ -420,6 +384,7 @@ export function ProjectErrors() {
 					</Frame>
 				)}
 			</div>
+			<Outlet />
 		</div>
 	);
 }

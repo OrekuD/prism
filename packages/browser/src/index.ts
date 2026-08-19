@@ -2,13 +2,34 @@ import {
   createPrismClient,
   type AnonymousPersistence,
   type CollectionState,
+  type ErrorBeforeSend,
+  type ErrorReporterShare,
   type PrismClient,
   type PrismQueueOptions,
   type SanitizeOptions,
 } from "@prism-analytics/core";
 import { createBrowserRuntime } from "./browser-runtime";
+import {
+  createBrowserErrorReporter,
+  type BrowserErrorReporter,
+  type BrowserErrorReporterOptions,
+  type BrowserCaptureResult,
+  type ErrorCaptureOptions,
+} from "./error-reporter";
 
 export { capturePageContext } from "./browser-runtime";
+export {
+  createBrowserErrorReporter,
+  normalizeErrorValue,
+} from "./error-reporter";
+export { framesFromStack } from "@prism-analytics/core";
+export type {
+  BrowserErrorReporter,
+  BrowserErrorReporterOptions,
+  BrowserCaptureResult,
+  ErrorCaptureOptions,
+} from "./error-reporter";
+export type { ErrorBeforeSend, ErrorReporterShare } from "@prism-analytics/core";
 
 export interface BrowserClientOptions {
   /** Source ingestion key (publishable, write-only). */

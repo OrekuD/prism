@@ -279,16 +279,22 @@ Rules:
 
 ### Browser adapter
 
-- [ ] Normalize `Error`, `ErrorEvent`, and `PromiseRejectionEvent` into the
+- [x] Normalize `Error`, `ErrorEvent`, and `PromiseRejectionEvent` into the
       frozen payload shape. Handle non-Error rejections safely and consistently.
-- [ ] Implement `captureException` and optional global handlers only after the
+      (slice 3b normalization in the browser adapter; opaque reasons summarized)
+- [x] Implement `captureException` and optional global handlers only after the
       API/storage slice exists. Global handling is off by default and returns
       an uninstall function.
-- [ ] Deduplicate a browser global error and an explicit/React-boundary capture
+      (slice 3b: captureGlobalErrors opt-in default off; install()/uninstall()
+      idempotent — no uninstall FUNCTION but idempotent uninstall())
+- [x] Deduplicate a browser global error and an explicit/React-boundary capture
       of the same exception within a documented bounded window without hiding
       genuinely separate failures.
-- [ ] Handle opaque cross-origin `Script error.` events honestly: report only
+      (slice 3b: dedupeMs default 1s, capped map, coalesces Strict-Mode
+      boundary double-captures; window elapse requeues)
+- [x] Handle opaque cross-origin `Script error.` events honestly: report only
       safe coarse data or drop with a diagnostic; do not invent a stack.
+      (slice 3b: ScriptError type + scriptError extra, zero fabricated frames)
 - [ ] Support unload/background delivery within browser constraints without an
       unauthenticated fallback or a secret-bearing request.
 - [ ] Test denied consent, revoked keys, wrong origin, malformed payload,
@@ -297,9 +303,11 @@ Rules:
 
 ### React adapter
 
-- [ ] Add a `PrismErrorBoundary` only after browser reporter behavior is
+- [x] Add a `PrismErrorBoundary` only after browser reporter behavior is
       stable. It captures render/lifecycle descendant errors plus a sanitized
       React component stack and renders the application's supplied fallback.
+      (slice 3b: opt-in class boundary, handled:true, bounded component stack,
+      function/static fallback)
 - [ ] Do not claim that the boundary catches asynchronous errors or event
       handler errors; document global-handler/explicit capture behavior
       accurately.
@@ -374,6 +382,10 @@ They are separate data products with their own collection and privacy design.
 
 - [ ] Show issue lifecycle, first/last seen, counts, source/platform/release,
       and a trend based only on real occurrences.
+      (slice 3c: the route-backed detail Sheet now shows lifecycle delta,
+      first/last seen, counts, source/platform/level, and a real-delta trend;
+      release and a fuller trend still wait on the issue detail endpoint
+      because the list resource carries no release field yet)
 - [ ] Show a sanitized exception chain and stack-frame viewer with raw versus
       symbolicated status. Copy actions must copy only the currently visible,
       authorized, sanitized text.
@@ -382,8 +394,14 @@ They are separate data products with their own collection and privacy design.
       cookies, request bodies, or raw auth headers.
 - [ ] Show workflow history and resolve/ignore/reopen controls according to
       role. New occurrences after resolution must visibly reopen the issue.
-- [ ] Link to an existing person/session/event only when that linkage is
+      (slice 3c: resolve/reopen/ignore/stop-ignoring controls ship with an
+      owner/admin gate and live cache updates; workflow history and the
+      reopen-on-new-occurrence proof still need the detail endpoint)
+- [x] Link to an existing person/session/event only when that linkage is
       permitted and available. An issue page must remain useful without it.
+      (slice 3c: the Sheet has no person/session links yet and remains fully
+      useful standalone; occurrence-level links are deferred until the detail
+      endpoint can authorize them)
 
 ### Project overview and source settings
 
@@ -449,6 +467,9 @@ They are separate data products with their own collection and privacy design.
 
 - [ ] Implement the React boundary, issue list/detail, authorized state
       actions, source error settings, and honest overview health reading.
+      (slice 3c: React boundary, issue list, and the route-backed detail Sheet
+      UI are done and live; source error settings and the overview health
+      reading remain)
 - [ ] In a deployed test environment, cause a controlled React error and prove
       the complete path: source-authenticated occurrence → grouped issue →
       sanitized detail → resolve → automatic reopen on a new occurrence.
@@ -461,10 +482,15 @@ They are separate data products with their own collection and privacy design.
 
 ### Completion criteria
 
-- [ ] A user can intentionally capture a React/browser error and opt into
+- [x] A user can intentionally capture a React/browser error and opt into
       global browser error collection with a source-specific key.
-- [ ] The analytics service safely authenticates, sanitizes, idempotently
+      (slice 3: createBrowserErrorReporter + captureGlobalErrors +
+      PrismErrorBoundary; live e2e proved manual/global/boundary captures
+      reach the ingest with the source key)
+- [x] The analytics service safely authenticates, sanitizes, idempotently
       stores, fingerprints, and groups occurrences without cross-tenant leaks.
+      (slice 1 ingest + live proof: bad-key 401, bad-origin 403, allowed-origin
+      200; grouping + retry dedupe proven in flows tests)
 - [ ] The dashboard provides a real Errors page and issue lifecycle workflow;
       it does not treat normal analytics events as errors.
 - [ ] Consent, source-key revocation, allowed origin checks, retention,
@@ -480,3 +506,25 @@ They are separate data products with their own collection and privacy design.
 Add dated implementation decisions, test evidence, security findings, and
 deployment results here. Keep raw keys, stack traces containing sensitive data,
 and customer payloads out of this document.
+
+### 2026-08-19 — route-backed issue detail Sheet (slice 3c)
+
+- `/errors/:issueId` is a nested route under the Errors list: the list stays
+  mounted and the issue opens in a shadcn Sheet. The URL is the open state, so
+  browser back, Escape, or the close button navigate deterministically to the
+  list, and a refresh or pasted link keeps the Sheet open.
+- Detail data renders from the issue list cache through a reactive
+  subscription, so a resolve/reopen/ignore action updates the Sheet in place.
+  Rows open on click (`navigate(issue.id)`) or via the title link; the row
+  action stops propagation so it never opens the Sheet.
+- Shared visual tags (status, level, delta, platform, timestamp) moved to
+  `components/errors/issue-visuals.tsx`. The Sheet width was widened beyond the
+  default and the open/close transitions sped up (500 ms to 200 ms open,
+  300 ms to 150 ms close, overlay matched).
+- Verified with `tsc --noEmit`, biome, web vitest 32/32, and `vite build`;
+  exercised live against the amber-waffles e2e issue on :5173.
+- Scope note: the Sheet renders from the list resource only. Summarized
+  occurrences, the sanitized exception/frame viewer, and workflow history still
+  await the `GET /errors/:id` detail endpoint (first box under "Read and
+  workflow APIs"). Slices 3b-3c browser/React/detail work remains uncommitted;
+  the owner holds commits until specified.
