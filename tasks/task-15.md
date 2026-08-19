@@ -250,20 +250,32 @@ Rules:
 
 ### Core error capability
 
-- [ ] Write the public TypeScript contract and negative validation tests before
+- [x] Write the public TypeScript contract and negative validation tests before
       code. It must separate error delivery from normal `track()` delivery.
-- [ ] Add error event ID generation, bounded queueing/batching, idempotency,
+      (slice 3: error-contract.ts + validating tests first; a SEPARATE lane)
+- [x] Add error event ID generation, bounded queueing/batching, idempotency,
       retry classification, shutdown/flush behavior, and diagnostics to the
       runtime-neutral layer.
-- [ ] Ensure error reporting is explicit and opt-in. Core cannot import browser
+      (slice 3: error-reporter.ts — own FIFO, client event ids, 1s/2x backoff +
+      Retry-After, maxRetries exhaustion, async shutdown drain, coarse diags)
+- [x] Ensure error reporting is explicit and opt-in. Core cannot import browser
       globals, React, Node process APIs, or a default hosted endpoint.
-- [ ] Define safe reporter/analytics-client context sharing: allowed session,
+      (slice 3: createPrismErrorReporter is called deliberately; injected
+      runtime adapter only; no global handlers in core)
+- [x] Define safe reporter/analytics-client context sharing: allowed session,
       anonymous/person identity references and global properties are copied only
       after consent and sanitization. The reporter must not revive identity.
-- [ ] Provide a testable `beforeSend` boundary with immutable input/output,
+      (slice 3: consent-gated share source; anonymousId on the wire, session/user
+      report-level only; globals merge into sanitized context.extras)
+- [x] Provide a testable `beforeSend` boundary with immutable input/output,
       a drop result, timeout/error behavior, and final server-side sanitization.
-- [ ] Expose diagnostics for dropped, rate-limited, malformed, consent-denied,
+      (slice 3: immutable report in/out, drop result, throw→send-original +
+      diagnostic; delivery timeouts; the server re-sanitizes)
+- [x] Expose diagnostics for dropped, rate-limited, malformed, consent-denied,
       and delivery-failed reports without leaking exception contents into logs.
+      (slice 3: error_consent_*, error_queue_full, error_too_large,
+      error_batch_rejected, error_rate_limited, error_delivery_failed,
+      error_batch_dropped — coarse messages never leak contents)
 
 ### Browser adapter
 
