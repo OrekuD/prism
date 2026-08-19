@@ -53,11 +53,15 @@ function findIssue(
 	issueId: string | undefined,
 ): ErrorIssueResource | undefined {
 	if (!slug || !issueId) return undefined;
-	const entries = queryClient.getQueriesData<ErrorIssueResource[]>({
+	const entries = queryClient.getQueriesData<{
+		items?: ErrorIssueResource[];
+	}>({
 		queryKey: ENTRIES_PREFIX(slug),
 	});
-	for (const [, issues] of entries) {
-		const found = (issues ?? []).find((issue) => issue.id === issueId);
+	for (const [, payload] of entries) {
+		const found = (payload?.items ?? []).find(
+			(issue) => issue.id === issueId,
+		);
 		if (found) return found;
 	}
 	return undefined;

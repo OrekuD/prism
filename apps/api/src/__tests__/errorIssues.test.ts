@@ -557,4 +557,73 @@ describe("ErrorIssuesController", () => {
 			expect(statusOf(result)).toBe(404);
 		});
 	});
+
+	describe("paginatedList", () => {
+		function paginatedCtx(query: Record<string, string>) {
+			const ctx = makeCtx(
+				{ slug: SLUG },
+				{},
+				{ user: { id: USER_ID } },
+			);
+			(ctx as { req: { query: unknown } }).req.query = vi.fn(
+				(key: string) => query[key],
+			);
+			return ctx;
+		}
+
+		it("returns the first page with an opaque next-cursor header when more rows exist", async () => {
+			const neon = makeStore("member");
+			getInstance.mockReturnValue(neon as never);
+			const second = {
+				...webIssue,
+				id: "issue-second",
+				title: "ReferenceError: x is not defined",
+				last_seen_at: now - 200,
+			};
+			makeTurso({
+				issues: [webIssue, second],
+				counts: [
+					{ issue_id: ISSUE_ID, current_count: 5, previous_count: 0 },
+					{ issue_id: "issue-second", current_count: 1, previous_count: 0 },
+				],
+				users: [
+					{ issue_id: ISSUE_ID, users: 2 },
+					{ issue_id: "issue-second", users: 1 },
+				],
+			});
+			const ctx = paginatedCtx({ limit: "1" });
+			const headerSpy = (ctx as unknown as {
+				header: ReturnType<typeof vi.fn>;
+			}).header;
+			const result = await ErrorIssuesController.paginatedList(
+				ctx as never,
+			);
+			expect(statusOf(result) ?? 200).toBe(200);
+			const list = jsonOf(result) as Array<Record<string, unknown>>;
+			expect(list).toHaveLength(1);
+			// hasMore (2 issues, limit 1) -> the keyset cursor is set on the header.
+			expect(headerSpy).toHaveBeenCalledWith(
+				"x-prism-next-cursor",
+				expect.any(String),
+			);
+		});
+
+		it("coerces an unknown status filter to no-filter instead of leaking or erroring", async () => {
+			const neon = makeStore("member");
+			getInstance.mockReturnValue(neon as never);
+			makeTurso({
+				issues: [webIssue],
+				counts: [{ issue_id: ISSUE_ID, current_count: 5, previous_count: 0 }],
+				users: [{ issue_id: ISSUE_ID, users: 2 }],
+			});
+			const ctx = paginatedCtx({ status: "bogus-status" });
+			const result = await ErrorIssuesController.paginatedList(
+				ctx as never,
+			);
+			expect(statusOf(result) ?? 200).toBe(200);
+			// Unknown status was coerced away -> the unfiltered issue still returns.
+			const list = jsonOf(result) as Array<Record<string, unknown>>;
+			expect(list).toHaveLength(1);
+		});
+	});
 });

@@ -21,7 +21,7 @@ router.get("/:slug/events", ProjectsController.getProjectEvents);
 // state. Detail summarizes sanitized occurrences and workflow history with
 // no occurrence endpoint (occurrence ids are unguessable UUIDs, only ever
 // reached through an authorized project+issue parent).
-router.get("/:slug/errors", ErrorIssuesController.list);
+router.get("/:slug/errors", ErrorIssuesController.paginatedList);
 router.get("/:slug/errors/:issueId", ErrorIssuesController.detail);
 router.patch("/:slug/errors/:issueId", ErrorIssuesController.update);
 // People + baseline query APIs (task-10 §5)

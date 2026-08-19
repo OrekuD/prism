@@ -136,6 +136,161 @@ async function projectIssues(
 }
 
 /**
+ * Validated list filters for the Errors page. Unknown/invalid values are
+ * ignored by the caller (coerced to undefined) so a malformed query string
+ * never leaks or filters incorrectly.
+ */
+export type IssueListFilter = {
+	status?: ErrorIssueStatus;
+	level?: ErrorIssueLevel;
+	platform?: ErrorIssuePlatform;
+	/** Exact last-release match (the release seen in the most recent window). */
+	release?: string;
+	/** Resolved source ids (the controller maps a source NAME to its ids). */
+	sourceIds?: string[];
+	/** Case-insensitive title substring search. */
+	q?: string;
+};
+
+/** Opaque keyset cursor: (lastSeenAt, id) of the last row of the page. */
+export type IssueListCursor = { lastSeenAt: number; id: string };
+
+export type IssueListPage = {
+	items: Array<ErrorIssueResource>;
+	/** Exactly one more row exists beyond this page when present. */
+	nextCursor: IssueListCursor | null;
+};
+
+const LIST_DEFAULT_LIMIT = 25;
+const LIST_MAX_LIMIT = 100;
+
+export function issueListLimit(raw: string | undefined): number {
+	const n = Number(raw);
+	if (!Number.isFinite(n) || n < 1) return LIST_DEFAULT_LIMIT;
+	return Math.min(Math.floor(n), LIST_MAX_LIMIT);
+}
+
+export function encodeIssueCursor(cursor: IssueListCursor): string {
+	return Buffer.from(
+		`${cursor.lastSeenAt}:${cursor.id}`,
+		"utf8",
+	).toString("base64url");
+}
+
+export function decodeIssueCursor(raw: string | undefined): IssueListCursor | null {
+	if (!raw) return null;
+	try {
+		const text = Buffer.from(String(raw), "base64url").toString("utf8");
+		const sep = text.indexOf(":");
+		if (sep < 0) return null;
+		const lastSeenAt = Number(text.slice(0, sep));
+		const id = text.slice(sep + 1);
+		if (!Number.isFinite(lastSeenAt) || id.length === 0) return null;
+		return { lastSeenAt, id };
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Keyset-paginated issue list with server-side filters (task-15 Errors list).
+ * Returns the page plus an opaque next cursor (null when this is the last
+ * page). Windowed counts + delta + distinct users are computed exactly as in
+ * `projectIssueResources`. `issueFilter` MUST already be validated/coerced by
+ * the controller; source ids are resolved there from `project_sources`.
+ */
+export async function listProjectIssueResources(
+	client: ErrorAnalyticsClient,
+	projectId: string,
+	options: {
+		rangeDays?: number;
+		filter?: IssueListFilter;
+		cursor?: IssueListCursor | null;
+		limit?: number;
+	} = {},
+): Promise<IssueListPage> {
+	const rangeDays = options.rangeDays ?? 30;
+	const now = Date.now();
+	const currentWindowStart = now - rangeDays * DAY_MS;
+	const previousWindowStart = now - 2 * rangeDays * DAY_MS;
+	const filter = options.filter ?? {};
+	const limit = options.limit ?? LIST_DEFAULT_LIMIT;
+
+	const where: string[] = ["project_id = ?"];
+	const args: Array<string | number> = [projectId];
+	if (filter.status) {
+		where.push("status = ?");
+		args.push(filter.status);
+	}
+	if (filter.level) {
+		where.push("level = ?");
+		args.push(filter.level);
+	}
+	if (filter.platform) {
+		where.push("platform = ?");
+		args.push(filter.platform);
+	}
+	if (filter.release) {
+		where.push("last_release = ?");
+		args.push(filter.release);
+	}
+	if (filter.q && filter.q.trim().length > 0) {
+		const needle = `%${filter.q.trim()}%`;
+		where.push("title LIKE ?");
+		args.push(needle);
+	}
+	if (filter.sourceIds && filter.sourceIds.length > 0) {
+		where.push(
+			`EXISTS (SELECT 1 FROM error_occurrences o
+            WHERE o.issue_id = error_issues.id
+              AND o.source_id IN (${filter.sourceIds.map(() => "?").join(",")})
+              AND o.received_at >= ?)`,
+		);
+		args.push(...filter.sourceIds, previousWindowStart);
+	}
+	if (options.cursor) {
+		const { lastSeenAt, id } = options.cursor;
+		where.push("(last_seen_at < ? OR (last_seen_at = ? AND id < ?))");
+		args.push(lastSeenAt, lastSeenAt, id);
+	}
+
+	const { rows } = await client.execute({
+		sql: `SELECT id, title, fingerprint, platform, level, status,
+            location, first_seen_at, last_seen_at
+          FROM error_issues
+          WHERE ${where.join(" AND \n")}
+          ORDER BY last_seen_at DESC, id DESC
+          LIMIT ?`,
+		args: [...args, limit + 1],
+	});
+	const issueRows = rows as unknown as IssueRow[];
+	const hasMore = issueRows.length > limit;
+	const pageRows = hasMore ? issueRows.slice(0, limit) : issueRows;
+	if (pageRows.length === 0) {
+		return { items: [], nextCursor: null };
+	}
+
+	const [counts, users] = await Promise.all([
+		windowCounts(client, projectId, currentWindowStart, previousWindowStart),
+		windowUsers(client, projectId, currentWindowStart),
+	]);
+
+	const items = pageRows.map((row) =>
+		toResource(
+			row,
+			counts.get(String(row.id)) ?? { current: 0, previous: 0 },
+			users.get(String(row.id)) ?? 0,
+			currentWindowStart,
+		),
+	);
+	const lastRow = pageRows[pageRows.length - 1];
+	const nextCursor = hasMore && lastRow
+		? { lastSeenAt: Number(lastRow.last_seen_at), id: lastRow.id }
+		: null;
+	return { items, nextCursor };
+}
+
+/**
  * Windowed occurrence counts per issue: occurrences in the current window
  * and in the preceding equal-length window (the delta baseline).
  */

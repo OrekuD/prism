@@ -1,6 +1,12 @@
 import { Search, TriangleAlert } from "lucide-react";
 import React from "react";
-import { Link, Outlet, useNavigate, useParams } from "react-router-dom";
+import {
+	Link,
+	Outlet,
+	useNavigate,
+	useParams,
+	useSearchParams,
+} from "react-router-dom";
 
 import { Frame } from "@/components/public/frame";
 import { MetricCard } from "@/components/public/metric-card";
@@ -31,7 +37,11 @@ import type {
 import { STATUS_LABELS } from "@/lib/errorIssues";
 import { useActiveMember } from "@/lib/workspace";
 import { useIssueStateMutation } from "@/network/mutations/useIssueStateMutation";
-import { useIssuesQuery } from "@/network/queries/useIssuesQuery";
+import {
+	fetchIssuePage,
+	useIssuesQuery,
+	type IssueListQuery,
+} from "@/network/queries/useIssuesQuery";
 import { useProjectQuery } from "@/network/queries/useProjectQuery";
 
 type StatusFilter = "all" | ErrorIssueStatus;
@@ -93,9 +103,38 @@ function IssueAction({
 export function ProjectErrors() {
 	const { slug, wrkSlug } = useParams<{ slug: string; wrkSlug: string }>();
 	const navigate = useNavigate();
-	// Range is declared first: the issue query keys on it (windowed data).
-	const [range, setRange] = React.useState<string>("seven-days");
-	const { data, isLoading } = useIssuesQuery(slug, range);
+	// URL is the source of truth for range + filters (task-15: preserved in
+	// the URL). Changing any control refetches genuinely filtered server data.
+	const [searchParams, setSearchParams] = useSearchParams();
+	const range = searchParams.get("range") ?? "seven-days";
+	const status = (searchParams.get("status") ?? "all") as StatusFilter;
+	const level = (searchParams.get("level") ?? "all") as LevelFilter;
+	const platform = (searchParams.get("platform") ?? "all") as PlatformFilter;
+	const query = searchParams.get("q") ?? "";
+	const searchTimer = React.useRef<number | null>(null);
+
+	const updateFilter = (patch: Record<string, string | null>): void => {
+		const next = new URLSearchParams(searchParams);
+		for (const [key, value] of Object.entries(patch)) {
+			if (value === null || value === "" || value === "all") {
+				next.delete(key);
+			} else {
+				next.set(key, value);
+			}
+		}
+		// Changing a filter resets pagination to the first page.
+		next.delete("cursor");
+		setSearchParams(next, { replace: true });
+	};
+
+	const queryParams: IssueListQuery = {
+		range,
+		status: status === "all" ? undefined : status,
+		level: level === "all" ? undefined : level,
+		platform: platform === "all" ? undefined : platform,
+		q: query || undefined,
+	};
+	const { data, isLoading } = useIssuesQuery(slug, queryParams);
 	const projectQuery = useProjectQuery({ slug, duration: "seven-days" });
 	const activeMember = useActiveMember();
 
@@ -103,25 +142,34 @@ export function ProjectErrors() {
 		activeMember?.data?.role === "owner" ||
 		activeMember?.data?.role === "admin";
 
-	const [status, setStatus] = React.useState<StatusFilter>("all");
-	const [query, setQuery] = React.useState("");
-	const [level, setLevel] = React.useState<LevelFilter>("all");
-	const [platform, setPlatform] = React.useState<PlatformFilter>("all");
+	// Accumulate pages as the user loads more; reset whenever the server query
+	// (filters/range) changes so the base page is always the freshly filtered one.
+	const [accumulated, setAccumulated] = React.useState<ErrorIssueResource[]>([]);
+	const [nextCursor, setNextCursor] = React.useState<string | null>(null);
+	const [loadingMore, setLoadingMore] = React.useState(false);
 
-	const issues = (data ?? []) as ErrorIssueResource[];
+	React.useEffect(() => {
+		setAccumulated(data?.items ?? []);
+		setNextCursor(data?.nextCursor ?? null);
+	}, [data]);
 
-	const filtered = issues.filter((issue) => {
-		if (status !== "all" && issue.status !== status) return false;
-		if (level !== "all" && issue.level !== level) return false;
-		if (platform !== "all" && issue.platform !== platform) return false;
-		if (query.trim()) {
-			const q = query.trim().toLowerCase();
-			const hay =
-				`${issue.title} ${issue.fingerprint} ${issue.location ?? ""}`.toLowerCase();
-			if (!hay.includes(q)) return false;
+	const issues = accumulated;
+
+	const loadMore = async (): Promise<void> => {
+		if (!nextCursor || loadingMore) return;
+		setLoadingMore(true);
+		try {
+			const page = await fetchIssuePage(slug, queryParams, nextCursor);
+			setAccumulated((prev) => {
+				const seen = new Set(prev.map((issue) => issue.id));
+				const fresh = page.items.filter((issue) => !seen.has(issue.id));
+				return [...prev, ...fresh];
+			});
+			setNextCursor(page.nextCursor);
+		} finally {
+			setLoadingMore(false);
 		}
-		return true;
-	});
+	};
 
 	const totalEvents = issues.reduce((sum, issue) => sum + issue.count, 0);
 	const unresolvedCount = issues.filter(
@@ -140,7 +188,9 @@ export function ProjectErrors() {
 		?.name;
 	const sourcesSetupPath = `/workspace/${wrkSlug}/projects/${slug}/sources/web/setup`;
 	const hasNoIssues = issues.length === 0;
-	const showEmpty = hasNoIssues || filtered.length === 0;
+	const hasActiveFilter =
+		status !== "all" || level !== "all" || platform !== "all" || !!query.trim();
+	const showEmpty = hasNoIssues || issues.length === 0;
 
 	return (
 		<div className="flex flex-1 flex-col">
@@ -193,7 +243,7 @@ export function ProjectErrors() {
 							<button
 								key={entry}
 								type="button"
-								onClick={() => setStatus(entry)}
+								onClick={() => updateFilter({ status: entry })}
 								className={cn(
 									"inline-flex h-8 items-center gap-1.5 px-3.5 text-[13px] font-medium transition-colors",
 									index > 0 && "border-l border-border",
@@ -222,7 +272,17 @@ export function ProjectErrors() {
 					<input
 						type="search"
 						value={query}
-						onChange={(event) => setQuery(event.target.value)}
+						onChange={(event) => {
+							const raw = event.target.value;
+							if (searchTimer.current) window.clearTimeout(searchTimer.current);
+							if (raw.trim() === "") {
+								updateFilter({ q: null });
+								return;
+							}
+							searchTimer.current = window.setTimeout(() => {
+								updateFilter({ q: raw });
+							}, 300);
+						}}
 						placeholder="Search issues"
 						aria-label="Search issues"
 						className="min-w-0 flex-1 bg-transparent text-[13px] text-text outline-none placeholder:text-text-subtle"
@@ -231,7 +291,7 @@ export function ProjectErrors() {
 
 				<Select
 					value={level}
-					onValueChange={(value) => setLevel(value as LevelFilter)}
+					onValueChange={(value) => updateFilter({ level: value })}
 				>
 					<SelectTrigger aria-label="Filter by level" className="h-9 w-[140px]">
 						<SelectValue placeholder="All levels" />
@@ -245,7 +305,7 @@ export function ProjectErrors() {
 
 				<Select
 					value={platform}
-					onValueChange={(value) => setPlatform(value as PlatformFilter)}
+					onValueChange={(value) => updateFilter({ platform: value })}
 				>
 					<SelectTrigger
 						aria-label="Filter by platform"
@@ -270,7 +330,7 @@ export function ProjectErrors() {
 						<Skeleton className="h-12 w-full" />
 						<Skeleton className="h-12 w-full" />
 					</div>
-				) : !showEmpty ? (
+				) : !showEmpty ? ( <>
 					<div className="overflow-x-auto rounded-[2px] border border-border">
 						<table className="w-full border-collapse text-[13px]">
 							<thead>
@@ -286,7 +346,7 @@ export function ProjectErrors() {
 								</tr>
 							</thead>
 							<tbody>
-								{filtered.map((issue) => (
+								{issues.map((issue) => (
 									<tr
 										key={issue.id}
 										className="group cursor-pointer border-t border-border"
@@ -348,13 +408,25 @@ export function ProjectErrors() {
 							</tbody>
 						</table>
 					</div>
+					{nextCursor ? (
+						<div className="mt-3 flex justify-center">
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() => void loadMore()}
+								disabled={loadingMore}
+							>
+								{loadingMore ? "Loading…" : "Load more"}
+							</Button>
+						</div>
+					) : null} </>
 				) : (
 					<Frame className="flex flex-col items-center justify-center gap-2.5 p-10 text-center">
 						<TriangleAlert
 							className="size-[22px] text-text-subtle"
 							aria-hidden="true"
 						/>
-						{hasNoIssues ? (
+						{!hasActiveFilter && hasNoIssues ? (
 							<>
 								<p className="font-mono text-[13px] text-text-muted">
 									No captured errors yet.

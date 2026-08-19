@@ -422,10 +422,21 @@ They are separate data products with their own collection and privacy design.
 - [x] Show real project-scoped issues, defaulting to unresolved, with state,
       title/type, severity, source/platform, first/last seen, occurrence count,
       and release when available.
-- [ ] Support validated filters for status, source, platform, release, level,
+- [x] Support validated filters for status, source, platform, release, level,
       and date range; use server pagination and preserve filters in the URL.
+      (slice 6: GET /errors now validates + coerces unknown filter values
+      (never a leak), supports status/level/platform/release/source-name/q +
+      range, and keyset-paginates via an opaque `x-prism-next-cursor` header;
+      the web Errors page drives all of it from the URL (useSearchParams) with
+      server refetch on every filter change + a debounced search + load-more;
+      the release/source filter CONTROLS are wired server-side and land in the
+      UI with the issue-detail enrichment slice)
 - [ ] Include loading, empty, error, unauthorized, and no-access states. Do
       not show a fabricated issue or graph as an empty-state illustration.
+      (slice 6: loading skeletons + honest empty states (first-error onboarding
+      vs no-match-with-filters) are live; unauthorized/no-access resolve at the
+      layout gate and the error state lands with the remaining web passes — no
+      fabricated issue/graph is ever shown)
 - [x] Let authorized users resolve, ignore, and reopen with an in-place state
       update and clear confirmation/reason where appropriate.
       (now backed by the slice-2 workflow API with optimistic cache updates
@@ -691,3 +702,24 @@ and customer payloads out of this document.
 - Test evidence: node adapter 8/8 (normalization + frames, no-default process
   handlers, explicit opt-in + uninstall deltas, consent gate, release/env +
   request-context on the wire, shutdown drains then drops new, reportError).
+ 
+### 2026-08-19 — Errors list: server filters + keyset pagination + URL state (slice 6)
+
+- `GET /projects/:slug/errors` is now `paginatedList`: validated/coerced
+  filters for status, level, platform, release (exact last-release), source
+  NAME (resolved to source uuids from project_sources), and title search,
+  plus the existing range — unknown values are coerced to no-filter, never a
+  constraint that leaks or errors. Keyset pagination (last_seen_at, id) with
+  an opaque base64url cursor returned via the `x-prism-next-cursor` header so
+  the response body stays an array (non-breaking for existing callers). The
+  old `list` method is retained for the direct unit tests.
+- Web Errors page: range + status + level + platform + q live in the URL
+  (useSearchParams); every control change refetches genuinely filtered server
+  data; search is debounced (300 ms); load-more accumulates keyset pages with
+  id-dedupe; accumulated rows back the stat cards. Empty state distinguishes
+  "no captured errors yet" (onboarding link) from "no issues match the
+  filters". The issue-detail Sheet now reads the issue from the paginated
+  cache shape ({items}).
+- Test evidence: api errorIssues 21/21 (two new paginatedList tests: cursor
+  header on hasMore + unknown-status coercion), web vitest 32/32, web tsc +
+  vite build clean.
