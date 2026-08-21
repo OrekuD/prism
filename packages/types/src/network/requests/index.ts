@@ -45,7 +45,7 @@ export const UpdateProfilePictureRequestSchema = z.strictObject({
     .any()
     .refine((file) => file?.size <= maxFileSize, `Max image size is 5MB.`)
     .refine(
-      (file) => acceptedImages.includes(file?.type),
+      (file) => acceptedImages.indexOf(file?.type) !== -1,
       "File type not supported",
     ),
 });

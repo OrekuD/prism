@@ -53,11 +53,17 @@ export type SessionResource = {
 	lastSeenAt: number;
 	context: Record<string, unknown> | null;
 	isOnline: 0 | 1;
+	/** F16.1: origin source that emitted session_started — nullable for migrated rows. */
+	source?: EventSourceAttribution | null;
 };
 
 /**
  * v2 event resource: properties are DECODED at the API boundary into a
  * typed JSON value (never a JSON string the dashboard prints verbatim).
+ *
+ * @deprecated Use EventListItemResource / EventDetailResource instead.
+ * Kept until every API and web consumer migrates to the canonical
+ * list/detail contracts (Task 16 slice 1).
  */
 export type EventResource = {
 	id: string;
@@ -69,6 +75,101 @@ export type EventResource = {
 	receivedAt: number;
 	schemaVersion: number;
 };
+
+// ---------------------------------------------------------------------------
+// Task 16 — canonical event contracts (slice 1)
+// ---------------------------------------------------------------------------
+
+/** Trusted source platform — exact persisted value. UI groups into Web/Mobile/Server. */
+export type SourcePlatform = "web" | "ios" | "android" | "react-native" | "server";
+
+export type SourceStatus = "active" | "archived";
+
+/** Source that sent an event — derived from the ingestion key, never client-supplied. */
+export type EventSourceAttribution = {
+	id: string;
+	name: string;
+	platform: SourcePlatform;
+	status: SourceStatus;
+};
+
+/** Lightweight list item — what the Events table renders without opening detail. */
+export type EventListItemResource = {
+	id: string;
+	projectId: string;
+	name: string;
+	type: string;
+	occurredAt: number;
+	receivedAt: number;
+	personId: string | null;
+	sessionId: string | null;
+	source: EventSourceAttribution | null;
+};
+
+/** Full detail — authorized view for the drawer/route. Identity/context/SDK are nullable. */
+export type EventDetailResource = EventListItemResource & {
+	anonymousId: string | null;
+	userId: string | null;
+	properties: Record<string, unknown> | null;
+	context: Record<string, unknown> | null;
+	sdk: { name: string; version: string } | null;
+	schemaVersion: number;
+};
+
+export type EventsListResource = {
+	events: EventListItemResource[];
+	nextCursor: string | null;
+};
+
+/** Bounded filter for GET /projects/:slug/events (slice 5). All fields are optional and validated. */
+export type EventFilterRequest = {
+	from?: number;
+	to?: number;
+	eventName?: string;
+	sourceId?: string;
+	sourcePlatform?: SourcePlatform;
+	personId?: string;
+	sessionId?: string;
+	/** Exact property match — both key and value are bounded. */
+	propertyKey?: string;
+	propertyValue?: string;
+	cursor?: string;
+	limit?: number;
+};
+
+/** Opaque keyset cursor for (received_at, id). */
+export type EventCursor = {
+	receivedAt: number;
+	id: string;
+};
+
+export function encodeEventCursor(cursor: EventCursor): string {
+	const json = JSON.stringify([cursor.receivedAt, cursor.id]);
+	if (typeof Buffer !== "undefined") return (Buffer as unknown as { from(s: string): { toString(e: string): string } }).from(json).toString("base64url");
+	const b64 = btoa(json);
+	return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+export function decodeEventCursor(cursor: string): EventCursor | null {
+	try {
+		let json: string;
+		if (typeof Buffer !== "undefined") {
+			json = (Buffer as unknown as { from(s: string, e: string): { toString(e: string): string } }).from(cursor, "base64url").toString("utf8");
+		} else {
+			let b64 = cursor.replace(/-/g, "+").replace(/_/g, "/");
+			while (b64.length % 4) b64 += "=";
+			json = atob(b64);
+		}
+		const parsed = JSON.parse(json) as unknown;
+		if (!Array.isArray(parsed) || parsed.length !== 2) return null;
+		const [receivedAt, id] = parsed as [unknown, unknown];
+		if (typeof receivedAt !== "number" || typeof id !== "string") return null;
+		if (!Number.isFinite(receivedAt) || id.length === 0 || id.length > 100) return null;
+		return { receivedAt, id };
+	} catch {
+		return null;
+	}
+}
 
 /**
  * Person resource (task-10 §5): opaque personId (the deterministic
