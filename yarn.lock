@@ -2831,6 +2831,14 @@
   resolved "https://registry.yarnpkg.com/@react-email/text/-/text-0.0.8.tgz#746a7b98e449112b6e155322805472bdd4f41020"
   integrity sha512-uvN2TNWMrfC9wv/LLmMLbbEN1GrMWZb9dBK14eYxHHAEHCeyvGb5ePZZ2MPyzO7Y5yTC+vFEnCEr76V+hWMxCQ==
 
+"@react-email/ui@6.9.2":
+  version "6.9.2"
+  resolved "https://registry.yarnpkg.com/@react-email/ui/-/ui-6.9.2.tgz#8a40c22507c66aaef6c190d9da204a69a25d62df"
+  integrity sha512-nCE8uZJuhNB7E6j8Prq6tfcswHMbiNwM4a+t2Q83AjgkDUhki1TwvKjQ9yfLLSquQuu9oFKNaTvYUNZ8yTdGNw==
+  dependencies:
+    esbuild "0.28.1"
+    next "16.3.0"
+
 "@remix-run/router@1.23.3":
   version "1.23.3"
   resolved "https://registry.yarnpkg.com/@remix-run/router/-/router-1.23.3.tgz#957c098d4393d301a8aa7dccf3ef28ea5430e36a"
@@ -7990,6 +7998,11 @@ pngjs@^6.0.0:
   version "6.0.0"
   resolved "https://registry.yarnpkg.com/pngjs/-/pngjs-6.0.0.tgz#ca9e5d2aa48db0228a52c419c3308e87720da821"
   integrity sha512-TRzzuFRRmEoSW/p1KVAmiOgPco2Irlah+bGFCeNfJXxxYGwSw7YwAOAcd7X28K/m5bjBWKsC29KyoMfHbypayg==
+
+portless@0.15.5:
+  version "0.15.5"
+  resolved "https://registry.yarnpkg.com/portless/-/portless-0.15.5.tgz#42afb938d2a8657f8f539cc6a99a662f26d8ff0d"
+  integrity sha512-zmJu4Q8/fY54oVUT/5NnmF4Ih8wTdCvCf6JCN783dRYl9mXkJBzXSckX2lztGCLIbM70varDjCudAbGKT73XPg==
 
 postal-mime@2.7.5:
   version "2.7.5"

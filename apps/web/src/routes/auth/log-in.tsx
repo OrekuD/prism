@@ -49,14 +49,14 @@ export function LogIn() {
         setIsPending(false);
         return;
       }
-      // Resolve the destination while the session propagates, then hard-
-      // navigate. A full navigation (fresh boot) reads the confirmed session
-      // cookie, so the router never briefly sees a "signed out" state that
-      // bounces back to this page.
-      const homePromise = resolveDefaultWorkspacePath();
-      // Wait for the session to be durable before leaving the page.
+      // Wait for the session to be durable before loading organization data.
+      // Better Auth's organization endpoints require the cookie session, so
+      // starting this lookup earlier creates a guaranteed post-sign-in 401.
       await waitForSession();
-      window.location.assign((await homePromise) || "/overview");
+      const home = await resolveDefaultWorkspacePath();
+      // A full navigation (fresh boot) reads the confirmed session cookie, so
+      // the router never briefly sees a signed-out state and bounces back.
+      window.location.assign(home || "/overview");
       // Leave isPending true: the page unloads on navigation.
     } catch (err) {
       toast.error(

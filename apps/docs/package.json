@@ -4,10 +4,11 @@
   "private": true,
   "scripts": {
     "build": "next build",
-    "dev": "next dev --port 3000",
+    "dev": "portless",
     "start": "next start --port 3000",
     "typecheck": "next typegen && tsc --noEmit",
-    "lint": "biome lint ./app ./components ./lib"
+    "lint": "biome lint ./app ./components ./lib",
+    "dev:docs": "next dev"
   },
   "dependencies": {
     "cnfast": "^0.1.0",
@@ -31,5 +32,9 @@
     "postcss": "^8.5.25",
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3"
+  },
+  "portless": {
+    "name": "docs.prism",
+    "script": "dev:docs"
   }
 }

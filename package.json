@@ -12,10 +12,11 @@
   },
   "devDependencies": {
     "prettier": "^3.9.6",
-    "turbo": "^2.10.9"
+    "turbo": "^2.10.9",
+    "portless": "0.15.5"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "name": "prism",
   "packageManager": "yarn@1.22.19",

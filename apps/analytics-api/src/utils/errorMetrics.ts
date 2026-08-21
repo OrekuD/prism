@@ -76,7 +76,7 @@ class ErrorMetricsRegistry {
 	/** Prometheus-style exposition of the coarse counters (never payloads). */
 	renderPrometheus(): string {
 		const s = this.snapshot();
-		return [
+		return `${[
 			"# HELP prism_errors_ingested_total Accepted non-duplicate error items.",
 			`prism_errors_ingested_total ${s.accepted}`,
 			"# HELP prism_errors_rejected_total Rejected error items.",
@@ -91,7 +91,7 @@ class ErrorMetricsRegistry {
 			`prism_errors_db_failures_total ${s.dbFailures}`,
 			"# HELP prism_errors_retention_deletions_total Occurrences pruned by retention.",
 			`prism_errors_retention_deletions_total ${s.retentionDeletedOccurrences}`,
-		].join("\n") + "\n";
+		].join("\n")}\n`;
 	}
 }
 
@@ -101,12 +101,10 @@ export const errorMetrics = new ErrorMetricsRegistry();
  * Storage volume for error data (counts + total payload bytes). Quantity
  * only — payload bytes are a summed length, never sampled contents.
  */
-export async function errorStorageVolume(execute: {
-	(input: {
+export async function errorStorageVolume(execute: (input: {
 		sql: string;
 		args: Array<string | number | null>;
-	}): Promise<{ rows: Array<Record<string, unknown>> }>;
-}): Promise<{
+	}) => Promise<{ rows: Array<Record<string, unknown>> }>): Promise<{
 	issues: number;
 	occurrences: number;
 	occurrencePayloadBytes: number;

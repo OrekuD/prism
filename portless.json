@@ -1,0 +1,14 @@
+{
+  "apps": {
+    "apps/web": {
+      "name": "prism",
+      "script": "dev:web",
+      "appPort": 5173
+    },
+    "apps/docs": {
+      "name": "docs.prism",
+      "script": "dev:docs",
+      "appPort": 3002
+    }
+  }
+}

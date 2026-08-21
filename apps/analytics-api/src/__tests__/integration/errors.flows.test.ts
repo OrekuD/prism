@@ -67,11 +67,11 @@ run("error ingestion database integration", () => {
 
 		const cleanup = async () => {
 			await client.execute({
-				sql: `DELETE FROM error_occurrences WHERE project_id IN (?, ?)`,
+				sql: "DELETE FROM error_occurrences WHERE project_id IN (?, ?)",
 				args: [PROJECT_ID, OTHER_PROJECT],
 			});
 			await client.execute({
-				sql: `DELETE FROM error_issues WHERE project_id IN (?, ?)`,
+				sql: "DELETE FROM error_issues WHERE project_id IN (?, ?)",
 				args: [PROJECT_ID, OTHER_PROJECT],
 			});
 			await client.execute({

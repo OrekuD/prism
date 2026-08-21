@@ -12,12 +12,27 @@ import { setEmailExecutor } from "./auth/mail";
 import { ErrorResponse } from "./network/responses/ErrorResponse";
 import { RateLimiter, clientIpFrom } from "./utils/RateLimiter";
 
-// Soft per-IP throttle for all Better Auth endpoints (signup, sign-in, OTP,
-// reset, social callbacks). In-memory, per isolate — production enforcement
-// needs a shared store (see README security model).
-export const authRateLimiter = new RateLimiter(60_000, 20);
+// Soft per-IP throttle for Better Auth mutating endpoints (signup, sign-in, OTP,
+// reset, social callbacks). Read-only session checks (get-session, providers,
+// token) are exempt — the web dashboard polls get-session on every
+// navigation and after sign-in (waitForSession), and a tight limit there
+// causes a 429 storm that locks the UI after login. In-memory, per isolate
+// — production enforcement needs a shared store (see README security model).
+export const authRateLimiter = new RateLimiter(60_000, 60);
+
+const AUTH_RATE_LIMIT_EXEMPT = new Set([
+  "/api/auth/get-session",
+  "/api/auth/providers",
+  "/api/auth/token",
+]);
 
 const authRateLimit = createMiddleware(async (ctx, next) => {
+  const path = ctx.req.path;
+  // Exempt high-frequency read-only checks; only limit mutating auth.
+  if (ctx.req.method === "GET" && AUTH_RATE_LIMIT_EXEMPT.has(path)) {
+    await next();
+    return;
+  }
   const { allowed, retryAfterSeconds } = authRateLimiter.hit(clientIpFrom(ctx));
   if (!allowed) {
     ctx.header("Retry-After", String(retryAfterSeconds));

@@ -149,7 +149,7 @@ export class ErrorIssuesController {
 		);
 		if (!role) return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
 
-		const q = ctx.req.query;
+		const q = (key: string) => ctx.req.query(key);
 		const status = coerce<ErrorIssueStatus>(q("status"), STATUS_VALUES);
 		const level = coerce<ErrorIssueLevel>(
 			q("level"),

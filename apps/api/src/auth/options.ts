@@ -40,11 +40,21 @@ export function buildAuthOptions(
       .split(",")
       .map((origin) => origin.trim())
       .filter(Boolean),
-    // Development: trust any localhost/127.0.0.1 port so dev servers on
+    // Development: trust any localhost/127.0.0.1/portless host so dev servers on
     // any port work; production stays locked to the explicit allowlist.
-    // better-auth's matchesOriginPattern treats "*" as a wildcard.
+    // better-auth's matchesOriginPattern treats "*" as a wildcard. Include
+    // https for portless (https://prism.localhost, https://docs.prism.localhost).
     ...(env.ENVIRONMENT === "development"
-      ? ["http://localhost:*", "http://127.0.0.1:*"]
+      ? [
+          "http://localhost:*",
+          "http://127.0.0.1:*",
+          "https://localhost:*",
+          "https://127.0.0.1:*",
+          "https://prism.localhost:*",
+          "https://docs.prism.localhost:*",
+          "https://prism.localhost",
+          "https://docs.prism.localhost",
+        ]
       : []),
   ].filter(Boolean);
 

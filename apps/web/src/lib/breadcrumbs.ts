@@ -24,7 +24,15 @@ export function useBreadcrumbs(): Crumb[] {
 		(activeWorkspace as { name?: string } | null)?.name ?? "Workspace";
 	const wrkSlug = (activeWorkspace as { slug?: string } | null)?.slug ?? "";
 	const parts = pathname.split("/").filter(Boolean);
-	const sourcesQuery = useSourcesQuery(parts[4]);
+	// parts for /workspace/:wrkSlug/projects/:slug/... is
+	// [workspace, wrkSlug, projects, slug, sub, seg, tab]
+	const projectSlug = parts[2] === "projects" ? parts[3] : undefined;
+	const sub = parts[4];
+	// Only fetch sources when we're on a source-detail crumb (seg is a source id, not a type word)
+	const segForSource = sub === "sources" ? parts[5] : undefined;
+	const needsSourceName =
+		segForSource !== undefined && !SOURCE_TYPE_WORDS.includes(segForSource);
+	const sourcesQuery = useSourcesQuery(needsSourceName ? projectSlug : undefined);
 	const crumbs: Crumb[] = [];
 	const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -47,28 +55,26 @@ export function useBreadcrumbs(): Crumb[] {
 		crumbs.push({ label: "Settings" });
 	} else if (section === "projects") {
 		crumbs.push({ label: "Projects" });
-		const projectSlug = parts[4];
-		const project = projectsQuery.data?.find((p) => p.slug === projectSlug);
 		if (projectSlug) {
+			const project = projectsQuery.data?.find((p) => p.slug === projectSlug);
 			crumbs.push({
 				label: project?.name ?? projectSlug,
 				href: `/workspace/${parts[1]}/projects/${projectSlug}`,
 			});
-			const sub = parts[5];
 			if (sub === "sources") {
 				crumbs.push({
 					label: "Sources",
 					href: `/workspace/${parts[1]}/projects/${projectSlug}/sources`,
 				});
-				const seg = parts[6];
+				const seg = parts[5];
 				if (seg) {
 					if (SOURCE_TYPE_WORDS.includes(seg)) {
-						if (parts[7]) {
+						if (parts[6]) {
 							crumbs.push({
 								label: sourceTypeLabel(seg),
 								href: `/workspace/${parts[1]}/projects/${projectSlug}/sources/${seg}`,
 							});
-							crumbs.push({ label: sourceTabLabel(parts[7]) });
+							crumbs.push({ label: sourceTabLabel(parts[6]) });
 						} else {
 							crumbs.push({ label: sourceTypeLabel(seg) });
 						}

@@ -49,10 +49,15 @@ export async function waitForSession(timeoutMs = 5000): Promise<boolean> {
     try {
       const response = await authClient.getSession();
       if (response.data?.session) return true;
+      // 429 means the rate limiter fired — back off instead of hammering.
+      if ((response as unknown as { error?: { status?: number } })?.error?.status === 429) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        continue;
+      }
     } catch {
       // Cookie may not have propagated yet; keep polling.
     }
-    await new Promise((resolve) => setTimeout(resolve, 120));
+    await new Promise((resolve) => setTimeout(resolve, 300));
   }
   return false;
 }

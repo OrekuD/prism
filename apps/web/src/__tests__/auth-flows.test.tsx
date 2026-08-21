@@ -13,6 +13,8 @@ const signInEmail = vi.fn();
 const signUpEmail = vi.fn();
 const signInSocial = vi.fn();
 const requestPasswordReset = vi.fn();
+const listOrganizations = vi.fn();
+let sessionVisible = true;
 
 vi.mock("@/lib/authClient", () => ({
   authClient: {
@@ -25,11 +27,20 @@ vi.mock("@/lib/authClient", () => ({
     $store: {
       atoms: {
         session: {
-          get: () => ({ data: { session: { id: "test-session" } }, isPending: false }),
+          get: () => ({
+            data: sessionVisible ? { session: { id: "test-session" } } : null,
+            isPending: false,
+          }),
         },
       },
     },
-    getSession: async () => ({ data: { session: { id: "test-session" } }, error: null }),
+    getSession: async () => {
+      sessionVisible = true;
+      return { data: { session: { id: "test-session" } }, error: null };
+    },
+    organization: {
+      list: () => listOrganizations(sessionVisible),
+    },
     signIn: {
       email: (...args: unknown[]) => signInEmail(...args),
       social: (...args: unknown[]) => signInSocial(...args),
@@ -65,6 +76,11 @@ function renderPage(page: React.ReactNode, initialPath = "/auth/log-in") {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sessionVisible = true;
+  listOrganizations.mockImplementation((hasSession: boolean) => ({
+    data: hasSession ? [{ id: "workspace-1", slug: "workspace-one" }] : null,
+    error: hasSession ? null : { status: 401 },
+  }));
 });
 
 describe("auth failure states", () => {
@@ -135,6 +151,19 @@ describe("public surfaces axe scan", () => {
 });
 
 describe("duplicate-submit prevention", () => {
+  it("waits for the session before loading the default workspace", async () => {
+    sessionVisible = false;
+    signInEmail.mockResolvedValue({ data: null, error: null });
+    renderPage(<LogIn />);
+
+    await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "password123");
+    await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    await waitFor(() => expect(listOrganizations).toHaveBeenCalled());
+    expect(listOrganizations).toHaveBeenCalledWith(true);
+  });
+
   it("submits the sign-in form only once while pending", async () => {
     let resolveSignIn: ((value: unknown) => void) | undefined;
     signInEmail.mockReturnValue(

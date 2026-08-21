@@ -28,80 +28,89 @@ export function ProjectEvents() {
       />
       <Card>
         <CardContent>
-        {isLoading ? (
-          <div className="space-y-2">
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-full" />
-          </div>
-        ) : isError ? (
-          <ErrorState
-            title="Could not load events"
-            description="Prism could not reach the events store. Check your connection and try again."
-            onRetry={() => refetch()}
-          />
-        ) : data && data.length > 0 ? (
-          <div className="border border-border">
-            <table className="w-full text-[13px]">
-              <thead>
-                <tr className="border-b border-border text-text-subtle">
-                  <th className="px-4 py-2.5 text-left font-mono text-[11px] font-medium uppercase tracking-[0.09em]">
-                    Event
-                  </th>
-                  <th className="px-4 py-2.5 text-left font-mono text-[11px] font-medium uppercase tracking-[0.09em]">
-                    Session
-                  </th>
-                  <th className="px-4 py-2.5 text-left font-mono text-[11px] font-medium uppercase tracking-[0.09em]">
-                    Data
-                  </th>
-                  <th className="px-4 py-2.5 text-right font-mono text-[11px] font-medium uppercase tracking-[0.09em]">
-                    Time
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.map((event) => (
-                  <tr key={event.id} className="border-b border-border last:border-0 hover:bg-surface-hover">
-                    <td className="px-4 py-3 font-mono text-[13px] text-text">
-                      {event.name}
-                    </td>
-                    <td className="px-4 py-3 text-text-muted">
-                      {event.sessionId ? (
-                        <code className="text-xs">{event.sessionId.slice(0, 8)}…</code>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td className="max-w-[220px] truncate px-4 py-3 text-text-muted">
-                      {event.properties ? (
-                        <code className="text-xs">{JSON.stringify(event.properties)}</code>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-[12px] tabular-nums text-text-muted">
-                      {formatTime(event.occurredAt)}
-                    </td>
+          {isLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+            </div>
+          ) : isError ? (
+            <ErrorState
+              title="Could not load events"
+              description="Prism could not reach the events store. Check your connection and try again."
+              onRetry={() => refetch()}
+            />
+          ) : data && data.length > 0 ? (
+            <div className="border border-border">
+              <table className="w-full text-[13px]">
+                <thead>
+                  <tr className="border-b border-border text-text-subtle">
+                    <th className="px-4 py-2.5 text-left font-mono text-[11px] font-medium uppercase tracking-[0.09em]">
+                      Event
+                    </th>
+                    <th className="px-4 py-2.5 text-left font-mono text-[11px] font-medium uppercase tracking-[0.09em]">
+                      Session
+                    </th>
+                    <th className="px-4 py-2.5 text-left font-mono text-[11px] font-medium uppercase tracking-[0.09em]">
+                      Data
+                    </th>
+                    <th className="px-4 py-2.5 text-right font-mono text-[11px] font-medium uppercase tracking-[0.09em]">
+                      Time
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <EmptyState
-            label="No events"
-            title="No events yet"
-            description={'Log events from your site with prism.track("name", { … }) using the project key, then watch them appear here.'}
-            action={
-              <a
-                href={`${VITE_DOCS_URL}/docs/tracking/web/javascript-browser`}
-                className="text-[13px] font-medium text-link transition-colors duration-150 hover:underline"
-              >
-                Read the SDK reference
-              </a>
-            }
-          />
-        )}
+                </thead>
+                <tbody>
+                  {data.map((event) => (
+                    <tr
+                      key={event.id}
+                      className="border-b border-border last:border-0 hover:bg-surface-hover"
+                    >
+                      <td className="px-4 py-3 font-mono text-[13px] text-text">
+                        {event.name}
+                      </td>
+                      <td className="px-4 py-3 text-text-muted">
+                        {event.sessionId ? (
+                          <code className="text-xs">
+                            {event.sessionId.slice(0, 8)}…
+                          </code>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="max-w-[220px] truncate px-4 py-3 text-text-muted">
+                        {event.properties ? (
+                          <code className="text-xs">
+                            {JSON.stringify(event.properties)}
+                          </code>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-[12px] tabular-nums text-text-muted">
+                        {formatTime(event.occurredAt)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState
+              label="No events"
+              title="No events yet"
+              description={
+                'Log events from your site, app or server with prism.track("name", { … }) using the project key, then watch them appear here.'
+              }
+              action={
+                <a
+                  href={`${VITE_DOCS_URL}/docs/tracking/web/javascript-browser`}
+                  className="text-[13px] font-medium text-link transition-colors duration-150 hover:underline"
+                >
+                  Read the SDK reference
+                </a>
+              }
+            />
+          )}
         </CardContent>
       </Card>
     </div>

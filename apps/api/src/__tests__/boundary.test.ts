@@ -69,6 +69,8 @@ describe("main API boundary (CORS + rate limits)", () => {
 
     // The Better Auth handler needs a real database; the rate limiter runs
     // first, so every attempt is counted before the handler is reached.
+    // Read-only checks (get-session/providers/token) are exempt — only
+    // mutating auth is limited (60/min, see Server.ts).
     const attempt = () =>
       Server.getInstance().request(
         "/api/auth/sign-in/email",
@@ -81,12 +83,12 @@ describe("main API boundary (CORS + rate limits)", () => {
       );
 
     const statuses: Array<number> = [];
-    for (let i = 0; i < 21; i += 1) {
+    for (let i = 0; i < 61; i += 1) {
       statuses.push((await attempt()).status);
     }
 
     const blocked = statuses[statuses.length - 1];
-    expect(statuses.slice(0, 20).every((s) => s !== 429)).toBe(true);
+    expect(statuses.slice(0, 60).every((s) => s !== 429)).toBe(true);
     expect(blocked).toBe(429);
 
     const retry = await attempt();

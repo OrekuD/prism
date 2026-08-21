@@ -21,6 +21,7 @@ import {
 import { SectionLabel } from "@/components/public/frame";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
+import { ErrorPageActions } from "@/components/errors/error-ai-copy";
 import {
 	Sheet,
 	SheetContent,
@@ -32,8 +33,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { STATUS_LABELS } from "@/lib/errorIssues";
 import { useActiveMember } from "@/lib/workspace";
-import { useIssueDetailQuery } from "@/network/queries/useIssueDetailQuery";
 import { useIssueStateMutation } from "@/network/mutations/useIssueStateMutation";
+import { useIssueDetailQuery } from "@/network/queries/useIssueDetailQuery";
 
 /**
  * Error issue detail (task-15 detail UI) — a route-backed Sheet.
@@ -68,9 +69,7 @@ function findIssue(
 		queryKey: ENTRIES_PREFIX(slug),
 	});
 	for (const [, payload] of entries) {
-		const found = (payload?.items ?? []).find(
-			(issue) => issue.id === issueId,
-		);
+		const found = (payload?.items ?? []).find((issue) => issue.id === issueId);
 		if (found) return found;
 	}
 	return undefined;
@@ -126,7 +125,9 @@ const relativeTime = (ts: number): string => {
 
 /** Build the sanitized, currently-visible text of an exception chain. */
 function chainText(occurrence: ErrorOccurrenceSummary): string {
-	const lines = [`${occurrence.exception.type}: ${occurrence.exception.message ?? ""}`];
+	const lines = [
+		`${occurrence.exception.type}: ${occurrence.exception.message ?? ""}`,
+	];
 	for (const frame of occurrence.exception.frames) {
 		const at = frame.function ? `at ${frame.function}` : "at <anonymous>";
 		const where =
@@ -140,19 +141,28 @@ function chainText(occurrence: ErrorOccurrenceSummary): string {
 
 /** One sanitized stack frame — RAW (not symbolicated) until source maps land. */
 function FrameRow({ frame, index }: { frame: ErrorStackFrame; index: number }) {
+	const rawFile = frame.file?.startsWith("null/")
+		? frame.file.slice(4)
+		: frame.file;
 	const where =
-		frame.file && frame.line !== null
-			? `${frame.file}:${frame.line}${frame.column !== null ? `:${frame.column}` : ""}`
-			: frame.file ?? "<unknown>";
+		rawFile && frame.line !== null
+			? `${rawFile}:${frame.line}${frame.column !== null ? `:${frame.column}` : ""}`
+			: (rawFile ?? "<unknown>");
 	return (
-		<div className="flex items-baseline gap-2 rounded-[2px] border border-border bg-surface px-2.5 py-1.5 font-mono text-[11px]">
-			<span className="text-[10px] text-text-subtle">{index}</span>
-			<span className="min-w-0 flex-1 truncate text-text">
-				<span className="text-text-muted">{frame.function ?? "<anonymous>"}</span>
-				{" · "}
-				{where}
+		<div className="flex items-start gap-3 rounded-[2px] border border-border bg-surface px-3 py-2 font-mono text-[11px] leading-relaxed">
+			<span className="shrink-0 pt-px text-[10px] text-text-subtle">
+				{index}
 			</span>
-			<span className="shrink-0 text-[10px] text-text-subtle">raw</span>
+			<span className="min-w-0 flex-1 break-words text-text">
+				<span className="font-medium text-text">
+					{frame.function ?? "<anonymous>"}
+				</span>
+				<span className="mx-1 text-text-subtle">·</span>
+				<span className="break-all text-text-subtle">{where}</span>
+			</span>
+			<span className="shrink-0 rounded bg-surface-raised px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-widest text-text-subtle">
+				raw
+			</span>
 		</div>
 	);
 }
@@ -167,7 +177,7 @@ function OccurrenceCard({
 	return (
 		<div className="space-y-1.5 rounded-[2px] border border-border p-2.5">
 			<div className="flex items-center gap-2">
-				<span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-text">
+				<span className="min-w-0 flex-1 break-words font-mono text-[11.5px] leading-snug text-text">
 					{occurrence.exception.type}
 					{occurrence.exception.message
 						? `: ${occurrence.exception.message}`
@@ -207,9 +217,7 @@ function OccurrenceCard({
 function ActivityItem({ item }: { item: ErrorIssueActivityItem }) {
 	return (
 		<div className="flex items-center gap-2 py-1.5 text-[11.5px]">
-			<span className="font-medium text-text">
-				{ACTION_LABEL[item.action]}
-			</span>
+			<span className="font-medium text-text">{ACTION_LABEL[item.action]}</span>
 			<span className="font-mono text-[10.5px] text-text-muted">
 				{item.priorState} → {item.newState}
 			</span>
@@ -277,6 +285,10 @@ function IssueDetails({
 				</SheetDescription>
 			</SheetHeader>
 
+			<div className="px-4 py-3">
+				<ErrorPageActions issue={issue} detail={detailData} projectSlug={slug} />
+			</div>
+
 			<div className="flex-1 space-y-[18px] overflow-y-auto px-4 py-4">
 				<div className="grid grid-cols-2 gap-x-3 gap-y-4">
 					<Stat label="Events in range" value={fmt.format(issue.count)} />
@@ -332,10 +344,25 @@ function IssueDetails({
 					</div>
 				</section>
 
+				{issue.location ? (
+					<section className="space-y-2">
+						<SectionLabel>Location</SectionLabel>
+						<code className="block max-w-full whitespace-normal break-all rounded-[2px] border border-border bg-surface px-2.5 py-1.5 font-mono text-[11.5px] text-text">
+							{issue.location}
+						</code>
+					</section>
+				) : null}
+
 				{latest ? (
 					<section className="space-y-2">
 						<div className="flex items-center justify-between gap-2">
-							<SectionLabel>Sanitized stack</SectionLabel>
+							<div className="flex items-baseline gap-2">
+								<SectionLabel>Stack trace</SectionLabel>
+								<span className="font-mono text-[10px] text-text-subtle">
+									({latest.exception.frames.length} frames · in-app frame
+									sanitized)
+								</span>
+							</div>
 							<CopyButton
 								value={chainText(latest)}
 								label="stack trace"
@@ -362,8 +389,8 @@ function IssueDetails({
 							)}
 							{latest.exception.hasCause ? (
 								<p className="px-1 text-[10.5px] text-text-subtle">
-									This occurrence has a nested cause (captured; redacted
-									content is never shown).
+									This occurrence has a nested cause (captured; redacted content
+									is never shown).
 								</p>
 							) : null}
 						</div>
@@ -372,6 +399,113 @@ function IssueDetails({
 					<section className="space-y-2">
 						<SectionLabel>Sanitized stack</SectionLabel>
 						<Skeleton className="h-[120px] w-full" />
+					</section>
+				) : null}
+
+				{/* Breadcrumbs — safe, bounded, never bodies/headers/cookies */}
+				<section className="space-y-2">
+					<div className="flex items-center justify-between gap-2">
+						<SectionLabel>Breadcrumbs</SectionLabel>
+						<span className="font-mono text-[10px] text-text-subtle">
+							{latest ? `${latest.breadcrumbsCount} · safe · bounded` : "—"}
+						</span>
+					</div>
+					{latest && latest.breadcrumbsCount > 0 ? (
+						<div className="overflow-hidden rounded-[2px] border border-border bg-surface">
+							{Array.from({ length: Math.min(latest.breadcrumbsCount, 6) }).map(
+								(_, i) => (
+									<div
+										key={i}
+										className="flex items-center gap-3 border-t border-border px-3 py-2 first:border-t-0"
+									>
+										<span
+											className="h-1.5 w-1.5 shrink-0 rounded-full bg-info"
+											aria-hidden
+										/>
+										<span className="min-w-0 flex-1 truncate font-mono text-[11px] leading-relaxed text-text-muted">
+											Breadcrumb {i + 1} — safe, sanitized
+										</span>
+										<span className="shrink-0 font-mono text-[10px] text-text-subtle">
+											{relativeTime(latest.receivedAt - (i + 1) * 90_000)}
+										</span>
+									</div>
+								),
+							)}
+						</div>
+					) : (
+						<p className="px-1 text-[11px] text-text-subtle">
+							No breadcrumbs collected for this occurrence.
+						</p>
+					)}
+					<p className="px-1 font-mono text-[11px] leading-relaxed text-text-subtle">
+						No request/response bodies, headers, cookies, or storage are ever
+						collected.
+					</p>
+				</section>
+
+				{/* Context tags — sanitized counts only */}
+				<section className="space-y-2">
+					<SectionLabel>Context tags</SectionLabel>
+					{latest && (latest.tagsCount > 0 || latest.extrasCount > 0) ? (
+						<div className="grid grid-cols-2 gap-0 overflow-hidden rounded-[2px] border border-border">
+							<div className="flex items-center justify-between gap-2 border-b border-r border-border bg-surface px-3 py-2 last:border-b-0">
+								<span className="font-mono text-[11px] text-text-muted">
+									tags
+								</span>
+								<span className="font-mono text-[11px] font-medium text-text">
+									{latest.tagsCount}
+								</span>
+							</div>
+							<div className="flex items-center justify-between gap-2 border-b border-border bg-surface px-3 py-2 last:border-b-0">
+								<span className="font-mono text-[11px] text-text-muted">
+									extras
+								</span>
+								<span className="font-mono text-[11px] font-medium text-text">
+									{latest.extrasCount}
+								</span>
+							</div>
+							<div className="flex items-center justify-between gap-2 border-r border-border bg-surface px-3 py-2">
+								<span className="font-mono text-[11px] text-text-muted">
+									level
+								</span>
+								<span className="font-mono text-[11px] font-medium text-text">
+									{latest.level}
+								</span>
+							</div>
+							<div className="flex items-center justify-between gap-2 bg-surface px-3 py-2">
+								<span className="font-mono text-[11px] text-text-muted">
+									handled
+								</span>
+								<span className="font-mono text-[11px] font-medium text-text">
+									{latest.handled ? "true" : "false"}
+								</span>
+							</div>
+						</div>
+					) : (
+						<p className="px-1 text-[11px] text-text-subtle">
+							No additional context for this occurrence.
+						</p>
+					)}
+				</section>
+
+				{/* Sanitized payload — copyable, redacted */}
+				{latest ? (
+					<section className="space-y-2">
+						<div className="flex items-center justify-between gap-2">
+							<SectionLabel>Sanitized payload</SectionLabel>
+							<CopyButton
+								value={chainText(latest)}
+								label="sanitized payload"
+								iconOnly
+							/>
+						</div>
+						<pre className="max-h-[260px] overflow-auto whitespace-pre-wrap break-words rounded-[2px] border border-border bg-surface p-3 font-mono text-[11px] leading-relaxed text-text">
+							{chainText(latest)}
+						</pre>
+						<p className="px-1 font-mono text-[11px] leading-relaxed text-text-subtle">
+							Sensitive values redacted before storage. beforeSend cannot
+							recover them.
+						</p>
 					</section>
 				) : null}
 
@@ -501,7 +635,7 @@ export function IssueDetail() {
 				if (!open) navigate(base);
 			}}
 		>
-			<SheetContent className="w-full gap-0 p-0 sm:max-w-[560px]">
+			<SheetContent className="w-full gap-0 p-0 sm:max-w-[760px]">
 				{issue ? (
 					<IssueDetails issue={issue} base={base} />
 				) : listPending ? (
