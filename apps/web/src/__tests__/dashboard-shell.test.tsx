@@ -23,6 +23,10 @@ vi.mock("@/lib/workspace", () => ({
   useWorkspaces: () => ({
     data: [{ id: "ws-1", name: "Acme", slug: "wrk_testws" }],
   }),
+  useSelectedWorkspace: () => ({
+    workspace: { id: "ws-1", name: "Acme", slug: "wrk_testws" },
+    isPending: false,
+  }),
 }));
 
 vi.mock("@/network/queries/useProjectsQuery", () => ({

@@ -20,9 +20,10 @@ import {
 import { cn } from "@/lib/utils";
 import {
 	useActiveWorkspace,
+	useSelectedWorkspace,
 	useWorkspaces,
-	workspaceActions,
 } from "@/lib/workspace";
+import { clearQueryClient, client } from "@/lib/queryClient";
 import { useProjectsQuery } from "@/network/queries/useProjectsQuery";
 import { getInitials } from "@/utils/getInitials";
 import {
@@ -95,9 +96,14 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 	const { data: session } = authClient.useSession();
 	const { data: activeWorkspace } = useActiveWorkspace();
 	const { data: workspaces, isPending: workspacesPending } = useWorkspaces();
+	const { workspace: selectedWorkspace } = useSelectedWorkspace();
 	const projectsQuery = useProjectsQuery();
 
-	const wrkSlug = (activeWorkspace as { slug?: string } | null)?.slug ?? "";
+	// F1: trigger + links scope to the URL-selected workspace, not the refetching active org.
+	const effectiveWorkspace =
+		(selectedWorkspace as { slug?: string; name?: string; id?: string } | null) ??
+		(activeWorkspace as { slug?: string; name?: string; id?: string } | null);
+	const wrkSlug = effectiveWorkspace?.slug ?? "";
 	const pathSegments = pathname.split("/");
 	// URL shape: /workspace/:wrkSlug/projects/:projectSlug/...
 	const urlProjectSlug =
@@ -119,13 +125,14 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 	const project = projectsQuery.data?.find(
 		(entry) => entry.slug === effectiveSlug,
 	);
-	const workspaceName = (activeWorkspace as { name?: string } | null)?.name;
+	const workspaceName = effectiveWorkspace?.name;
 	const allWorkspaces = (workspaces ?? []) as Array<{
 		id: string;
 		name: string;
 		slug: string;
 	}>;
 	const activeWorkspaceId = (activeWorkspace as { id?: string } | null)?.id;
+	const selectedId = selectedWorkspace?.id ?? null;
 	const [newWorkspaceOpen, setNewWorkspaceOpen] = React.useState(false);
 	const [signingOut, setSigningOut] = React.useState(false);
 	const [userMenuOpen, setUserMenuOpen] = React.useState(false);
@@ -147,6 +154,11 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 		setSigningOut(true);
 		try {
 			await authClient.signOut();
+			// F7: clear both in-memory and persisted cache before navigating to sign-in.
+			clearQueryClient(client);
+			window.location.href = "/auth/log-in";
+		} catch {
+			clearQueryClient(client);
 			window.location.href = "/auth/log-in";
 		} finally {
 			setSigningOut(false);
@@ -213,15 +225,14 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 									key={ws.id}
 									className="gap-2"
 									onClick={() => {
-										if (ws.id !== activeWorkspaceId) {
-											void workspaceActions.setActive(ws.id);
+										if (ws.slug !== wrkSlug) {
 											setSelectedWorkspaceSlug(ws.slug);
 											navigate(`/workspace/${ws.slug}/overview`);
 										}
 									}}
 								>
 									<span className="flex-1 truncate">{ws.name}</span>
-									{activeWorkspaceId === ws.id ? (
+									{(selectedId ? selectedId === ws.id : activeWorkspaceId === ws.id) ? (
 										<Check className="size-3.5 text-accent" />
 									) : null}
 								</DropdownMenuItem>

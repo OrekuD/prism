@@ -1,6 +1,13 @@
 import { authClient } from "@/lib/authClient";
 import { Loader2 } from "lucide-react";
 import React from "react";
+import { persistQueryClient } from "@tanstack/react-query-persist-client";
+import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
+import {
+	clearPersistedCache,
+	client,
+	getPersistKey,
+} from "./lib/queryClient";
 import { lazy } from "react";
 import {
 	Navigate,
@@ -40,6 +47,11 @@ const ProjectSummary = lazy(() =>
 const ProjectEvents = lazy(() =>
 	import("./routes/projects/project/events").then((m) => ({
 		default: m.ProjectEvents,
+	})),
+);
+const EventDetail = lazy(() =>
+	import("./routes/projects/project/event-detail").then((m) => ({
+		default: m.EventDetail,
 	})),
 );
 const ProjectRealtime = lazy(() =>
@@ -215,6 +227,7 @@ const router = createBrowserRouter(
 						<Route path=":slug" element={<ProjectLayout />}>
 							<Route path="" element={<ProjectSummary />} />
 							<Route path="events" element={<ProjectEvents />} />
+							<Route path="events/:eventId" element={<EventDetail />} />
 							<Route path="realtime" element={<ProjectRealtime />} />
 							<Route path="people" element={<ProjectPeople />} />
 							<Route path="people/:personId" element={<PersonDetail />} />
@@ -257,6 +270,52 @@ const router = createBrowserRouter(
  * loading state is shown so protected routes never flash or redirect
  * incorrectly.
  */
+function QueryPersistor() {
+	const { data: sessionData } = authClient.useSession();
+	const userId = (sessionData?.user as { id?: string } | undefined)?.id ?? null;
+	const prevUserIdRef = React.useRef<string | null | undefined>(undefined);
+
+	React.useEffect(() => {
+		// F7: user-scoped persistence — clear previous user's cache on account switch / sign-out.
+		const prev = prevUserIdRef.current;
+		if (prev !== undefined && prev !== userId) {
+			if (prev) {
+				clearPersistedCache(getPersistKey(prev));
+			}
+			// Also remove legacy anon key once per session
+			clearPersistedCache("prism-query-cache");
+			if (!userId) {
+				// Signed out — clear in-memory too (prevents flash of previous account's projects)
+				client.clear();
+				clearPersistedCache();
+			}
+		}
+		prevUserIdRef.current = userId;
+
+		// Set up persistence for this user. persistQueryClient is idempotent per key;
+		// re-calling with same key is a no-op, with new key it hydrates that user's snapshot.
+		void persistQueryClient({
+			queryClient: client,
+			persister: createSyncStoragePersister({
+				key: getPersistKey(userId),
+				storage: window.localStorage,
+			}),
+			maxAge: 1000 * 60 * 60 * 24,
+			dehydrateOptions: {
+				shouldDehydrateQuery: (query) => {
+					const key = query.queryKey[0];
+					return (
+						typeof key === "string" &&
+						["projects", "project", "sources", "source"].includes(key)
+					);
+				},
+			},
+		});
+	}, [userId]);
+
+	return null;
+}
+
 export function App() {
 	const { data: sessionData, isPending } = authClient.useSession();
 
@@ -270,5 +329,10 @@ export function App() {
 		);
 	}
 
-	return <RouterProvider router={router} />;
+	return (
+		<>
+			<QueryPersistor />
+			<RouterProvider router={router} />
+		</>
+	);
 }

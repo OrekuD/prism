@@ -126,13 +126,22 @@ function decodeProperties(raw: unknown): Record<string, unknown> | null {
 }
 
 /** v2 event listing (bounded, newest first). */
+/**
+ * Task 16 Events UI: the stored event model surfaced for the dashboard.
+ * Every field is trusted storage (source_id/platform were derived from the
+ * ingestion key at ingestion); identity/context/SDK are nullable because
+ * older rows pre-date those columns.
+ */
 export async function projectEvents(
   client: AnalyticsClient,
   projectId: string,
   limit = 200,
 ): Promise<EventResource[]> {
   const { rows } = await client.execute({
-    sql: `SELECT id, session_id, project_id, name, properties, occurred_at, received_at, schema_version
+    sql: `SELECT id, session_id, project_id, name, type, properties, context,
+                 occurred_at, received_at, schema_version,
+                 anonymous_id, user_id, person_id,
+                 source_id, platform, sdk_name, sdk_version
           FROM events
           WHERE project_id = ?
           ORDER BY received_at DESC, id DESC
@@ -146,10 +155,40 @@ export async function projectEvents(
       : String(row.session_id),
     projectId: String(row.project_id),
     name: String(row.name),
+    type: row.type === null || row.type === undefined ? "track" : String(row.type),
     properties: decodeProperties(row.properties),
+    context: decodeProperties(row.context),
     occurredAt: Number(row.occurred_at),
     receivedAt: Number(row.received_at),
     schemaVersion: Number(row.schema_version),
+    anonymousId:
+      row.anonymous_id === null || row.anonymous_id === undefined
+        ? null
+        : String(row.anonymous_id),
+    userId:
+      row.user_id === null || row.user_id === undefined
+        ? null
+        : String(row.user_id),
+    personId:
+      row.person_id === null || row.person_id === undefined
+        ? null
+        : String(row.person_id),
+    sourceId:
+      row.source_id === null || row.source_id === undefined
+        ? null
+        : String(row.source_id),
+    platform:
+      row.platform === null || row.platform === undefined
+        ? null
+        : String(row.platform),
+    sdkName:
+      row.sdk_name === null || row.sdk_name === undefined
+        ? null
+        : String(row.sdk_name),
+    sdkVersion:
+      row.sdk_version === null || row.sdk_version === undefined
+        ? null
+        : String(row.sdk_version),
   }));
 }
 

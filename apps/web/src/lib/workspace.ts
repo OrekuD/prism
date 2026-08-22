@@ -10,6 +10,7 @@
  * method on `authClient.organization.*` and is wrapped here.
  */
 import { authClient } from "./authClient";
+import { useParams } from "react-router-dom";
 
 export type Workspace = {
   id: string;
@@ -120,6 +121,32 @@ export function useCurrentWorkspace(): {
         ((workspaces?.[0] as Workspace | undefined) ?? null)),
     isLoading: workspacesPending || activePending,
   };
+}
+
+/** F1/F3: URL-resolved workspace — the route slug + org list, not the
+ * refetching activeOrganization. The shell renders this immediately; the
+ * session's activeOrganizationId is only the persisted preference. */
+export function useSelectedWorkspace(): {
+  workspace: Workspace | null;
+  isPending: boolean;
+} {
+  const { wrkSlug } = useParams();
+  const { data: workspaces, isPending } = useWorkspaces();
+  const list = (workspaces ?? []) as Workspace[];
+  const workspace = wrkSlug ? (list.find((w) => w.slug === wrkSlug) ?? null) : null;
+  return { workspace, isPending };
+}
+
+// F2: single-flight coordinator for setActive — dedup by target id.
+const pendingSetActive = new Set<string>();
+export async function setActiveOnce(organizationId: string): Promise<void> {
+  if (pendingSetActive.has(organizationId)) return;
+  pendingSetActive.add(organizationId);
+  try {
+    await workspaceActions.setActive(organizationId);
+  } finally {
+    pendingSetActive.delete(organizationId);
+  }
 }
 
 /**

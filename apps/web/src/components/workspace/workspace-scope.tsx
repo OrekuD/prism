@@ -1,10 +1,11 @@
 import React from "react";
 import { Navigate, Outlet, useParams } from "react-router-dom";
 import {
+  setActiveOnce,
   useActiveWorkspace,
   useWorkspaces,
-  workspaceActions,
 } from "@/lib/workspace";
+import { toast } from "sonner";
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (
@@ -64,18 +65,28 @@ export function WorkspaceScope() {
   const list = (workspaces ?? []) as Array<{ id: string; slug: string }>;
   const workspace = list.find((w) => w.slug === wrkSlug);
   const activeId = (active as { id?: string } | null)?.id;
+  const activeSlug = (active as { slug?: string } | null)?.slug;
+  const prevSlugRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
-    // On a fresh page load (refresh) the session's active workspace is
-    // briefly pending — deciding here would kick the user off their current
-    // page. Wait for both the list and the active workspace to resolve.
     if (workspacesPending || activePending) return;
-    if (!workspace || activeId === workspace.id) return;
-    // The URL points at a workspace the session hasn't adopted yet → adopt
-    // it in place. The URL is the source of truth, so we stay on the
-    // current path (no redirect to overview).
-    void workspaceActions.setActive(workspace.id).catch(() => {});
-  }, [workspace?.id, activeId, workspacesPending, activePending]);
+    if (!workspace || activeId === workspace.id) {
+      if (workspace) prevSlugRef.current = workspace.slug;
+      return;
+    }
+    // F2: single coordinator — dedup by target id, rollback on failure.
+    const targetId = workspace.id;
+    const previousSlug = prevSlugRef.current ?? activeSlug ?? null;
+    prevSlugRef.current = workspace.slug;
+    void setActiveOnce(targetId).catch(() => {
+      toast.error("Could not switch workspace — please try again.");
+      if (previousSlug && previousSlug !== workspace.slug) {
+        window.history.replaceState(null, "", `/workspace/${previousSlug}/overview`);
+        // Hard reload to ensure query scoping returns to previous workspace
+        window.location.reload();
+      }
+    });
+  }, [workspace?.id, activeId, activeSlug, workspacesPending, activePending]);
 
   // While workspaces are still loading, render immediately — the pages and
   // sidebar show their own skeletons. Only redirect a definitively-unknown

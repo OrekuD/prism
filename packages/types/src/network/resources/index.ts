@@ -61,19 +61,33 @@ export type SessionResource = {
  * v2 event resource: properties are DECODED at the API boundary into a
  * typed JSON value (never a JSON string the dashboard prints verbatim).
  *
- * @deprecated Use EventListItemResource / EventDetailResource instead.
- * Kept until every API and web consumer migrates to the canonical
- * list/detail contracts (Task 16 slice 1).
+ * Task 16 Events UI: carries the trusted stored fields (type, source,
+ * platform, identity, SDK) so the dashboard can render source attribution
+ * without reconstructing it from properties. `source` is hydrated by the
+ * product API from Postgres; the analytics-store row only has source_id.
  */
 export type EventResource = {
 	id: string;
 	sessionId: string | null;
 	projectId: string;
 	name: string;
+	/** Envelope event type — currently always "track". */
+	type?: string;
 	properties: Record<string, unknown> | null;
+	context?: Record<string, unknown> | null;
 	occurredAt: number;
 	receivedAt: number;
 	schemaVersion: number;
+	anonymousId?: string | null;
+	userId?: string | null;
+	personId?: string | null;
+	/** Trusted — derived from the ingestion key's source, never client payload. */
+	sourceId?: string | null;
+	platform?: string | null;
+	sdkName?: string | null;
+	sdkVersion?: string | null;
+	/** Hydrated source attribution (pre-archive interim shape until slice 2 adds status). */
+	source?: { id: string; name: string; platform: string } | null;
 };
 
 // ---------------------------------------------------------------------------

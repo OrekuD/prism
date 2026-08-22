@@ -122,7 +122,7 @@ function UsageMetric({
 export function Overview() {
   const { wrkSlug } = useParams<{ wrkSlug: string }>();
   const { data: sessionData } = authClient.useSession();
-  const { data: projects, isLoading } = useProjectsQuery();
+  const { data: projects, isLoading } = useProjectsQuery({ includeSummary: true });
   const totalsQuery = useWorkspaceTotals(projects);
   const sessionSeries = useSessionSeries(projects);
 

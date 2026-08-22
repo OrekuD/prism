@@ -36,19 +36,19 @@ export class ProjectsController {
    * organization — never the client's word alone. Any member may list.
    */
   public static async listProjects(ctx: Context<HonoConfig>) {
+    const t0 = Date.now();
     const user = ctx.get("user");
     if (!user) {
       return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
     }
     const organizationId = ctx.req.query("organizationId") ?? "";
 
-    if (
-      !(await getWorkspaceRole(ctx, user.id, organizationId))
-    ) {
+    if (!(await getWorkspaceRole(ctx, user.id, organizationId))) {
       // Non-disclosing: same response for unknown and unauthorized orgs.
       return ctx.json(new ErrorResponse("organization_not_found").toJSON(), 404);
     }
 
+    const tAuth = Date.now();
     const db = DatabaseManager.getInstance(ctx);
     const projects = (await db`
       SELECT id, name, slug FROM projects
@@ -58,11 +58,30 @@ export class ProjectsController {
       name: string;
       slug: string;
     }>;
+    const tPg = Date.now();
+
+    // F9: directory is lightweight by default — sidebar only needs id/name/slug.
+    // Summaries are an explicit opt-in for the workspace overview sparkline.
+    const includeSummary = ctx.req.query("includeSummary") === "true";
+    if (!includeSummary) {
+      ctx.header("Server-Timing", `auth;dur=${tAuth - t0}, pg;dur=${tPg - tAuth}`);
+      return ctx.json(
+        projects.map((project) => ({
+          ...project,
+          summary: [] as Array<{ date: string; desktop: number; mobile: number }>,
+        })),
+      );
+    }
 
     const summaries = await dailySessionSummary(
       TursoDatabaseManager.getInstance(ctx),
       projects.map((project) => project.id),
       Date.now() - 7 * 86_400_000,
+    );
+    const tTurso = Date.now();
+    ctx.header(
+      "Server-Timing",
+      `auth;dur=${tAuth - t0}, pg;dur=${tPg - tAuth}, turso;dur=${tTurso - tPg}`,
     );
 
     return ctx.json(
@@ -238,13 +257,34 @@ export class ProjectsController {
     }
 
     // v2 event listing (task-9 slice 6): bounded query, properties
-    // decoded into typed JSON values at this boundary.
+    // decoded into typed JSON values at this boundary. Task 16 Events UI:
+    // trusted source attribution (id/name/platform) is hydrated ONCE per
+    // response from the product database — never one query per event.
     const events = await projectEvents(
       TursoDatabaseManager.getInstance(ctx),
       project[0].id,
     );
 
-    return ctx.json(events satisfies Array<EventResource>);
+    const db = DatabaseManager.getInstance(ctx);
+    const sources = (await db`
+      SELECT id, name, platform FROM project_sources
+      WHERE project_id = ${project[0].id}`) as Array<{
+      id: string;
+      name: string;
+      platform: string;
+    }>;
+    const byId = new Map(sources.map((s) => [s.id, s]));
+
+    return ctx.json(
+      events.map((event) => {
+        if (!event.sourceId) return { ...event, source: null };
+        const s = byId.get(event.sourceId);
+        return {
+          ...event,
+          source: s ? { id: s.id, name: s.name, platform: s.platform } : null,
+        };
+      }),
+    );
   }
 
   public static async getProjectBySlug(ctx: Context<HonoConfig>) {

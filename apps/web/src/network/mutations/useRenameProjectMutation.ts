@@ -1,6 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { axiosInstance } from "@/utils/axiosInstance";
 import { toast } from "sonner";
+import { useSelectedWorkspace } from "@/lib/workspace";
+import { projectsQueryKey } from "@/network/queries/useProjectsQuery";
 import type {
   ErrorResource,
   OkResource,
@@ -23,6 +25,7 @@ async function renameProject(payload: RenameProjectRequest & { projectId: string
 
 export function useRenameProjectMutation(slug: string | undefined) {
   const queryClient = useQueryClient();
+  const { workspace: selected } = useSelectedWorkspace();
 
   return useMutation({
     mutationFn: renameProject,
@@ -37,12 +40,15 @@ export function useRenameProjectMutation(slug: string | undefined) {
       queryClient.setQueryData<ProjectResource>(["project", slug], (project) =>
         project ? renamed(project) : project,
       );
-      queryClient.setQueriesData<Array<ProjectResource> | undefined>(
-        { queryKey: ["projects"] },
-        (current) => current?.map(renamed),
-      );
+      for (const withSummary of [false, true] as const) {
+        const key = projectsQueryKey(selected?.id, withSummary || undefined);
+        queryClient.setQueriesData<Array<ProjectResource> | undefined>(
+          { queryKey: key },
+          (current) => current?.map(renamed),
+        );
+        queryClient.invalidateQueries({ queryKey: key });
+      }
       queryClient.invalidateQueries({ queryKey: ["project", slug] });
-      queryClient.invalidateQueries({ queryKey: ["projects"] });
     },
     onError: (error: AxiosError<ErrorResource>) => {
       toast(

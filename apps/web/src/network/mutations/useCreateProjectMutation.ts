@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { axiosInstance } from "@/utils/axiosInstance";
 import { toast } from "sonner";
+import { projectsQueryKey } from "@/network/queries/useProjectsQuery";
 import type {
   CreateProjectRequest,
   ErrorResource,
@@ -28,12 +29,20 @@ export function useCreateProjectMutation() {
       toast("Project created successfully");
       // The response IS the created project — append it to its workspace's
       // list cache immediately; the background invalidation keeps truth.
+      // F8: update only owning workspace's directory; also invalidate the summary variant
       queryClient.setQueryData<ProjectResource[]>(
-        ["projects", variables.organizationId],
+        projectsQueryKey(variables.organizationId),
+        (list) => (list ? [...list, created] : list),
+      );
+      queryClient.setQueryData<ProjectResource[]>(
+        projectsQueryKey(variables.organizationId, true),
         (list) => (list ? [...list, created] : list),
       );
       void queryClient.invalidateQueries({
-        queryKey: ["projects", variables.organizationId],
+        queryKey: projectsQueryKey(variables.organizationId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: projectsQueryKey(variables.organizationId, true),
       });
     },
     onError: (error: AxiosError<ErrorResource>) => {

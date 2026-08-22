@@ -1,118 +1,659 @@
+import type { ColumnDef, Row } from "@tanstack/react-table";
+import {
+	getCoreRowModel,
+	getFilteredRowModel,
+	getPaginationRowModel,
+	useReactTable,
+} from "@tanstack/react-table";
+import { Search } from "lucide-react";
 import React from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import {
+	Outlet,
+	useNavigate,
+	useParams,
+	useSearchParams,
+} from "react-router-dom";
+
+import { Frame, SectionLabel } from "@/components/public/frame";
 import { PageHeader } from "@/components/public/page-header";
+import { Button } from "@/components/ui/button";
+import { DataTablePagination } from "@/components/ui/data-pagination";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EmptyState } from "@/components/ui/empty-state";
-import { ErrorState } from "@/components/ui/error-state";
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from "@/components/ui/table";
+import {
+	FAMILY_DESCRIPTIONS,
+	FAMILY_LABELS,
+	type PlatformFamily,
+	agoLabel,
+	clockLabel,
+	platformDotClass,
+	platformFamily,
+} from "@/lib/events";
+import { cn } from "@/lib/utils";
 import { useProjectEventsQuery } from "@/network/queries/useProjectEventsQuery";
+import { useSourcesQuery } from "@/network/queries/useSourcesQuery";
+import type { EventResource } from "@prism-analytics/types";
 
-const VITE_DOCS_URL: string =
-  import.meta.env.VITE_DOCS_URL ?? "http://localhost:3000";
-import { useParams } from "react-router-dom";
+const fmt = new Intl.NumberFormat();
 
-function formatTime(value: number) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleString();
+type TypeFilter = "all" | PlatformFamily;
+
+/** Family → exact platform values it expands to (v2 filter semantics). */
+function familyOf(event: EventResource): PlatformFamily | null {
+	const platform = event.platform ?? event.source?.platform ?? null;
+	return platform ? platformFamily(platform) : null;
+}
+
+function SourceCell({ event }: { event: EventResource }) {
+	const source = event.source;
+	if (!source) {
+		return <span className="font-mono text-[11px] text-text-subtle">—</span>;
+	}
+	return (
+		<div className="flex min-w-0 items-center gap-2">
+			<span
+				className={cn(
+					"size-[7px] shrink-0 rounded-full",
+					platformDotClass(source.platform),
+				)}
+				aria-hidden="true"
+			/>
+			<b className="whitespace-nowrap font-mono text-[12px] font-medium text-text">
+				{source.name}
+			</b>
+			<span className="whitespace-nowrap font-mono text-[11px] text-text-subtle">
+				· {source.platform}
+			</span>
+		</div>
+	);
+}
+
+function PersonCell({ event }: { event: EventResource }) {
+	if (event.userId) {
+		return (
+			<span className="block max-w-[140px] truncate font-mono text-[12px] text-text">
+				{event.userId}
+			</span>
+		);
+	}
+	if (event.personId) {
+		return (
+			<span
+				className="block max-w-[140px] truncate font-mono text-[12px] text-text-muted"
+				title={event.anonymousId ?? undefined}
+			>
+				{event.personId.slice(0, 10)}…
+			</span>
+		);
+	}
+	return (
+		<span className="font-mono text-[12px] text-text-muted">Anonymous</span>
+	);
 }
 
 export function ProjectEvents() {
-  const { slug } = useParams<{ slug: string }>();
-  const { data, isLoading, isError, refetch } = useProjectEventsQuery(slug);
+	const { slug, wrkSlug } = useParams<{ slug: string; wrkSlug: string }>();
+	const navigate = useNavigate();
+	// URL is the source of truth for filters (same pattern as Errors).
+	const [searchParams, setSearchParams] = useSearchParams();
+	const q = searchParams.get("q") ?? "";
+	const type = (searchParams.get("type") ?? "all") as TypeFilter;
+	const sourceId = searchParams.get("source") ?? "all";
+	const person = searchParams.get("person") ?? "";
+	const session = searchParams.get("session") ?? "";
+	const searchTimer = React.useRef<number | null>(null);
 
-  return (
-    <div className="grid gap-6">
-      <PageHeader
-        title="Events"
-        description="Named events captured by the Prism SDK on this project."
-      />
-      <Card>
-        <CardContent>
-          {isLoading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-8 w-full" />
-              <Skeleton className="h-8 w-full" />
-              <Skeleton className="h-8 w-full" />
-            </div>
-          ) : isError ? (
-            <ErrorState
-              title="Could not load events"
-              description="Prism could not reach the events store. Check your connection and try again."
-              onRetry={() => refetch()}
-            />
-          ) : data && data.length > 0 ? (
-            <div className="border border-border">
-              <table className="w-full text-[13px]">
-                <thead>
-                  <tr className="border-b border-border text-text-subtle">
-                    <th className="px-4 py-2.5 text-left font-mono text-[11px] font-medium uppercase tracking-[0.09em]">
-                      Event
-                    </th>
-                    <th className="px-4 py-2.5 text-left font-mono text-[11px] font-medium uppercase tracking-[0.09em]">
-                      Session
-                    </th>
-                    <th className="px-4 py-2.5 text-left font-mono text-[11px] font-medium uppercase tracking-[0.09em]">
-                      Data
-                    </th>
-                    <th className="px-4 py-2.5 text-right font-mono text-[11px] font-medium uppercase tracking-[0.09em]">
-                      Time
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.map((event) => (
-                    <tr
-                      key={event.id}
-                      className="border-b border-border last:border-0 hover:bg-surface-hover"
-                    >
-                      <td className="px-4 py-3 font-mono text-[13px] text-text">
-                        {event.name}
-                      </td>
-                      <td className="px-4 py-3 text-text-muted">
-                        {event.sessionId ? (
-                          <code className="text-xs">
-                            {event.sessionId.slice(0, 8)}…
-                          </code>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td className="max-w-[220px] truncate px-4 py-3 text-text-muted">
-                        {event.properties ? (
-                          <code className="text-xs">
-                            {JSON.stringify(event.properties)}
-                          </code>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right font-mono text-[12px] tabular-nums text-text-muted">
-                        {formatTime(event.occurredAt)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <EmptyState
-              label="No events"
-              title="No events yet"
-              description={
-                'Log events from your site, app or server with prism.track("name", { … }) using the project key, then watch them appear here.'
-              }
-              action={
-                <a
-                  href={`${VITE_DOCS_URL}/docs/tracking/web/javascript-browser`}
-                  className="text-[13px] font-medium text-link transition-colors duration-150 hover:underline"
-                >
-                  Read the SDK reference
-                </a>
-              }
-            />
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  );
+	const updateFilter = (patch: Record<string, string | null>): void => {
+		const next = new URLSearchParams(searchParams);
+		for (const [key, value] of Object.entries(patch)) {
+			if (value === null || value === "" || value === "all") {
+				next.delete(key);
+			} else {
+				next.set(key, value);
+			}
+		}
+		setSearchParams(next, { replace: true });
+	};
+
+	const { data, isLoading, isError, refetch } = useProjectEventsQuery(slug);
+	const sourcesQuery = useSourcesQuery(slug);
+	const events = React.useMemo(() => data ?? [], [data]);
+
+	const hasActiveFilter =
+		q.trim() !== "" ||
+		type !== "all" ||
+		sourceId !== "all" ||
+		person.trim() !== "" ||
+		session.trim() !== "";
+
+	// Pre-filter outside TanStack (typed URL-backed filters); the table owns
+	// pagination + the global text search over name/identity columns.
+	const filteredData = React.useMemo(() => {
+		const personNeedle = person.trim().toLowerCase();
+		const sessionNeedle = session.trim().toLowerCase();
+		let rows = events;
+		if (type !== "all") {
+			rows = rows.filter((event) => familyOf(event) === type);
+		}
+		if (sourceId !== "all") {
+			rows = rows.filter((event) => event.source?.id === sourceId);
+		}
+		if (personNeedle) {
+			rows = rows.filter((event) =>
+				[event.userId, event.anonymousId, event.personId]
+					.filter(Boolean)
+					.join(" ")
+					.toLowerCase()
+					.includes(personNeedle),
+			);
+		}
+		if (sessionNeedle) {
+			rows = rows.filter((event) =>
+				(event.sessionId ?? "").toLowerCase().includes(sessionNeedle),
+			);
+		}
+		return rows;
+	}, [events, type, sourceId, person, session]);
+
+	// Breakdown over the same base minus its own drill-down dimension.
+	const breakdownBase = React.useMemo(() => {
+		const personNeedle = person.trim().toLowerCase();
+		const sessionNeedle = session.trim().toLowerCase();
+		const qNeedle = q.trim().toLowerCase();
+		let rows = events;
+		if (qNeedle) {
+			rows = rows.filter((event) => event.name.toLowerCase().includes(qNeedle));
+		}
+		if (personNeedle) {
+			rows = rows.filter((event) =>
+				[event.userId, event.anonymousId, event.personId]
+					.filter(Boolean)
+					.join(" ")
+					.toLowerCase()
+					.includes(personNeedle),
+			);
+		}
+		if (sessionNeedle) {
+			rows = rows.filter((event) =>
+				(event.sessionId ?? "").toLowerCase().includes(sessionNeedle),
+			);
+		}
+		return rows;
+	}, [events, q, person, session]);
+
+	const openEvent = React.useCallback(
+		(row: Row<EventResource>) => {
+			navigate(
+				`/workspace/${wrkSlug ?? ""}/projects/${slug ?? ""}/events/${row.original.id}`,
+			);
+		},
+		[navigate, slug, wrkSlug],
+	);
+
+	const columns = React.useMemo<ColumnDef<EventResource>[]>(() => {
+		const onOpen = openEvent;
+		const eventColumn: ColumnDef<EventResource> = {
+			id: "name",
+			accessorFn: (row) => row.name,
+			header: "Event",
+			filterFn: "includesString",
+			cell: ({ row }) => {
+				const event = row.original;
+				const propEntries = Object.entries(event.properties ?? {});
+				const firstProp = propEntries[0];
+				return (
+					<div className="min-w-0 py-0.5">
+						<button
+							type="button"
+							onClick={(e) => {
+								e.stopPropagation();
+								onOpen(row);
+							}}
+							className="block max-w-[240px] cursor-pointer truncate rounded-[2px] text-left font-mono text-[13px] text-text hover:text-link hover:underline focus-visible:outline-2 focus-visible:outline-focus"
+							title={`Open ${event.name}`}
+						>
+							{event.name}
+						</button>
+						{firstProp ? (
+							<div className="mt-0.5 max-w-[240px] truncate font-mono text-[11px] text-text-subtle">
+								{firstProp[0]}: {String(firstProp[1]).slice(0, 40)}
+								{propEntries.length > 1 ? ` · +${propEntries.length - 1}` : ""}
+							</div>
+						) : null}
+						{event.sdkName ? (
+							<div className="mt-0.5 max-w-[240px] truncate font-mono text-[11px] text-text-subtle">
+								{event.sdkName.split("/").pop()} {event.sdkVersion ?? ""} · v
+								{event.schemaVersion}
+							</div>
+						) : null}
+					</div>
+				);
+			},
+		};
+		const sourceColumn: ColumnDef<EventResource> = {
+			id: "source",
+			accessorFn: (row) =>
+				row.source ? `${row.source.name} ${row.source.platform}` : "",
+			header: "Source",
+			filterFn: "includesString",
+			cell: ({ row }) => <SourceCell event={row.original} />,
+		};
+		const personColumn: ColumnDef<EventResource> = {
+			id: "person",
+			accessorFn: (row) =>
+				[row.userId, row.anonymousId, row.personId].filter(Boolean).join(" "),
+			header: "Person",
+			filterFn: "includesString",
+			cell: ({ row }) => <PersonCell event={row.original} />,
+		};
+		const sessionColumn: ColumnDef<EventResource> = {
+			id: "session",
+			accessorFn: (row) => row.sessionId ?? "",
+			header: "Session",
+			filterFn: "includesString",
+			cell: ({ row }) =>
+				row.original.sessionId ? (
+					<span
+						className="block max-w-[110px] truncate font-mono text-[12px] text-text-muted"
+						title={row.original.sessionId}
+					>
+						{row.original.sessionId.slice(0, 8)}…
+					</span>
+				) : (
+					<span className="font-mono text-[12px] text-text-subtle">—</span>
+				),
+		};
+		const timeColumn: ColumnDef<EventResource> = {
+			id: "time",
+			accessorFn: (row) => row.occurredAt,
+			header: () => <div className="text-right">Time</div>,
+			cell: ({ row }) => (
+				<div className="whitespace-nowrap text-right">
+					<div className="font-mono text-[12px] leading-[1.4] text-text-muted">
+						{agoLabel(row.original.occurredAt)}
+					</div>
+					<div className="font-mono text-[11px] text-text-subtle">
+						{clockLabel(row.original.occurredAt)}
+					</div>
+				</div>
+			),
+		};
+		return [eventColumn, sourceColumn, personColumn, sessionColumn, timeColumn];
+	}, [openEvent]);
+
+	const globalFilter = q.trim();
+
+	const table = useReactTable({
+		data: filteredData,
+		columns,
+		state: { globalFilter },
+		getCoreRowModel: getCoreRowModel(),
+		getFilteredRowModel: getFilteredRowModel(),
+		getPaginationRowModel: getPaginationRowModel(),
+		initialState: { pagination: { pageSize: 50 } },
+		autoResetPageIndex: true,
+	});
+
+	// Breakdown card models.
+	interface BreakdownCard {
+		key: string;
+		label: string;
+		description: string;
+		dotClass: string;
+		count: number;
+		active: boolean;
+	}
+	let cards: BreakdownCard[] = [];
+	if (type === "all") {
+		const families: PlatformFamily[] = ["web", "mobile", "server"];
+		const present = new Set(
+			breakdownBase.map(familyOf).filter(Boolean) as PlatformFamily[],
+		);
+		cards = families
+			.filter((f) => present.has(f))
+			.map((f) => ({
+				key: f,
+				label: FAMILY_LABELS[f],
+				description: FAMILY_DESCRIPTIONS[f],
+				dotClass:
+					f === "web"
+						? "bg-info"
+						: f === "server"
+							? "bg-text-subtle"
+							: "bg-warning",
+				count: breakdownBase.filter((e) => familyOf(e) === f).length,
+				active: false,
+			}));
+	} else {
+		const bySource = new Map<string, number>();
+		for (const event of breakdownBase) {
+			if (familyOf(event) !== type) continue;
+			const id = event.source?.id;
+			if (!id) continue;
+			bySource.set(id, (bySource.get(id) ?? 0) + 1);
+		}
+		cards = [...bySource.entries()]
+			.sort((a, b) => b[1] - a[1])
+			.map(([id, count]) => {
+				const s = (sourcesQuery.data ?? []).find((src) => src.id === id);
+				return {
+					key: id,
+					label: s?.name ?? id.slice(0, 12),
+					description: s?.platform ?? "",
+					dotClass: platformDotClass(s?.platform ?? ""),
+					count,
+					active: sourceId === id,
+				};
+			});
+	}
+	const breakdownTotal = cards.reduce((sum, c) => sum + c.count, 0);
+	const maxCount = Math.max(1, ...cards.map((c) => c.count));
+
+	const sourceOptions = (sourcesQuery.data ?? []).filter((s) => {
+		if (type === "all") return true;
+		return platformFamily(s.platform) === type;
+	});
+
+	return (
+		<div className="flex flex-1 flex-col">
+			<PageHeader
+				title="Events"
+				description={`Trusted event stream · ${fmt.format(filteredData.length)} events${
+					type === "all" ? "" : ` · ${FAMILY_LABELS[type]}`
+				}.`}
+			/>
+
+			{/* By source type — trusted platform stored at ingestion */}
+			<div className="mt-6 flex items-center justify-between gap-3">
+				<SectionLabel>By source type</SectionLabel>
+				<span className="font-mono text-[11px] text-text-subtle">
+					{fmt.format(breakdownTotal)} events in query
+				</span>
+			</div>
+			<p className="mt-1 text-[11px] leading-[1.5] text-text-subtle">
+				Grouped by trusted <span className="font-mono">platform</span> stored at
+				ingestion (key → source → platform). Web includes React web apps — use
+				the source name for the exact installation.
+			</p>
+			{isLoading ? (
+				<div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+					{[0, 1, 2].map((i) => (
+						<Frame key={i} className="p-4 pt-5">
+							<Skeleton className="h-[12px] w-1/2" />
+							<Skeleton className="mt-3 h-[24px] w-2/3" />
+						</Frame>
+					))}
+				</div>
+			) : cards.length > 0 ? (
+				<div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+					{cards.map((card) => (
+						<button
+							key={card.key}
+							type="button"
+							aria-pressed={card.active}
+							onClick={() =>
+								type === "all"
+									? updateFilter({ type: card.key })
+									: updateFilter({ source: card.active ? null : card.key })
+							}
+							className={cn(
+								"flex min-h-[104px] cursor-pointer flex-col gap-2 rounded-[2px] border border-border bg-surface p-4 text-left transition-colors hover:border-border-strong hover:bg-surface-hover",
+								card.active && "border-accent bg-accent-soft",
+							)}
+						>
+							<span className="flex items-center gap-2">
+								<span
+									className={cn("size-[7px] rounded-full", card.dotClass)}
+									aria-hidden="true"
+								/>
+								<span className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-muted">
+									{card.label}
+								</span>
+								<span className="ml-auto font-mono text-[11px] text-text-subtle">
+									{card.description}
+								</span>
+							</span>
+							<span className="flex items-baseline gap-1.5">
+								<span className="font-mono text-[20px] font-[600] tracking-[-0.02em] text-text tabular-nums">
+									{fmt.format(card.count)}
+								</span>
+								<span className="font-mono text-[11px] text-text-subtle">
+									{breakdownTotal
+										? `${Math.round((card.count / breakdownTotal) * 100)}%`
+										: "0%"}
+								</span>
+							</span>
+							<span className="block h-[3px] overflow-hidden rounded-[2px] bg-border">
+								<span
+									className="block h-full bg-accent"
+									style={{
+										width: `${Math.round((card.count / maxCount) * 100)}%`,
+									}}
+								/>
+							</span>
+						</button>
+					))}
+				</div>
+			) : null}
+
+			{/* Filters */}
+			<div className="mb-3 mt-6 flex flex-wrap items-center gap-2.5">
+				<div className="relative min-w-[220px] flex-1">
+					<Search
+						className="pointer-events-none absolute left-2.5 top-1/2 size-[15px] -translate-y-1/2 text-text-subtle"
+						aria-hidden="true"
+					/>
+					<input
+						type="search"
+						defaultValue={q}
+						placeholder="Filter by event name, source or person"
+						aria-label="Search events"
+						onChange={(e) => {
+							const value = e.target.value;
+							if (searchTimer.current) window.clearTimeout(searchTimer.current);
+							searchTimer.current = window.setTimeout(() => {
+								updateFilter({ q: value || null });
+							}, 250);
+						}}
+						className="h-[34px] w-full rounded-[2px] border border-border-strong bg-surface pl-8 pr-3 font-mono text-[13px] text-text placeholder:text-text-subtle focus-visible:outline-2 focus-visible:outline-focus"
+					/>
+				</div>
+				<Select
+					value={type}
+					onValueChange={(value) =>
+						updateFilter({
+							type: value === "all" ? null : value,
+							source: null,
+						})
+					}
+				>
+					<SelectTrigger className="h-[34px] w-[170px] font-mono text-[13px]">
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value="all">All source types</SelectItem>
+						<SelectItem value="web">Web</SelectItem>
+						<SelectItem value="mobile">Mobile</SelectItem>
+						<SelectItem value="server">Server</SelectItem>
+					</SelectContent>
+				</Select>
+				<Select
+					value={sourceId}
+					onValueChange={(value) =>
+						updateFilter({ source: value === "all" ? null : value })
+					}
+				>
+					<SelectTrigger className="h-[34px] w-[190px] font-mono text-[13px]">
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value="all">All sources</SelectItem>
+						{sourceOptions.map((s) => (
+							<SelectItem key={s.id} value={s.id}>
+								{s.name}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+				<input
+					type="search"
+					defaultValue={person}
+					placeholder="Person · user or anon"
+					aria-label="Filter by person"
+					onChange={(e) => {
+						const value = e.target.value;
+						if (searchTimer.current) window.clearTimeout(searchTimer.current);
+						searchTimer.current = window.setTimeout(() => {
+							updateFilter({ person: value || null });
+						}, 250);
+					}}
+					className="h-[34px] w-[180px] rounded-[2px] border border-border-strong bg-surface px-3 font-mono text-[13px] text-text placeholder:text-text-subtle focus-visible:outline-2 focus-visible:outline-focus"
+				/>
+				<input
+					type="search"
+					defaultValue={session}
+					placeholder="Session"
+					aria-label="Filter by session"
+					onChange={(e) => {
+						const value = e.target.value;
+						if (searchTimer.current) window.clearTimeout(searchTimer.current);
+						searchTimer.current = window.setTimeout(() => {
+							updateFilter({ session: value || null });
+						}, 250);
+					}}
+					className="h-[34px] w-[160px] rounded-[2px] border border-border-strong bg-surface px-3 font-mono text-[13px] text-text placeholder:text-text-subtle focus-visible:outline-2 focus-visible:outline-focus"
+				/>
+				<Button
+					variant="ghost"
+					size="sm"
+					onClick={() =>
+						updateFilter({
+							q: null,
+							type: null,
+							source: null,
+							person: null,
+							session: null,
+						})
+					}
+					disabled={!hasActiveFilter}
+				>
+					Clear filters
+				</Button>
+			</div>
+
+			{isLoading ? (
+				<div className="space-y-2">
+					<Skeleton className="h-9 w-full" />
+					<Skeleton className="h-9 w-full" />
+					<Skeleton className="h-9 w-full" />
+					<Skeleton className="h-9 w-full" />
+				</div>
+			) : isError ? (
+				<Frame className="p-6">
+					<p className="text-[13px] text-text-muted">Could not load events.</p>
+					<Button variant="outline" size="sm" onClick={() => refetch()}>
+						Retry
+					</Button>
+				</Frame>
+			) : table.getRowModel().rows.length > 0 ? (
+				<>
+					<div className="rounded-[2px] border border-border">
+						<Table aria-label="Events">
+							<TableHeader>
+								{table.getHeaderGroups().map((headerGroup) => (
+									<TableRow key={headerGroup.id}>
+										{headerGroup.headers.map((header) => (
+											<TableHead key={header.id}>
+												{header.isPlaceholder
+													? null
+													: typeof header.column.columnDef.header === "function"
+														? header.column.columnDef.header(
+																header.getContext(),
+															)
+														: header.column.columnDef.header}
+											</TableHead>
+										))}
+									</TableRow>
+								))}
+							</TableHeader>
+							<TableBody>
+								{table.getRowModel().rows.map((row) => (
+									<TableRow
+										key={row.id}
+										onClick={() => openEvent(row)}
+										className="cursor-pointer align-top"
+									>
+										{row.getVisibleCells().map((cell) => (
+											<TableCell key={cell.id}>
+												{typeof cell.column.columnDef.cell === "function"
+													? cell.column.columnDef.cell(cell.getContext())
+													: cell.getValue()}
+											</TableCell>
+										))}
+									</TableRow>
+								))}
+							</TableBody>
+						</Table>
+					</div>
+					<DataTablePagination table={table} totalRows={events.length} />
+				</>
+			) : (
+				<Frame className="p-6">
+					<h3 className="text-[15px] font-semibold tracking-[-0.01em]">
+						{hasActiveFilter || q.trim()
+							? "No events match these filters."
+							: events.length === 0
+								? "No events yet"
+								: "No matching events"}
+					</h3>
+					<p className="mt-1.5 text-[13px] text-text-muted">
+						{hasActiveFilter || q.trim()
+							? "Try a different query or clear the filters."
+							: 'Log events from your site, app or server with prism.track("name", { … }) using the project key.'}
+					</p>
+					{hasActiveFilter || q.trim() ? (
+						<Button
+							variant="outline"
+							size="sm"
+							className="mt-3"
+							onClick={() =>
+								updateFilter({
+									q: null,
+									type: null,
+									source: null,
+									person: null,
+									session: null,
+								})
+							}
+						>
+							Clear filters
+						</Button>
+					) : null}
+				</Frame>
+			)}
+
+			<p className="mt-3 font-mono text-[11px] leading-[1.5] text-text-subtle">
+				Source attribution is trusted from the ingestion key and cannot be
+				spoofed. Client-supplied source or platform fields are ignored at
+				ingestion.
+			</p>
+
+			{/* Detail sheet renders here when an event is open */}
+			<Outlet />
+		</div>
+	);
 }
