@@ -4,7 +4,7 @@ export default defineConfig({
   test: {
     coverage: {
       provider: "v8",
-      include: ["src/**/*.ts"],
+      include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
       exclude: [
         "src/__tests__/**",
         "src/models/**", // type-only definitions

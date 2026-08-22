@@ -28,6 +28,8 @@ import {
   getWorkspaceRole,
   isAdminRole,
 } from "../utils/workspaceAuth";
+import { PAGE_VIEW_LIMITS } from "@prism-analytics/core";
+import { loadWebAnalytics } from "../utils/webAnalyticsLoader";
 
 export class ProjectsController {
   /**
@@ -219,6 +221,119 @@ export class ProjectsController {
     }
 
     return ctx.json(new OkResponse().toJSON());
+  }
+
+  /**
+   * GET /projects/:slug/web-analytics (Task 17 slice 5): the bounded,
+   * authorized page-analytics read model. Membership is verified through
+   * the project exactly like every other read; requested sources must
+   * belong to the project AND carry the trusted `web` platform; the range
+   * ceiling is the frozen 13 months.
+   */
+  public static async getWebAnalytics(ctx: Context<HonoConfig>) {
+    const slug = ctx.req.param("slug");
+    if (!slug) {
+      return ctx.json(new ErrorResponse("slug_not_found").toJSON(), 404);
+    }
+    const user = ctx.get("user");
+    if (!user) {
+      return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+    }
+
+    const db = DatabaseManager.getInstance(ctx);
+    const projects = (await db`
+      SELECT id, organization_id FROM projects WHERE slug = ${slug}`) as Array<{
+      id: string;
+      organization_id: string;
+    }>;
+    if (projects.length === 0) {
+      return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
+    }
+    const projectRow = projects[0];
+    if (!projectRow) {
+      return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
+    }
+    const projectId = String(projectRow.id);
+    const role = await getWorkspaceRole(ctx, user.id, String(projectRow.organization_id));
+    if (!role) {
+      // Non-disclosing: same response for missing and unauthorized.
+      return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
+    }
+
+    const from = Number(ctx.req.query("from"));
+    const to = Number(ctx.req.query("to"));
+    if (
+      !Number.isFinite(from) ||
+      !Number.isFinite(to) ||
+      !Number.isInteger(from) ||
+      !Number.isInteger(to) ||
+      to <= from
+    ) {
+      return ctx.json(new ErrorResponse("invalid_range").toJSON(), 400);
+    }
+    if (to - from > PAGE_VIEW_LIMITS.maxDashboardRangeMs) {
+      // Clear, bounded refusal instead of an unbounded scan.
+      return ctx.json(new ErrorResponse("range_too_large").toJSON(), 400);
+    }
+    const trafficRaw = ctx.req.query("traffic") ?? "human";
+    const traffic = trafficRaw === "all" ? "all" : "human";
+    const host = (ctx.req.query("host") ?? "").slice(0, 255) || null;
+    const path = (ctx.req.query("path") ?? "").slice(0, PAGE_VIEW_LIMITS.maxPathLength) || null;
+
+    // Repeatable sourceId params — validated against THIS project's Web
+    // sources only; unknown or non-web ids are ignored (never an error that
+    // discloses other workspaces' source existence).
+    const requestedSourceIds = (ctx.req.queries("sourceId") ?? []).map((v) =>
+      v.slice(0, 64),
+    );
+    let sourceIds: string[] = [];
+    if (requestedSourceIds.length > 0) {
+      const rows = (await db`
+        SELECT id FROM project_sources
+        WHERE project_id = ${projectId} AND platform = 'web'`) as Array<{ id: string }>;
+      const allowedWebSources = new Set(rows.map((r) => String(r.id)));
+      sourceIds = [...new Set(requestedSourceIds)].filter((id) =>
+        allowedWebSources.has(id),
+      );
+      if (sourceIds.length === 0) {
+        // Explicitly filtered to nothing applicable → honest empty payload.
+        return ctx.json({
+          range: { from, to, timezone: "UTC" },
+          filters: {
+            sourceIds: [],
+            host,
+            path,
+            traffic,
+          },
+          totals: {
+            pageViews: 0, visitors: 0, sessions: 0,
+            viewsPerSession: 0, bounceRate: null, excludedBots: 0,
+          },
+          comparison: {
+            pageViews: { kind: "no-prior-data" },
+            visitors: { kind: "no-prior-data" },
+            sessions: { kind: "no-prior-data" },
+            viewsPerSession: { kind: "no-prior-data" },
+            bounceRate: null,
+          },
+          trend: { bucket: "daily", points: [] },
+          pages: [], referrers: [], campaigns: [],
+          locations: { countries: [], regions: [], cities: [], coveragePercent: 0 },
+          technology: {
+            browsers: [], operatingSystems: [], devices: [],
+            viewports: [], languages: [], coveragePercent: 0,
+          },
+          coverage: { technologyPercent: 0, geographyPercent: 0, campaignPercent: 0 },
+        });
+      }
+    }
+
+    const resource = await loadWebAnalytics(
+      { projectId, from, to, sourceIds, host, path, traffic },
+      Date.now(),
+      TursoDatabaseManager.getInstance(ctx),
+    );
+    return ctx.json(resource);
   }
 
   public static async getProjectEvents(ctx: Context<HonoConfig>) {
