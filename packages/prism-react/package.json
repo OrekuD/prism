@@ -28,6 +28,7 @@
     "react-dom": "^18.0.0 || ^19.0.0"
   },
   "devDependencies": {
+    "@prism-analytics/browser": "*",
     "@prism-analytics/core": "*",
     "@testing-library/react": "^16.1.0",
     "@types/react": "^19.2.18",
