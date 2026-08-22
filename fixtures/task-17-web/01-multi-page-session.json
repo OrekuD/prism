@@ -1,0 +1,90 @@
+{
+  "description": "One Web session, three sequential views; external referrer on entry only",
+  "source": {
+    "id": "11111111-1111-4111-8111-111111111111",
+    "name": "Acme Web",
+    "platform": "web"
+  },
+  "events": [
+    {
+      "eventId": "evt_mp_1",
+      "type": "track",
+      "name": "$prism_page_view",
+      "occurredAt": 1785542400000,
+      "receivedAt": 1785542400400,
+      "sessionId": "sess_web_00000001",
+      "anonymousId": "anon_00000001",
+      "userId": null,
+      "personId": "person_aaaaaaaaaaaa",
+      "sourceId": "11111111-1111-4111-8111-111111111111",
+      "platform": "web",
+      "sdkName": "@prism-analytics/browser",
+      "sdkVersion": "0.0.1",
+      "schemaVersion": 3,
+      "properties": {
+        "$page": {
+          "host": "acme.com",
+          "path": "/",
+          "navigation": "initial",
+          "sequence": 1
+        },
+        "$referrer": {
+          "host": "google.com"
+        }
+      },
+      "expected": {}
+    },
+    {
+      "eventId": "evt_mp_2",
+      "type": "track",
+      "name": "$prism_page_view",
+      "occurredAt": 1785542700000,
+      "receivedAt": 1785542700400,
+      "sessionId": "sess_web_00000001",
+      "anonymousId": "anon_00000001",
+      "userId": null,
+      "personId": "person_aaaaaaaaaaaa",
+      "sourceId": "11111111-1111-4111-8111-111111111111",
+      "platform": "web",
+      "sdkName": "@prism-analytics/browser",
+      "sdkVersion": "0.0.1",
+      "schemaVersion": 3,
+      "properties": {
+        "$page": {
+          "host": "acme.com",
+          "path": "/pricing",
+          "navigation": "push",
+          "sequence": 2,
+          "previousPath": "/"
+        }
+      },
+      "expected": {}
+    },
+    {
+      "eventId": "evt_mp_3",
+      "type": "track",
+      "name": "$prism_page_view",
+      "occurredAt": 1785542940000,
+      "receivedAt": 1785542940400,
+      "sessionId": "sess_web_00000001",
+      "anonymousId": "anon_00000001",
+      "userId": null,
+      "personId": "person_aaaaaaaaaaaa",
+      "sourceId": "11111111-1111-4111-8111-111111111111",
+      "platform": "web",
+      "sdkName": "@prism-analytics/browser",
+      "sdkVersion": "0.0.1",
+      "schemaVersion": 3,
+      "properties": {
+        "$page": {
+          "host": "acme.com",
+          "path": "/docs/getting-started",
+          "navigation": "push",
+          "sequence": 3,
+          "previousPath": "/pricing"
+        }
+      },
+      "expected": {}
+    }
+  ]
+}

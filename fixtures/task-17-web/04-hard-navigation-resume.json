@@ -1,0 +1,60 @@
+{
+  "description": "Hard navigation resumes the tab's page session; sequence continues; no second session_started",
+  "source": {
+    "id": "11111111-1111-4111-8111-111111111111",
+    "name": "Acme Web",
+    "platform": "web"
+  },
+  "events": [
+    {
+      "eventId": "evt_hn_1",
+      "type": "track",
+      "name": "$prism_page_view",
+      "occurredAt": 1785888000000,
+      "receivedAt": 1785888000400,
+      "sessionId": "sess_web_00000001",
+      "anonymousId": "anon_00000001",
+      "userId": null,
+      "personId": "person_aaaaaaaaaaaa",
+      "sourceId": "11111111-1111-4111-8111-111111111111",
+      "platform": "web",
+      "sdkName": "@prism-analytics/browser",
+      "sdkVersion": "0.0.1",
+      "schemaVersion": 3,
+      "properties": {
+        "$page": {
+          "host": "acme.com",
+          "path": "/dashboard",
+          "navigation": "initial",
+          "sequence": 1
+        }
+      },
+      "expected": {}
+    },
+    {
+      "eventId": "evt_hn_2",
+      "type": "track",
+      "name": "$prism_page_view",
+      "occurredAt": 1785888010000,
+      "receivedAt": 1785888010900,
+      "sessionId": "sess_web_00000001",
+      "anonymousId": "anon_00000001",
+      "userId": null,
+      "personId": "person_aaaaaaaaaaaa",
+      "sourceId": "11111111-1111-4111-8111-111111111111",
+      "platform": "web",
+      "sdkName": "@prism-analytics/browser",
+      "sdkVersion": "0.0.1",
+      "schemaVersion": 3,
+      "properties": {
+        "$page": {
+          "host": "acme.com",
+          "path": "/dashboard",
+          "navigation": "initial",
+          "sequence": 2
+        }
+      },
+      "expected": {}
+    }
+  ]
+}

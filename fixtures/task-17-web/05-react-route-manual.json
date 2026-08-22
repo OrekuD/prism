@@ -1,0 +1,35 @@
+{
+  "description": "Manual-mode SPA route: developer-normalized path without hash/query",
+  "source": {
+    "id": "11111111-1111-4111-8111-111111111111",
+    "name": "Acme React dashboard",
+    "platform": "web"
+  },
+  "events": [
+    {
+      "eventId": "evt_rm_1",
+      "type": "track",
+      "name": "$prism_page_view",
+      "occurredAt": 1785974400000,
+      "receivedAt": 1785974400400,
+      "sessionId": "sess_web_00000001",
+      "anonymousId": "anon_00000001",
+      "userId": null,
+      "personId": "person_aaaaaaaaaaaa",
+      "sourceId": "11111111-1111-4111-8111-111111111111",
+      "platform": "web",
+      "sdkName": "@prism-analytics/browser",
+      "sdkVersion": "0.0.1",
+      "schemaVersion": 3,
+      "properties": {
+        "$page": {
+          "host": "app.acme.com",
+          "path": "/settings/billing",
+          "navigation": "manual",
+          "sequence": 1
+        }
+      },
+      "expected": {}
+    }
+  ]
+}

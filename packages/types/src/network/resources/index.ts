@@ -357,3 +357,5 @@ export type ErrorIssueDetailResource = {
 	firstRelease?: string;
 	lastRelease?: string;
 };
+
+export * from "./webAnalytics";

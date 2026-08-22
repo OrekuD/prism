@@ -157,8 +157,11 @@ describe("clean installed-package consumption", () => {
 		// diagnostics) ~21 KiB of runtime code. ESM consumers tree-shake it
 		// when they only use the analytics client; this CJS guard keeps both
 		// entry points from runaway growth.
+		// 112 KiB: task-17 slice 1 adds the reserved page-view contract
+		// (frozen property schema, strict validator, viewport buckets) shared
+		// by Core, Browser, and ingestion — ~6 KiB of runtime code.
 		const dist = join(CORE_DIR, "dist", "index.js");
 		expect(existsSync(dist)).toBe(true);
-		expect(statSync(dist).size).toBeLessThan(100 * 1024);
+		expect(statSync(dist).size).toBeLessThan(112 * 1024);
 	});
 });

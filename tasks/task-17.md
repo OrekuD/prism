@@ -811,18 +811,20 @@ task.
 
 This slice makes every later implementation target executable and reviewable.
 
-- [ ] Add shared reserved page-view, Browser option, React hook, projection,
+- [x] Add shared reserved page-view, Browser option, React hook, projection,
       filter, and dashboard response types.
-- [ ] Freeze the reserved event name and exact bounded property schema.
-- [ ] Freeze session, range, prior-period, bounce, referrer, bot, and coverage
+- [x] Freeze the reserved event name and exact bounded property schema.
+- [x] Freeze session, range, prior-period, bounce, referrer, bot, and coverage
       definitions from this task.
-- [ ] Create deterministic fixtures for multi-page sessions, bounces, repeat
+- [x] Create deterministic fixtures for multi-page sessions, bounces, repeat
       visitors, hard navigations, React routes, campaigns, referrers, bots,
       unknown technology, late offline events, and privacy-suppressed cities.
-- [ ] Write failing Core, Browser, React, ingestion, store, API, and dashboard
-      contract tests before implementing behavior.
-- [ ] Review Task 16's final event contracts and avoid adding a competing event
-      resource or source-attribution shape.
+- [~] Write failing Core, Browser, React, ingestion, store, API, and dashboard
+      contract tests before implementing behavior. (Core + types done; Browser/React/
+      ingestion/store/API suites land with their slices per one-commit-per-slice)
+- [x] Review Task 16's final event contracts and avoid adding a competing event
+      resource or source-attribution shape. (Reuses EventSourceAttribution-era
+      vocabulary; page views ride the existing wire `track` type)
 
 ### Slice 2: Build Browser page tracking and session resume
 
@@ -1051,3 +1053,35 @@ The task was created after a read-only review of the current Core, Browser,
 React, ingestion, analytics storage, event reads, sidebar, design system, and
 event-system documentation. No SDK, API, schema, or Web application code was
 changed during this planning pass.
+
+### 2026-08-22 - slice 1: contracts frozen + metric fixtures
+
+Frozen the executable contract surface before any capture/persistence work:
+
+- `packages/core/src/page-view.ts` (new): reserved `$prism_` namespace +
+  `$prism_page_view` name; `PageViewCandidate` / `PageViewWireProperties`
+  (`$page` / `$referrer` / `$campaign`) / `ManualPageViewInput` /
+  `BrowserPageViewOptions` / `UsePrismPageViewOptions`; strict
+  `validatePageViewProperties()` shared by SDK pre-send and server
+  pre-persistence; `PAGE_VIEW_LIMITS` freezes the 30-minute Web-session
+  timeout, 15-minute late-delivery geo cutoff, 13-month dashboard range,
+  50-row rankings, and 5-session city suppression; viewport width buckets.
+- Public `track()` now rejects the reserved prefix (throws like other
+  invalid input); the internal seam arrives with Slice 2.
+- `packages/types`: `WebAnalyticsResource` + filters/totals/comparison/
+  trend/ranking groups/coverage, `WebAnalyticsRequest`, and the
+  `WebPageViewProjection` row shape (migration lands in Slice 4).
+- Fixtures: `fixtures/task-17-web/` — 11 deterministic scenarios
+  (multi-page, bounce, repeat visitor, hard-nav resume, React manual route,
+  campaigns, referrers, bot, unknown technology, late offline delivery,
+  suppressed cities) with fixed epoch timestamps and synthetic identities.
+- Tests: core `page-view.test.ts` (reserved-prefix rejection through public
+  track(), canonical acceptance, 16 malformed-input rejections, bounds) and
+  types `webAnalyticsContracts.test.ts` (Other/Unknown labels, no-infinity
+  comparison kinds, null-bounce anatomy).
+- Core CJS bundle budget raised 100→112 KiB for the new contract module
+  (documented in dist-consumer.test.ts); full core suite 169/169.
+
+Deliberately deferred to later slices: Browser history/manual runtime,
+sessionStorage resume, React hook implementation, UA/geo enrichment,
+`web_page_views` migration, read-model queries, and the dashboard page.

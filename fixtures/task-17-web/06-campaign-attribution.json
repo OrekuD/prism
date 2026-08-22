@@ -1,0 +1,69 @@
+{
+  "description": "utm_source/medium/name on entry; subsequent direct push has none",
+  "source": {
+    "id": "11111111-1111-4111-8111-111111111111",
+    "name": "Acme Web",
+    "platform": "web"
+  },
+  "events": [
+    {
+      "eventId": "evt_camp_1",
+      "type": "track",
+      "name": "$prism_page_view",
+      "occurredAt": 1786060800000,
+      "receivedAt": 1786060800400,
+      "sessionId": "sess_web_00000001",
+      "anonymousId": "anon_00000001",
+      "userId": null,
+      "personId": "person_aaaaaaaaaaaa",
+      "sourceId": "11111111-1111-4111-8111-111111111111",
+      "platform": "web",
+      "sdkName": "@prism-analytics/browser",
+      "sdkVersion": "0.0.1",
+      "schemaVersion": 3,
+      "properties": {
+        "$page": {
+          "host": "acme.com",
+          "path": "/",
+          "navigation": "initial",
+          "sequence": 1
+        },
+        "$referrer": {
+          "host": "google.com"
+        },
+        "$campaign": {
+          "source": "summer-newsletter",
+          "medium": "email",
+          "name": "july-drop"
+        }
+      },
+      "expected": {}
+    },
+    {
+      "eventId": "evt_camp_2",
+      "type": "track",
+      "name": "$prism_page_view",
+      "occurredAt": 1786060920000,
+      "receivedAt": 1786060920400,
+      "sessionId": "sess_web_00000001",
+      "anonymousId": "anon_00000001",
+      "userId": null,
+      "personId": "person_aaaaaaaaaaaa",
+      "sourceId": "11111111-1111-4111-8111-111111111111",
+      "platform": "web",
+      "sdkName": "@prism-analytics/browser",
+      "sdkVersion": "0.0.1",
+      "schemaVersion": 3,
+      "properties": {
+        "$page": {
+          "host": "acme.com",
+          "path": "/signup",
+          "navigation": "push",
+          "sequence": 2,
+          "previousPath": "/"
+        }
+      },
+      "expected": {}
+    }
+  ]
+}

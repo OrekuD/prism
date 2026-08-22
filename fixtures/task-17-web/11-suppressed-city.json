@@ -1,0 +1,190 @@
+{
+  "description": "City rows under 5 sessions collapse into Other server-side",
+  "source": {
+    "id": "11111111-1111-4111-8111-111111111111",
+    "name": "Acme Web",
+    "platform": "web"
+  },
+  "events": [
+    {
+      "eventId": "evt_city_a0",
+      "type": "track",
+      "name": "$prism_page_view",
+      "occurredAt": 1786492800000,
+      "receivedAt": 1786492800400,
+      "sessionId": "sess_web_00000001",
+      "anonymousId": "anon_00000001",
+      "userId": null,
+      "personId": "person_ccccccccccc0",
+      "sourceId": "11111111-1111-4111-8111-111111111111",
+      "platform": "web",
+      "sdkName": "@prism-analytics/browser",
+      "sdkVersion": "0.0.1",
+      "schemaVersion": 3,
+      "properties": {
+        "$page": {
+          "host": "acme.com",
+          "path": "/",
+          "navigation": "initial",
+          "sequence": 1
+        }
+      },
+      "expected": {},
+      "expectedGeo": {
+        "countryCode": "US",
+        "region": "CA",
+        "city": "Smallville"
+      }
+    },
+    {
+      "eventId": "evt_city_a1",
+      "type": "track",
+      "name": "$prism_page_view",
+      "occurredAt": 1786492860000,
+      "receivedAt": 1786492860400,
+      "sessionId": "sess_web_00000001",
+      "anonymousId": "anon_00000001",
+      "userId": null,
+      "personId": "person_ccccccccccc1",
+      "sourceId": "11111111-1111-4111-8111-111111111111",
+      "platform": "web",
+      "sdkName": "@prism-analytics/browser",
+      "sdkVersion": "0.0.1",
+      "schemaVersion": 3,
+      "properties": {
+        "$page": {
+          "host": "acme.com",
+          "path": "/",
+          "navigation": "initial",
+          "sequence": 1
+        }
+      },
+      "expected": {},
+      "expectedGeo": {
+        "countryCode": "US",
+        "region": "CA",
+        "city": "Smallville"
+      }
+    },
+    {
+      "eventId": "evt_city_a2",
+      "type": "track",
+      "name": "$prism_page_view",
+      "occurredAt": 1786492920000,
+      "receivedAt": 1786492920400,
+      "sessionId": "sess_web_00000001",
+      "anonymousId": "anon_00000001",
+      "userId": null,
+      "personId": "person_ccccccccccc2",
+      "sourceId": "11111111-1111-4111-8111-111111111111",
+      "platform": "web",
+      "sdkName": "@prism-analytics/browser",
+      "sdkVersion": "0.0.1",
+      "schemaVersion": 3,
+      "properties": {
+        "$page": {
+          "host": "acme.com",
+          "path": "/",
+          "navigation": "initial",
+          "sequence": 1
+        }
+      },
+      "expected": {},
+      "expectedGeo": {
+        "countryCode": "US",
+        "region": "CA",
+        "city": "Smallville"
+      }
+    },
+    {
+      "eventId": "evt_city_b0",
+      "type": "track",
+      "name": "$prism_page_view",
+      "occurredAt": 1786493100000,
+      "receivedAt": 1786493100400,
+      "sessionId": "sess_web_00000001",
+      "anonymousId": "anon_00000001",
+      "userId": null,
+      "personId": "person_ddddddddddd0",
+      "sourceId": "11111111-1111-4111-8111-111111111111",
+      "platform": "web",
+      "sdkName": "@prism-analytics/browser",
+      "sdkVersion": "0.0.1",
+      "schemaVersion": 3,
+      "properties": {
+        "$page": {
+          "host": "acme.com",
+          "path": "/",
+          "navigation": "initial",
+          "sequence": 1
+        }
+      },
+      "expected": {},
+      "expectedGeo": {
+        "countryCode": "US",
+        "region": "CA",
+        "city": "Tinytown"
+      }
+    },
+    {
+      "eventId": "evt_city_b1",
+      "type": "track",
+      "name": "$prism_page_view",
+      "occurredAt": 1786493160000,
+      "receivedAt": 1786493160400,
+      "sessionId": "sess_web_00000001",
+      "anonymousId": "anon_00000001",
+      "userId": null,
+      "personId": "person_ddddddddddd1",
+      "sourceId": "11111111-1111-4111-8111-111111111111",
+      "platform": "web",
+      "sdkName": "@prism-analytics/browser",
+      "sdkVersion": "0.0.1",
+      "schemaVersion": 3,
+      "properties": {
+        "$page": {
+          "host": "acme.com",
+          "path": "/",
+          "navigation": "initial",
+          "sequence": 1
+        }
+      },
+      "expected": {},
+      "expectedGeo": {
+        "countryCode": "US",
+        "region": "CA",
+        "city": "Tinytown"
+      }
+    },
+    {
+      "eventId": "evt_city_b2",
+      "type": "track",
+      "name": "$prism_page_view",
+      "occurredAt": 1786493220000,
+      "receivedAt": 1786493220400,
+      "sessionId": "sess_web_00000001",
+      "anonymousId": "anon_00000001",
+      "userId": null,
+      "personId": "person_ddddddddddd2",
+      "sourceId": "11111111-1111-4111-8111-111111111111",
+      "platform": "web",
+      "sdkName": "@prism-analytics/browser",
+      "sdkVersion": "0.0.1",
+      "schemaVersion": 3,
+      "properties": {
+        "$page": {
+          "host": "acme.com",
+          "path": "/",
+          "navigation": "initial",
+          "sequence": 1
+        }
+      },
+      "expected": {},
+      "expectedGeo": {
+        "countryCode": "US",
+        "region": "CA",
+        "city": "Tinytown"
+      }
+    }
+  ]
+}

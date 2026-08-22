@@ -27,6 +27,29 @@ export {
 	SDK_VERSION,
 	WIRE_SCHEMA_VERSION,
 } from "./limits";
+// Task 17: reserved page-view contract — ONE shared definition for Core,
+// Browser, React, and ingestion validation.
+export {
+	PAGE_VIEW_EVENT_NAME,
+	PAGE_VIEW_LIMITS,
+	RESERVED_EVENT_PREFIX,
+	VIEWPORT_WIDTH_BUCKETS,
+	isReservedAnalyticsEventName,
+	isValidCanonicalPath,
+	isValidPageHost,
+	validatePageViewProperties,
+	viewportWidthBucket,
+} from "./page-view";
+export type {
+	BrowserPageViewOptions,
+	ManualPageViewInput,
+	UsePrismPageViewOptions,
+	PageViewCandidate,
+	PageViewNavigation,
+	PageViewValidationResult,
+	PageViewWireProperties,
+	ViewportWidthBucket,
+} from "./page-view";
 export type {
 	IngestResponseBody,
 	IngestResult,
