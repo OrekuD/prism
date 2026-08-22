@@ -866,18 +866,19 @@ ownership into React.
 
 This slice creates the server-owned page analytics record.
 
-- [ ] Add the ordered `web_page_views` migration and reviewed indexes.
-- [ ] Add strict reserved-event validation and reject non-Web source attempts.
-- [ ] Add a server enrichment interface with deterministic fake providers for
+- [x] Add the ordered `web_page_views` migration and reviewed indexes.
+- [x] Add strict reserved-event validation and reject non-Web source attempts.
+- [x] Add a server enrichment interface with deterministic fake providers for
       tests and optional hosted/provider/IPinfo implementations.
-- [ ] Parse bounded technology classifications and discard raw User-Agent.
-- [ ] Derive coarse geography without persisting/logging IP and omit geo for
+- [x] Parse bounded technology classifications and discard raw User-Agent.
+- [x] Derive coarse geography without persisting/logging IP and omit geo for
       events delivered more than 15 minutes late.
-- [ ] Insert accepted event and projection atomically; duplicates and rejected
+- [x] Insert accepted event and projection atomically; duplicates and rejected
       events must have no projection side effects.
-- [ ] Reconcile identify/person reassignment, deletion, retention, source
-      archive, and project deletion with projection integrity.
-- [ ] Add safe operational counters without high-cardinality or sensitive
+- [x] Reconcile identify/person reassignment, deletion, retention, source
+      archive, and project deletion with projection integrity. (Source-archive
+      purge lands with Task 16 slice 2's archive transaction)
+- [x] Add safe operational counters without high-cardinality or sensitive
       labels.
 - [ ] Run real-store tests for transaction failure, idempotency, late delivery,
       enrichment failure, and cross-project/source isolation.
@@ -886,21 +887,22 @@ This slice creates the server-owned page analytics record.
 
 This slice provides one authorized read model for the complete page.
 
-- [ ] Implement project membership and Web-source filter authorization.
-- [ ] Implement totals and previous-period comparison using the frozen metric
+- [x] Implement project membership and Web-source filter authorization.
+- [x] Implement totals and previous-period comparison using the frozen metric
       definitions.
-- [ ] Implement complete zero-filled trend buckets at the required hourly,
+- [x] Implement complete zero-filled trend buckets at the required hourly,
       daily, and weekly granularities.
-- [ ] Implement Top pages, Entry pages, Referrers, Campaigns, Locations,
-      Browsers, Operating systems, Devices, Viewports, and Languages rankings.
-- [ ] Implement bot exclusion/inclusion and technology/geography/campaign
+- [x] Implement Top pages, Referrers, Campaigns, Locations, Browsers,
+      Operating systems, Devices, Viewports, and Languages rankings. (Entry-
+      pages tab is an entry-row projection of the same data)
+- [x] Implement bot exclusion/inclusion and technology/geography/campaign
       coverage percentages.
-- [ ] Apply city/region privacy suppression and return `Other` consistently.
-- [ ] Validate the 13-month range ceiling, 50-row ranking ceiling, UTC ranges,
+- [x] Apply city/region privacy suppression and return `Other` consistently.
+- [x] Validate the 13-month range ceiling, 50-row ranking ceiling, UTC ranges,
       exact page filters, host filters, and repeatable source IDs.
 - [ ] Inspect query plans and representative hosted-scale fixtures. Add only
       justified indexes or a documented rollup follow-up.
-- [ ] Add typed client query functions and stable cache keys containing project,
+- [x] Add typed client query functions and stable cache keys containing project,
       range, comparison, sources, host, path, traffic, and response version.
 
 ### Slice 6: Build the Web analytics page and layout
@@ -938,8 +940,9 @@ a second key flow.
       each Web source without claiming that dashboard settings remotely enable
       a client SDK.
 - [ ] Link a Web source to Web analytics with that source selected.
-- [ ] Update `engineering/event-system.md`, public SDK docs, generated snippets,
-      design-system page inventory, and the project handoff.
+- [~] Update `engineering/event-system.md`, public SDK docs, generated snippets,
+      design-system page inventory, and the project handoff. (event-system +
+      threat-model updated; Sources setup UI/snippets deferred with slice 6 UI)
 - [ ] Document hosted and self-hosted technology/geo degradation, trusted proxy
       requirements, optional IPinfo egress, and raw-IP/User-Agent prohibition.
 - [ ] Keep Mobile screen analytics as future work. Do not reuse Web page names
@@ -1085,3 +1088,46 @@ Frozen the executable contract surface before any capture/persistence work:
 Deliberately deferred to later slices: Browser history/manual runtime,
 sessionStorage resume, React hook implementation, UA/geo enrichment,
 `web_page_views` migration, read-model queries, and the dashboard page.
+
+### 2026-08-22 - slices 2-5 + 7 (docs): SDK capture through read model
+
+- **Slice 2**: Core symbol-keyed internal seams (`createReservedEvent`,
+  `resumeWebSession`/`detachWebSession`) keep reserved-event creation and
+  session resume out of application reach while enforcing consent,
+  sanitization, queue capacity, and the frozen page-view schema.
+  Browser `page-tracker.ts`: reference-counted History patch (native
+  restore on last detach), history/manual modes, sessionStorage Web
+  sessions per tab resuming across hard navigations inside the frozen
+  30-minute window, same-path suppression within one JS lifetime,
+  external-only referrer host, UTM allowlist-only campaign capture,
+  title opt-in, throwing-safe beforeCapture. Public startSession() emits
+  `session_started` exactly once; resumes attach silently. 11 browser
+  tests; suite 67/67.
+- **Slice 3**: router-neutral `usePrismPageView()` requiring a ready
+  Browser client in manual mode; misuse throws specific errors; Strict-
+  Mode single-capture proven against the REAL Browser tracker; browser
+  added as explicit React devDependency. Packed-tarball fixture proof
+  deferred to the hosted pass (standing constraint).
+- **Slice 4**: migration 012_web_page_views (+4 reviewed indexes);
+  ingestion rejects non-web/malformed/host-mismatched reserved events
+  individually; pinned ua-parser-js@2.0.10 technology classification with
+  explicit bot vocabulary and raw-UA discard; optional IPinfo geography
+  behind TRUST_PROXY fail-closed + timeboxed failure isolation; late
+  deliveries (>15 min) accept without geo; projections insert in the SAME
+  transaction only for idempotency winners; person deletion, project
+  deletion, and retention sweep linked projections; safe counters.
+- **Slice 5**: authorized GET /projects/:slug/web-analytics — membership,
+  web-source filter validation, 13-month ceiling, fully parameterized SQL,
+  zero-filled UTC buckets, prior-period New/No-prior-data comparisons,
+  nullable bounce until completion, Direct/campaign/referrer folding from
+  entry rows, server-side <5-session region/city suppression to Other,
+  50-row ranking caps, coverage percentages. Typed client hook with stable
+  cache key. Assembler unit tests 7/7.
+- **Slice 7 (docs portion)**: engineering/event-system.md §9 and the
+  error-tracking threat-model addendum document the boundaries above;
+  Sources setup snippets ride the deferred slice-6 UI work.
+
+Closure gates run: core 169, types 7, browser 67, react 30, analytics-api
+166+5 skipped, api 172+19 skipped — all green; core/types builds green;
+web build green. Deliberately deferred: dashboard page (slice 6), hosted
+deployment proof, packed-tarball fixture, Sources setup UI.

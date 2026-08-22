@@ -71,7 +71,7 @@ describe("geo provider chain", () => {
 		await expect(failing.lookup("203.0.113.9")).resolves.toBeNull();
 
 		let aborted = false;
-		const slow = new IpinfoGeoProvider("tok", ((_input, init) => {
+		const slow = new IpinfoGeoProvider("tok", ((_input: unknown, init?: RequestInit) => {
 			return new Promise((_resolve, reject) => {
 				init?.signal?.addEventListener("abort", () => {
 					aborted = true;

@@ -641,6 +641,9 @@ export async function deletePerson(
       { sql: "DELETE FROM external_identities WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
       { sql: "DELETE FROM anonymous_identities WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
       { sql: "DELETE FROM person_traits WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
+      // Task 17 slice 4: page projections die WITH their linked events -
+      // no orphan rows may survive person deletion (privacy contract).
+      { sql: "DELETE FROM web_page_views WHERE project_id = ? AND event_id IN (SELECT id FROM events WHERE project_id = ? AND person_id = ?)", args: [projectId, projectId, personId] },
       { sql: "DELETE FROM events WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
       { sql: "DELETE FROM people WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
       { sql: "INSERT INTO deleted_people (project_id, person_id, deleted_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING", args: [projectId, personId, Date.now()] },

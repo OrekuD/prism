@@ -22,6 +22,11 @@ import type {
 	WireIdentifyOp,
 } from "./contract";
 import {
+	INTERNAL_SEAM,
+	type InternalClientSeam,
+	type ReservedEventResult,
+} from "./internal-seam";
+import {
 	INGEST_LIMITS,
 	SDK_NAME,
 	SDK_VERSION,
@@ -30,8 +35,10 @@ import {
 	type WireEnvelope,
 } from "./limits";
 import {
+	PAGE_VIEW_EVENT_NAME,
 	RESERVED_EVENT_PREFIX,
 	isReservedAnalyticsEventName,
+	validatePageViewProperties,
 } from "./page-view";
 import { EventQueue, type QueuedEvent, utf8Length } from "./queue";
 import {
@@ -327,6 +334,89 @@ class PrismClientImpl implements PrismClient {
 				}),
 			);
 		}
+
+		// Task 17 §2/§3: symbol-keyed internal seams for the Browser package
+		// (reserved page-view creation + Web-session resume). Symbol keys are
+		// unreachable through normal property access and never part of the
+		// public PrismClient contract.
+		const impl = this;
+		const seam: InternalClientSeam = {
+			createReservedEvent(
+				name: string,
+				properties?: Record<string, unknown>,
+			): ReservedEventResult {
+				type Internals = {
+					closed: boolean;
+					state: CollectionState;
+					queue: { enqueue(event: QueuedEvent): boolean };
+					validateAndSanitize(p?: JsonObject): JsonObject;
+					buildEvent(n: string, p?: JsonObject): QueuedEvent;
+					afterEnqueue(): Promise<void>;
+				};
+				const self = impl as unknown as Internals;
+				if (self.closed) return { status: "dropped", reason: "shutdown" };
+				try {
+					assertValidEventName(name);
+				} catch (error) {
+					return {
+						status: "rejected",
+						reason: error instanceof Error ? error.message : "invalid-name",
+					};
+				}
+				if (name === PAGE_VIEW_EVENT_NAME) {
+					const validation = validatePageViewProperties(properties);
+					if (!validation.ok) {
+						return { status: "rejected", reason: validation.reason };
+					}
+				}
+				let sanitized: JsonObject | undefined;
+				try {
+					sanitized = self.validateAndSanitize(
+						(properties ?? undefined) as JsonObject | undefined,
+					);
+				} catch {
+					return { status: "rejected", reason: "invalid-properties" };
+				}
+				if (self.state === "pending") {
+					return { status: "dropped", reason: "consent-pending" };
+				}
+				if (self.state === "denied") {
+					return { status: "dropped", reason: "consent-denied" };
+				}
+				const event = self.buildEvent(name, sanitized);
+				if (!self.queue.enqueue(event)) {
+					return { status: "dropped", reason: "queue-full" };
+				}
+				void self.afterEnqueue();
+				return { status: "queued", eventId: event.eventId };
+			},
+			resumeWebSession(session: {
+				sessionId: string;
+				startedAt: number;
+			}): void {
+				if (impl.closed || !session.sessionId) return;
+				if (
+					impl.activeSession &&
+					impl.activeSession.sessionId === session.sessionId
+				) {
+					return; // already attached
+				}
+				// Replace the in-memory session WITHOUT emitting started/ended:
+				// a resumed session's id comes from persisted Web-session state
+				// and its start event shipped on the original navigation.
+				impl.activeSession = new SessionHandleImpl(
+					session.sessionId,
+					session.startedAt,
+					(handleRef) => impl.endSession(handleRef),
+				);
+			},
+			detachWebSession(): void {
+				// Consent withdrawal / reset: drop the attachment only — no
+				// session_ended, because withdrawal must never produce events.
+				impl.activeSession = null;
+			},
+		};
+		(this as unknown as Record<symbol, unknown>)[INTERNAL_SEAM] = seam;
 	}
 
 	/** Called by the factory before resolving — the client is fully ready. */

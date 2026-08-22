@@ -105,3 +105,8 @@ export type {
 
 // The v1 legacy client was removed in the read-path slice (task-9 slice 6,
 // ADR 0002 §2) — the package exposes ONLY the v2 contract.
+export { INTERNAL_SEAM } from "./internal-seam";
+export type {
+	InternalClientSeam,
+	ReservedEventResult,
+} from "./internal-seam";

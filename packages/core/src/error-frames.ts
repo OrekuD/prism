@@ -75,7 +75,10 @@ export function framesFromStack(
 }
 
 /** Conservative in-app heuristic — the server re-sanitizes/re-computes. */
-function isInAppFrame(file: string | undefined, fn: string | undefined): boolean {
+function isInAppFrame(
+	file: string | undefined,
+	fn: string | undefined,
+): boolean {
 	if (!file) return false;
 	if (
 		/node_modules|webpack[\\/]|vendor[\\/.]|bower_components|\.min\.css|\.min\.js|extension:\/\/|chrome-extension|moz-extension|safari-web-extension/.test(
@@ -95,9 +98,11 @@ export function errorToException(value: unknown): {
 	message: string;
 	frames?: ErrorFrame[];
 } {
-	const record = (typeof value === "object" && value !== null
-		? (value as { name?: unknown; message?: unknown; stack?: unknown })
-		: {}) as { name?: unknown; message?: unknown; stack?: unknown };
+	const record = (
+		typeof value === "object" && value !== null
+			? (value as { name?: unknown; message?: unknown; stack?: unknown })
+			: {}
+	) as { name?: unknown; message?: unknown; stack?: unknown };
 	const name = typeof record.name === "string" ? record.name : "Error";
 	const message =
 		typeof record.message === "string" && record.message.length > 0

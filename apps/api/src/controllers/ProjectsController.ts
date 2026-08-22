@@ -175,6 +175,12 @@ export class ProjectsController {
       TursoDatabaseManager.getInstance(ctx),
       projectId,
     );
+    // Task 17 slice 4: page projections are part of the project-data
+    // deletion boundary - removed BEFORE the product row disappears.
+    await TursoDatabaseManager.getInstance(ctx).execute({
+      sql: "DELETE FROM web_page_views WHERE project_id = ?",
+      args: [projectId],
+    });
     await DatabaseManager.getInstance(
       ctx,
     )`DELETE FROM projects WHERE id = ${projectId}`;

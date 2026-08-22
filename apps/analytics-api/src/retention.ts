@@ -249,6 +249,15 @@ export async function applyRetention(
 		},
 		{ sql: "DELETE FROM people WHERE last_seen_at < ?", args: [cutoffMs] },
 	];
+	// Task 17 slice 4: projections whose linked event was just expired are
+	// swept in the SAME batch - no orphan web_page_views row survives
+	// retention (guarded by table existence for pre-migration stores).
+	if ((await existingTables(client)).has("web_page_views")) {
+		statements.push({
+			sql: "DELETE FROM web_page_views WHERE event_id NOT IN (SELECT id FROM events WHERE project_id = web_page_views.project_id)",
+			args: [],
+		});
+	}
 	let errorOccurrenceIndex = -1;
 	let errorUsersIndex = -1;
 	let errorActivityIndex = -1;
