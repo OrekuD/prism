@@ -4,7 +4,7 @@ export default defineConfig({
   test: {
     coverage: {
       provider: "v8",
-      include: ["src/**/*.ts"],
+      include: ["src/**/*.test.ts"],
       exclude: [
         "src/__tests__/**",
         // CLI entrypoints — thin wrappers over the tested functions; they

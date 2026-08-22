@@ -6,9 +6,21 @@ import {
 	type JsonObject,
 	sanitizeProperties,
 } from "@prism-analytics/core";
+import {
+	PAGE_VIEW_EVENT_NAME,
+	PAGE_VIEW_LIMITS,
+	validatePageViewProperties,
+} from "@prism-analytics/core";
 import type { SessionResource } from "@prism-analytics/types";
 import { config } from "dotenv";
 import type { Context } from "hono";
+import {
+	UA_PARSER_VERSION,
+	classifyTechnology,
+	geoProviderFromEnv,
+	incrementPageViewCounter,
+	resolveClientIp,
+} from "../enrichment/webPageView.js";
 import TursoDatabaseManager from "../managers/TursoDatabaseManager.js";
 import WebSocketManager from "../managers/WebSocketManager.js";
 import { IngestRepository } from "../repositories/IngestRepository.js";
@@ -183,6 +195,170 @@ export class IngestController {
 			};
 			validEvents.push({ index, event: sanitized });
 		}
+
+		// Task 17 slice 4: reserved page views are validated against the
+		// frozen wire schema and the trusted Web-source boundary BEFORE any
+		// write. Malformed or misattributed attempts are INDIVIDUALLY
+		// rejected - never silently stored as ordinary custom events.
+		const platform = ctx.get("platform") ?? "";
+		const requestOriginHost = (() => {
+			try {
+				const origin = ctx.req.header("origin");
+				if (!origin) return null;
+				return new URL(origin).hostname.toLowerCase();
+			} catch {
+				return null;
+			}
+		})();
+		const pageProjectionIndexes = new Set<number>();
+		for (const entry of validEvents) {
+			if (entry.event.name !== PAGE_VIEW_EVENT_NAME) continue;
+			const index = entry.index;
+			if (platform !== "web") {
+				results[index] = {
+					index,
+					id: entry.event.eventId,
+					status: "rejected",
+					reason: "page-view-requires-web-source",
+				};
+				entry.event.name = "__rejected_page_view__"; // never persisted
+				incrementPageViewCounter("page_view_rejected_non_web");
+				continue;
+			}
+			const validation = validatePageViewProperties(entry.event.properties);
+			if (!validation.ok) {
+				results[index] = {
+					index,
+					id: entry.event.eventId,
+					status: "rejected",
+					reason: "invalid-page-view",
+				};
+				entry.event.name = "__rejected_page_view__";
+				incrementPageViewCounter("page_view_rejected_invalid");
+				continue;
+			}
+			const page = (entry.event.properties as { $page?: { host?: string } })
+				.$page;
+			if (requestOriginHost && page?.host && page.host !== requestOriginHost) {
+				results[index] = {
+					index,
+					id: entry.event.eventId,
+					status: "rejected",
+					reason: "page-view-host-mismatch",
+				};
+				entry.event.name = "__rejected_page_view__";
+				incrementPageViewCounter("page_view_rejected_host_mismatch");
+				continue;
+			}
+			pageProjectionIndexes.add(index);
+			incrementPageViewCounter("page_view_validated");
+		}
+
+		// Enrichment is computed ONCE per request at the trusted boundary:
+		// technology from a pinned parser; coarse geography via the optional
+		// configured provider, only for FRESH deliveries inside the frozen
+		// late-delivery cutoff. Raw UA/IP never leave this block.
+		let technology: ReturnType<typeof classifyTechnology> | null = null;
+		let coarseLocation: Awaited<
+			ReturnType<NonNullable<ReturnType<typeof geoProviderFromEnv>>["lookup"]>
+		> | null = null;
+		const hasPageViews = pageProjectionIndexes.size > 0;
+		if (hasPageViews) {
+			technology = classifyTechnology(ctx.req.header("user-agent"));
+			if (technology.isBot) incrementPageViewCounter("page_view_bot");
+			const env = (ctx.env ?? {}) as Record<string, string | undefined>;
+			const provider = geoProviderFromEnv(env);
+			if (provider) {
+				const ip = resolveClientIp(ctx, env);
+				if (ip) {
+					try {
+						coarseLocation = await provider.lookup(ip);
+						if (coarseLocation) {
+							incrementPageViewCounter("page_view_geo_known");
+						} else {
+							incrementPageViewCounter("page_view_geo_unknown");
+						}
+					} catch {
+						coarseLocation = null;
+						incrementPageViewCounter("page_view_geo_error");
+					}
+				} else {
+					incrementPageViewCounter("page_view_geo_untrusted_ip");
+				}
+			}
+		}
+		const pageProjections = hasPageViews
+			? validEvents
+					.filter((entry) => pageProjectionIndexes.has(entry.index))
+					.map((entry) => {
+						const props = entry.event.properties as {
+							$page?: {
+								host: string;
+								path: string;
+								navigation: string;
+								sequence: number;
+								previousPath?: string;
+								title?: string;
+							};
+							$referrer?: { host: string };
+							$campaign?: { source?: string; medium?: string; name?: string };
+						};
+						const page = props.$page!;
+						const context = (entry.event.context ?? {}) as {
+							screenSize?: { width?: number; height?: number };
+							locale?: string;
+						};
+						// Copy ONLY allowlisted context values into the projection.
+						const viewportWidth =
+							typeof context.screenSize?.width === "number"
+								? Math.round(context.screenSize.width)
+								: null;
+						const viewportHeight =
+							typeof context.screenSize?.height === "number"
+								? Math.round(context.screenSize.height)
+								: null;
+						const primaryLanguage = context.locale
+							? context.locale.slice(0, 12).split("-")[0] || null
+							: null;
+						const fresh =
+							now - entry.event.occurredAt <=
+							PAGE_VIEW_LIMITS.lateDeliveryGeoCutoffMs;
+						const geo = fresh ? coarseLocation : null;
+						if (!fresh && geo === null) {
+							incrementPageViewCounter("page_view_late_no_geo");
+						}
+						return {
+							index: entry.index,
+							row: {
+								occurredAt: entry.event.occurredAt,
+								host: page.host,
+								path: page.path,
+								title: page.title ?? null,
+								navigationType: String(page.navigation),
+								pageSequence: page.sequence,
+								previousPath: page.previousPath ?? null,
+								referrerHost: props.$referrer?.host ?? null,
+								campaignSource: props.$campaign?.source ?? null,
+								campaignMedium: props.$campaign?.medium ?? null,
+								campaignName: props.$campaign?.name ?? null,
+								browserFamily: technology?.browserFamily ?? null,
+								browserMajor: technology?.browserMajor ?? null,
+								osFamily: technology?.osFamily ?? null,
+								osMajor: technology?.osMajor ?? null,
+								deviceType: technology?.deviceType ?? "unknown",
+								isBot: technology?.isBot ?? false,
+								uaParserVersion: UA_PARSER_VERSION,
+								viewportWidth,
+								viewportHeight,
+								primaryLanguage,
+								countryCode: geo?.countryCode ?? null,
+								region: geo?.region ?? null,
+								city: geo?.city ?? null,
+								geoProvider: geo?.provider ?? null,
+							},
+						};
+					})
+			: [];
 
 		// Identity operations (task-10 §4): validated like events — rejected
 		// ops never enter the transaction (review F8/F12): op ids are
@@ -360,6 +536,7 @@ export class IngestController {
 						sourceId: ctx.get("sourceId") ?? "",
 						platform: ctx.get("platform") ?? "",
 					},
+					pageProjections,
 				);
 				persistedEvents = persisted.results;
 				identityResults = persisted.identity;

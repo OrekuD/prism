@@ -187,8 +187,8 @@ describe("release review — readiness + dead route", () => {
 		execute.mockImplementation((input: string | { sql: string }) => {
 			const sql = String(typeof input === "string" ? input : input.sql);
 			if (sql.includes("schema_migrations")) {
-				// task-15 slice 1 adds migration 009
-				return Promise.resolve({ rows: [{ version: 9 }] });
+				// keep in sync with the newest migration on disk (task-17: 012)
+				return Promise.resolve({ rows: [{ version: 12 }] });
 			}
 			return Promise.resolve({ rows: [{}] }); // sessions_v2 exists
 		});

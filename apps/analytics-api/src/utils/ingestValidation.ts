@@ -23,7 +23,11 @@ export type IngestRejectReason =
   | "invalid-timestamp"
   | "unsupported-type"
   | "too-large"
-  | "invalid-event";
+  | "invalid-event"
+  // Task 17: reserved page-view boundary rejections.
+  | "page-view-requires-web-source"
+  | "invalid-page-view"
+  | "page-view-host-mismatch";
 
 /** Validated (and not yet sanitized) event ready for persistence. */
 export interface ValidatedEvent {

@@ -81,6 +81,7 @@ const DROP_STATEMENTS = [
 	"DROP TABLE IF EXISTS deleted_identities",
 	"DROP TABLE IF EXISTS error_issues",
 	"DROP TABLE IF EXISTS error_occurrences",
+	"DROP TABLE IF EXISTS web_page_views",
 	"DROP TABLE IF EXISTS error_issue_users",
 	"DROP TABLE IF EXISTS error_issue_activity",
 	"DROP TABLE IF EXISTS source_error_settings",
