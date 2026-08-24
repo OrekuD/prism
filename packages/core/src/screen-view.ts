@@ -103,7 +103,10 @@ export function validateScreenViewProperties(
   if (s.previousScreen !== undefined && !isBoundedString(s.previousScreen, MOBILE_LIMITS.maxPreviousScreenLength)) {
     return { ok: false, reason: "$screen.previousScreen must be 1-128 chars" };
   }
+  const allowedTop = new Set(["$screen", "$screen_properties", "$app", "$installation"]);
+  for (const k of Object.keys(record)) { if (!allowedTop.has(k) && !k.startsWith("_")) return { ok: false, reason: `unknown field ${k}` }; }
   if (record.$screen_properties !== undefined) {
+    for (const [k,v] of Object.entries(record.$screen_properties as Record<string,unknown>)) { if (k.length > MOBILE_LIMITS.maxScreenPropertyKeyLength) return { ok: false, reason: `property key too long: ${k}` }; if (typeof v === "string" && v.length > MOBILE_LIMITS.maxScreenPropertyStringLength) return { ok: false, reason: `property string too long: ${k}` }; }
     if (typeof record.$screen_properties !== "object" || record.$screen_properties === null || Array.isArray(record.$screen_properties)) {
       return { ok: false, reason: "$screen_properties must be an object" };
     }
@@ -140,7 +143,7 @@ export function validateAppLifecycleProperties(input: unknown): AppLifecycleVali
   if (typeof l.transition !== "string" || !["active","background","inactive"].includes(l.transition)) {
     return { ok: false, reason: "$lifecycle.transition must be active|background|inactive" };
   }
-  if (typeof l.sequence !== "number" || !Number.isInteger(l.sequence) || l.sequence < 1) {
+  if (typeof l.sequence !== "number" || !Number.isInteger(l.sequence) || l.sequence < 1 || l.sequence > MOBILE_LIMITS.maxScreenSequence) {
     return { ok: false, reason: "$lifecycle.sequence must be integer >=1" };
   }
   if (l.durationMs !== undefined && (typeof l.durationMs !== "number" || l.durationMs < 0)) {

@@ -1,0 +1,1 @@
+export default { entry:["src/index.ts"], format:["cjs","esm"], dts:false, clean:true, external:["react-native"] }

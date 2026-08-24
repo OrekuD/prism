@@ -69,6 +69,7 @@ const DEFAULT_QUEUE: Required<PrismQueueOptions> = {
 };
 
 const ANONYMOUS_ID_KEY = "prism:anonymous_id";
+const INSTALLATION_KEY = "prism:installationId";
 
 interface PersistedIdentityState {
 	v: 1;
@@ -956,7 +957,8 @@ class PrismClientImpl implements PrismClient {
 		};
 	}
 
-	async reset(): Promise<ResetResult> {
+	private async ensureInstallation(): Promise<string | null> { if(this.state!=="granted"||!this.runtime.storage) return null; const existing=await this.runtime.storage.getItem(INSTALLATION_KEY); if(existing && typeof existing==="string") return existing; const id=this.runtime.createId().replace(/-/g,"").slice(0,21); await this.runtime.storage.setItem(INSTALLATION_KEY, id); return id; }
+  async reset(): Promise<ResetResult> {
 		if (this.closed) return { status: "blocked", reason: "shutdown" };
 		// Close the active session honestly (a session_ended event in the OLD
 		// identity context — queued events are never relabeled).

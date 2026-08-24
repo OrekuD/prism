@@ -16,6 +16,7 @@ router.use(AuthenticationMiddleware);
 // /projects exactly — Hono does not normalize the stripped path.
 router.get("", ProjectsController.listProjects);
 router.get("/:slug", ProjectsController.getProjectBySlug);
+router.get("/:slug/mobile-analytics", ProjectsController.getMobileAnalytics);
 router.get("/:slug/web-analytics", ProjectsController.getWebAnalytics);
 router.get("/:slug/events", ProjectsController.getProjectEvents);
 // Error tracking (task-15 slices 2 + 4): issue list + detail + workflow

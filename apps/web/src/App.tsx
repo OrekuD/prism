@@ -229,6 +229,7 @@ const router = createBrowserRouter(
 							<Route path="" element={<ProjectSummary />} />
 							<Route path="events" element={<ProjectEvents />} />
 							<Route path="web-analytics" element={<ProjectWebAnalytics />} />
+                            <Route path="mobile-analytics" element={<ProjectMobileAnalytics />} />
 							<Route path="events/:eventId" element={<EventDetail />} />
 							<Route path="realtime" element={<ProjectRealtime />} />
 							<Route path="people" element={<ProjectPeople />} />

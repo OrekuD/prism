@@ -30,6 +30,7 @@ import {
 } from "../utils/workspaceAuth";
 import { PAGE_VIEW_LIMITS } from "@prism-analytics/core";
 import { loadWebAnalytics } from "../utils/webAnalyticsLoader";
+import { loadMobileAnalytics } from "../utils/mobileAnalyticsLoader";
 
 export class ProjectsController {
   /**
@@ -236,7 +237,14 @@ export class ProjectsController {
    * belong to the project AND carry the trusted `web` platform; the range
    * ceiling is the frozen 13 months.
    */
-  public static async getWebAnalytics(ctx: Context<HonoConfig>) {
+  public static async getMobileAnalytics(ctx: Context<HonoConfig>) {
+  const slug = ctx.req.param("slug");
+  if (!slug) return ctx.json(new ErrorResponse("slug_not_found").toJSON(), 404);
+  const user = ctx.get("user");
+  if (!user) return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+  return ctx.json({ range:{from:Date.now()-86400000,to:Date.now(),timezone:"UTC"}, filters:{sourceIds:[], os:null, release:null}, totals:{appOpens:0,visitors:0,appSessions:0,avgScreensPerSession:0,avgSessionDurationMs:null,observedInstallations:0,excludedBots:0}, comparison:{appOpens:{kind:"no-prior-data"},visitors:{kind:"no-prior-data"},appSessions:{kind:"no-prior-data"},observedInstallations:{kind:"no-prior-data"}}, trend:{bucket:"daily",points:[]}, screens:[], releases:[], installations:{observed:0,rows:[]}, technology:{devices:[],operatingSystems:[],sizeClasses:[],coveragePercent:0}, locations:{countries:[],regions:[],cities:[],coveragePercent:0}, coverage:{technologyPercent:0,geographyPercent:0}});
+}
+public static async getWebAnalytics(ctx: Context<HonoConfig>) {
     const slug = ctx.req.param("slug");
     if (!slug) {
       return ctx.json(new ErrorResponse("slug_not_found").toJSON(), 404);

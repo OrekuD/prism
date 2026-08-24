@@ -196,6 +196,7 @@ export class IngestController {
 			validEvents.push({ index, event: sanitized });
 		}
 
+		// Task 18: reserved mobile screen + lifecycle validated similarly, gated on react-native source
 		// Task 17 slice 4: reserved page views are validated against the
 		// frozen wire schema and the trusted Web-source boundary BEFORE any
 		// write. Malformed or misattributed attempts are INDIVIDUALLY

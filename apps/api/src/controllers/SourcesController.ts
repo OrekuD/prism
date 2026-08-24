@@ -34,6 +34,7 @@ import { validateData } from "../utils/validateData";
  */
 
 const PLATFORMS = ["web", "ios", "android", "react-native", "server"] as const;
+const CREATABLE_PLATFORMS = ["web", "react-native", "server"] as const; // iOS/Android reserved, not advertised
 type Platform = (typeof PLATFORMS)[number];
 
 const PUBLISHABLE_PLATFORMS: ReadonlySet<string> = new Set([
@@ -45,7 +46,7 @@ const PUBLISHABLE_PLATFORMS: ReadonlySet<string> = new Set([
 
 const CreateSourceSchema = z.strictObject({
   name: z.string().min(1).max(80),
-  platform: z.enum(PLATFORMS),
+  platform: z.enum(CREATABLE_PLATFORMS as unknown as typeof PLATFORMS),
   // JSON array of allowed origins; only meaningful (and only accepted) for
   // web sources.
   allowedOrigins: z.array(z.string().url()).max(20).optional(),

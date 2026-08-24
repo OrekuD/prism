@@ -383,6 +383,11 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 							label="Web analytics"
 							icon={<I.IconTrend />}
 						/>
+<Active
+							to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/mobile-analytics`}
+							label="Mobile analytics"
+							icon={<I.IconTrend />}
+						/>
 						<Active
 							to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/people`}
 							label="People"

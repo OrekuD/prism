@@ -1,3 +1,4 @@
+import type { MobileContext } from "./mobile-context";
 /**
  * Frozen public contract for `@prism-analytics/core` (task-9 slice 1 + review
  * corrections, ADR 0002).
@@ -126,6 +127,7 @@ export interface PrismRuntimeContext {
 	readonly kind: "web" | "server" | "mobile";
 	readonly screenSize?: { readonly width: number; readonly height: number };
 	readonly locale?: string;
+  mobile?: MobileContext;
 	readonly timezone?: string;
 	/** App version/build — required for mobile hosts later; optional in core. */
 	readonly app?: {

@@ -193,7 +193,7 @@ export async function resolveDefaultWorkspacePath(): Promise<string> {
   }
 }
 
-export const WORKSPACE_PLATFORMS = [
+export const WORKSPACE_PLATFORMS = [ // all known; create dialog filters to CREATABLE
   "web",
   "ios",
   "android",
