@@ -1,0 +1,96 @@
+---
+title: Error tracking
+description: Capture browser, React, and Node errors into the Errors dashboard.
+audience: Developer
+scope: Both
+lastReviewed: "2026-08-24"
+---
+
+Prism's error tracker groups captured errors into issues and shows them
+on the project's **Errors** page. Capture is opt-in per environment and
+rides the same consent state machine as the rest of the SDK.
+
+## Browser capture
+
+Create an error reporter alongside your analytics client:
+
+```ts
+import { createBrowserErrorReporter } from "@prism-analytics/browser";
+
+const errors = await createBrowserErrorReporter({
+  sourceKey: "psk_your_key",
+  endpoint: "https://your-prism-host",
+  share: { client: prism }, // share identity + consent with the reporter
+  captureGlobalErrors: true, // install window.onerror + unhandledrejection
+  release: "frontend@2.1.0",
+  environment: "production",
+});
+```
+
+- `captureGlobalErrors` installs window-level `error` and
+  `unhandledrejection` handlers. Global captures are marked unhandled;
+  direct calls default to handled.
+- `errors.captureException(value, options?)` normalizes any thrown value
+  — Error, string, rejection reason — into a report. Same-fingerprint
+  reports within the dedupe window (default 1 second) return `deduped`.
+- A `beforeSend` hook can drop or redact a report before it queues.
+- Sanitization strips sensitive-looking values before anything leaves
+  the browser; raw payloads are never echoed back.
+- `errors.shutdown()` stops handlers and attempts a bounded final
+  flush. Call it where you call `prism.shutdown()`.
+
+## React error boundary
+
+`@prism-analytics/react` ships an opt-in boundary:
+
+```tsx
+import {
+  PrismErrorBoundaryProvider,
+  PrismErrorBoundary,
+} from "@prism-analytics/react";
+
+<PrismErrorBoundaryProvider reporter={errors}>
+  <PrismErrorBoundary fallback={<ErrorScreen />}>
+    <App />
+  </PrismErrorBoundary>
+</PrismErrorBoundaryProvider>
+```
+
+The provider shares the reporter with descendants; the boundary reports
+caught render errors with component-stack context. The
+`usePrismErrorReporter()` hook exposes `captureException` for
+imperative reporting inside the provider tree.
+
+## Node capture
+
+`@prism-analytics/node` reports errors from server processes:
+
+```ts
+import { createNodeErrorReporter, captureProcessErrors } from "@prism-analytics/node";
+
+const errors = await createNodeErrorReporter({
+  sourceKey: "psk_server_key", // secret server key
+  endpoint: "https://your-prism-host",
+});
+captureProcessErrors(errors); // opt-in uncaughtException/unhandledRejection
+
+// or report directly:
+reportError(errors, err, { handled: false, context: { tags: { route } } });
+```
+
+## The Errors dashboard
+
+The **Errors** page lists issues — groups of same-fingerprint reports —
+with counts, first and last seen, release, and platform filters. Open an
+issue to see:
+
+- the sanitized stack with frames;
+- recent occurrences with timestamps and attributes;
+- breadcrumbs and context tags captured with the report;
+- workflow history (resolved, ignored, reopened).
+
+Issue state changes are auditable on the issue itself. Error data is
+deleted with its source, with its project, and by retention.
+
+Exact limits — payload sizes, breadcrumbs, dedupe windows — live in
+[SDK API and limits](/docs/reference/sdk-api-and-limits).

@@ -1,0 +1,91 @@
+---
+title: Capturing events
+description: Track named events, validate properties, and find them in the dashboard.
+audience: Developer
+scope: Both
+lastReviewed: "2026-08-24"
+---
+
+An event is one explicit `track()` call. Events are immutable: the
+stored row never changes after acceptance. This page covers the full
+feature — what you can send, how delivery is reported, how events are
+attributed, and where they appear in Prism.
+
+## Sending an event
+
+```ts
+const result = prism.track("button-click", { label: "signup" });
+// { status: "queued", eventId } | { status: "dropped", reason }
+```
+
+`queued` means accepted locally. Delivery is never part of the call
+stack — background failures surface through the diagnostics
+subscription and through rejected `flush()`/`shutdown()` promises. See
+[Delivery and diagnostics](/docs/configuration/delivery-and-diagnostics).
+
+## Names and properties
+
+- Names are non-empty, at most 128 characters, with no control
+  characters. Use stable `lower_snake_case` names such as
+  `checkout_completed`.
+- Properties are strict JSON values. Non-finite numbers, dates, class
+  instances, accessors, cycles, and `__proto__`/`constructor`/
+  `prototype` keys are rejected.
+- Shared ceilings are enforced identically by the SDK and the server —
+  batch 50 events, request 512 KiB, event 32 KiB, depth 12, strings
+  10,000 characters — so an official-SDK event is never rejected as
+  oversized.
+
+The `$prism_` name prefix is reserved for the SDK. `track("$...")` is
+rejected.
+
+## Attribution
+
+Every accepted event carries:
+
+- the client-generated event ID (replays are idempotent — `duplicate`
+  means a replayed ID, which is how transport retries stay safe);
+- `occurredAt` (client clock) and `receivedAt` (server clock);
+- the session ID when a session is active;
+- the anonymous identity, and the external user ID when the caller has
+  identified;
+- the source, derived server-side from the source key — client ownership
+  fields are ignored.
+
+## Global properties
+
+Attach properties once and include them with every following event:
+
+```ts
+await prism.setGlobalProperty("app_version", "2.1.0");
+await prism.unsetGlobalProperty("app_version");
+await prism.clearGlobalProperties("all");
+```
+
+Scopes control lifetime: `memory` (default) clears on page unload,
+`session` lasts for the browser-session persistence window, and
+`persistent` survives longer in supported storage. Event-level
+properties always win over global properties with the same name.
+`reset()` clears every scope.
+
+## Reserved events
+
+The SDK emits its own events through the same pipeline:
+`session_started` and `session_ended` from session handling, and
+`$prism_page_view` for page analytics. You cannot send reserved names
+through `track()`.
+
+## Where events appear
+
+Accepted events appear on the project's **Events** page, newest first.
+The list is bounded, with filtering by event name, source, and time, and
+a detail view per event showing properties, attribution, and the
+complete payload as received. Events also feed the
+[Web analytics](/docs/features/page-analytics) reports when they are
+page views, and person histories on the
+[People](/docs/features/identifying-users) pages.
+
+## Deletion
+
+Events are removed by person deletion, by retention, or with their
+project. See [Consent and privacy](/docs/configuration/consent-and-privacy).

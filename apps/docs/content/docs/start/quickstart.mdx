@@ -1,0 +1,83 @@
+---
+title: Quickstart
+description: From signup to a verified event in about five minutes.
+audience: Developer
+scope: Hosted
+lastReviewed: "2026-08-24"
+---
+
+This guide takes you from a fresh Prism account to a verified event on
+your dashboard. It uses the hosted deployment. If you want to run Prism
+on your own infrastructure, see
+[Self-host Prism](/docs/self-hosting/self-host-prism) instead — the SDK
+steps are identical once an instance is running.
+
+## 1. Create your account
+
+Sign up with email. Prism creates a personal **workspace** for you
+automatically. A workspace owns members and projects.
+
+## 2. Create a project and a Web source
+
+A **project** is the unit of analytics: one set of events, sessions, and
+people, and one realtime stream. Create one from the workspace
+overview.
+
+Inside the project, open **Sources** and create a source with the **Web**
+platform. A **source** is one instrumented application. Web sources have
+**allowed origins** — only browsers on those origins may ingest with the
+source's key.
+
+## 3. Copy the setup snippet
+
+Open the source's **Setup** tab. It shows a ready-made snippet containing
+your publishable source key (`psk_...`) and the exact ingestion endpoint
+of your Prism instance. Publishable keys are safe to embed in client
+code — they can only write analytics data, and the project is derived
+from the key on every request.
+
+## 4. Install the SDK
+
+```sh
+npm install @prism-analytics/browser
+```
+
+## 5. Initialize the client
+
+```ts
+import { createBrowserClient } from "@prism-analytics/browser";
+
+export const prism = await createBrowserClient({
+  sourceKey: "psk_your_key",
+  endpoint: "https://your-prism-host", // from the Setup tab
+});
+```
+
+The factory is async and resolves to a ready client. It performs no
+automatic side effects beyond wiring its own queue and storage.
+
+## 6. Capture an event
+
+```ts
+await prism.track("signup_completed", { plan: "free" });
+```
+
+`track` accepts lower_snake_case names and JSON-safe properties. It
+returns `queued` when accepted locally — delivery happens in the
+background. See [Capturing events](/docs/features/capturing-events).
+
+## 7. Verify it
+
+Open the project's **Events** page in the Prism dashboard. Your event
+appears within seconds of delivery. Start a session with
+`prism.startSession()` and it shows up live on the **Live** page.
+
+## Next steps
+
+- [Capturing events](/docs/features/capturing-events) — names,
+  properties, and attribution.
+- [Page analytics](/docs/features/page-analytics) — automatic page-view
+  capture.
+- [Identifying users](/docs/features/identifying-users) — attach
+  activity to a person.
+- [JavaScript SDK](/docs/start/javascript-sdk) — the full browser setup.

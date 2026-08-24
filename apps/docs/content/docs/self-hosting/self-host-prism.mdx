@@ -1,0 +1,55 @@
+---
+title: Self-host Prism
+description: What self-hosting Prism means today, and whether it fits you.
+audience: Operator
+scope: Self-hosted
+lastReviewed: "2026-08-24"
+---
+
+Prism ships as a Docker Compose stack you can run on a single host. This
+page explains what self-hosting means today so you can decide before
+installing. For the hosted product, the SDK setup in the
+[Quickstart](/docs/start/quickstart) is all you need.
+
+## Current maturity
+
+Self-hosting is usable and complete for a single-host deployment, and it
+is the newest part of Prism. The deployment pass has not completed a
+production certification yet: there is no Kubernetes chart, no
+high-availability or multi-region story, and no certified upgrade path
+across major versions. Treat a self-hosted install as a single-node
+deployment with standard operational care — backups, health checks, and
+maintenance windows.
+
+## What you get
+
+The Compose stack runs every Prism service:
+
+- **web** — the dashboard and the reverse proxy that fronts the APIs on
+  one origin.
+- **api** — the product API: authentication, projects, sources, keys,
+  and dashboard reads.
+- **analytics** — the ingestion and realtime service your SDKs talk to.
+- **sqld** — the libSQL server holding analytics data.
+- **db** — PostgreSQL holding accounts, projects, sources, and keys.
+- **migrate** — a one-shot service that applies forward-only schema
+  migrations before the APIs start.
+
+## What you provide
+
+- A Linux host with Docker Compose (2 CPUs and 4 GiB RAM serve small
+  deployments; analytics storage grows with traffic).
+- A domain with TLS in front of the `web` service, unless you run
+  locally.
+- Generated secrets for PostgreSQL, the analytics store, and session
+  signing.
+- Optional integrations: SMTP or Resend for email, GitHub and Google
+  OAuth for social sign-in, S3-compatible storage for uploads, and an
+  IP-info token for coarse geo enrichment.
+
+## Install
+
+Continue with [Install Prism](/docs/self-hosting/install-prism) for the
+step-by-step setup, then keep
+[Configure and operate](/docs/self-hosting/configure-and-operate) as the
+operating reference.

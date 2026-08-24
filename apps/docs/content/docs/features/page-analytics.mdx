@@ -1,0 +1,105 @@
+---
+title: Page analytics
+description: Automatic page views and the Web analytics dashboard.
+audience: Developer
+scope: Both
+lastReviewed: "2026-08-24"
+---
+
+Web analytics shows page-view traffic for the Web sources in a project:
+trends, top pages, referrers, campaigns, locations, and technology. The
+browser SDK captures page views automatically; Prism aggregates them
+into fixed reports server-side.
+
+## Capturing page views
+
+Enable page views on the Browser client:
+
+```ts
+const prism = await createBrowserClient({
+  sourceKey: "psk_your_key",
+  endpoint: "https://your-prism-host",
+  pageViews: { mode: "history" },
+});
+```
+
+- `mode: "history"` captures a view on every `pushState`, `replaceState`,
+  and `popstate` navigation. The SDK patches History API methods for the
+  lifetime of the client and restores the natives when it shuts down.
+- `mode: "manual"` captures nothing automatically. Your router calls
+  `prism.pageViews.capture({ path })`, or you use the React hook below.
+- Without a `pageViews` config the client captures none and exposes
+  `pageViews: null`.
+
+In React, use the hook with a manual-mode client:
+
+```tsx
+usePrismPageView({ path: location.pathname });
+```
+
+It captures exactly once per path, including under React Strict Mode.
+See [React SDK](/docs/start/react-sdk).
+
+### What is captured
+
+- Only the page host, path, and — opt-in via `captureTitle: true` — the
+  document title. Never the full URL, query string, or hash.
+- Referrers are reduced to the external host only. Same-host referrers
+  are omitted: internal traffic is not acquisition.
+- Campaigns use only the allowlisted UTM parameters
+  (`utm_source`, `utm_medium`, `utm_campaign`).
+- A `beforeCapture` hook can drop or redact before anything is queued.
+  Throwing from it cancels the capture.
+
+Page views ride the same consent state machine as every other capture:
+with consent pending or denied, nothing is captured or retained.
+
+### Web sessions
+
+Page views group into Web sessions with a 30-minute inactivity window.
+A session survives hard navigations within that window in the same tab
+and resumes without emitting a second session start. Navigating to the
+same path again within one page lifetime is suppressed as a duplicate.
+
+## The dashboard
+
+Open **Web analytics** in the sidebar. The page has five sections.
+
+- **Metric strip** — page views, unique visitors, sessions, bounce
+  rate, and views per session. Bounce rate stays empty until sessions
+  complete the 30-minute window; it is never rendered as zero.
+- **Trend** — page views, visitors, or sessions per bucket. Ranges up
+  to 26 hours bucket hourly, up to 91 days daily, longer ranges weekly.
+- **Top pages** — views, visitors, and bounce rate per path, or
+  entrances on the **Entry pages** tab. Click a row to filter the whole
+  page to that path.
+- **Referrers, Campaigns, Locations** — sessions by external referrer
+  host (with an explicit Direct row), by UTM source, medium, or
+  campaign, and by country, region, or city.
+- **Technology** — browsers, operating systems, devices, viewport
+  buckets, and primary languages.
+
+## Ranges, comparison, and filters
+
+Pick a range from 24 hours to 12 months, or choose **Custom** for exact
+dates (up to 366 days). **Compare** overlays the previous equal-length
+period on the trend and shows the change on each metric; when no prior
+data exists, the dashboard says so instead of showing a misleading
+percentage. Filters narrow every panel: a specific Web source, an
+allowed host, human-only or bot-inclusive traffic, and the selected
+page path.
+
+## Empty and partial states
+
+- **"No Web sources in this project"** — create a source with the Web
+  platform; server and mobile sources do not contribute.
+- **No data with a source selected** — check that the page host matches
+  one of the source's allowed origins; mismatches are rejected at
+  ingestion.
+- **Sparse locations** — geography derives from the client IP at
+  ingestion. Events delivered more than 15 minutes late are accepted
+  without geography. Region and city rows with fewer than 5 sessions
+  collapse into "Other" server-side.
+
+Exact metric ceilings live in
+[SDK API and limits](/docs/reference/sdk-api-and-limits).

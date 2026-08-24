@@ -1,0 +1,180 @@
+---
+title: Configure and operate
+description: Environment reference, stores, TLS, mail, backups, upgrades, retention, and troubleshooting.
+audience: Operator
+scope: Self-hosted
+lastReviewed: "2026-08-24"
+---
+
+One operating reference for a self-hosted Prism instance. Sections are
+self-contained; use the list below to jump.
+
+- [Environment variables](#environment-variables)
+- [Data stores](#data-stores)
+- [File storage](#file-storage)
+- [Domains, TLS, and proxying](#domains-tls-and-proxying)
+- [Email and authentication providers](#email-and-authentication-providers)
+- [Health and logging](#health-and-logging)
+- [Backup and restore](#backup-and-restore)
+- [Upgrades](#upgrades)
+- [Retention](#retention)
+- [Troubleshooting](#troubleshooting)
+
+## Environment variables
+
+Configuration is validated at boot; the API refuses to start with
+missing or weak values and logs the exact variable at fault.
+
+**Core**
+
+- `DATABASE_URL` — PostgreSQL connection for the product API.
+- `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` — the analytics (libSQL)
+  store.
+- `PUBLIC_URL`, `CLIENT_URL` — the instance's public origin; drives
+  links, cookies, and trusted CORS origins.
+- `SETUP_TOKEN` — first-owner claim token; remove it after setup.
+- `INSTANCE_NAME` — shown in emails and UI.
+- `BETTER_AUTH_SECRET` — session signing secret.
+
+**Deployment mode**
+
+- `DEPLOY_MODE` — `compose` (default), `hosted`, or `local`; selects
+  defaults for service addresses.
+
+**Mail** — either SMTP (`MAIL_SMTP_HOST`, `MAIL_SMTP_PORT`,
+`MAIL_SMTP_SECURE`, `MAIL_SMTP_USER`, `MAIL_SMTP_PASS`, `MAIL_FROM`)
+or Resend (`RESEND_API_KEY`, `MAIL_FROM`). Without either, the
+development adapter prints verification links to the API log.
+
+**Social providers** — `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` and
+`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`; optional.
+
+**Analytics retention** — `ANALYTICS_RETENTION_DAYS` (events, sessions)
+and `ERROR_RETENTION_DAYS` (error data). Unset or `0` disables deletion
+so data is never lost by accident.
+
+**Object storage** — `STORAGE_DRIVER` (`local` or `s3`) plus
+`STORAGE_S3_*` settings, or ImageKit credentials; `STORAGE_PUBLIC_URL`
+serves uploads.
+
+**Networking and integrations** — `CORS_ALLOWED_ORIGINS` (extra
+trusted origins), `IP_INFO_API_TOKEN` (optional coarse geo
+enrichment), `TRUST_PROXY` (`true` only behind a trusted proxy that
+sets client-IP headers).
+
+## Data stores
+
+Two stores keep concerns separate:
+
+- **PostgreSQL** (`db` service) — accounts, workspaces, projects,
+  sources, keys, and setup state.
+- **libSQL** (`sqld` service) — analytics events, sessions, people, page
+  views, and error data, in a named volume (`prism_sqlddata`).
+
+Both are included in the Compose stack. Resetting a disposable
+development store is a `down -v` away; never do this against a host with
+data you want.
+
+## File storage
+
+Uploads default to a local named volume (`prism_uploads`). For
+multi-host or object-backed setups set `STORAGE_DRIVER=s3` with endpoint,
+region, bucket, and keys, or configure ImageKit. `STORAGE_PUBLIC_URL`
+must point at wherever uploads are reachable.
+
+## Domains, TLS, and proxying
+
+Put TLS termination in front of the `web` service (Caddy is the
+low-configuration choice; nginx + certbot and Traefik both work).
+Requirements:
+
+- Proxy `/` to the `web` service (port 3000).
+- Pass WebSocket upgrades — the Live page needs them
+  (`Upgrade`/`Connection` headers).
+- Keep origin consistent: `PUBLIC_URL`/`CLIENT_URL` must match the
+  scheme and host users actually visit, or cookies and CORS break.
+
+Common mistakes: serving the dashboard on one origin and calling APIs on
+another without a proxy (the deployment is single-origin by design);
+forgetting WebSocket pass-through; setting `TRUST_PROXY=true` behind an
+untrusted proxy.
+
+## Email and authentication providers
+
+Email carries verification, password reset, and invite links. Configure
+SMTP or Resend; test with a real inbox. Without a provider in
+development, links print to the API log.
+
+Social sign-in is optional per provider; create OAuth credentials with
+the instance's callback origin and set the client ID/secret pairs.
+Sessions are HTTP-only cookies signed with `BETTER_AUTH_SECRET` — rotate
+that secret with a maintenance window (it invalidates sessions).
+
+## Health and logging
+
+- `/health/live` — process liveness.
+- `/health/ready` — product database and analytics store checks; use it
+  for container readiness and load-balancer checks.
+
+Services log structured JSON to stdout; read them with
+`docker compose logs <service>`. Alert on `ready` failures and on
+restart loops.
+
+## Backup and restore
+
+Back up all three stores plus the env file:
+
+```sh
+# Product database
+docker compose --env-file deploy/compose.env -f deploy/compose.yml exec db \
+  pg_dump -U prism prism > backup-$(date +%F).sql
+
+# Analytics store + uploads (stop sqld for a consistent snapshot)
+docker compose --env-file deploy/compose.env -f deploy/compose.yml stop sqld
+docker run --rm -v prism_sqlddata:/data -v "$PWD/backups":/out \
+  alpine tar czf /out/sqlddata-$(date +%F).tar.gz -C /data .
+docker run --rm -v prism_uploads:/data -v "$PWD/backups":/out \
+  alpine tar czf /out/uploads-$(date +%F).tar.gz -C /data .
+docker compose --env-file deploy/compose.env -f deploy/compose.yml start sqld
+```
+
+Restore by replacing the volume contents (and piping the SQL dump back)
+before starting services. Keep off-site copies and test restores
+regularly — a backup that has never been restored is an assumption.
+
+## Upgrades
+
+1. Back up first (above).
+2. Read the release notes for breaking changes.
+3. Pull or rebuild images, then `up -d`. The `migrate` service applies
+   forward-only migrations before the API starts; migrations never drop
+   data.
+4. Verify `/health/live`, `/health/ready`, and a signed-in dashboard
+   pass.
+
+Roll back by running the previous image version. Migrations are
+forward-only: rolling back across a schema migration is not supported —
+restore the backup instead. Expect a short read-only window during the
+migration step.
+
+## Retention
+
+Analytics data expires according to `ANALYTICS_RETENTION_DAYS` and
+`ERROR_RETENTION_DAYS`. Retention is opt-in: unset or `0` disables
+deletion, so an operator never loses data by accident. Choose windows
+that match your analytics commitments, and keep backups for longer than
+the live retention if you need history.
+
+## Troubleshooting
+
+| Symptom | Likely cause | Check |
+| --- | --- | --- |
+| API container exits immediately | Missing/weak config | `docker compose logs api` — the log names the variable |
+| `/setup` never finishes | Proxy or API down | `curl http://localhost:3000/api/v1/config` |
+| `setup_token_required` | Wrong token | Re-paste; comparison is exact |
+| `setup_in_progress` | Concurrent claim | Wait for the claim TTL, retry |
+| Missing-table 503 | Migrations not run | Run the `migrate` service |
+| Sign-in fails with origin errors | Origin mismatch | `PUBLIC_URL`/`CLIENT_URL` vs actual host |
+| Live page never connects | WebSocket blocked | Proxy `Upgrade`/`Connection` headers |
+| Ingestion 403 | Origin not allowed | Source allowed origins vs page origin |
+| Uploads fail | Storage misconfigured | `STORAGE_*` variables and `STORAGE_PUBLIC_URL` |

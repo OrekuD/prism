@@ -1,0 +1,90 @@
+---
+title: Install Prism
+description: Requirements, Docker Compose setup, migrations, health checks, and first owner.
+audience: Operator
+scope: Self-hosted
+lastReviewed: "2026-08-24"
+---
+
+This page installs a single-host Prism stack with Docker Compose and
+creates the first owner account.
+
+## Prerequisites
+
+- Docker and Docker Compose on a Linux host.
+- Generated secrets for PostgreSQL, the analytics store token, and
+  session signing (a secrets generator such as `openssl rand` is fine).
+- A domain pointing at the host with TLS termination in front of the
+  `web` service for anything beyond localhost.
+
+## 1. Get the deployment files
+
+The Compose files live in the repository under `deploy/`:
+`deploy/compose.yml` and `deploy/compose.env`. Copy both to your host
+and fill in `compose.env`.
+
+## 2. Configure the environment
+
+At minimum set:
+
+```sh
+# Product database (PostgreSQL)
+DATABASE_URL=postgresql://prism:CHANGE_ME@db:5432/prism
+POSTGRES_PASSWORD=CHANGE_ME
+
+# Analytics store (libSQL)
+TURSO_DATABASE_URL=http://sqld:8080
+TURSO_AUTH_TOKEN=CHANGE_ME
+
+# Public origin of this instance — used for links, cookies, and CORS
+PUBLIC_URL=https://prism.example.com
+CLIENT_URL=https://prism.example.com
+
+# First-owner setup token (minimum 16 characters)
+SETUP_TOKEN=CHANGE_ME_GENERATED
+```
+
+Generate secrets with `openssl rand -hex 32`. The API refuses to boot
+with missing or weak required values and names the offender in its log.
+Optional groups — mail, OAuth providers, S3 storage, geo enrichment,
+retention — are listed in
+[Configure and operate](/docs/self-hosting/configure-and-operate).
+
+## 3. Start and migrate
+
+```sh
+docker compose --env-file deploy/compose.env -f deploy/compose.yml up -d
+docker compose --env-file deploy/compose.env -f deploy/compose.yml up migrate
+```
+
+The `migrate` service applies forward-only schema migrations. It is
+idempotent — applied migrations are skipped. Re-run it after upgrades.
+
+## 4. Verify health
+
+```sh
+curl http://localhost:3000/health/live
+curl http://localhost:3000/health/ready
+```
+
+`live` proves the process is up; `ready` checks the product database and
+the analytics store. Both must pass before you continue.
+
+## 5. Create the first owner
+
+Open `https://your-domain/setup` and claim ownership with
+`SETUP_TOKEN`. Treat the token as a secret: the claim is
+constant-time-compared and rate-limited, and the setup endpoint closes
+permanently after the first successful owner. Remove the variable
+afterwards.
+
+If the setup wizard cannot reach the API, check
+`curl http://localhost:3000/api/v1/config` and the `api` container logs
+first — most first-boot failures are proxy or database configuration.
+
+## Next steps
+
+- [Configure and operate](/docs/self-hosting/configure-and-operate) —
+  environment reference, backups, upgrades, retention, troubleshooting.
+- Point an app at the instance with the
+  [Quickstart](/docs/start/quickstart).

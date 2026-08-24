@@ -1,4 +1,0 @@
-{
-  "title": "Configure Prism",
-  "pages": ["environment-variables", "data-stores", "file-storage", "domains-tls", "email", "authentication", "networking"]
-}

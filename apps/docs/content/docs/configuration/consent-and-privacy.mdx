@@ -1,0 +1,70 @@
+---
+title: Consent and privacy
+description: The consent state machine, what Prism collects, retention, and deletion.
+audience: Developer
+scope: Both
+lastReviewed: "2026-08-24"
+---
+
+Prism is build-around-consent by design: the SDK captures nothing until
+you explicitly allow it, and the server enforces the same boundaries.
+This page covers the consent state machine, what Prism does and does not
+collect, and how data leaves the system.
+
+## The consent state machine
+
+Every client starts in an explicit collection state — `pending`,
+`granted`, or `denied` — chosen at creation. There is no implicit
+default.
+
+- `pending` and `denied` drop captures: nothing is queued or
+  transmitted.
+- `granted` enables capture. Granting after `pending` starts from that
+  moment; it does not backfill.
+- Withdrawal (`denied`) is effective immediately and thoroughly: it
+  clears the queue, the anonymous identity, the known identity, global
+  properties, and queued identify operations, and cancels in-flight
+  delivery.
+
+```ts
+prism.setCollectionState("granted");
+prism.setCollectionState("denied");
+```
+
+## What Prism collects
+
+Analytics data is what you send: event names and properties, page views
+(host, path, optional title), error reports, and session lifecycle
+events — plus the identifiers and timestamps needed to attribute them.
+Product account data (names, emails, projects, keys) lives separately in
+the product database.
+
+What Prism never captures: page content, keystrokes, full URLs with
+query strings, raw user agents or IP addresses on page views, or any
+profile data you do not pass explicitly. Location enrichment, where
+available, is coarse and best-effort. Identity is namespaced per project
+and endpoint — there is no cross-site identity.
+
+## Anonymous identity persistence
+
+The anonymous ID persists across reloads by default so returning
+visitors stay the same person. You can choose a stricter persistence
+mode through `collection.anonymousPersistence` — for example, clearing
+on session end for privacy-sensitive applications.
+
+## Retention and deletion
+
+Data leaves the live store three ways:
+
+- **Retention**: events, sessions, and error data age out on a
+  configurable schedule (hosted default is documented on your plan;
+  self-hosted operators configure their own — see
+  [Configure and operate](/docs/self-hosting/configure-and-operate)).
+- **Person deletion**: removing a person deletes identity links, traits,
+  sessions, and events. A later `identify()` with the same ID creates a
+  new person. See
+  [Identifying users](/docs/features/identifying-users#the-people-dashboard).
+- **Project or source deletion**: all captured data goes with it.
+
+Person-level export produces a complete copy of one person's data for
+portability requests.

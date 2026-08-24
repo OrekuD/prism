@@ -1,4 +1,4 @@
 {
-  "title": "Self-host Prism",
-  "pages": ["overview", "requirements", "architecture", "installation", "first-boot", "configuration", "operations", "troubleshooting"]
+  "title": "Self-hosting",
+  "pages": ["self-host-prism", "install-prism", "configure-and-operate"]
 }

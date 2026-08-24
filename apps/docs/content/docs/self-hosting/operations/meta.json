@@ -1,4 +1,0 @@
-{
-  "title": "Operate Prism",
-  "pages": ["health", "logging", "backup-restore", "upgrades", "retention", "production-security"]
-}

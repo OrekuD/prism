@@ -1,0 +1,77 @@
+---
+title: Delivery and diagnostics
+description: Queueing, batching, retries, flush, shutdown, and troubleshooting.
+audience: Developer
+scope: Both
+lastReviewed: "2026-08-24"
+---
+
+Delivery is never part of your call stack. `track()` validates and
+queues locally and returns immediately; a background queue delivers
+batches to the ingestion endpoint. This page explains the queue, how
+failures surface, and how to troubleshoot missing data.
+
+## What `queued` means
+
+`{ status: "queued", eventId }` means the capture passed local
+validation and is queued for delivery. It does not mean the server
+accepted it yet. `{ status: "dropped", reason }` means the capture never
+queued — reasons include consent pending or denied, a shut-down client,
+and a full queue. Drops are reported, never silent.
+
+## When delivery runs
+
+Events leave the queue in batches (up to 50 events or 256 KiB) when:
+
+- the batch threshold is reached;
+- the background interval fires;
+- lifecycle signals request a bounded flush (for example
+  `beforeunload`);
+- you call `await prism.flush()`.
+
+`flush()` rejects when delivery fails — the batch stays queued. A
+successful flush of an empty queue is silent.
+
+## Batching, idempotency, and retries
+
+Each event carries a client-generated ID. Replays — a retry after an
+ambiguous network failure, for example — are idempotent: the server
+reports them as `duplicate` and never double-counts. Failed batches
+retry with backoff while the client runs; the queue is bounded, and
+overflow drops oldest-first with a diagnostic.
+
+## Shutdown
+
+`shutdown({ timeoutMs })` performs one bounded final flush, then stops
+timers and listeners. Post-shutdown captures return
+`{ status: "dropped", reason: "shutdown" }`. Call it on page unload or
+app teardown; who created the client owns this call.
+
+## Diagnostics
+
+Subscribe to delivery and validation diagnostics:
+
+```ts
+prism.onDiagnostic((d) => console.log(d));
+```
+
+Diagnostics cover queue drops, delivery failures with status codes, and
+validation rejections the server returned. This is the intended hook for
+logging and alerting pipelines.
+
+## Troubleshooting missing data
+
+- **Nothing arrives**: confirm the source key and endpoint, and that the
+  page origin is in the source's allowed origins (Web sources).
+- **Events drop with a consent reason**: the collection state is
+  `pending` or `denied`. See
+  [Consent and privacy](/docs/configuration/consent-and-privacy).
+- **Server rejections**: names over 128 characters, non-JSON properties,
+  or reserved `$prism_` names are rejected. The SDK pre-validates the
+  same rules, so official-SDK captures should never be rejected — a
+  rejection diagnostic indicates a version mismatch.
+- **Duplicate events**: replayed IDs are expected after retries and are
+  reported as `duplicate`, not double-counted.
+
+Exact ceilings — batch size, payload, timing — live in
+[SDK API and limits](/docs/reference/sdk-api-and-limits).

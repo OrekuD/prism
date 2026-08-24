@@ -1,0 +1,86 @@
+---
+title: JavaScript SDK
+description: The complete browser setup with @prism-analytics/browser.
+audience: Developer
+scope: Both
+lastReviewed: "2026-08-24"
+---
+
+`@prism-analytics/browser` is the browser SDK for Prism. It wraps the
+runtime-neutral `@prism-analytics/core` engine with real browser
+transport, storage, and lifecycle seams, and adds page-view capture and
+error reporting. This page covers client creation and lifecycle
+ownership. Feature behavior — events, page analytics, identity,
+sessions, errors, consent — lives on its own page and links back here.
+
+## Installation
+
+```sh
+npm install @prism-analytics/browser
+```
+
+## Creating the client
+
+`createBrowserClient` is an async factory that resolves to a ready
+client. One options object, no positional arguments:
+
+```ts
+import { createBrowserClient } from "@prism-analytics/browser";
+
+const prism = await createBrowserClient({
+  // Publishable source key — safe to embed, write-only.
+  sourceKey: "psk_your_key",
+  // Your Prism ingestion origin. Copy it from Sources → Setup;
+  // never hardcode someone else's instance.
+  endpoint: "https://your-prism-host",
+  // Optional consent state machine (see Consent and privacy).
+  collection: { initialState: "pending" },
+  // Optional automatic page views (see Page analytics).
+  pageViews: { mode: "history" },
+});
+```
+
+Invalid options throw a specific validation error before any network
+activity. Runtime conditions — consent denied, client shut down, queue
+full — return a discriminated `dropped` result from `track()` instead of
+throwing, so a telemetry failure can never break your application.
+
+## Lifecycle ownership
+
+Whoever creates the client owns it. The client holds a queue, a consent
+store, and optional page-view listeners, so create it once per page load
+and keep the reference — do not create one per component or per route.
+
+Before the page unloads, call:
+
+```ts
+await prism.shutdown();
+```
+
+`shutdown()` flushes queued events and detaches listeners. It resolves
+after delivery settles; a final delivery failure rejects the promise.
+Use `await prism.flush()` when you need queued events delivered without
+tearing the client down.
+
+## What the client exposes
+
+- `track(name, properties?)` — capture an event.
+- `startSession(properties?)` — start a client-owned session.
+- `pageViews` — the page-view controller, or `null` when no `pageViews`
+  config was passed.
+- `setCollectionState(state)` — move the consent state machine.
+- `flush()` / `shutdown()` — delivery control.
+- `onDiagnostic(handler)` — subscribe to delivery and validation
+  diagnostics.
+
+Exact signatures and limits live in
+[SDK API and limits](/docs/reference/sdk-api-and-limits).
+
+## Next steps
+
+- [Capturing events](/docs/features/capturing-events)
+- [Page analytics](/docs/features/page-analytics)
+- [Identifying users](/docs/features/identifying-users)
+- [Sessions and live activity](/docs/features/sessions-and-live-activity)
+- [Error tracking](/docs/features/error-tracking)
+- [Consent and privacy](/docs/configuration/consent-and-privacy)

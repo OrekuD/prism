@@ -1,0 +1,10 @@
+{
+  "title": "Features",
+  "pages": [
+    "capturing-events",
+    "page-analytics",
+    "identifying-users",
+    "sessions-and-live-activity",
+    "error-tracking"
+  ]
+}

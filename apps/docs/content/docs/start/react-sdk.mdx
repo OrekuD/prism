@@ -1,0 +1,103 @@
+---
+title: React SDK
+description: The provider and hooks layer over an already-created Browser client.
+audience: Developer
+scope: Both
+lastReviewed: "2026-08-24"
+---
+
+`@prism-analytics/react` is a thin provider and hooks layer over an
+already-created, ready Browser client. It never creates a second queue,
+session, consent store, or retry policy — ownership stays with whoever
+called `createBrowserClient`. It supports React 18 and 19
+(`^18.0.0 || ^19.0.0`).
+
+## Installation
+
+```sh
+npm install @prism-analytics/react @prism-analytics/browser
+```
+
+## Create once, provide everywhere
+
+Create the client outside React — module scope or a loader — and pass
+the ready client to `PrismProvider`:
+
+```tsx
+// prism.ts — created ONCE, outside React
+import { createBrowserClient } from "@prism-analytics/browser";
+
+export const prism = await createBrowserClient({
+  sourceKey: "psk_your_key",
+  endpoint: "https://your-prism-host",
+  pageViews: { mode: "manual" }, // required for usePrismPageView
+});
+```
+
+```tsx
+// entry.tsx
+import { PrismProvider } from "@prism-analytics/react";
+import { prism } from "./prism";
+
+root.render(
+  <PrismProvider client={prism}>
+    <App />
+  </PrismProvider>,
+);
+```
+
+The provider accepts a ready client — never an initialization config —
+so no half-initialized context exists. It registers no effects,
+listeners, or timers, which means React Strict Mode double-mounting can
+never duplicate SDK work. Cleanup stays where ownership is: call
+`prism.shutdown()` in your own lifecycle, not a React effect.
+
+## `usePrism()`
+
+```tsx
+import { usePrism } from "@prism-analytics/react";
+
+function CheckoutButton() {
+  const { track } = usePrism(); // stable bound method
+  return (
+    <button onClick={() => track("checkout_started", { value: 42 })}>
+      Checkout
+    </button>
+  );
+}
+```
+
+Returns a facade over the client: `track`, `startSession`,
+`setCollectionState`, `flush`, `shutdown`, `onDiagnostic`,
+`collectionState`, plus the raw `client`. Bound methods keep their
+identity across renders. Throws a specific error outside a provider.
+
+## `usePrismPageView({ path, title? })`
+
+Captures a page view per path change for the
+[Page analytics](/docs/features/page-analytics) dashboard:
+
+```tsx
+function App() {
+  usePrismPageView({ path: location.pathname });
+  return <Outlet />;
+}
+```
+
+The hook requires a provider whose client was created with
+`pageViews: { mode: "manual" }`. It throws a specific error when the
+provider is missing, page tracking is unconfigured, or the client runs
+in history mode. Captures exactly once per path — including under React
+Strict Mode.
+
+## Error boundary
+
+`@prism-analytics/react` also ships an error boundary that reports
+caught render errors to Prism's error tracker. See
+[Error tracking](/docs/features/error-tracking).
+
+## Next steps
+
+- [Capturing events](/docs/features/capturing-events)
+- [Identifying users](/docs/features/identifying-users)
+- [SDK API and limits](/docs/reference/sdk-api-and-limits)

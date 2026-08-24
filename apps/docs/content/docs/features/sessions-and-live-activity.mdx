@@ -1,0 +1,50 @@
+---
+title: Sessions and live activity
+description: Client-owned sessions and the live dashboard view.
+audience: Developer
+scope: Both
+lastReviewed: "2026-08-24"
+---
+
+Sessions are client-owned: the SDK generates the session ID locally and
+emits `session_started` and `session_ended` events through the standard
+batch pipeline. There is no server round-trip before events are
+accepted.
+
+## Session lifecycle
+
+```ts
+const handle = prism.startSession({ properties: { plan: "pro" } });
+handle.end(); // emits session_ended (a second end() returns not-active)
+```
+
+- `startSession()` queues `session_started` with the client-owned ID.
+- Sessioned events attach the session ID and bump the server-side
+  last-seen timestamp.
+- `end()` queues `session_ended`; calling it twice returns `not-active`.
+- Abandoned sessions age out server-side through the last-seen
+  timestamp.
+
+A session is not a person: one person may have many sessions across
+devices, and one session may contain events from an anonymous identity
+before an `identify()` call.
+
+Web page views group into their own Web sessions with a 30-minute
+inactivity window — see
+[Page analytics](/docs/features/page-analytics#web-sessions).
+
+## The Live page
+
+The project's **Live** page shows the sessions active right now. It
+subscribes to the project's live stream over an authenticated,
+project-scoped WebSocket and renders session rows with start time, last
+seen, and anonymous ID as they start. The SDK and dashboard own the
+connection protocol entirely — no setup steps involve it.
+
+- The connection state is visible in the page: connecting, live, and
+  reconnecting after interruptions.
+- An optional map view plots sessions by coarse location. The map is a
+  rendering on top of the session list: when map tiles or location
+  enrichment are unavailable, the list keeps working with no data loss.
+- Location enrichment is coarse and best-effort; sessions carry no exact
+  coordinates.

@@ -1,0 +1,61 @@
+---
+title: Projects, sources, and keys
+description: Workspaces, projects, sources, and the key model.
+audience: User
+scope: Both
+lastReviewed: "2026-08-24"
+---
+
+Prism has a small product model: a **workspace** holds members and
+**projects**; a project holds **sources**; a source holds **keys**.
+This page explains each level and what you can do with it.
+
+## Workspaces and members
+
+A workspace is created for you at signup. Members join through invite
+links, and roles control what members can do: creating projects,
+sources, and keys requires an admin role; reading a project requires
+membership — an unauthorized read returns "not found" rather than
+revealing that the project exists.
+
+## Projects
+
+A project is the unit of analytics: one set of events, sessions, and
+people, one live stream, and one dashboard. Creating a project requires
+a verified email address. You can rename a project, and deleting one
+permanently removes its sources, keys, and all captured data.
+
+## Sources
+
+A source is one instrumented application, and its platform declares what
+kind of app it is: `web`, `server`, or a mobile platform. The platform
+gates behavior — for example, only Web sources can ingest page views
+for [Page analytics](/docs/features/page-analytics), and only Web
+sources have allowed origins.
+
+- **Allowed origins** (Web sources): only browsers on these origins may
+  ingest with the source's keys. Requests from other origins are
+  rejected.
+- **Deleting a source** removes its captured data.
+
+## Keys
+
+Every source starts with an **initial key**:
+
+- **Publishable keys** (`psk_...`) are public by design — they embed in
+  client binaries and can only write analytics data. The project and
+  source are derived from the key on every request; client ownership
+  fields are ignored.
+- **Secret keys** are for server sources. The dashboard masks them
+  until you explicitly reveal one.
+
+You can create additional keys per source and revoke keys that should
+no longer work. There is no in-place rotation: create a new key, migrate
+your app, then revoke the old one.
+
+## Authentication
+
+You sign in with email and password (with verification) or a configured
+social provider. The dashboard session is an HTTP-only, `SameSite=Lax`
+cookie, `Secure` in production. Trusted origins are locked to the
+deployment's configured client URL plus explicit CORS allowlist entries.

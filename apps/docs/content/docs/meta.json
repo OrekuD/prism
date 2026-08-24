@@ -1,12 +1,9 @@
 {
   "pages": [
-    "getting-started",
-    "analytics",
-    "tracking",
-    "management",
-    "privacy-security",
+    "start",
+    "features",
+    "configuration",
     "self-hosting",
-    "reference",
-    "contributing"
+    "reference"
   ]
 }
