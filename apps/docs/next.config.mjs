@@ -6,7 +6,9 @@ const withMDX = createMDX();
 const config = {
   reactStrictMode: true,
   // The docs image (deploy/Dockerfile.docs) serves the standalone output.
-  output: 'standalone',
+  // Vercel's build pipeline expects the default output; standalone would
+  // hide the trace file it reads (next-server.js.nft.json).
+  ...(process.env.VERCEL ? {} : { output: 'standalone' }),
   // Old documentation paths redirect to their new destinations
   // (docs-structure.md migration map). The web app, homepage, repository
   // README, and existing content may still link the legacy routes.
