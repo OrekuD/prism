@@ -25,3 +25,6 @@ fixtures/.artifacts/
 
 # npm artifacts (project uses yarn)
 package-lock.json
+
+# Local research notes (implementation briefs, audits, reports).
+research/
