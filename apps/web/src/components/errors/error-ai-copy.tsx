@@ -69,13 +69,13 @@ export function buildErrorMarkdown(
 
   const lines: string[] = [];
 
-  lines.push(`Fix this error:`);
+  lines.push("Fix this error:");
   lines.push("");
   lines.push(
-    `Diagnose the root cause and propose a minimal fix. Reference exact file:line and keep the change focused.`
+    "Diagnose the root cause and propose a minimal fix. Reference exact file:line and keep the change focused."
   );
   lines.push("");
-  lines.push(`## Error`);
+  lines.push("## Error");
   lines.push(`- **Title:** \`${issue.title}\``);
   lines.push(`- **Location:** \`${issue.location ?? "unknown"}\``);
   lines.push(
@@ -136,7 +136,7 @@ export function buildErrorMarkdown(
     lines.push("");
   }
   if (activity.length > 0) {
-    lines.push(`## Workflow`);
+    lines.push("## Workflow");
     for (const a of activity) {
       lines.push(
         `- ${a.action}: ${a.priorState} → ${a.newState} at ${iso(a.timestamp)}${a.actorType === "member" && a.actorId ? ` (by ${a.actorId.slice(0, 8)})` : ""}${a.note ? ` — ${a.note}` : ""}`
@@ -146,7 +146,7 @@ export function buildErrorMarkdown(
   }
   lines.push("---");
   lines.push(
-    `_Sensitive values have been redacted. Provide a minimal, focused fix for the error above._`
+    "_Sensitive values have been redacted. Provide a minimal, focused fix for the error above._"
   );
   return lines.join("\n");
 }

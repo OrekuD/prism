@@ -64,29 +64,31 @@ export function WorkspaceScope() {
   const { data: active, isPending: activePending } = useActiveWorkspace();
   const list = (workspaces ?? []) as Array<{ id: string; slug: string }>;
   const workspace = list.find((w) => w.slug === wrkSlug);
+  const workspaceId = workspace?.id;
+  const workspaceSlug = workspace?.slug;
   const activeId = (active as { id?: string } | null)?.id;
   const activeSlug = (active as { slug?: string } | null)?.slug;
   const prevSlugRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
     if (workspacesPending || activePending) return;
-    if (!workspace || activeId === workspace.id) {
-      if (workspace) prevSlugRef.current = workspace.slug;
+    if (!workspaceId || !workspaceSlug || activeId === workspaceId) {
+      if (workspaceSlug) prevSlugRef.current = workspaceSlug;
       return;
     }
     // F2: single coordinator — dedup by target id, rollback on failure.
-    const targetId = workspace.id;
+    const targetId = workspaceId;
     const previousSlug = prevSlugRef.current ?? activeSlug ?? null;
-    prevSlugRef.current = workspace.slug;
+    prevSlugRef.current = workspaceSlug;
     void setActiveOnce(targetId).catch(() => {
       toast.error("Could not switch workspace — please try again.");
-      if (previousSlug && previousSlug !== workspace.slug) {
+      if (previousSlug && previousSlug !== workspaceSlug) {
         window.history.replaceState(null, "", `/workspace/${previousSlug}/overview`);
         // Hard reload to ensure query scoping returns to previous workspace
         window.location.reload();
       }
     });
-  }, [workspace?.id, activeId, activeSlug, workspacesPending, activePending]);
+  }, [workspaceId, workspaceSlug, activeId, activeSlug, workspacesPending, activePending]);
 
   // While workspaces are still loading, render immediately — the pages and
   // sidebar show their own skeletons. Only redirect a definitively-unknown

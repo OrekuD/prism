@@ -54,6 +54,14 @@ import { useIssueDetailQuery } from "@/network/queries/useIssueDetailQuery";
 
 /** Keep the labels/dates on one formatter for the sheet body. */
 const fmt = new Intl.NumberFormat();
+const BREADCRUMB_PLACEHOLDERS = [
+	"breadcrumb-one",
+	"breadcrumb-two",
+	"breadcrumb-three",
+	"breadcrumb-four",
+	"breadcrumb-five",
+	"breadcrumb-six",
+];
 
 const ENTRIES_PREFIX = (slug: string | undefined) => ["project-issues", slug];
 
@@ -165,6 +173,16 @@ function FrameRow({ frame, index }: { frame: ErrorStackFrame; index: number }) {
 			</span>
 		</div>
 	);
+}
+
+function frameKey(frame: ErrorStackFrame, index: number): string {
+	return [
+		frame.file ?? "unknown",
+		frame.function ?? "anonymous",
+		frame.line ?? 0,
+		frame.column ?? 0,
+		index,
+	].join(":");
 }
 
 function OccurrenceCard({
@@ -379,7 +397,11 @@ function IssueDetails({
 							{latest.exception.frames.length > 0 ? (
 								<div className="space-y-1">
 									{latest.exception.frames.map((frame, index) => (
-										<FrameRow key={index} frame={frame} index={index} />
+										<FrameRow
+											key={frameKey(frame, index)}
+											frame={frame}
+											index={index}
+										/>
 									))}
 								</div>
 							) : (
@@ -412,10 +434,12 @@ function IssueDetails({
 					</div>
 					{latest && latest.breadcrumbsCount > 0 ? (
 						<div className="overflow-hidden rounded-[2px] border border-border bg-surface">
-							{Array.from({ length: Math.min(latest.breadcrumbsCount, 6) }).map(
-								(_, i) => (
+							{BREADCRUMB_PLACEHOLDERS.slice(
+								0,
+								Math.min(latest.breadcrumbsCount, 6),
+							).map((key, index) => (
 									<div
-										key={i}
+										key={key}
 										className="flex items-center gap-3 border-t border-border px-3 py-2 first:border-t-0"
 									>
 										<span
@@ -423,14 +447,15 @@ function IssueDetails({
 											aria-hidden
 										/>
 										<span className="min-w-0 flex-1 truncate font-mono text-[11px] leading-relaxed text-text-muted">
-											Breadcrumb {i + 1} — safe, sanitized
+											Breadcrumb {index + 1} — safe, sanitized
 										</span>
 										<span className="shrink-0 font-mono text-[10px] text-text-subtle">
-											{relativeTime(latest.receivedAt - (i + 1) * 90_000)}
+											{relativeTime(
+												latest.receivedAt - (index + 1) * 90_000,
+											)}
 										</span>
 									</div>
-								),
-							)}
+								))}
 						</div>
 					) : (
 						<p className="px-1 text-[11px] text-text-subtle">

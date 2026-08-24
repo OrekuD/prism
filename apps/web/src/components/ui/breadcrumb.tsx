@@ -1,4 +1,4 @@
-import * as React from "react"
+import type * as React from "react"
 import { Slot as SlotPrimitive } from "radix-ui"
 import { ChevronRight, MoreHorizontal } from "lucide-react"
 
@@ -49,8 +49,6 @@ BreadcrumbLink.displayName = "BreadcrumbLink"
 function BreadcrumbPage({ className, ...props }: React.ComponentPropsWithoutRef<"span">) {
   return (
     <span
-      role="link"
-      aria-disabled="true"
       aria-current="page"
       className={cn("font-normal text-foreground", className)}
       {...props}

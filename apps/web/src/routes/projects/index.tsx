@@ -7,7 +7,11 @@ import { CreateProjectDialog } from "@/components/projects/create-project-dialog
 import { PageHeader } from "@/components/public/page-header";
 import { IconFolder } from "@/components/ui/icons";
 
-const placeholders = Array(3).fill(null);
+const PROJECT_SKELETON_KEYS = [
+  "project-skeleton-one",
+  "project-skeleton-two",
+  "project-skeleton-three",
+];
 
 export function Projects() {
   const { data: projects, isLoading, isError, refetch } = useProjectsQuery();
@@ -41,11 +45,10 @@ export function Projects() {
 
       {isLoading ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {placeholders.map((_, index) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton list
+          {PROJECT_SKELETON_KEYS.map((key) => (
             <Frame
               className="flex min-h-[122px] flex-col gap-3 p-5"
-              key={index}
+              key={key}
             >
               <span className="h-[26px] w-[110px] animate-pulse rounded-[2px] bg-surface-raised" />
               <span className="h-[14px] w-[72px] animate-pulse rounded-[2px] bg-surface-raised" />

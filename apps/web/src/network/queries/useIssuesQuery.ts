@@ -35,7 +35,7 @@ async function projectIssues(
 			...(params.level ? { level: params.level } : {}),
 			...(params.platform ? { platform: params.platform } : {}),
 			...(params.release ? { release: params.release } : {}),
-			...(params.q && params.q.trim() ? { q: params.q.trim() } : {}),
+			...(params.q?.trim() ? { q: params.q.trim() } : {}),
 		},
 	});
 	const nextCursor =
@@ -80,7 +80,7 @@ export async function fetchIssuePage(
 			...(params.level ? { level: params.level } : {}),
 			...(params.platform ? { platform: params.platform } : {}),
 			...(params.release ? { release: params.release } : {}),
-			...(params.q && params.q.trim() ? { q: params.q.trim() } : {}),
+			...(params.q?.trim() ? { q: params.q.trim() } : {}),
 		},
 	});
 	const nextCursor =

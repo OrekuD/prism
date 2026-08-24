@@ -124,7 +124,7 @@ export function SourceDetail() {
 	// Keep the origins editor in sync once the source loads (and after save).
 	React.useEffect(() => {
 		if (data) setOrigins(data.allowedOrigins);
-	}, [data?.id]);
+	}, [data]);
 
 	// Seed the error-settings draft whenever the server row (re)loads.
 	React.useEffect(() => {
@@ -476,8 +476,12 @@ export function SourceDetail() {
 								</div>
 
 								<div className="space-y-2.5">
-									<label className="flex items-start gap-2.5 text-[13px] text-text">
+									<label
+										htmlFor="capture-global-errors"
+										className="flex items-start gap-2.5 text-[13px] text-text"
+									>
 										<Checkbox
+											id="capture-global-errors"
 											checked={errorDraft?.captureGlobalErrors ?? false}
 											onCheckedChange={(checked) =>
 												setErrorDraft((prev) =>
@@ -497,8 +501,12 @@ export function SourceDetail() {
 											</span>
 										</span>
 									</label>
-									<label className="flex items-start gap-2.5 text-[13px] text-text">
+									<label
+										htmlFor="collect-error-breadcrumbs"
+										className="flex items-start gap-2.5 text-[13px] text-text"
+									>
 										<Checkbox
+											id="collect-error-breadcrumbs"
 											checked={errorDraft?.breadcrumbsEnabled ?? false}
 											onCheckedChange={(checked) =>
 												setErrorDraft((prev) =>

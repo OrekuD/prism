@@ -84,11 +84,12 @@ function CreateProjectForm({
 		name: string;
 		slug: string;
 	}>;
+	const firstWorkspaceId = list[0]?.id;
 
 	// Pre-select the active workspace once it's known.
 	React.useEffect(() => {
-		if (!teamId) setTeamId(activeId ?? list[0]?.id ?? "");
-	}, [teamId, activeId, list.length]);
+		if (!teamId) setTeamId(activeId ?? firstWorkspaceId ?? "");
+	}, [teamId, activeId, firstWorkspaceId]);
 
 	const selectedWorkspace =
 		list.find((entry) => entry.id === teamId) ??

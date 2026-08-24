@@ -3,7 +3,6 @@ import React from "react";
 import {
 	Link,
 	Outlet,
-	useNavigate,
 	useParams,
 	useSearchParams,
 } from "react-router-dom";
@@ -102,7 +101,6 @@ function IssueAction({
 
 export function ProjectErrors() {
 	const { slug, wrkSlug } = useParams<{ slug: string; wrkSlug: string }>();
-	const navigate = useNavigate();
 	// URL is the source of truth for range + filters (task-15: preserved in
 	// the URL). Changing any control refetches genuinely filtered server data.
 	const [searchParams, setSearchParams] = useSearchParams();
@@ -369,13 +367,11 @@ export function ProjectErrors() {
 								{issues.map((issue) => (
 									<tr
 										key={issue.id}
-										className="group cursor-pointer border-t border-border"
-										onClick={() => navigate(issue.id)}
+										className="group border-t border-border"
 									>
 										<td className="max-w-[300px] px-3.5 py-2.5">
 											<Link
 												to={issue.id}
-												onClick={(event) => event.stopPropagation()}
 												className="block truncate font-mono text-[13px] font-[550] text-text transition-colors hover:text-link"
 												aria-label={`Open issue: ${issue.title}`}
 											>
@@ -412,10 +408,7 @@ export function ProjectErrors() {
 											{dateLabel(issue.lastSeen)}
 										</td>
 										<td className="px-3.5 py-2.5">
-											<span
-												onClick={(event) => event.stopPropagation()}
-												className="flex items-center justify-end opacity-100 transition-opacity focus-within:opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
-											>
+											<span className="flex items-center justify-end opacity-100 transition-opacity focus-within:opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
 												<IssueAction
 													issue={issue}
 													slug={slug}
