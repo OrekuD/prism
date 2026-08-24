@@ -1,4 +1,9 @@
 {
   "title": "Start",
-  "pages": ["quickstart", "javascript-sdk", "react-sdk"]
+  "pages": [
+    "quickstart",
+    "javascript-sdk",
+    "react-sdk",
+    "node-sdk"
+  ]
 }

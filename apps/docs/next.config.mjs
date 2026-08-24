@@ -18,7 +18,6 @@ const config = {
     // live destination — legacy chains are re-pointed directly.
     return [
       // Pre-restructure chains, re-pointed to the new tree.
-      { source: '/docs/start/:path*', destination: '/docs/start/quickstart', permanent: true },
       { source: '/docs/hosted/quickstart', destination: '/docs/start/quickstart', permanent: true },
       { source: '/docs/hosted/authentication', destination: '/docs/configuration/projects-sources-and-keys', permanent: true },
       { source: '/docs/product/events', destination: '/docs/features/capturing-events', permanent: true },

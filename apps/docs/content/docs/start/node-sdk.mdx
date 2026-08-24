@@ -1,0 +1,87 @@
+---
+title: Node SDK
+description: Server-side setup with @prism-analytics/node for error reporting and @prism-analytics/core for events.
+audience: Developer
+scope: Both
+lastReviewed: "2026-08-24"
+---
+
+`@prism-analytics/node` is the server SDK for Prism. It reports errors from Node processes into the Errors dashboard, and the runtime-neutral `@prism-analytics/core` engine handles event capture when you need it. This page covers server setup and lifecycle ownership.
+
+## Installation
+
+```sh
+npm install @prism-analytics/node @prism-analytics/core
+```
+
+Requires Node 18+ (`globalThis.fetch` and `crypto.randomUUID`).
+
+## Creating the error reporter
+
+`createNodeErrorReporter` is an async factory that resolves to a ready reporter. One options object, no positional arguments:
+
+```ts
+import { createNodeErrorReporter } from "@prism-analytics/node";
+
+const errors = await createNodeErrorReporter({
+  // Secret source key — keep it out of client bundles.
+  sourceKey: "psk_your_key",
+  // Your Prism ingestion origin. Copy it from Sources → Setup.
+  endpoint: "https://your-prism-host",
+  // Share identity + consent with the reporter when you also run analytics.
+  share: { client: prism },
+  // Optional release / environment stamped on every report.
+  release: "api@2.1.0",
+  environment: "production",
+});
+```
+
+Invalid options throw a specific validation error before any network activity. Runtime conditions — consent denied, reporter shut down, queue full — return a discriminated `dropped` result from `captureException` instead of throwing.
+
+## Capturing errors
+
+```ts
+// Direct capture — normalize any thrown value.
+errors.captureException(err, {
+  handled: false,
+  context: { tags: { route: c.req.path } },
+});
+
+// Framework helper — never crashes request handling.
+import { reportError } from "@prism-analytics/node";
+app.onError((err, c) => {
+  reportError(errors, err, { handled: false });
+  return c.json({ error: "internal" }, 500);
+});
+```
+
+- `captureException(value, options?)` normalizes `Error`, strings, or arbitrary rejected values into a report. Same-fingerprint reports within the dedupe window return `deduped`.
+- A `beforeSend` hook can drop or redact a report before it queues.
+- Sanitization strips sensitive-looking values before anything leaves the process.
+
+## Process-level capture (opt-in)
+
+The reporter does **not** install `uncaughtException` or `unhandledRejection` handlers by default — the application owns crash and restart policy. Opt in explicitly when you want Prism to observe unhandled failures:
+
+```ts
+import { captureProcessErrors } from "@prism-analytics/node";
+
+const handle = captureProcessErrors(errors);
+// later: handle.uninstall();
+```
+
+Flush-on-shutdown is best-effort via `beforeExit` / `SIGINT` / `SIGTERM`. The reporter's own `shutdown()` remains the deterministic close, with a bounded final flush. Call it where you tear down the process:
+
+```ts
+await errors.shutdown();
+```
+
+## Events in Node
+
+For product analytics events from the server, use `@prism-analytics/core` directly with a Node runtime. The core is runtime-neutral — it needs no DOM and has zero import-time side effects. See [SDK API and limits](/docs/reference/sdk-api-and-limits) for the adapter contract.
+
+## Next steps
+
+- [Capturing events](/docs/features/capturing-events)
+- [Error tracking](/docs/features/error-tracking)
+- [SDK API and limits](/docs/reference/sdk-api-and-limits)
