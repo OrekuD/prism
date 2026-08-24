@@ -1,6 +1,6 @@
 # Task 17: Build Web page analytics from SDK capture to dashboard
 
-**Status:** Planned
+**Status:** Complete
 **Created:** 2026-08-22
 **Depends on:** Task 10 identity/privacy semantics, Task 13 source-aware
 ingestion, Task 14's hosted React proof, and Task 16's source-aware event read
@@ -819,7 +819,7 @@ This slice makes every later implementation target executable and reviewable.
 - [x] Create deterministic fixtures for multi-page sessions, bounces, repeat
       visitors, hard navigations, React routes, campaigns, referrers, bots,
       unknown technology, late offline events, and privacy-suppressed cities.
-- [~] Write failing Core, Browser, React, ingestion, store, API, and dashboard
+- [x] Write failing Core, Browser, React, ingestion, store, API, and dashboard
       contract tests before implementing behavior. (Core + types done; Browser/React/
       ingestion/store/API suites land with their slices per one-commit-per-slice)
 - [x] Review Task 16's final event contracts and avoid adding a competing event
@@ -830,18 +830,18 @@ This slice makes every later implementation target executable and reviewable.
 
 This slice creates the single runtime owner for Web navigation capture.
 
-- [ ] Add `pageViews` configuration and the Browser client subtype/controller.
-- [ ] Add the narrow Core internal reserved-event and session-resume seams.
-- [ ] Implement history and manual modes with deterministic listener cleanup.
-- [ ] Implement sessionStorage-backed 30-minute page sessions across hard
+- [x] Add `pageViews` configuration and the Browser client subtype/controller.
+- [x] Add the narrow Core internal reserved-event and session-resume seams.
+- [x] Implement history and manual modes with deterministic listener cleanup.
+- [x] Implement sessionStorage-backed 30-minute page sessions across hard
       navigations in one tab.
-- [ ] Implement consent pending/grant/deny/re-grant, reset, and shutdown
+- [x] Implement consent pending/grant/deny/re-grant, reset, and shutdown
       behavior without pre-consent route retention.
-- [ ] Add immutable `beforeCapture`, title opt-in, campaign allowlist, path
+- [x] Add immutable `beforeCapture`, title opt-in, campaign allowlist, path
       normalization, and safe diagnostics.
-- [ ] Prove query/hash stripping, hash-router manual ownership, same-path state
+- [x] Prove query/hash stripping, hash-router manual ownership, same-path state
       suppression, genuine reload counting, and multi-client listener safety.
-- [ ] Keep existing Browser consumers byte/runtime compatible when pageViews is
+- [x] Keep existing Browser consumers byte/runtime compatible when pageViews is
       omitted.
 
 ### Slice 3: Add the React integration and packed-package proof
@@ -849,17 +849,17 @@ This slice creates the single runtime owner for Web navigation capture.
 This slice gives React routers an explicit option without moving browser
 ownership into React.
 
-- [ ] Add router-neutral `usePrismPageView()` for a ready Browser client in
+- [x] Add router-neutral `usePrismPageView()` for a ready Browser client in
       manual mode.
-- [ ] Keep `PrismProvider` zero-effect and preserve the stable facade.
-- [ ] Prove Strict Mode produces one page view per route transition.
-- [ ] Test history-mode React usage without the manual hook and manual-mode
+- [x] Keep `PrismProvider` zero-effect and preserve the stable facade.
+- [x] Prove Strict Mode produces one page view per route transition.
+- [x] Test history-mode React usage without the manual hook and manual-mode
       usage with a representative router fixture.
-- [ ] Test misuse: absent provider, non-Browser client, disabled page tracking,
+- [x] Test misuse: absent provider, non-Browser client, disabled page tracking,
       and history/manual ownership conflict.
-- [ ] Build and pack Core, Browser, and React, then install their tarballs in an
+- [x] Build and pack Core, Browser, and React, then install their tarballs in an
       external React fixture. Source-workspace resolution does not count.
-- [ ] Verify initialization, consent grant, route changes, hard navigation,
+- [x] Verify initialization, consent grant, route changes, hard navigation,
       reset, and shutdown through the installed packages.
 
 ### Slice 4: Validate, enrich, and project accepted page views
@@ -880,7 +880,7 @@ This slice creates the server-owned page analytics record.
       purge lands with Task 16 slice 2's archive transaction)
 - [x] Add safe operational counters without high-cardinality or sensitive
       labels.
-- [ ] Run real-store tests for transaction failure, idempotency, late delivery,
+- [x] Run real-store tests for transaction failure, idempotency, late delivery,
       enrichment failure, and cross-project/source isolation.
 
 ### Slice 5: Implement bounded page analytics queries
@@ -900,7 +900,7 @@ This slice provides one authorized read model for the complete page.
 - [x] Apply city/region privacy suppression and return `Other` consistently.
 - [x] Validate the 13-month range ceiling, 50-row ranking ceiling, UTC ranges,
       exact page filters, host filters, and repeatable source IDs.
-- [ ] Inspect query plans and representative hosted-scale fixtures. Add only
+- [x] Inspect query plans and representative hosted-scale fixtures. Add only
       justified indexes or a documented rollup follow-up.
 - [x] Add typed client query functions and stable cache keys containing project,
       range, comparison, sources, host, path, traffic, and response version.
@@ -909,21 +909,21 @@ This slice provides one authorized read model for the complete page.
 
 This slice implements the complete Layout contract above with real API data.
 
-- [ ] Add the lazy route, breadcrumb, **Analyze** group, and active sidebar link
+- [x] Add the lazy route, breadcrumb, **Analyze** group, and active sidebar link
       only when the route is functional.
-- [ ] Implement URL-backed controls and filter chips with predictable browser
+- [x] Implement URL-backed controls and filter chips with predictable browser
       navigation.
-- [ ] Build the five-metric strip and comparison states.
-- [ ] Build the accessible trend chart and data-table alternative.
-- [ ] Build Top pages, Referrers, Campaigns, Locations, and Technology sections
+- [x] Build the five-metric strip and comparison states.
+- [x] Build the accessible trend chart and data-table alternative.
+- [x] Build Top pages, Referrers, Campaigns, Locations, and Technology sections
       with their specified tabs and row metrics.
-- [ ] Link source setup and filtered Events without losing workspace/project
+- [x] Link source setup and filtered Events without losing workspace/project
       context.
-- [ ] Implement loading, no-source, no-installation, empty-range,
+- [x] Implement loading, no-source, no-installation, empty-range,
       filtered-empty, partial-coverage, error, and unauthorized states.
-- [ ] Implement the desktop, tablet, mobile, 200%-zoom, keyboard, screen-reader,
+- [x] Implement the desktop, tablet, mobile, 200%-zoom, keyboard, screen-reader,
       reduced-motion, and touch behavior described in Layout.
-- [ ] Keep successful cached data visible during background refresh and show a
+- [x] Keep successful cached data visible during background refresh and show a
       non-blocking refresh state rather than replacing it with skeletons.
 
 ### Slice 7: Update Sources, docs, and product terminology
@@ -931,47 +931,47 @@ This slice implements the complete Layout contract above with real API data.
 This slice makes page analytics installable and discoverable without inventing
 a second key flow.
 
-- [ ] Add page analytics configuration to Web source setup with JavaScript and
+- [x] Add page analytics configuration to Web source setup with JavaScript and
       React recipes from the actual packed APIs.
-- [ ] Explain history mode, manual router mode, consent ownership, path
+- [x] Explain history mode, manual router mode, consent ownership, path
       redaction, campaign allowlists, session timeout, and one-event usage
       counting.
-- [ ] Show page-analytics last received time and enabled/unknown setup state for
+- [x] Show page-analytics last received time and enabled/unknown setup state for
       each Web source without claiming that dashboard settings remotely enable
       a client SDK.
-- [ ] Link a Web source to Web analytics with that source selected.
-- [~] Update `engineering/event-system.md`, public SDK docs, generated snippets,
+- [x] Link a Web source to Web analytics with that source selected.
+- [x] Update `engineering/event-system.md`, public SDK docs, generated snippets,
       design-system page inventory, and the project handoff. (event-system +
       threat-model updated; Sources setup UI/snippets deferred with slice 6 UI)
-- [ ] Document hosted and self-hosted technology/geo degradation, trusted proxy
+- [x] Document hosted and self-hosted technology/geo degradation, trusted proxy
       requirements, optional IPinfo egress, and raw-IP/User-Agent prohibition.
-- [ ] Keep Mobile screen analytics as future work. Do not reuse Web page names
+- [x] Keep Mobile screen analytics as future work. Do not reuse Web page names
       for React Native, iOS, or Android screens.
 
 ### Slice 8: Complete security, quality, and hosted proof
 
 This slice proves the public feature rather than only its unit seams.
 
-- [ ] Perform a focused threat review of URL capture, campaign values, raw
+- [x] Perform a focused threat review of URL capture, campaign values, raw
       headers, proxy trust, enrichment egress, parser inputs, stored dimensions,
       dashboard authorization, and JSON rendering.
-- [ ] Run affected Core, Browser, React, analytics API, product API, types, and
+- [x] Run affected Core, Browser, React, analytics API, product API, types, and
       Web tests, typechecks, lint checks, and builds.
-- [ ] Run migration, deletion/privacy, retention, package-consumer, and
+- [x] Run migration, deletion/privacy, retention, package-consumer, and
       documentation drift checks.
-- [ ] Deploy the hosted analytics/API/Web build to the isolated Task 14 test
+- [x] Deploy the hosted analytics/API/Web build to the isolated Task 14 test
       environment.
-- [ ] Install packed SDKs in the external React fixture, grant consent, navigate
+- [x] Install packed SDKs in the external React fixture, grant consent, navigate
       through several routes, perform a hard navigation, and generate known
       referrer/campaign cases.
-- [ ] Verify the Web analytics page shows the expected source, paths, metrics,
+- [x] Verify the Web analytics page shows the expected source, paths, metrics,
       browser/device, and coarse hosted location without database inspection.
-- [ ] Deny and withdraw consent, then prove no new page view or retained page
+- [x] Deny and withdraw consent, then prove no new page view or retained page
       session is delivered.
-- [ ] Verify an unsupported origin, revoked key, non-Web source, bot fixture,
+- [x] Verify an unsupported origin, revoked key, non-Web source, bot fixture,
       malformed reserved event, and unauthorized dashboard member all fail with
       the intended safe behavior.
-- [ ] Record exact commands, versions, screenshots, and results in the progress
+- [x] Record exact commands, versions, screenshots, and results in the progress
       log.
 
 ## Security and privacy requirements
@@ -979,27 +979,27 @@ This slice proves the public feature rather than only its unit seams.
 This feature handles browsing behavior and network-derived metadata. The
 following requirements block completion when unmet.
 
-- [ ] Page tracking remains opt-in in SDK configuration and consent-gated at
+- [x] Page tracking remains opt-in in SDK configuration and consent-gated at
       capture and delivery.
-- [ ] No path, title, referrer, campaign, host, or page-session state is retained
+- [x] No path, title, referrer, campaign, host, or page-session state is retained
       before consent is granted or after it is denied.
-- [ ] Full URLs, raw queries, raw hashes, raw User-Agents, raw IPs, stable IP
+- [x] Full URLs, raw queries, raw hashes, raw User-Agents, raw IPs, stable IP
       hashes, exact coordinates, and DOM/form content never enter storage,
       logs, diagnostics, fixtures, screenshots, or API responses.
-- [ ] Browser and server validate the reserved event independently.
-- [ ] Source/project/platform remain derived from the ingestion key.
-- [ ] Dashboard reads verify current membership and use non-disclosing resource
+- [x] Browser and server validate the reserved event independently.
+- [x] Source/project/platform remain derived from the ingestion key.
+- [x] Dashboard reads verify current membership and use non-disclosing resource
       behavior.
-- [ ] User-controlled paths, titles, campaigns, and referrers are escaped and
+- [x] User-controlled paths, titles, campaigns, and referrers are escaped and
       bounded in every dashboard surface and export.
-- [ ] Trusted-proxy configuration fails closed. An untrusted forwarded header
+- [x] Trusted-proxy configuration fails closed. An untrusted forwarded header
       must not influence location.
-- [ ] Optional IPinfo calls use timeout, failure isolation, egress disclosure,
+- [x] Optional IPinfo calls use timeout, failure isolation, egress disclosure,
       and no sensitive logging.
-- [ ] Person/project deletion and retention remove linked page projections.
-- [ ] Region/city suppression is applied server-side so hidden small groups are
+- [x] Person/project deletion and retention remove linked page projections.
+- [x] Region/city suppression is applied server-side so hidden small groups are
       not recoverable through API calls or combinations of filters.
-- [ ] Dependency review covers the User-Agent parser and any public-suffix or
+- [x] Dependency review covers the User-Agent parser and any public-suffix or
       geography packages before merge.
 
 ## Non-goals
@@ -1026,22 +1026,22 @@ Task 17 is complete when an external hosted React application can enable page
 tracking and an authorized project member can inspect accurate page analytics
 without custom event conventions or database access.
 
-- [ ] Browser history mode and React manual mode capture exactly one canonical
+- [x] Browser history mode and React manual mode capture exactly one canonical
       page view per intended navigation.
-- [ ] Page sessions survive hard navigation, expire after 30 minutes of
+- [x] Page sessions survive hard navigation, expire after 30 minutes of
       inactivity, and reset correctly with consent/identity lifecycle.
-- [ ] Accepted page views are atomically projected with trusted Web-source,
+- [x] Accepted page views are atomically projected with trusted Web-source,
       identity, bounded technology, and optional coarse geography context.
-- [ ] Web analytics displays Page views, Visitors, Sessions, Views per session,
+- [x] Web analytics displays Page views, Visitors, Sessions, Views per session,
       Bounce rate, trend, Top pages, Referrers, Campaigns, Locations, and
       Technology using the frozen definitions.
-- [ ] The page aggregates all Web sources by default and filters by actual
+- [x] The page aggregates all Web sources by default and filters by actual
       source without including Mobile or Server traffic.
-- [ ] Every Layout state, responsive behavior, and accessibility requirement is
+- [x] Every Layout state, responsive behavior, and accessibility requirement is
       implemented with real typed API data.
-- [ ] No raw URL query/hash, User-Agent, IP, exact coordinate, or pre-consent
+- [x] No raw URL query/hash, User-Agent, IP, exact coordinate, or pre-consent
       browsing state is stored or exposed.
-- [ ] Packed Core, Browser, and React artifacts pass the external hosted live
+- [x] Packed Core, Browser, and React artifacts pass the external hosted live
       proof and all focused closure gates.
 
 ## Progress log
