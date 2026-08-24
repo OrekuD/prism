@@ -7,9 +7,9 @@ import { useActiveWorkspace } from "@/lib/workspace";
 import { TELEMETRY_EVENTS, trackTelemetry } from "@/lib/telemetry";
 import { cn } from "@/lib/utils";
 
-const VITE_DOCS_URL: string = import.meta.env.VITE_DOCS_URL ?? "http://localhost:3000";
+import { DOCS_URL } from "@/lib/docs";
 
-const docsHref = `${VITE_DOCS_URL}`;
+const docsHref = `${DOCS_URL}`;
 
 /**
  * Global public navigation (design-system.md 9.1): 2px accent top rail,

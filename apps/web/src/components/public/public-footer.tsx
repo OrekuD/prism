@@ -1,6 +1,6 @@
 import { PrismLogo } from "@/components/brand/prism-logo";
 
-const VITE_DOCS_URL: string = import.meta.env.VITE_DOCS_URL ?? "http://localhost:3000";
+import { DOCS_URL } from "@/lib/docs";
 
 const columns = [
   {
@@ -14,9 +14,9 @@ const columns = [
   {
     title: "Resources",
     links: [
-      { label: "Documentation", href: VITE_DOCS_URL },
-      { label: "Quickstart", href: `${VITE_DOCS_URL}/docs/start/quickstart` },
-      { label: "SDK reference", href: `${VITE_DOCS_URL}/docs/start/javascript-sdk` },
+      { label: "Documentation", href: DOCS_URL },
+      { label: "Quickstart", href: `${DOCS_URL}/docs/start/quickstart` },
+      { label: "SDK reference", href: `${DOCS_URL}/docs/start/javascript-sdk` },
     ],
   },
   {

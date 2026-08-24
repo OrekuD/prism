@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { SectionLabel } from '@/components/prism/section-label';
 import { PrismFooter } from '@/components/footer';
+import { APP_URL } from '@/lib/appUrl';
 import {
   ArrowRight,
   Braces,
@@ -41,7 +42,7 @@ const PANELS = [
     icon: KeyRound,
   },
   {
-    href: '/docs/self-hosting/reference/troubleshooting',
+    href: '/docs/self-hosting/configure-and-operate',
     label: 'Runbook',
     title: 'Troubleshooting',
     desc: 'Symptom → cause → command → remediation.',
@@ -80,12 +81,14 @@ export default function HomePage() {
             Start with hosted Prism
             <ArrowRight className="size-4" aria-hidden />
           </Link>
-          <Link
-            href="/docs/start/quickstart"
-            className="inline-flex h-11 items-center rounded-[2px] border border-fd-border px-5 font-medium text-fd-foreground transition-colors hover:border-fd-primary/60 hover:bg-fd-accent"
+          <a
+            href={APP_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-11 items-center gap-2 rounded-[2px] border border-fd-border px-5 font-medium text-fd-foreground transition-colors hover:border-fd-primary/60 hover:bg-fd-accent"
           >
-            Docs overview
-          </Link>
+            Open Prism
+          </a>
         </div>
       </section>
 

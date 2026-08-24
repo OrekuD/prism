@@ -39,8 +39,7 @@ import {
 import React from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 
-const VITE_DOCS_URL: string =
-	import.meta.env.VITE_DOCS_URL ?? "http://localhost:3000";
+import { DOCS_URL } from "@/lib/docs";
 
 const LINK_BASE =
 	"relative flex h-9 items-center gap-2.5 rounded-[2px] px-3 font-medium text-[13px] text-text-muted transition-colors hover:bg-surface-hover hover:text-text";
@@ -456,7 +455,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 			<div className="flex flex-col gap-0.5 border-t border-border px-3 pb-3.5 pt-2.5">
 				<a
 					className={LINK_BASE}
-					href={VITE_DOCS_URL}
+					href={DOCS_URL}
 					target="_blank"
 					rel="noreferrer"
 				>

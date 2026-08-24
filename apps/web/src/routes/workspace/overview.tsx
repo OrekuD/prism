@@ -9,8 +9,7 @@ import { Frame } from "@/components/public/frame";
 import { useProjectsQuery } from "@/network/queries/useProjectsQuery";
 import { IconFolder, IconGlobe, IconDoc } from "@/components/ui/icons";
 
-const VITE_DOCS_URL: string =
-  import.meta.env.VITE_DOCS_URL ?? "http://localhost:3000";
+import { DOCS_URL } from "@/lib/docs";
 
 const INITIALIZE = `const prism = await createBrowserClient({
   sourceKey: "psk_…",
@@ -166,7 +165,7 @@ export function Overview() {
           </Link>
         </Frame>
         <Frame className="flex min-h-[128px] flex-col gap-3.5 p-5 transition-colors hover:bg-surface-hover hover:border-border-strong">
-          <a href={VITE_DOCS_URL} target="_blank" rel="noreferrer" className="flex h-full flex-col gap-3.5">
+          <a href={DOCS_URL} target="_blank" rel="noreferrer" className="flex h-full flex-col gap-3.5">
             <span className="grid size-9 place-items-center rounded-[2px] border border-border bg-surface-raised"><IconDoc /></span>
             <h3 className="text-[15px] font-semibold tracking-[-0.01em]">Documentation</h3>
             <p className="max-w-[36ch] text-[13px] leading-relaxed text-text-muted">Install and use the Prism SDK.</p>
@@ -184,7 +183,7 @@ export function Overview() {
             <h3 className="text-[15px] font-semibold tracking-[-0.01em]">Connect your first project</h3>
             <p className="mt-1.5 text-[13px] text-text-muted">Add the Prism SDK and verify the first event. Events appear in your workspace within seconds.</p>
           </div>
-          <a href={VITE_DOCS_URL} target="_blank" rel="noreferrer" className="inline-flex h-[30px] shrink-0 items-center gap-2 rounded-[2px] border border-border-strong px-3 text-[13px] font-medium text-text transition-colors hover:bg-surface-hover">
+          <a href={DOCS_URL} target="_blank" rel="noreferrer" className="inline-flex h-[30px] shrink-0 items-center gap-2 rounded-[2px] border border-border-strong px-3 text-[13px] font-medium text-text transition-colors hover:bg-surface-hover">
             View docs
           </a>
         </div>

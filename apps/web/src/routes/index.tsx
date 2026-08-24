@@ -4,8 +4,7 @@ import { CodeCopyRow } from "@/components/public/code-copy-row";
 import { Frame, SectionLabel } from "@/components/public/frame";
 import { cn } from "@/lib/utils";
 
-const VITE_DOCS_URL: string =
-  import.meta.env.VITE_DOCS_URL ?? "http://localhost:3000";
+import { DOCS_URL } from "@/lib/docs";
 
 /** Redacted example key: never a real secret (design-system.md 9.6). */
 const EXAMPLE_KEY = "pr_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
@@ -145,7 +144,7 @@ function SetupSection() {
           </p>
         </div>
         <a
-          href={`${VITE_DOCS_URL}/docs/start/quickstart`}
+          href={`${DOCS_URL}/docs/start/quickstart`}
           className="inline-flex h-[36px] items-center rounded-[2px] border border-border-strong px-3.5 text-[13px] font-medium text-text transition-colors duration-150 hover:border-text-subtle hover:bg-surface-hover"
         >
           Read the docs
@@ -251,7 +250,7 @@ function HostedVsSelfHosted() {
             <li>Bring your own database and email provider</li>
           </ul>
           <a
-            href={`${VITE_DOCS_URL}/docs/start/quickstart`}
+            href={`${DOCS_URL}/docs/start/quickstart`}
             className="mt-8 inline-flex h-[38px] items-center rounded-[2px] border border-border-strong px-4 text-[13px] font-medium text-text transition-colors duration-150 hover:border-text-subtle hover:bg-surface-hover"
           >
             Deployment guide

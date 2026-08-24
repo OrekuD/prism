@@ -1,11 +1,14 @@
 import Link from 'next/link';
 import { cn } from '@/lib/cn';
 
+import { APP_URL } from '@/lib/appUrl';
+
 const FOOTER_LINKS = [
   { label: 'Docs home', href: '/' },
-  { label: 'Hosted or self-hosted', href: '/docs/start/choose' },
-  { label: 'Self-hosting', href: '/docs/self-hosting/evaluation/overview' },
-  { label: 'Security', href: '/docs/operations/security' },
+  { label: 'Quickstart', href: '/docs/start/quickstart' },
+  { label: 'Self-host Prism', href: '/docs/self-hosting/self-host-prism' },
+  { label: 'Security', href: '/docs/configuration/consent-and-privacy' },
+  { label: 'Open Prism', href: APP_URL, external: true },
   { label: 'GitHub', href: 'https://github.com/OrekuD/prism', external: true },
   {
     label: 'License',
