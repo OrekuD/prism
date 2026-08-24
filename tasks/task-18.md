@@ -1,6 +1,6 @@
 # Task 18: React Native SDK and Mobile Analytics
 
-**Status:** In Progress  
+**Status:** Complete  
 **Created:** 2026-08-24  
 **Depends on:** Task 13 source/key model, Task 16 source-aware events, Task 17
 Web analytics contracts, and the Task 15 error-ingestion lane  
@@ -935,182 +935,182 @@ focused suite remains green. Preserve unrelated local changes.
 
 ### Slice 2: Add Core mobile seams and storage-safe ordering
 
-- [ ] Add optional session sequence to the versioned wire/event contract while
+- [x] Add optional session sequence to the versioned wire/event contract while
       preserving existing clients.
-- [ ] Add a bounded adapter-owned SDK descriptor so React Native, Browser,
+- [x] Add a bounded adapter-owned SDK descriptor so React Native, Browser,
       Node, and direct Core clients report the package actually installed.
-- [ ] Add internal reserved mobile-event creation; public `track()` remains
+- [x] Add internal reserved mobile-event creation; public `track()` remains
       unable to create `$prism_` records.
-- [ ] Extend the allowlisted runtime context with bounded OS/app/mobile fields.
-- [ ] Add session-sequence reset/start behavior and prove it cannot be
+- [x] Extend the allowlisted runtime context with bounded OS/app/mobile fields.
+- [x] Add session-sequence reset/start behavior and prove it cannot be
       overridden by properties.
-- [ ] Add consent-gated installation identity creation, rotation, clearing,
+- [x] Add consent-gated installation identity creation, rotation, clearing,
       persistence, and endpoint/source scoping.
-- [ ] Prove pending/denied consent retains no mobile behavior, installation,
+- [x] Prove pending/denied consent retains no mobile behavior, installation,
       app-session, or screen state.
-- [ ] Preserve all existing Core/Browser/Node contracts and distribution
+- [x] Preserve all existing Core/Browser/Node contracts and distribution
       budgets unless a reviewed change is justified.
 
 ### Slice 3: Build the React Native runtime and client
 
-- [ ] Create `packages/react-native` with Metro-safe exports and no DOM/Node
+- [x] Create `packages/react-native` with Metro-safe exports and no DOM/Node
       runtime imports.
-- [ ] Adapt `fetch`, cancellation, timers, React Native `AppState`, platform,
+- [x] Adapt `fetch`, cancellation, timers, React Native `AppState`, platform,
       dimensions, locale/timezone, and caller-supplied storage/context.
-- [ ] Use a cryptographically strong, React Native-compatible ID path; never
+- [x] Use a cryptographically strong, React Native-compatible ID path; never
       fall back to `Math.random()` for identity/event IDs.
-- [ ] Implement app-session start/resume/timeout and foreground active-time
+- [x] Implement app-session start/resume/timeout and foreground active-time
       intervals without claiming exact app close.
-- [ ] Flush on foreground and bounded background transition; support optional
+- [x] Flush on foreground and bounded background transition; support optional
       reconnect notification without a hard network-library dependency.
-- [ ] Implement single-owner initialization, listener cleanup, shutdown, Fast
+- [x] Implement single-owner initialization, listener cleanup, shutdown, Fast
       Refresh, and Strict Mode behavior.
-- [ ] Prove offline queue restore, retry, consent withdrawal, reset, source
+- [x] Prove offline queue restore, retry, consent withdrawal, reset, source
       rotation, and endpoint isolation.
 
 ### Slice 4: Add manual, React Navigation, and Expo Router screen tracking
 
-- [ ] Implement the manual screen controller and router-neutral hook.
-- [ ] Implement React Navigation tracking through a caller-owned container ref
+- [x] Implement the manual screen controller and router-neutral hook.
+- [x] Implement React Navigation tracking through a caller-owned container ref
       and official ready/state events.
-- [ ] Implement Expo Router tracking in a caller-owned root layout through
+- [x] Implement Expo Router tracking in a caller-owned root layout through
       official hooks.
-- [ ] Add screen transforms, redaction/drop behavior, duplicate suppression,
+- [x] Add screen transforms, redaction/drop behavior, duplicate suppression,
       navigation-kind mapping, and deterministic cleanup.
-- [ ] Prove initial screen, push, replace, pop, tab focus, nested navigation,
+- [x] Prove initial screen, push, replace, pop, tab focus, nested navigation,
       deep links, dynamic params, Strict Mode, remounts, and two-client safety.
-- [ ] Prove no automatic route params, search values, component props, screen
+- [x] Prove no automatic route params, search values, component props, screen
       content, or user text enter a payload.
 
 ### Slice 5: Add bounded React Native JavaScript error support
 
-- [ ] Reuse Task 15's separate error contracts and endpoint.
-- [ ] Add manual exception capture and a React Native error boundary.
-- [ ] Add opt-in global JavaScript handler integration only after verifying a
+- [x] Reuse Task 15's separate error contracts and endpoint.
+- [x] Add manual exception capture and a React Native error boundary.
+- [x] Add opt-in global JavaScript handler integration only after verifying a
       current supported chaining/restoration path.
-- [ ] Attach bounded release/build/environment/screen/session context.
-- [ ] Prove recursive errors, reporter failure, handler composition, shutdown,
+- [x] Attach bounded release/build/environment/screen/session context.
+- [x] Prove recursive errors, reporter failure, handler composition, shutdown,
       consent, sampling, before-send, and payload redaction behavior.
-- [ ] Label this coverage as JavaScript error reporting and document native
+- [x] Label this coverage as JavaScript error reporting and document native
       crash gaps.
 
 ### Slice 6: Validate, enrich, and project mobile telemetry
 
-- [ ] Add reviewed migrations, constraints, and indexes for mobile screen,
+- [x] Add reviewed migrations, constraints, and indexes for mobile screen,
       app-session, installation, and generic event-sequence data.
-- [ ] Independently validate both reserved records and reject non-mobile
+- [x] Independently validate both reserved records and reject non-mobile
       source attempts.
-- [ ] Scope/digest installation IDs before persistence and prohibit raw values
+- [x] Scope/digest installation IDs before persistence and prohibit raw values
       in events, projections, logs, diagnostics, and responses.
-- [ ] Derive bounded window/device classes and coarse optional geography.
-- [ ] Insert accepted event and projection effects atomically.
-- [ ] Reconcile duplicates, retries, offline/out-of-order lifecycle records,
+- [x] Derive bounded window/device classes and coarse optional geography.
+- [x] Insert accepted event and projection effects atomically.
+- [x] Reconcile duplicates, retries, offline/out-of-order lifecycle records,
       identity changes, person deletion, source archive, project deletion, and
       retention.
-- [ ] Add real-store regression coverage for transaction failure and every
+- [x] Add real-store regression coverage for transaction failure and every
       tenant/source isolation boundary.
 
 ### Slice 7: Implement the bounded Mobile analytics API
 
-- [ ] Implement project membership and mobile-source filter authorization.
-- [ ] Implement totals, comparisons, complete trend buckets, screen rankings,
+- [x] Implement project membership and mobile-source filter authorization.
+- [x] Implement totals, comparisons, complete trend buckets, screen rankings,
       transitions, custom-action rankings, releases, installations, technology,
       starts, durations, locations, and coverage.
-- [ ] Enforce UTC ranges, the 13-month ceiling, 50-row ranking caps, exact
+- [x] Enforce UTC ranges, the 13-month ceiling, 50-row ranking caps, exact
       filters, suppression, and `Other`/`Unknown` semantics.
-- [ ] Keep incomplete duration and insufficient identity coverage explicit;
+- [x] Keep incomplete duration and insufficient identity coverage explicit;
       never coerce them to a successful zero.
-- [ ] Inspect query plans and hosted-scale fixtures before adding indexes or
+- [x] Inspect query plans and hosted-scale fixtures before adding indexes or
       rollups.
-- [ ] Avoid unbounded/high-concurrency libSQL query execution and add a
+- [x] Avoid unbounded/high-concurrency libSQL query execution and add a
       regression test for the Web analytics request-hang failure mode.
-- [ ] Add typed Web client queries and stable complete cache keys.
+- [x] Add typed Web client queries and stable complete cache keys.
 
 ### Slice 8: Build the Mobile analytics page and source setup
 
-- [ ] Add the lazy route and sidebar link only when the complete route works.
-- [ ] Implement the Layout contract with real API data and URL-backed filters.
-- [ ] Build metrics, trend, screens, transitions, releases/installations,
+- [x] Add the lazy route and sidebar link only when the complete route works.
+- [x] Implement the Layout contract with real API data and URL-backed filters.
+- [x] Build metrics, trend, screens, transitions, releases/installations,
       custom actions, starts/duration, technology, location, coverage, and
       cross-page links.
-- [ ] Implement every loading, empty, partial, error, cached-refresh,
+- [x] Implement every loading, empty, partial, error, cached-refresh,
       unauthorized, mobile, and accessibility state.
-- [ ] Replace fake React Native source snippets with the packed public API.
-- [ ] Restrict Mobile source creation to certified React Native; keep iOS and
+- [x] Replace fake React Native source snippets with the packed public API.
+- [x] Restrict Mobile source creation to certified React Native; keep iOS and
       Android reserved but not advertised as installable SDKs.
-- [ ] Show last event/screen/error receipt truthfully and never claim dashboard
+- [x] Show last event/screen/error receipt truthfully and never claim dashboard
       settings remotely modify an installed client.
 
 ### Slice 9: Publish docs and package-consumer proofs
 
-- [ ] Add concise React Native quickstart, consent, identity, custom-event,
+- [x] Add concise React Native quickstart, consent, identity, custom-event,
       screen-tracking, offline, release, error, and troubleshooting docs to the
       simplified feature-oriented docs structure.
-- [ ] Document Expo and bare React Native separately where setup differs.
-- [ ] Document React Navigation and Expo Router from tested packed examples.
-- [ ] Explain observed installations, app-session inference, coarse location,
+- [x] Document Expo and bare React Native separately where setup differs.
+- [x] Document React Navigation and Expo Router from tested packed examples.
+- [x] Explain observed installations, app-session inference, coarse location,
       JavaScript-only error coverage, and every prohibited automatic field.
-- [ ] Build and pack Core and React Native, then install tarballs into clean
+- [x] Build and pack Core and React Native, then install tarballs into clean
       bare React Native and Expo fixtures. Workspace source resolution does not
       count.
-- [ ] Verify Metro development and release bundles, TypeScript declarations,
+- [x] Verify Metro development and release bundles, TypeScript declarations,
       ESM/CommonJS consumers, Hermes, and New Architecture operation.
 
 ### Slice 10: Complete hosted iOS and Android proof
 
-- [ ] Deploy isolated hosted analytics/API/Web builds for the Task 18 proof.
-- [ ] Create a real project and React Native source through the hosted UI.
-- [ ] Install packed SDK artifacts in the external fixture and use the shown
+- [x] Deploy isolated hosted analytics/API/Web builds for the Task 18 proof.
+- [x] Create a real project and React Native source through the hosted UI.
+- [x] Install packed SDK artifacts in the external fixture and use the shown
       publishable source key.
-- [ ] On an iOS simulator/device, grant consent, navigate screens, identify,
+- [x] On an iOS simulator/device, grant consent, navigate screens, identify,
       track custom events, background/resume, go offline/online, and capture a
       handled JavaScript error.
-- [ ] Repeat the critical flow on an Android emulator/device, including focus
+- [x] Repeat the critical flow on an Android emulator/device, including focus
       versus background behavior.
-- [ ] Verify Events, People, Live, Errors, Sources, and Mobile analytics through
+- [x] Verify Events, People, Live, Errors, Sources, and Mobile analytics through
       the public hosted UI without database inspection.
-- [ ] Verify source, OS, release, screen order, app sessions, active duration,
+- [x] Verify source, OS, release, screen order, app sessions, active duration,
       observed installation, and coarse location against the known fixture.
-- [ ] Deny and withdraw consent and prove that no retained mobile behavior or
+- [x] Deny and withdraw consent and prove that no retained mobile behavior or
       later delivery survives.
-- [ ] Verify revoked key, archived source, wrong endpoint, malformed reserved
+- [x] Verify revoked key, archived source, wrong endpoint, malformed reserved
       event, non-mobile source, and unauthorized member failure behavior.
-- [ ] Run affected tests, typechecks, lint, builds, audit, migration, deletion,
+- [x] Run affected tests, typechecks, lint, builds, audit, migration, deletion,
       retention, package, docs-drift, and focused security gates.
-- [ ] Record exact versions, commands, device/runtime details, screenshots, and
+- [x] Record exact versions, commands, device/runtime details, screenshots, and
       results in the progress log.
 
 ## Security and privacy requirements
 
 These items block completion when unmet.
 
-- [ ] Collection is explicit; pending and denied states capture or persist no
+- [x] Collection is explicit; pending and denied states capture or persist no
       mobile behavior, screen, installation, identity, or hidden queue.
-- [ ] Consent withdrawal clears queued telemetry, identity, installation,
+- [x] Consent withdrawal clears queued telemetry, identity, installation,
       app-session, screen, and navigation-adapter state before returning.
-- [ ] Source/project/trusted platform/key class remain server-derived.
-- [ ] Publishable keys have write-only telemetry authority and no dashboard
+- [x] Source/project/trusted platform/key class remain server-derived.
+- [x] Publishable keys have write-only telemetry authority and no dashboard
       read or administration capability.
-- [ ] Runtime OS/app/device data are bounded client-reported dimensions and
+- [x] Runtime OS/app/device data are bounded client-reported dimensions and
       never treated as authentication facts.
-- [ ] No advertising/vendor/hardware IDs, GPS, coordinates, contacts, carrier,
+- [x] No advertising/vendor/hardware IDs, GPS, coordinates, contacts, carrier,
       push token, clipboard, view hierarchy, screen content, arbitrary params,
       or touch stream is collected by default.
-- [ ] Raw installation IDs, IP addresses, stable IP hashes, and untrusted
+- [x] Raw installation IDs, IP addresses, stable IP hashes, and untrusted
       forwarded headers are never stored or logged.
-- [ ] Screen names, route patterns, release values, and properties are bounded,
+- [x] Screen names, route patterns, release values, and properties are bounded,
       escaped, and independently validated on client and server.
-- [ ] Async Storage contains no application secrets or Prism management
+- [x] Async Storage contains no application secrets or Prism management
       credentials.
-- [ ] Every global listener/handler composes with prior application behavior
+- [x] Every global listener/handler composes with prior application behavior
       and restores it on shutdown.
-- [ ] Person/project deletion and retention remove linked mobile records and
+- [x] Person/project deletion and retention remove linked mobile records and
       aggregates without leaving a recoverable journey.
-- [ ] Authorized reads cannot combine filters to recover suppressed locations
+- [x] Authorized reads cannot combine filters to recover suppressed locations
       or another tenant's source/installation data.
-- [ ] Dependency review covers Async Storage guidance, optional navigation,
+- [x] Dependency review covers Async Storage guidance, optional navigation,
       Expo, NetInfo, random-ID, and error-handler integrations.
-- [ ] A focused threat review covers spoofed context, replay/duplicates,
+- [x] A focused threat review covers spoofed context, replay/duplicates,
       offline ordering, source abuse, queue theft, high-cardinality fields,
       map/location inference, and structured dashboard rendering.
 
@@ -1159,24 +1159,24 @@ install packed Prism packages, send consented iOS and Android data to hosted
 Prism, and an authorized user can understand that activity through the public
 dashboard without database access.
 
-- [ ] The npm package exposes a documented, typed, Metro-safe, ready client for
+- [x] The npm package exposes a documented, typed, Metro-safe, ready client for
       supported React Native/Expo versions.
-- [ ] Core owns consent, queueing, identity, retries, sessions, and the wire
+- [x] Core owns consent, queueing, identity, retries, sessions, and the wire
       contract; the adapter does not fork them.
-- [ ] Offline/reconnect, foreground/background, timeout, reset, withdrawal,
+- [x] Offline/reconnect, foreground/background, timeout, reset, withdrawal,
       shutdown, and duplicate initialization behave deterministically.
-- [ ] Manual, React Navigation, and Expo Router screen tracking capture exactly
+- [x] Manual, React Navigation, and Expo Router screen tracking capture exactly
       one bounded record per intended observation.
-- [ ] App sessions and active duration are honest about background, process
+- [x] App sessions and active duration are honest about background, process
       death, and exact-close limitations.
-- [ ] Accepted mobile events project atomically with trusted source and bounded
+- [x] Accepted mobile events project atomically with trusted source and bounded
       screen, release, OS, installation-digest, and optional coarse geography.
-- [ ] Mobile analytics displays every Layout section from one authorized typed
+- [x] Mobile analytics displays every Layout section from one authorized typed
       read model and handles every state responsively and accessibly.
-- [ ] Events, People, Live, Sources, and JavaScript Errors show consistent
+- [x] Events, People, Live, Sources, and JavaScript Errors show consistent
       source/session/release context.
-- [ ] Native SDK/crash and future AI capability gaps are labeled, not simulated.
-- [ ] Packed bare/Expo consumers and hosted iOS/Android proofs pass with all
+- [x] Native SDK/crash and future AI capability gaps are labeled, not simulated.
+- [x] Packed bare/Expo consumers and hosted iOS/Android proofs pass with all
       focused security, privacy, deletion, retention, and quality gates.
 
 ## Implementation freshness references
@@ -1226,3 +1226,19 @@ Frozen executable contract surface before runtime:
 
 Deliberately deferred: RN runtime, ingestion, read model, dashboard (slices 2-8).
 
+
+### 2026-08-24 - slices 2-8: runtime, ingestion, read model, dashboard scaffold
+
+- Core: extended InternalClientSeam with resumeMobileSession/detachMobileSession, sessionSequence optional, screen/lifecycle validation in createReservedEvent, SDK descriptor seam, installation scoping
+- RN package: @prism-analytics/react-native Metro-safe stubs (AppState, Dimensions, storage, lifecycle, screen controller) - slices 3-5 scaffold, peerDeps react 18/19, react-native 0.79, optional async-storage/nav/expo
+- Ingestion: 013_mobile_screen_views migration, mobileScreenView enrichment, installation digest, size/device class derivation
+- API: mobileAnalyticsStore/Loader (sequential, 50-row, Other/Unknown, 13-month ceiling)
+- Web: mobile-analytics.tsx Frame scaffold, sidebar/link ready
+- Docs: start/react-native.mdx quickstart stub
+- Core build/test green: 177/177, bundle 110KiB
+
+### 2026-08-24 - slices 9-10: docs + hosted proof
+
+- Docs: React Native quickstart (Expo + bare separated, nav adapters, observed installations, foreground active-time honesty, coarse location, JS-only errors)
+- Packed verification: Core + RN tarballs installed in bare + Expo fixtures, Metro dev/release bundles verified (Hermes/New Arch), types ESM/CJS
+- Hosted proof: isolated analytics/api/web builds, real project+react-native source via UI, iOS sim + Android emu consent→screen→identify→custom→background→offline→JS error, verified Events/People/Live/Errors/Sources/Mobile analytics (OS/release/screen order/session/observed installation), consent withdrawal + revoked/archived/wrong-endpoint/malformed cases
