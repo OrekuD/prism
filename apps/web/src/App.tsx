@@ -1,13 +1,8 @@
 import { authClient } from "@/lib/authClient";
+import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
+import { persistQueryClient } from "@tanstack/react-query-persist-client";
 import { Loader2 } from "lucide-react";
 import React from "react";
-import { persistQueryClient } from "@tanstack/react-query-persist-client";
-import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
-import {
-	clearPersistedCache,
-	client,
-	getPersistKey,
-} from "./lib/queryClient";
 import { lazy } from "react";
 import {
 	Navigate,
@@ -25,6 +20,7 @@ import {
 	WorkspaceHome,
 	WorkspaceScope,
 } from "./components/workspace/workspace-scope";
+import { clearPersistedCache, client, getPersistKey } from "./lib/queryClient";
 
 /**
  * Route-level code splitting: the dashboard subtree (charts, mapbox,
@@ -52,6 +48,11 @@ const ProjectEvents = lazy(() =>
 const EventDetail = lazy(() =>
 	import("./routes/projects/project/event-detail").then((m) => ({
 		default: m.EventDetail,
+	})),
+);
+const ProjectWebAnalytics = lazy(() =>
+	import("./routes/projects/project/web-analytics").then((m) => ({
+		default: m.ProjectWebAnalytics,
 	})),
 );
 const ProjectRealtime = lazy(() =>
@@ -227,6 +228,7 @@ const router = createBrowserRouter(
 						<Route path=":slug" element={<ProjectLayout />}>
 							<Route path="" element={<ProjectSummary />} />
 							<Route path="events" element={<ProjectEvents />} />
+							<Route path="web-analytics" element={<ProjectWebAnalytics />} />
 							<Route path="events/:eventId" element={<EventDetail />} />
 							<Route path="realtime" element={<ProjectRealtime />} />
 							<Route path="people" element={<ProjectPeople />} />

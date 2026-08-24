@@ -12,6 +12,7 @@ import {
 import * as I from "@/components/ui/icons";
 import { CreateWorkspaceDialog } from "@/components/workspace/workspace-switcher";
 import { authClient } from "@/lib/authClient";
+import { clearQueryClient, client } from "@/lib/queryClient";
 import {
 	getSelectedProjectSlug,
 	setSelectedProjectSlug,
@@ -23,7 +24,6 @@ import {
 	useSelectedWorkspace,
 	useWorkspaces,
 } from "@/lib/workspace";
-import { clearQueryClient, client } from "@/lib/queryClient";
 import { useProjectsQuery } from "@/network/queries/useProjectsQuery";
 import { getInitials } from "@/utils/getInitials";
 import {
@@ -101,7 +101,11 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 
 	// F1: trigger + links scope to the URL-selected workspace, not the refetching active org.
 	const effectiveWorkspace =
-		(selectedWorkspace as { slug?: string; name?: string; id?: string } | null) ??
+		(selectedWorkspace as {
+			slug?: string;
+			name?: string;
+			id?: string;
+		} | null) ??
 		(activeWorkspace as { slug?: string; name?: string; id?: string } | null);
 	const wrkSlug = effectiveWorkspace?.slug ?? "";
 	const pathSegments = pathname.split("/");
@@ -232,7 +236,11 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 									}}
 								>
 									<span className="flex-1 truncate">{ws.name}</span>
-									{(selectedId ? selectedId === ws.id : activeWorkspaceId === ws.id) ? (
+									{(
+										selectedId
+											? selectedId === ws.id
+											: activeWorkspaceId === ws.id
+									) ? (
 										<Check className="size-3.5 text-accent" />
 									) : null}
 								</DropdownMenuItem>
@@ -370,6 +378,11 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 							to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/events`}
 							label="Events"
 							icon={<I.IconBolt />}
+						/>
+						<Active
+							to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/web-analytics`}
+							label="Web analytics"
+							icon={<I.IconTrend />}
 						/>
 						<Active
 							to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/people`}
