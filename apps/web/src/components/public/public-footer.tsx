@@ -15,8 +15,8 @@ const columns = [
     title: "Resources",
     links: [
       { label: "Documentation", href: VITE_DOCS_URL },
-      { label: "Quickstart", href: `${VITE_DOCS_URL}/docs/getting-started/hosted-quickstart` },
-      { label: "SDK reference", href: `${VITE_DOCS_URL}/docs/tracking/web/javascript-browser` },
+      { label: "Quickstart", href: `${VITE_DOCS_URL}/docs/start/quickstart` },
+      { label: "SDK reference", href: `${VITE_DOCS_URL}/docs/start/javascript-sdk` },
     ],
   },
   {
