@@ -40,6 +40,12 @@ import {
 	isReservedAnalyticsEventName,
 	validatePageViewProperties,
 } from "./page-view";
+import {
+	APP_LIFECYCLE_EVENT_NAME,
+	SCREEN_VIEW_EVENT_NAME,
+	validateAppLifecycleProperties,
+	validateScreenViewProperties,
+} from "./screen-view";
 import { EventQueue, type QueuedEvent, utf8Length } from "./queue";
 import {
 	assertEndpoint,
@@ -369,6 +375,18 @@ class PrismClientImpl implements PrismClient {
 						return { status: "rejected", reason: validation.reason };
 					}
 				}
+				if (name === SCREEN_VIEW_EVENT_NAME) {
+					const validation = validateScreenViewProperties(properties as unknown);
+					if (!validation.ok) {
+						return { status: "rejected", reason: validation.reason };
+					}
+				}
+				if (name === APP_LIFECYCLE_EVENT_NAME) {
+					const validation = validateAppLifecycleProperties(properties as unknown);
+					if (!validation.ok) {
+						return { status: "rejected", reason: validation.reason };
+					}
+				}
 				let sanitized: JsonObject | undefined;
 				try {
 					sanitized = self.validateAndSanitize(
@@ -413,6 +431,17 @@ class PrismClientImpl implements PrismClient {
 			detachWebSession(): void {
 				// Consent withdrawal / reset: drop the attachment only — no
 				// session_ended, because withdrawal must never produce events.
+				impl.activeSession = null;
+			},
+			resumeMobileSession(session: { sessionId: string; startedAt: number; sequence: number }): void {
+				if (impl.closed || !session.sessionId) return;
+				impl.activeSession = new SessionHandleImpl(
+					session.sessionId,
+					session.startedAt,
+					(handleRef) => impl.endSession(handleRef),
+				);
+			},
+			detachMobileSession(): void {
 				impl.activeSession = null;
 			},
 		};

@@ -15,6 +15,7 @@ import type { JsonObject } from "./contract";
 
 /** Wire protocol major (ADR 0002 §2) — one envelope per endpoint major. */
 export const WIRE_SCHEMA_VERSION = 3;
+export type WireMobileSequence = number; // sessionSequence optional, bounded in queued event
 
 /** SDK identity sent with every batch (batch-level, not per event). */
 export const SDK_NAME = "@prism-analytics/core";

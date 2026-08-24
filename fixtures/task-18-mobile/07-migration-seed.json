@@ -1,0 +1,6 @@
+{
+  "migration": "013_mobile_screen_views",
+  "indexes": [
+    "idx_mobile_screen_views_project_session"
+  ]
+}

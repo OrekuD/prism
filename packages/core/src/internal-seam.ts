@@ -44,6 +44,9 @@ export interface InternalClientSeam {
 	/** Clears any attached Web session without emitting `session_ended`
 	 * (consent withdrawal / reset path). */
 	detachWebSession(): void;
+	/** Task 18: resume/detach mobile app session (foreground active-time) */
+	resumeMobileSession(session: { sessionId: string; startedAt: number; sequence: number }): void;
+	detachMobileSession(): void;
 }
 
 export type ClientWithInternalSeam = {

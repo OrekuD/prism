@@ -1,0 +1,9 @@
+{
+  "description": "suppressed city <5 + Other, Unknown OS",
+  "source": {
+    "id": "22222222-2222-4222-8222-222222222222",
+    "name": "Acme Mobile",
+    "platform": "react-native"
+  },
+  "events": []
+}
