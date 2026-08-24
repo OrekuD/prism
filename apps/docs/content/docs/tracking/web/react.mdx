@@ -54,5 +54,12 @@ Returns a stable facade over the client: `track`, `startSession`,
 across renders — no recreated callbacks. Throws a specific error outside a
 provider.
 
-Automatic route/page tracking is a later task; capture page identity
-explicitly with `capturePageContext()` from `@prism-analytics/browser`.
+## `usePrismPageView({ path, title? })`
+
+Captures a page view per path change for the Web analytics dashboard.
+Requires a `PrismProvider` whose client was created with
+`pageViews: { mode: "manual" }` — it throws a specific error when the
+provider is missing, page tracking is unconfigured, or the client runs
+in history mode. Captures once per path, including under React Strict
+Mode. See [Web analytics](/docs/analytics/web-analytics) for the
+dashboard side.

@@ -46,6 +46,27 @@ const result = prism.track("button-click", { label: "signup" });
 background failures surface through the diagnostics subscription and through
 rejected `flush()`/`shutdown()` promises.
 
+## Page views
+
+Pass a `pageViews` config to capture the automatic page views behind the
+Web analytics dashboard:
+
+```ts
+const prism = createBrowserClient({
+  endpoint: "...",
+  sourceKey: "psk_...",
+  pageViews: { mode: "history" }, // or "manual"
+});
+```
+
+In `history` mode the SDK captures a view on pushState, replaceState,
+and popstate. In `manual` mode call `prism.pageViews.capture({ path })`
+from your router. Only host, path, and (opt-in) title are captured;
+referrers are reduced to the external host and campaigns to the
+allowlisted UTM parameters. Without a `pageViews` config the client
+captures none and exposes `pageViews: null`. See
+[Web analytics](/docs/analytics/web-analytics).
+
 ## Sessions
 
 ```ts
