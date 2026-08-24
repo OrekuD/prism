@@ -110,3 +110,25 @@ export type {
 	InternalClientSeam,
 	ReservedEventResult,
 } from "./internal-seam";
+
+// Task 18: reserved mobile screen-view + app-lifecycle contracts
+export {
+  APP_LIFECYCLE_EVENT_NAME,
+  SCREEN_VIEW_EVENT_NAME,
+  validateAppLifecycleProperties,
+  validateScreenViewProperties,
+} from "./screen-view";
+export type {
+  AppLifecycleTransition,
+  AppLifecycleValidationResult,
+  AppLifecycleWireProperties,
+  ScreenNavigation,
+  ScreenViewCandidate,
+  ScreenViewValidationResult,
+  ScreenViewWireProperties,
+} from "./screen-view";
+export { MOBILE_LIMITS, MOBILE_SESSION_TIMEOUT_MS } from "./mobile-limits";
+export { isValidInstallationDigest, isValidInstallationId } from "./installation";
+export type { MobileContext, MobileKind, MobileOs, MobilePlatform } from "./mobile-context";
+export { isValidMobileContext } from "./mobile-context";
+

@@ -1,0 +1,85 @@
+{
+  "description": "Offline out-of-order delivery, duplicate, and late geography cutoff",
+  "source": {
+    "id": "22222222-2222-4222-8222-222222222222",
+    "name": "Acme Mobile",
+    "platform": "react-native"
+  },
+  "events": [
+    {
+      "eventId": "evt_m_8",
+      "type": "track",
+      "name": "$prism_screen_view",
+      "occurredAt": 1785545000000,
+      "receivedAt": 1785545000400,
+      "sessionId": "sess_mob_2",
+      "anonymousId": "anon_mob_2",
+      "userId": null,
+      "personId": "person_aaaaaaaaaaaa",
+      "sourceId": "22222222-2222-4222-8222-222222222222",
+      "platform": "react-native",
+      "os": "ios",
+      "sdkName": "@prism-analytics/react-native",
+      "sdkVersion": "0.0.1",
+      "schemaVersion": 3,
+      "properties": {
+        "$screen": {
+          "name": "Checkout",
+          "navigation": "push",
+          "sequence": 5
+        }
+      },
+      "expected": {}
+    },
+    {
+      "eventId": "evt_m_8",
+      "type": "track",
+      "name": "$prism_screen_view",
+      "occurredAt": 1785545000000,
+      "receivedAt": 1785545000400,
+      "sessionId": "sess_mob_2",
+      "anonymousId": "anon_mob_2",
+      "userId": null,
+      "personId": "person_aaaaaaaaaaaa",
+      "sourceId": "22222222-2222-4222-8222-222222222222",
+      "platform": "react-native",
+      "os": "ios",
+      "sdkName": "@prism-analytics/react-native",
+      "sdkVersion": "0.0.1",
+      "schemaVersion": 3,
+      "properties": {
+        "$screen": {
+          "name": "Checkout",
+          "navigation": "push",
+          "sequence": 5
+        }
+      },
+      "expected": {}
+    },
+    {
+      "eventId": "evt_m_9",
+      "type": "track",
+      "name": "$prism_screen_view",
+      "occurredAt": 1785548000000,
+      "receivedAt": 1785548000400,
+      "sessionId": "sess_mob_2",
+      "anonymousId": "anon_mob_2",
+      "userId": null,
+      "personId": "person_aaaaaaaaaaaa",
+      "sourceId": "22222222-2222-4222-8222-222222222222",
+      "platform": "react-native",
+      "os": "ios",
+      "sdkName": "@prism-analytics/react-native",
+      "sdkVersion": "0.0.1",
+      "schemaVersion": 3,
+      "properties": {
+        "$screen": {
+          "name": "Checkout",
+          "navigation": "push",
+          "sequence": 6
+        }
+      },
+      "expected": {}
+    }
+  ]
+}

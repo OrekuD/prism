@@ -359,3 +359,4 @@ export type ErrorIssueDetailResource = {
 };
 
 export * from "./webAnalytics";
+export * from "./mobileAnalytics";

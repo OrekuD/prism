@@ -1,0 +1,62 @@
+{
+  "description": "Observed installation with release and OS dimensions",
+  "source": {
+    "id": "22222222-2222-4222-8222-222222222222",
+    "name": "Acme Mobile",
+    "platform": "react-native"
+  },
+  "events": [
+    {
+      "eventId": "evt_m_10",
+      "type": "track",
+      "name": "$prism_screen_view",
+      "occurredAt": 1785542400000,
+      "receivedAt": 1785542400400,
+      "sessionId": "sess_mob_3",
+      "anonymousId": "anon_mob_3",
+      "userId": null,
+      "personId": "person_aaaaaaaaaaaa",
+      "sourceId": "22222222-2222-4222-8222-222222222222",
+      "platform": "react-native",
+      "os": "ios",
+      "sdkName": "@prism-analytics/react-native",
+      "sdkVersion": "0.0.1",
+      "schemaVersion": 3,
+      "properties": {
+        "$screen": {
+          "name": "Home",
+          "navigation": "initial",
+          "sequence": 1
+        },
+        "$installation": "abc123xyz"
+      },
+      "expected": {}
+    },
+    {
+      "eventId": "evt_m_11",
+      "type": "track",
+      "name": "$prism_screen_view",
+      "occurredAt": 1785542400000,
+      "receivedAt": 1785542400400,
+      "sessionId": "sess_mob_4",
+      "anonymousId": "anon_mob_4",
+      "userId": null,
+      "personId": "person_aaaaaaaaaaaa",
+      "sourceId": "22222222-2222-4222-8222-222222222222",
+      "platform": "react-native",
+      "os": "android",
+      "sdkName": "@prism-analytics/react-native",
+      "sdkVersion": "0.0.1",
+      "schemaVersion": 3,
+      "properties": {
+        "$screen": {
+          "name": "Home",
+          "navigation": "initial",
+          "sequence": 1
+        },
+        "$installation": "abc123xyz"
+      },
+      "expected": {}
+    }
+  ]
+}

@@ -1,0 +1,78 @@
+{
+  "description": "Malformed reserved events must be rejected",
+  "source": {
+    "id": "22222222-2222-4222-8222-222222222222",
+    "name": "Acme Mobile",
+    "platform": "react-native"
+  },
+  "events": [
+    {
+      "eventId": "evt_m_12",
+      "type": "track",
+      "name": "$prism_screen_view",
+      "occurredAt": 1785542400000,
+      "receivedAt": 1785542400400,
+      "sessionId": "sess_mob_5",
+      "anonymousId": "anon_mob_5",
+      "userId": null,
+      "personId": "person_aaaaaaaaaaaa",
+      "sourceId": "22222222-2222-4222-8222-222222222222",
+      "platform": "react-native",
+      "os": "ios",
+      "sdkName": "@prism-analytics/react-native",
+      "sdkVersion": "0.0.1",
+      "schemaVersion": 3,
+      "properties": {
+        "$screen": {
+          "name": ""
+        }
+      },
+      "expected": {}
+    },
+    {
+      "eventId": "evt_m_13",
+      "type": "track",
+      "name": "$prism_screen_view",
+      "occurredAt": 1785542400000,
+      "receivedAt": 1785542400400,
+      "sessionId": "sess_mob_5",
+      "anonymousId": "anon_mob_5",
+      "userId": null,
+      "personId": "person_aaaaaaaaaaaa",
+      "sourceId": "22222222-2222-4222-8222-222222222222",
+      "platform": "react-native",
+      "os": "ios",
+      "sdkName": "@prism-analytics/react-native",
+      "sdkVersion": "0.0.1",
+      "schemaVersion": 3,
+      "properties": {
+        "bad": "field"
+      },
+      "expected": {}
+    },
+    {
+      "eventId": "evt_m_14",
+      "type": "track",
+      "name": "$prism_app_lifecycle",
+      "occurredAt": 1785542400000,
+      "receivedAt": 1785542400400,
+      "sessionId": "sess_mob_5",
+      "anonymousId": "anon_mob_5",
+      "userId": null,
+      "personId": "person_aaaaaaaaaaaa",
+      "sourceId": "22222222-2222-4222-8222-222222222222",
+      "platform": "react-native",
+      "os": "ios",
+      "sdkName": "@prism-analytics/react-native",
+      "sdkVersion": "0.0.1",
+      "schemaVersion": 3,
+      "properties": {
+        "$lifecycle": {
+          "transition": "unknown",
+          "sequence": 1
+        }
+      },
+      "expected": {}
+    }
+  ]
+}

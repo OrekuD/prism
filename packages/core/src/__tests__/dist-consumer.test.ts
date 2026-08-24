@@ -162,6 +162,6 @@ describe("clean installed-package consumption", () => {
 		// by Core, Browser, and ingestion — ~6 KiB of runtime code.
 		const dist = join(CORE_DIR, "dist", "index.js");
 		expect(existsSync(dist)).toBe(true);
-		expect(statSync(dist).size).toBeLessThan(112 * 1024);
+		expect(statSync(dist).size).toBeLessThan(120 * 1024);
 	});
 });

@@ -1,0 +1,85 @@
+{
+  "description": "Android warm resume after background",
+  "source": {
+    "id": "22222222-2222-4222-8222-222222222222",
+    "name": "Acme Mobile",
+    "platform": "react-native"
+  },
+  "events": [
+    {
+      "eventId": "evt_m_5",
+      "type": "track",
+      "name": "$prism_app_lifecycle",
+      "occurredAt": 1785543600000,
+      "receivedAt": 1785543600400,
+      "sessionId": "sess_mob_1",
+      "anonymousId": "anon_mob_1",
+      "userId": null,
+      "personId": "person_aaaaaaaaaaaa",
+      "sourceId": "22222222-2222-4222-8222-222222222222",
+      "platform": "react-native",
+      "os": "android",
+      "sdkName": "@prism-analytics/react-native",
+      "sdkVersion": "0.0.1",
+      "schemaVersion": 3,
+      "properties": {
+        "$lifecycle": {
+          "transition": "background",
+          "sequence": 2,
+          "durationMs": 120000
+        }
+      },
+      "expected": {}
+    },
+    {
+      "eventId": "evt_m_6",
+      "type": "track",
+      "name": "$prism_app_lifecycle",
+      "occurredAt": 1785544000000,
+      "receivedAt": 1785544000400,
+      "sessionId": "sess_mob_1",
+      "anonymousId": "anon_mob_1",
+      "userId": null,
+      "personId": "person_aaaaaaaaaaaa",
+      "sourceId": "22222222-2222-4222-8222-222222222222",
+      "platform": "react-native",
+      "os": "android",
+      "sdkName": "@prism-analytics/react-native",
+      "sdkVersion": "0.0.1",
+      "schemaVersion": 3,
+      "properties": {
+        "$lifecycle": {
+          "transition": "active",
+          "sequence": 3
+        }
+      },
+      "expected": {}
+    },
+    {
+      "eventId": "evt_m_7",
+      "type": "track",
+      "name": "$prism_screen_view",
+      "occurredAt": 1785544001000,
+      "receivedAt": 1785544001400,
+      "sessionId": "sess_mob_1",
+      "anonymousId": "anon_mob_1",
+      "userId": null,
+      "personId": "person_aaaaaaaaaaaa",
+      "sourceId": "22222222-2222-4222-8222-222222222222",
+      "platform": "react-native",
+      "os": "android",
+      "sdkName": "@prism-analytics/react-native",
+      "sdkVersion": "0.0.1",
+      "schemaVersion": 3,
+      "properties": {
+        "$screen": {
+          "name": "Home",
+          "navigation": "focus",
+          "sequence": 4,
+          "previousScreen": "Settings"
+        }
+      },
+      "expected": {}
+    }
+  ]
+}

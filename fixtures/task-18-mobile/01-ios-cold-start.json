@@ -1,0 +1,112 @@
+{
+  "description": "iOS cold start, 3 screens with transitions, active lifecycle",
+  "source": {
+    "id": "22222222-2222-4222-8222-222222222222",
+    "name": "Acme Mobile",
+    "platform": "react-native"
+  },
+  "events": [
+    {
+      "eventId": "evt_m_1",
+      "type": "track",
+      "name": "$prism_app_lifecycle",
+      "occurredAt": 1785542400000,
+      "receivedAt": 1785542400400,
+      "sessionId": "sess_mob_1",
+      "anonymousId": "anon_mob_1",
+      "userId": null,
+      "personId": "person_aaaaaaaaaaaa",
+      "sourceId": "22222222-2222-4222-8222-222222222222",
+      "platform": "react-native",
+      "os": "ios",
+      "sdkName": "@prism-analytics/react-native",
+      "sdkVersion": "0.0.1",
+      "schemaVersion": 3,
+      "properties": {
+        "$lifecycle": {
+          "transition": "active",
+          "sequence": 1
+        }
+      },
+      "expected": {}
+    },
+    {
+      "eventId": "evt_m_2",
+      "type": "track",
+      "name": "$prism_screen_view",
+      "occurredAt": 1785542401000,
+      "receivedAt": 1785542401400,
+      "sessionId": "sess_mob_1",
+      "anonymousId": "anon_mob_1",
+      "userId": null,
+      "personId": "person_aaaaaaaaaaaa",
+      "sourceId": "22222222-2222-4222-8222-222222222222",
+      "platform": "react-native",
+      "os": "ios",
+      "sdkName": "@prism-analytics/react-native",
+      "sdkVersion": "0.0.1",
+      "schemaVersion": 3,
+      "properties": {
+        "$screen": {
+          "name": "Home",
+          "navigation": "initial",
+          "sequence": 1
+        }
+      },
+      "expected": {}
+    },
+    {
+      "eventId": "evt_m_3",
+      "type": "track",
+      "name": "$prism_screen_view",
+      "occurredAt": 1785542700000,
+      "receivedAt": 1785542700400,
+      "sessionId": "sess_mob_1",
+      "anonymousId": "anon_mob_1",
+      "userId": null,
+      "personId": "person_aaaaaaaaaaaa",
+      "sourceId": "22222222-2222-4222-8222-222222222222",
+      "platform": "react-native",
+      "os": "ios",
+      "sdkName": "@prism-analytics/react-native",
+      "sdkVersion": "0.0.1",
+      "schemaVersion": 3,
+      "properties": {
+        "$screen": {
+          "name": "Profile",
+          "routePattern": "/profile/[id]",
+          "navigation": "push",
+          "sequence": 2,
+          "previousScreen": "Home"
+        }
+      },
+      "expected": {}
+    },
+    {
+      "eventId": "evt_m_4",
+      "type": "track",
+      "name": "$prism_screen_view",
+      "occurredAt": 1785543000000,
+      "receivedAt": 1785543000400,
+      "sessionId": "sess_mob_1",
+      "anonymousId": "anon_mob_1",
+      "userId": null,
+      "personId": "person_aaaaaaaaaaaa",
+      "sourceId": "22222222-2222-4222-8222-222222222222",
+      "platform": "react-native",
+      "os": "ios",
+      "sdkName": "@prism-analytics/react-native",
+      "sdkVersion": "0.0.1",
+      "schemaVersion": 3,
+      "properties": {
+        "$screen": {
+          "name": "Settings",
+          "navigation": "push",
+          "sequence": 3,
+          "previousScreen": "Profile"
+        }
+      },
+      "expected": {}
+    }
+  ]
+}
