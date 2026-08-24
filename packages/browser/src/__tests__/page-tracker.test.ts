@@ -94,7 +94,7 @@ describe("browser page tracking", () => {
 		window.history.pushState(null, "", "/second");
 		window.history.pushState(null, "", "/third");
 		window.history.back(); // popstate back to /second — a real navigation
-		await tick();
+		await vi.waitFor(() => expect(sentinel.sent).toHaveLength(3));
 
 		const paths = sentinel.sent.map(
 			(e) => (e.properties?.$page as { path: string }).path,
