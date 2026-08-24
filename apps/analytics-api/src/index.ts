@@ -45,11 +45,31 @@ function validateEnvironment() {
 
 validateEnvironment();
 
-logger.info("analytics", "server running", { port });
+const server = serve(
+  {
+    fetch: app.fetch,
+    port,
+  },
+  ({ port: listeningPort }) => {
+    logger.info("analytics", "server running", { port: listeningPort });
+  },
+);
 
-const server = serve({
-  fetch: app.fetch,
-  port,
+server.on("error", (error: NodeJS.ErrnoException) => {
+  if (error.code === "EADDRINUSE") {
+    logger.error(
+      "analytics",
+      "analytics port is already in use — stop the existing dev server or set PORT to a free port",
+      { port, code: error.code },
+    );
+  } else {
+    logger.error("analytics", "server failed to start", {
+      port,
+      code: error.code ?? "UNKNOWN",
+      message: error.message,
+    });
+  }
+  process.exitCode = 1;
 });
 
 injectWebSocket(server);

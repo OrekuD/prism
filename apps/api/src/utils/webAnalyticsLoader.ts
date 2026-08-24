@@ -126,37 +126,30 @@ export async function loadWebAnalytics(
 	const baseJoin = `FROM web_page_views w
 		JOIN events e ON e.project_id = w.project_id AND e.id = w.event_id`;
 
-	const [
-		currentTotals,
-		previousTotals,
-		trendResult,
-		pageRows,
-		entryRows,
-		countries,
-		regions,
-		cities,
-		browsers,
-		operatingSystems,
-		devices,
-		viewports,
-		languages,
-	] = await Promise.all([
-		totalsFor(client, params, params.from, params.to),
-		totalsFor(client, params, previous.from, previous.to),
+	// The libsql HTTP client used by Workers cannot safely multiplex this entire
+	// read model. Keep the fixed query set sequential so every request settles
+	// before the next one starts.
+	const currentTotals = await totalsFor(client, params, params.from, params.to);
+	const previousTotals = await totalsFor(
+		client,
+		params,
+		previous.from,
+		previous.to,
+	);
 
-		client.execute({
-			sql: `SELECT (w.occurred_at / ?) * ? AS bucket_start,
+	const trendResult = await client.execute({
+		sql: `SELECT (w.occurred_at / ?) * ? AS bucket_start,
 					COUNT(*) AS page_views,
 					COUNT(DISTINCT e.person_id) AS visitors,
 					COUNT(DISTINCT e.session_id) AS sessions
 				${baseJoin}
 				WHERE ${scopedWhere.clauses.join(" AND ")}
 				GROUP BY bucket_start ORDER BY bucket_start ASC`,
-			args: [ms, ms, ...scopedWhere.args] as Array<string | number | null>,
-		}),
+		args: [ms, ms, ...scopedWhere.args] as Array<string | number | null>,
+	});
 
-		client.execute({
-			sql: `SELECT w.path AS path,
+	const pageRows = await client.execute({
+		sql: `SELECT w.path AS path,
 					MAX(w.title) AS title,
 					MAX(w.host) AS host,
 					COUNT(*) AS page_views,
@@ -165,14 +158,14 @@ export async function loadWebAnalytics(
 				${baseJoin}
 				WHERE ${scopedWhere.clauses.join(" AND ")}
 				GROUP BY w.path ORDER BY page_views DESC LIMIT ?`,
-			args: [...scopedWhere.args, PAGE_VIEW_LIMITS.rankingRowLimit] as Array<
-				string | number | null
-			>,
-		}),
+		args: [...scopedWhere.args, PAGE_VIEW_LIMITS.rankingRowLimit] as Array<
+			string | number | null
+		>,
+	});
 
-		// Entry rows only — one per session via MIN(occurred_at) grouping.
-		client.execute({
-			sql: `SELECT e.session_id AS session_id,
+	// Entry rows only — one per session via MIN(occurred_at) grouping.
+	const entryRows = await client.execute({
+		sql: `SELECT e.session_id AS session_id,
 					w.referrer_host AS referrer_host,
 					w.host AS page_host,
 					w.campaign_source AS campaign_source,
@@ -184,86 +177,86 @@ export async function loadWebAnalytics(
 				${baseJoin}
 				WHERE ${scopedWhere.clauses.join(" AND ")}
 				GROUP BY e.session_id`,
-			args: [...scopedWhere.args] as Array<string | number | null>,
-		}),
+		args: [...scopedWhere.args] as Array<string | number | null>,
+	});
 
-		client.execute({
-			sql: `SELECT w.country_code AS country_code,
+	const countries = await client.execute({
+		sql: `SELECT w.country_code AS country_code,
 					COUNT(*) AS page_views,
 					COUNT(DISTINCT e.person_id) AS visitors,
 					COUNT(DISTINCT e.session_id) AS sessions
 				${baseJoin}
 				WHERE ${scopedWhere.clauses.join(" AND ")} AND w.country_code IS NOT NULL
 				GROUP BY w.country_code ORDER BY sessions DESC LIMIT ?`,
-			args: [...scopedWhere.args, PAGE_VIEW_LIMITS.rankingRowLimit] as Array<
-				string | number | null
-			>,
-		}),
+		args: [...scopedWhere.args, PAGE_VIEW_LIMITS.rankingRowLimit] as Array<
+			string | number | null
+		>,
+	});
 
-		client.execute({
-			sql: `SELECT w.country_code AS country_code, w.region AS region,
+	const regions = await client.execute({
+		sql: `SELECT w.country_code AS country_code, w.region AS region,
 					COUNT(*) AS page_views,
 					COUNT(DISTINCT e.person_id) AS visitors,
 					COUNT(DISTINCT e.session_id) AS sessions
 				${baseJoin}
 				WHERE ${scopedWhere.clauses.join(" AND ")} AND w.region IS NOT NULL
 				GROUP BY w.country_code, w.region ORDER BY sessions DESC LIMIT ?`,
-			args: [...scopedWhere.args, PAGE_VIEW_LIMITS.rankingRowLimit] as Array<
-				string | number | null
-			>,
-		}),
+		args: [...scopedWhere.args, PAGE_VIEW_LIMITS.rankingRowLimit] as Array<
+			string | number | null
+		>,
+	});
 
-		client.execute({
-			sql: `SELECT w.country_code AS country_code, w.region AS region, w.city AS city,
+	const cities = await client.execute({
+		sql: `SELECT w.country_code AS country_code, w.region AS region, w.city AS city,
 					COUNT(*) AS page_views,
 					COUNT(DISTINCT e.person_id) AS visitors,
 					COUNT(DISTINCT e.session_id) AS sessions
 				${baseJoin}
 				WHERE ${scopedWhere.clauses.join(" AND ")} AND w.city IS NOT NULL
 				GROUP BY w.country_code, w.region, w.city ORDER BY sessions DESC LIMIT ?`,
-			args: [...scopedWhere.args, PAGE_VIEW_LIMITS.rankingRowLimit] as Array<
-				string | number | null
-			>,
-		}),
+		args: [...scopedWhere.args, PAGE_VIEW_LIMITS.rankingRowLimit] as Array<
+			string | number | null
+		>,
+	});
 
-		client.execute({
-			sql: `SELECT w.browser_family AS family, w.browser_major AS major,
+	const browsers = await client.execute({
+		sql: `SELECT w.browser_family AS family, w.browser_major AS major,
 					COUNT(*) AS page_views,
 					COUNT(DISTINCT e.person_id) AS visitors
 				${baseJoin}
 				WHERE ${scopedWhere.clauses.join(" AND ")} AND w.browser_family IS NOT NULL
 				GROUP BY w.browser_family, w.browser_major ORDER BY page_views DESC LIMIT ?`,
-			args: [...scopedWhere.args, PAGE_VIEW_LIMITS.rankingRowLimit] as Array<
-				string | number | null
-			>,
-		}),
+		args: [...scopedWhere.args, PAGE_VIEW_LIMITS.rankingRowLimit] as Array<
+			string | number | null
+		>,
+	});
 
-		client.execute({
-			sql: `SELECT w.os_family AS family, w.os_major AS major,
+	const operatingSystems = await client.execute({
+		sql: `SELECT w.os_family AS family, w.os_major AS major,
 					COUNT(*) AS page_views,
 					COUNT(DISTINCT e.person_id) AS visitors
 				${baseJoin}
 				WHERE ${scopedWhere.clauses.join(" AND ")} AND w.os_family IS NOT NULL
 				GROUP BY w.os_family, w.os_major ORDER BY page_views DESC LIMIT ?`,
-			args: [...scopedWhere.args, PAGE_VIEW_LIMITS.rankingRowLimit] as Array<
-				string | number | null
-			>,
-		}),
+		args: [...scopedWhere.args, PAGE_VIEW_LIMITS.rankingRowLimit] as Array<
+			string | number | null
+		>,
+	});
 
-		client.execute({
-			sql: `SELECT w.device_type AS device_type,
+	const devices = await client.execute({
+		sql: `SELECT w.device_type AS device_type,
 					COUNT(*) AS page_views,
 					COUNT(DISTINCT e.person_id) AS visitors
 				${baseJoin}
 				WHERE ${scopedWhere.clauses.join(" AND ")}
 				GROUP BY w.device_type ORDER BY page_views DESC LIMIT ?`,
-			args: [...scopedWhere.args, PAGE_VIEW_LIMITS.rankingRowLimit] as Array<
-				string | number | null
-			>,
-		}),
+		args: [...scopedWhere.args, PAGE_VIEW_LIMITS.rankingRowLimit] as Array<
+			string | number | null
+		>,
+	});
 
-		client.execute({
-			sql: `SELECT CASE
+	const viewports = await client.execute({
+		sql: `SELECT CASE
 						WHEN w.viewport_width IS NULL THEN 'Unknown'
 						WHEN w.viewport_width < 480 THEN '<480'
 						WHEN w.viewport_width < 768 THEN '480-767'
@@ -276,23 +269,22 @@ export async function loadWebAnalytics(
 				${baseJoin}
 				WHERE ${scopedWhere.clauses.join(" AND ")}
 				GROUP BY bucket ORDER BY page_views DESC LIMIT ?`,
-			args: [...scopedWhere.args, PAGE_VIEW_LIMITS.rankingRowLimit] as Array<
-				string | number | null
-			>,
-		}),
+		args: [...scopedWhere.args, PAGE_VIEW_LIMITS.rankingRowLimit] as Array<
+			string | number | null
+		>,
+	});
 
-		client.execute({
-			sql: `SELECT w.primary_language AS language,
+	const languages = await client.execute({
+		sql: `SELECT w.primary_language AS language,
 					COUNT(*) AS page_views,
 					COUNT(DISTINCT e.person_id) AS visitors
 				${baseJoin}
 				WHERE ${scopedWhere.clauses.join(" AND ")} AND w.primary_language IS NOT NULL
 				GROUP BY w.primary_language ORDER BY page_views DESC LIMIT ?`,
-			args: [...scopedWhere.args, PAGE_VIEW_LIMITS.rankingRowLimit] as Array<
-				string | number | null
-			>,
-		}),
-	]);
+		args: [...scopedWhere.args, PAGE_VIEW_LIMITS.rankingRowLimit] as Array<
+			string | number | null
+		>,
+	});
 
 	function num(value: unknown): number {
 		return Number(value ?? 0);

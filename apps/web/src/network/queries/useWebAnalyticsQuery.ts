@@ -58,6 +58,7 @@ export function useWebAnalyticsQuery(params: {
 	host?: string | null;
 	path?: string | null;
 	traffic?: "human" | "all";
+	enabled?: boolean;
 }) {
 	return useQuery({
 		queryKey: webAnalyticsQueryKey(params),
@@ -70,7 +71,10 @@ export function useWebAnalyticsQuery(params: {
 				path: params.path,
 				traffic: params.traffic,
 			}),
-		enabled: Boolean(params.slug) && params.to > params.from,
+		enabled:
+			(params.enabled ?? true) &&
+			Boolean(params.slug) &&
+			params.to > params.from,
 		refetchOnWindowFocus: false,
 	});
 }

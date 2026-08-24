@@ -5,8 +5,14 @@
 // traffic. Run: node scripts/seed-amber-waffles-pageviews.mjs
 
 const ENDPOINT = process.env.PRISM_ANALYTICS_URL || "http://localhost:8080";
-const SOURCE_KEY =
-  process.env.PRISM_SOURCE_KEY || "psk_0133e7533900455da3dc8d7bdae761d3";
+const SOURCE_KEY = process.env.PRISM_SOURCE_KEY;
+
+if (!SOURCE_KEY) {
+  console.error(
+    "PRISM_SOURCE_KEY is required. Pass a disposable Web source key through the environment.",
+  );
+  process.exit(1);
+}
 
 const INGEST_URL = `${ENDPOINT.replace(/\/$/, "")}/api/v2/ingest`;
 
@@ -97,13 +103,26 @@ async function main() {
   const batches = [];
   for (let i = 0; i < events.length; i += 20) batches.push(events.slice(i, i + 20));
   let ok = 0, failed = 0;
-  for (const batch of batches) {
+  async function postBatch(batch) {
     const res = await fetch(INGEST_URL, {
       method: "POST",
       headers: { "content-type": "application/json", origin: "http://localhost:5173", authorization: `Bearer ${SOURCE_KEY}` },
       body: JSON.stringify({ schemaVersion: 2, sdk: { name: "seed-script", version: "1.0.0" }, events: batch }),
     });
-    const body = await res.json().catch(() => ({}));
+    return { res, body: await res.json().catch(() => ({})) };
+  }
+  for (const batch of batches) {
+    let res, body;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        ({ res, body } = await postBatch(batch));
+        break;
+      } catch (err) {
+        if (attempt === 2) { console.log("gave up on batch:", String(err).slice(0, 120)); failed += batch.length; }
+        await new Promise((r) => setTimeout(r, 2500));
+      }
+    }
+    if (!res) continue;
     if (res.ok) {
       ok += body.accepted ?? batch.length;
       failed += body.rejected?.length ?? 0;

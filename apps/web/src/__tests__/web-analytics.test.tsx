@@ -23,17 +23,31 @@ const mockedSources = vi.hoisted(() => ({
 }));
 const mockedAnalytics = vi.hoisted(() => ({
 	data: null as WebAnalyticsResource | null,
+	calls: [] as Array<{
+		slug: string;
+		from: number;
+		to: number;
+		enabled?: boolean;
+	}>,
 }));
 
 vi.mock("@/network/queries/useSourcesQuery", () => ({
 	useSourcesQuery: () => ({ data: mockedSources.data, isLoading: false }),
 }));
 vi.mock("@/network/queries/useWebAnalyticsQuery", () => ({
-	useWebAnalyticsQuery: () => ({
-		data: mockedAnalytics.data,
-		isLoading: !mockedAnalytics.data,
-		isError: false,
-	}),
+	useWebAnalyticsQuery: (params: {
+		slug: string;
+		from: number;
+		to: number;
+		enabled?: boolean;
+	}) => {
+		mockedAnalytics.calls.push({ ...params });
+		return {
+			data: mockedAnalytics.data,
+			isLoading: !mockedAnalytics.data,
+			isError: false,
+		};
+	},
 }));
 
 const FROM = 1_785_542_400_000;
@@ -178,6 +192,7 @@ function renderPage(
 beforeEach(() => {
 	mockedSources.data = [];
 	mockedAnalytics.data = null;
+	mockedAnalytics.calls = [];
 });
 
 describe("web analytics page", () => {
@@ -273,5 +288,35 @@ describe("web analytics page", () => {
 		mockedAnalytics.data = resource;
 		const { container } = renderPage();
 		expect(container.textContent).toContain("\u2014");
+	});
+
+	it("keeps a relative date window stable across presentation-only rerenders", () => {
+		mockedSources.data = [
+			{ id: "src_web", name: "Acme Web", platform: "web", allowedOrigins: [] },
+		];
+		mockedAnalytics.data = makeResource();
+		let now = FROM;
+		vi.spyOn(Date, "now").mockImplementation(() => {
+			now += 1_000;
+			return now;
+		});
+		renderPage();
+		const initialCurrent = mockedAnalytics.calls[0];
+
+		fireEvent.click(screen.getByRole("button", { name: "Visitors" }));
+
+		const rerenderedCurrent = mockedAnalytics.calls.at(-2);
+		expect(rerenderedCurrent?.from).toBe(initialCurrent?.from);
+		expect(rerenderedCurrent?.to).toBe(initialCurrent?.to);
+	});
+
+	it("does not fetch the prior trend when comparison is disabled", () => {
+		mockedSources.data = [
+			{ id: "src_web", name: "Acme Web", platform: "web", allowedOrigins: [] },
+		];
+		mockedAnalytics.data = makeResource();
+		renderPage("/workspace/wrk_testws/projects/acme-web/web-analytics?cmp=off");
+
+		expect(mockedAnalytics.calls[1]?.enabled).toBe(false);
 	});
 });

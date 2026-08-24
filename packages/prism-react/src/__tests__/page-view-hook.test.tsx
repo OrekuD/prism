@@ -1,9 +1,13 @@
 import { createBrowserClient } from "@prism-analytics/browser";
-import { INTERNAL_SEAM, type InternalClientSeam } from "@prism-analytics/core";
+import {
+	INTERNAL_SEAM,
+	type InternalClientSeam,
+	type PrismClient,
+} from "@prism-analytics/core";
 import { cleanup, render } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { type PrismClient, PrismProvider, usePrismPageView } from "../index";
+import { PrismProvider, usePrismPageView } from "../index";
 
 /**
  * Task 17 slice 3 — `usePrismPageView` contract: manual-mode requirement,

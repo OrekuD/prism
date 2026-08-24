@@ -32,9 +32,9 @@ import { useParams, useSearchParams } from "react-router-dom";
 const numFmt = new Intl.NumberFormat("en-US");
 
 function kfmt(v: number): string {
-	if (v >= 1e9) return (v / 1e9).toFixed(1) + "B";
-	if (v >= 1e6) return (v / 1e6).toFixed(1) + "M";
-	if (v >= 1e3) return (v / 1e3).toFixed(1) + "k";
+	if (v >= 1e9) return `${(v / 1e9).toFixed(1)}B`;
+	if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
+	if (v >= 1e3) return `${(v / 1e3).toFixed(1)}k`;
 	return String(v);
 }
 
@@ -95,11 +95,8 @@ function Seg<T extends string>({
 	size?: "sm" | "md";
 }) {
 	return (
-		<div
-			role="group"
-			aria-label={label}
-			className="inline-flex overflow-hidden rounded-[2px] border border-border"
-		>
+		<fieldset className="inline-flex overflow-hidden rounded-[2px] border border-border">
+			<legend className="sr-only">{label}</legend>
 			{options.map((o, i) => (
 				<button
 					key={o.key}
@@ -122,13 +119,14 @@ function Seg<T extends string>({
 					{o.label}
 				</button>
 			))}
-		</div>
+		</fieldset>
 	);
 }
 
 function ArrowUp() {
 	return (
 		<svg
+			aria-hidden="true"
 			viewBox="0 0 24 24"
 			fill="none"
 			stroke="currentColor"
@@ -146,6 +144,7 @@ function ArrowUp() {
 function ArrowDown() {
 	return (
 		<svg
+			aria-hidden="true"
 			viewBox="0 0 24 24"
 			fill="none"
 			stroke="currentColor"
@@ -383,6 +382,7 @@ function TrendChart({
 		return (
 			<div className="flex min-h-[220px] flex-col items-center justify-center gap-2.5 p-6 text-center">
 				<svg
+					aria-hidden="true"
 					viewBox="0 0 24 24"
 					fill="none"
 					stroke="currentColor"
@@ -627,7 +627,13 @@ export function ProjectWebAnalytics() {
 	}, [webSources, effSourceId]);
 	const effHost = hosts.includes(host) ? host : "all";
 
-	const { from, to } = rangeWindow(range, fromStr, toStr);
+	// Anchor relative ranges until the user changes the range itself. Calling
+	// Date.now() during every render creates a new TanStack query key; a query
+	// response then triggers another render and an unbounded request loop.
+	const { from, to } = React.useMemo(
+		() => rangeWindow(range, fromStr, toStr),
+		[range, fromStr, toStr],
+	);
 	const span = to - from;
 	const prev = { from: from - span, to: from };
 
@@ -649,6 +655,7 @@ export function ProjectWebAnalytics() {
 		host: effHost === "all" ? null : effHost,
 		path: path || null,
 		traffic,
+		enabled: compare,
 	});
 
 	const data = query.data;
@@ -1034,35 +1041,30 @@ export function ProjectWebAnalytics() {
 											? data.pages.slice(0, 12).map((p) => (
 													<tr
 														key={`${p.host ?? ""}${p.path}`}
-														tabIndex={0}
-														role="button"
-														aria-label={`Filter report by ${p.path}`}
-														onClick={() =>
-															setParam({
-																path: path === p.path ? null : p.path,
-															})
-														}
-														onKeyDown={(e) => {
-															if (e.key === "Enter" || e.key === " ") {
-																e.preventDefault();
-																setParam({
-																	path: path === p.path ? null : p.path,
-																});
-															}
-														}}
 														className={cn(
-															"cursor-pointer transition-colors hover:bg-surface-hover",
+															"transition-colors hover:bg-surface-hover",
 															path === p.path && "bg-accent-soft",
 														)}
 													>
 														<td className="max-w-[340px] px-3.5 py-2.5 align-middle">
-															<b className="block truncate font-mono text-[12.5px] font-medium leading-[1.35]">
-																{p.path}
-															</b>
-															<span className="block truncate text-[11px] text-text-muted">
-																{p.title ?? ""}
-																{p.host ? ` · ${p.host}` : ""}
-															</span>
+															<button
+																type="button"
+																aria-label={`Filter report by ${p.path}`}
+																onClick={() =>
+																	setParam({
+																		path: path === p.path ? null : p.path,
+																	})
+																}
+																className="block w-full text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+															>
+																<b className="block truncate font-mono text-[12.5px] font-medium leading-[1.35]">
+																	{p.path}
+																</b>
+																<span className="block truncate text-[11px] text-text-muted">
+																	{p.title ?? ""}
+																	{p.host ? ` · ${p.host}` : ""}
+																</span>
+															</button>
 														</td>
 														<td className="px-3.5 py-2.5 text-right align-middle tabular-nums">
 															{numFmt.format(p.pageViews)}
@@ -1083,34 +1085,29 @@ export function ProjectWebAnalytics() {
 													.map((p) => (
 														<tr
 															key={`entry-${p.host ?? ""}${p.path}`}
-															tabIndex={0}
-															role="button"
-															aria-label={`Filter report by ${p.path}`}
-															onClick={() =>
-																setParam({
-																	path: path === p.path ? null : p.path,
-																})
-															}
-															onKeyDown={(e) => {
-																if (e.key === "Enter" || e.key === " ") {
-																	e.preventDefault();
-																	setParam({
-																		path: path === p.path ? null : p.path,
-																	});
-																}
-															}}
 															className={cn(
-																"cursor-pointer transition-colors hover:bg-surface-hover",
+																"transition-colors hover:bg-surface-hover",
 																path === p.path && "bg-accent-soft",
 															)}
 														>
 															<td className="max-w-[340px] px-3.5 py-2.5 align-middle">
-																<b className="block truncate font-mono text-[12.5px] font-medium leading-[1.35]">
-																	{p.path}
-																</b>
-																<span className="block truncate text-[11px] text-text-muted">
-																	{p.title ?? ""}
-																</span>
+																<button
+																	type="button"
+																	aria-label={`Filter report by ${p.path}`}
+																	onClick={() =>
+																		setParam({
+																			path: path === p.path ? null : p.path,
+																		})
+																	}
+																	className="block w-full text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+																>
+																	<b className="block truncate font-mono text-[12.5px] font-medium leading-[1.35]">
+																		{p.path}
+																	</b>
+																	<span className="block truncate text-[11px] text-text-muted">
+																		{p.title ?? ""}
+																	</span>
+																</button>
 															</td>
 															<td className="px-3.5 py-2.5 text-right align-middle tabular-nums">
 																{numFmt.format(p.entrances)}

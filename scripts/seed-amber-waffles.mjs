@@ -5,7 +5,14 @@
 // Verify: curl http://localhost:8080/health && open https://prism.localhost/projects/amber-waffles-892934032
 
 const ENDPOINT = process.env.PRISM_ANALYTICS_URL || "http://localhost:8080";
-const SOURCE_KEY = process.env.PRISM_SOURCE_KEY || "psk_0133e7533900455da3dc8d7bdae761d3";
+const SOURCE_KEY = process.env.PRISM_SOURCE_KEY;
+
+if (!SOURCE_KEY) {
+  console.error(
+    "PRISM_SOURCE_KEY is required. Pass a disposable source key through the environment.",
+  );
+  process.exit(1);
+}
 const PROJECT_SLUG = "amber-waffles-892934032";
 
 const INGEST_URL = `${ENDPOINT.replace(/\/$/, "")}/api/v2/ingest`;
