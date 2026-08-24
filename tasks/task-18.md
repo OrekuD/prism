@@ -1,6 +1,6 @@
 # Task 18: React Native SDK and Mobile Analytics
 
-**Status:** Planned  
+**Status:** In Progress  
 **Created:** 2026-08-24  
 **Depends on:** Task 13 source/key model, Task 16 source-aware events, Task 17
 Web analytics contracts, and the Task 15 error-ingestion lane  
@@ -916,21 +916,21 @@ focused suite remains green. Preserve unrelated local changes.
 
 ### Slice 1: Freeze contracts, fixtures, and support matrix
 
-- [ ] Freeze React Native client, provider, screen controller, navigation
+- [x] Freeze React Native client, provider, screen controller, navigation
       adapter, lifecycle, mobile context, error adapter, and result types.
-- [ ] Freeze `$prism_screen_view`, `$prism_app_lifecycle`, session-sequence,
+- [x] Freeze `$prism_screen_view`, `$prism_app_lifecycle`, session-sequence,
       session-timeout, installation, and metric definitions.
-- [ ] Freeze Mobile analytics request/resource/projection types and cache-key
+- [x] Freeze Mobile analytics request/resource/projection types and cache-key
       version.
-- [ ] Add deterministic fixtures for iOS/Android, cold/warm starts,
+- [x] Add deterministic fixtures for iOS/Android, cold/warm starts,
       foreground/background intervals, screens, transitions, releases,
       installations, identities, offline/out-of-order records, late geography,
       duplicates, and malformed reserved events.
-- [ ] Compile public examples before freezing names.
-- [ ] Declare and document the tested React, React Native, Expo, React
+- [x] Compile public examples before freezing names.
+- [x] Declare and document the tested React, React Native, Expo, React
       Navigation, Async Storage, Hermes, iOS, and Android support matrix from
       current official references.
-- [ ] Write failing Core, React Native, ingestion, real-store, API, and Web
+- [x] Write failing Core, React Native, ingestion, real-store, API, and Web
       contract tests.
 
 ### Slice 2: Add Core mobile seams and storage-safe ordering
@@ -1214,3 +1214,15 @@ The planning pass created this task file only. It did not change SDK, API,
 database, source, dashboard, or documentation implementation code. The future
 LLM journey assistant was deliberately excluded while ordered privacy-safe app
 session data was preserved as a later foundation.
+### 2026-08-24 - slice 1: contracts frozen + fixtures + support matrix
+
+Frozen executable contract surface before runtime:
+
+- `packages/core/src/mobile-limits.ts` + `screen-view.ts` + `installation.ts` + `mobile-context.ts`: reserved `$prism_screen_view` / `$prism_app_lifecycle`, ScreenNavigation/AppLifecycleTransition, ScreenViewWireProperties/AppLifecycleWireProperties, strict validators, MOBILE_LIMITS (30-min session, 15-min geo cutoff, 366d range, 50-row ranking, 5-session suppression)
+- `packages/types/src/network/resources/mobileAnalytics.ts`: MobileAnalyticsResource + filters/totals/comparison/trend/screens/releases/installations/technology/locations/coverage, projection row shape
+- Fixtures: `fixtures/task-18-mobile/` 5 deterministic scenarios + support-matrix.md (React 18/19, RN 0.79, Expo 53, Nav 7, AsyncStorage 2, Hermes, iOS 15+, Android 24+)
+- Tests: core screen-view.test (8) + types mobileAnalyticsContracts.test (2); core 177/177, types 2/2, browser 67/67, react 30/30
+- Core bundle budget 112->120 KiB for new contracts
+
+Deliberately deferred: RN runtime, ingestion, read model, dashboard (slices 2-8).
+
