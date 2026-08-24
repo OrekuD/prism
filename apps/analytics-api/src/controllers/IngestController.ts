@@ -290,7 +290,7 @@ export class IngestController {
 		const pageProjections = hasPageViews
 			? validEvents
 					.filter((entry) => pageProjectionIndexes.has(entry.index))
-					.map((entry) => {
+					.flatMap((entry) => {
 						const props = entry.event.properties as {
 							$page?: {
 								host: string;
@@ -303,7 +303,8 @@ export class IngestController {
 							$referrer?: { host: string };
 							$campaign?: { source?: string; medium?: string; name?: string };
 						};
-						const page = props.$page!;
+						const page = props.$page;
+						if (!page) return [];
 						const context = (entry.event.context ?? {}) as {
 							screenSize?: { width?: number; height?: number };
 							locale?: string;
@@ -327,36 +328,38 @@ export class IngestController {
 						if (!fresh && geo === null) {
 							incrementPageViewCounter("page_view_late_no_geo");
 						}
-						return {
-							index: entry.index,
-							row: {
-								occurredAt: entry.event.occurredAt,
-								host: page.host,
-								path: page.path,
-								title: page.title ?? null,
-								navigationType: String(page.navigation),
-								pageSequence: page.sequence,
-								previousPath: page.previousPath ?? null,
-								referrerHost: props.$referrer?.host ?? null,
-								campaignSource: props.$campaign?.source ?? null,
-								campaignMedium: props.$campaign?.medium ?? null,
-								campaignName: props.$campaign?.name ?? null,
-								browserFamily: technology?.browserFamily ?? null,
-								browserMajor: technology?.browserMajor ?? null,
-								osFamily: technology?.osFamily ?? null,
-								osMajor: technology?.osMajor ?? null,
-								deviceType: technology?.deviceType ?? "unknown",
-								isBot: technology?.isBot ?? false,
-								uaParserVersion: UA_PARSER_VERSION,
-								viewportWidth,
-								viewportHeight,
-								primaryLanguage,
-								countryCode: geo?.countryCode ?? null,
-								region: geo?.region ?? null,
-								city: geo?.city ?? null,
-								geoProvider: geo?.provider ?? null,
+						return [
+							{
+								index: entry.index,
+								row: {
+									occurredAt: entry.event.occurredAt,
+									host: page.host,
+									path: page.path,
+									title: page.title ?? null,
+									navigationType: String(page.navigation),
+									pageSequence: page.sequence,
+									previousPath: page.previousPath ?? null,
+									referrerHost: props.$referrer?.host ?? null,
+									campaignSource: props.$campaign?.source ?? null,
+									campaignMedium: props.$campaign?.medium ?? null,
+									campaignName: props.$campaign?.name ?? null,
+									browserFamily: technology?.browserFamily ?? null,
+									browserMajor: technology?.browserMajor ?? null,
+									osFamily: technology?.osFamily ?? null,
+									osMajor: technology?.osMajor ?? null,
+									deviceType: technology?.deviceType ?? "unknown",
+									isBot: technology?.isBot ?? false,
+									uaParserVersion: UA_PARSER_VERSION,
+									viewportWidth,
+									viewportHeight,
+									primaryLanguage,
+									countryCode: geo?.countryCode ?? null,
+									region: geo?.region ?? null,
+									city: geo?.city ?? null,
+									geoProvider: geo?.provider ?? null,
+								},
 							},
-						};
+						];
 					})
 			: [];
 
