@@ -86,13 +86,7 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
 /** `OR EMAIL` divider with hairlines (design-system.md 11.3). */
 export function OrEmailDivider() {
   return (
-    // biome-ignore lint/a11y/useFocusableInteractive: decorative divider with an accessible label (auth divider pattern)
-    // biome-ignore lint/a11y/useSemanticElements: decorative divider with an accessible label (auth divider pattern)
-    <div
-      className="flex items-center gap-3"
-      role="separator"
-      aria-label="or email"
-    >
+    <div className="flex items-center gap-3">
       <span aria-hidden="true" className="h-px flex-1 bg-border" />
       <span className="font-mono text-[10px] uppercase tracking-[0.09em] text-text-subtle">
         Or email

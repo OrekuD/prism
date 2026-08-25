@@ -1,8 +1,67 @@
 ---
 title: React Native SDK
+description: Expo + bare support for Prism with offline queue, screen views, and app sessions.
+audience: Developer
+scope: Both
+lastReviewed: "2026-08-25"
 ---
-# React Native SDK
 
-> Task 18 slice 9 scaffold.
+`@prism-analytics/react-native` is the React Native SDK for Prism. It wraps `@prism-analytics/core` with a React Native runtime — Metro-safe transport, `AsyncStorage` persistence, `AppState` lifecycle, and optional navigation adapters — and exposes screen-view capture for the Mobile analytics dashboard.
 
-Install `@prism-analytics/react-native`, create a source with platform `react-native`, use the publishable source key. Supports Expo + bare, AsyncStorage, AppState, React Navigation / Expo Router adapters. Screen views are `$prism_screen_view` reserved records; app sessions are foreground active-time; installations are observed digests. JS errors via Task 15 lane.
+Supports Expo SDK 53 + React Native 0.79 (Hermes), React 18/19, `@react-native-async-storage/async-storage` 2.x, and `@react-navigation/native` 7 / Expo Router.
+
+## Installation
+
+```sh
+npm install @prism-analytics/react-native
+# peer: react-native, react
+# optional: @react-native-async-storage/async-storage, @react-navigation/native, expo
+```
+
+## Creating the client
+
+Create the client once at app start — outside React — and keep the reference:
+
+```ts
+import { createReactNativeClient } from "@prism-analytics/react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+export const prism = await createReactNativeClient({
+  sourceKey: "psk_…", // from Prism dashboard -> Sources -> react-native
+  endpoint: "https://prism-api.orekud.workers.dev",
+  storage: AsyncStorage, // durable queue + installation id
+  collection: { initialState: "granted" },
+  app: { version: "1.0.0", build: "1", environment: "production" },
+});
+```
+
+Invalid options throw before any network activity. Runtime conditions (consent denied, queue full) return a discriminated `dropped` result from `track()` instead of throwing.
+
+When the app backgrounds, the SDK flushes queued events and records foreground time; on foreground it resumes the session. Manage consent with `prism.setCollectionState("granted" | "denied")`.
+
+## Screen views
+
+Screen views are reserved `$prism_screen_view` records that power **Mobile analytics** (Top screens, Releases, OS, etc.):
+
+```ts
+prism.screen("Home", { routePattern: "/home", previousScreen: "Login" });
+// or with navigation adapters:
+// React Navigation 7 / Expo Router adapters wrap this for you
+```
+
+Screen names are validated (max 128 chars, required). Branch screen counts and foreground time are aggregated per app session.
+
+## App sessions and installations
+
+* App sessions have a 30-minute inactivity timeout; the SDK owns lifecycle via `AppState` and `Dimensions`.
+* Installations are a durable random id per `endpoint + sourceKey` (scoped storage key `prism:installation:${endpoint}:${sourceKey}`), digested server-side — raw ids are never stored.
+
+## Error tracking
+
+Re-use the browser error lane via `@prism-analytics/react-native` — JS errors are sanitized and grouped server-side like web.
+
+## Next steps
+
+- [Capturing events](/docs/features/capturing-events)
+- [Error tracking](/docs/features/error-tracking)
+- [SDK API and limits](/docs/reference/sdk-api-and-limits)

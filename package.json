@@ -1,6 +1,8 @@
 {
   "private": true,
   "scripts": {
+    "bump": "node scripts/bump.mjs",
+    "release": "bash scripts/release.sh",
     "build": "turbo run build",
     "build:analytics-api": "turbo run build --filter=@prism-analytics/types --filter=prism-analytics-api",
     "clean": "turbo run clean",

@@ -33,5 +33,9 @@
     "typescript": "^5.9.3",
     "vitest": "^3.2.7",
     "@types/node": "^22.5.0"
-  }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "description": "Prism Analytics SDK for Node.js"
 }

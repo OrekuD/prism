@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { SectionLabel } from "@/components/prism/section-label";
-import { PrismFooter } from "@/components/footer";
 import { Frame } from "@/components/frame";
 import { APP_URL } from "@/lib/appUrl";
 import {
@@ -242,7 +241,6 @@ export default function HomePage() {
           </Frame>
         </section>
       </main>
-      <PrismFooter />
     </>
   );
 }

@@ -1,5 +1,4 @@
 import { getPageImageUrl, getPageMarkdownUrl, source } from '@/lib/source';
-import { PrismFooter } from '@/components/footer';
 import {
   DocsBody,
   DocsDescription,
@@ -17,6 +16,9 @@ import { gitConfig } from '@/lib/shared';
 
 /** Prism page metadata row (audience / scope / reviewed — design-system §9.7). */
 function PageMeta({ page }: { page: (typeof source)['$inferPage'] }) {
+  return null;
+}
+function PageMeta_OLD({ page }: { page: (typeof source)['$inferPage'] }) {
   const data = page.data as unknown as {
     audience?: string;
     scope?: string;
@@ -62,29 +64,28 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
   const markdownUrl = getPageMarkdownUrl(page).url;
 
   return (
-    <DocsPage toc={page.data.toc} full={page.data.full}>
-      <DocsTitle>{page.data.title}</DocsTitle>
-      <DocsDescription className="mb-0">{page.data.description}</DocsDescription>
-      <PageMeta page={page} />
-      {/* Copy markdown / view options — restored from the Fumadocs
-          template, styled to the Prism design (2px radius via CSS). */}
-      <div className="prism-page-actions flex flex-row flex-wrap items-center gap-2 border-b border-fd-border pb-6">
-        <MarkdownCopyButton markdownUrl={markdownUrl} />
-        <ViewOptionsPopover
-          markdownUrl={markdownUrl}
-          githubUrl={`https://github.com/${gitConfig.user}/${gitConfig.repo}/blob/${gitConfig.branch}/content/docs/${page.path}`}
-        />
-      </div>
-      <DocsBody>
-        <MDX
-          components={getMDXComponents({
-            // this allows you to link to other pages with relative file paths
-            a: createRelativeLink(source, page),
-          })}
-        />
-      </DocsBody>
-      <PrismFooter fullBleed />
-    </DocsPage>
+      <DocsPage toc={page.data.toc} full={page.data.full}>
+        <DocsTitle>{page.data.title}</DocsTitle>
+        <DocsDescription className="mb-0">{page.data.description}</DocsDescription>
+        <PageMeta page={page} />
+        {/* Copy markdown / view options — restored from the Fumadocs
+            template, styled to the Prism design (2px radius via CSS). */}
+        <div className="prism-page-actions flex flex-row flex-wrap items-center gap-2 border-b border-fd-border pb-6">
+          <MarkdownCopyButton markdownUrl={markdownUrl} />
+          <ViewOptionsPopover
+            markdownUrl={markdownUrl}
+            githubUrl={`https://github.com/${gitConfig.user}/${gitConfig.repo}/blob/${gitConfig.branch}/content/docs/${page.path}`}
+          />
+        </div>
+        <DocsBody>
+          <MDX
+            components={getMDXComponents({
+              // this allows you to link to other pages with relative file paths
+              a: createRelativeLink(source, page),
+            })}
+          />
+        </DocsBody>
+      </DocsPage>
   );
 }
 

@@ -56,8 +56,7 @@ export function PrismFooter({ fullBleed }: { fullBleed?: boolean }) {
           </nav>
         </div>
         <p className="border-t border-fd-border pt-4 font-mono text-[11px] text-fd-muted-foreground/70">
-          © 2026 Prism contributors · Built with Fumadocs · All assets are
-          served from this origin — no third-party requests.
+          © 2026 Prism
         </p>
       </div>
     </footer>

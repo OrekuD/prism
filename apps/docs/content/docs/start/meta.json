@@ -4,6 +4,7 @@
     "quickstart",
     "javascript-sdk",
     "react-sdk",
-    "node-sdk"
+    "node-sdk",
+    "react-native"
   ]
 }
