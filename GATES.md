@@ -22,12 +22,12 @@ Scope: Fix all round-2 and round-3 findings (honest gates, real mobile ingestion
 - [x] G4: Mobile endpoint follows getWebAnalytics boundary (no client workspace header, parameterized slug, Turso analytics reads); Product API typechecks
   CHECK: cd apps/api && yarn typecheck && yarn test && echo GATE_OK
   EXPECT: GATE_OK
-  EVIDENCE: exit=0; shell=/bin/sh; cwd=/Users/david/Desktop/Oreku/code/prep/projects/prism; path=dc8bf65ffdd5/47 entries; output=stderr | src/__tests__/authBoundary.test.ts > Better Auth boundary (email/password + sessions) > does not expose GitHub or Google providers when credentials are absent | 2026-08-25T03:57:58.768Z ERROR [Better Auth]: Provider not found. Make
+  EVIDENCE: exit=0; shell=/bin/sh; cwd=/Users/david/Desktop/Oreku/code/prep/projects/prism; path=dc8bf65ffdd5/47 entries; output=stderr | src/__tests__/authBoundary.test.ts > Better Auth boundary (email/password + sessions) > does not expose GitHub or Google providers when credentials are absent | 2026-08-25T04:02:45.015Z ERROR [Better Auth]: Provider not found. Make
 
 - [x] G5: Web typechecks; Mobile analytics page uses axiosInstance v1 query module (no raw fetch)
   CHECK: node scripts/check-mobile-web.mjs && cd apps/web && yarn typecheck && echo GATE_OK
   EXPECT: GATE_OK
-  EVIDENCE: exit=0; shell=/bin/sh; cwd=/Users/david/Desktop/Oreku/code/prep/projects/prism; path=dc8bf65ffdd5/47 entries; output=Done in 3.60s. | GATE_OK
+  EVIDENCE: exit=0; shell=/bin/sh; cwd=/Users/david/Desktop/Oreku/code/prep/projects/prism; path=dc8bf65ffdd5/47 entries; output=Done in 3.35s. | GATE_OK
 
 - [x] G6: RN runtime derives os from Platform.OS, never Math.random, test reset not exported as public API
   CHECK: cd packages/react-native && yarn test && echo GATE_OK

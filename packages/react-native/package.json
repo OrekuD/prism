@@ -33,7 +33,7 @@
     }
   },
   "dependencies": {
-    "@prism-analytics/core": "workspace:*"
+    "@prism-analytics/core": "*"
   },
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts",

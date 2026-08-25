@@ -1853,3 +1853,198 @@ cannot detect.
 Verification: GATES.md lint OK, gate-check --reverify exit 0, ALL MET 9/9.
 Known remaining gaps: navigation adapters, error-lane docs page, packed bare/
 Expo proofs, hosted iOS/Android device proofs (slices 4-5, 9-10 checkboxes).
+
+### 2026-08-25 - focused review round 4 of commit `996e04b`
+
+**Decision:** Do not merge. The focused suites are green, and the original
+source-ID/rejected-record regressions are fixed, but the new tests exercise only
+a screen-plus-lifecycle happy path. Lifecycle-only ingestion, ready-client
+installation state, consent rotation, out-of-order aggregation, filtered reads,
+and immediate deletion still violate the frozen Task 18 contracts.
+
+#### Critical findings
+
+- [ ] **R4-F1: Lifecycle-only batches never update the mobile session
+      projection.**
+
+  Evidence: `IngestRepository.persistBatch()` places the complete
+  `mobileLifecycleProjections` loop inside
+  `if (mobileScreenProjections.length > 0)`. A batch containing only
+  `$prism_app_lifecycle` commits the generic event, but never creates or updates
+  `mobile_app_sessions`. This directly contradicts the comment that lifecycle
+  records keep sessions alive without screens and the frozen definition of an
+  app session with accepted activity. `mobileIngest.test.ts` hides the defect by
+  sending a screen and lifecycle record together in its only lifecycle case.
+
+  Approach: process screen and lifecycle projections as independent winning-
+  insert passes, or reconcile both from one event-indexed projection plan. Add
+  migrated-store cases for lifecycle-only active/background batches, separate
+  deliveries, duplicates, and a session that never emits a screen.
+
+- [ ] **R4-F2: The returned React Native client is not installation-ready, and
+      consent withdrawal can reuse the pre-withdrawal installation.**
+
+  Evidence: `createReactNativeClient()` owns one `installationId`,
+  `installAppLifecycle()` owns a second unrelated value, and both start
+  fire-and-forget `getInstallationId()` calls. The factory returns before its
+  screen controller's value resolves, so an immediate documented
+  `screenViews.track()` can omit `$installation`; the server then rejects it as
+  `mobile-installation-required`. More fundamentally, `storage` is an optional
+  public option and the frozen contract creates an installation only with
+  durable storage, but the server rejects every screen lacking one. A valid
+  memory-only client therefore can never send mobile analytics. On denial, the
+  lifecycle owner clears only its private value while the screen controller
+  still closes over the factory's old ID. Core also starts installation removal
+  with `void`, so deny -> grant can race the deletion. A later screen can
+  therefore send the pre-withdrawal ID or have a newly created ID deleted by the
+  late removal. The current fake storage resolves immediately and no test
+  asserts installation rotation.
+
+  `reset()` has the same unawaited removal race and also contradicts the frozen
+  product rule: logout/reset changes the person identity but must not pretend
+  the app was reinstalled. Rotating here inflates observed-installation counts.
+
+  Approach: make Core the single installation-state owner. Await initial
+  resolution before the factory returns when durable storage and granted
+  consent are configured; expose the same current value to every reserved
+  mobile emitter. Accept telemetry with a null installation digest when durable
+  storage is intentionally absent, and expose that as installation-coverage
+  metadata rather than rejecting the event. Await withdrawal deletion before
+  completing the transition, invalidate the shared in-memory value immediately,
+  and create a fresh value only after deletion. Preserve the installation
+  across `reset()`. Notify the lifecycle adapter only after Core's grant/deny
+  restoration or cleanup is complete. Add no-storage and delayed-storage tests
+  for immediate first screen, denial, re-grant, reset, and source/endpoint
+  isolation.
+
+- [ ] **R4-F3: The aggregate schema, ingestion writes, and dashboard reads do
+      not describe the same metrics.**
+
+  Evidence:
+
+  - `mobile_app_sessions.installation_digest` exists, but
+    `UPSERT_MOBILE_SESSION_SQL` never writes or updates it. Consequently
+    `completed_sessions`, average duration coverage, and trend visitors are
+    always zero/null even after valid installed sessions.
+  - A lifecycle record creates a session with null OS/release. The later screen
+    upsert uses `ON CONFLICT DO NOTHING`, so ordinary lifecycle-first delivery
+    permanently leaves those dimensions null and OS/release filters exclude the
+    session.
+  - installation totals ignore `sourceIds`, `os`, and `release`, despite the
+    claimed single effective filter contract.
+  - only current-period `totals.visitors` is replaced by `visitorsFor()`;
+    `previousTotals.visitors` remains the session count, making comparisons
+    invalid.
+  - sessions are selected only by `started_at` in the range, not by accepted
+    activity overlapping the range. The public `visitors` query counts
+    installation digests, while the frozen metric is distinct resolved person,
+    otherwise anonymous identity.
+
+  There is still no populated Product API test for `loadMobileAnalytics()` or
+  `getMobileAnalytics()`, so G4 cannot detect any of these results.
+
+  Approach: freeze one normalized session/install aggregate contract before
+  extending the UI. Carry installation, OS, release, completion/finalization,
+  and activity bounds into monotonic session upserts; define overlap semantics;
+  and apply the same authorized filters to current totals, previous totals,
+  trends, and rankings. Compute active users from folded person/anonymous
+  identity, not installations. Add migrated-store loader and controller tests
+  with lifecycle-first delivery, anonymous and identified users, multiple
+  sources/releases/OS values, previous periods, and incomplete sessions.
+
+- [ ] **R4-F4: Source deletion can delete installation history belonging to
+      every other source in the project, and person deletion reports the wrong
+      result row.**
+
+  Evidence: `purgeMobileSourceStatements()` deletes the selected source's
+  sessions and then deletes every project installation absent from
+  `mobile_app_sessions.installation_digest`. That session column is never
+  populated, so the subquery is empty and removing one source deletes all
+  `mobile_installations` for the project. There are no mobile purge regression
+  tests.
+
+  In `peopleStore.deletePerson()`, two mobile statements were inserted before
+  the people delete, but `peopleDeleteIndex` still uses
+  `credentialTombstones.length + sessionStatements.length + 4`. That index now
+  points at the events delete, not the people delete. A person with no events is
+  removed but can be reported as `deleted: false`; the existing test includes an
+  event and therefore masks the index error.
+
+  Approach: source deletion should target source-scoped installation rows
+  explicitly and prove other sources are byte-for-byte unchanged. Capture the
+  people-delete result index when building the statement array instead of
+  maintaining a numeric offset. Add real-store project/source/person deletion
+  tests, including two sources, a person without events, mixed-person mobile
+  sessions, and idempotent retries.
+
+- [ ] **R4-F5: Offline/out-of-order delivery regresses aggregate timestamps and
+      release metadata.**
+
+  Evidence: `UPSERT_MOBILE_INSTALLATION_SQL` always replaces `last_seen_at`
+  with the incoming timestamp and replaces non-null release/OS metadata without
+  checking which observation is newer. An older queued event delivered later
+  therefore rewinds last seen and overwrites the latest build, violating the
+  explicit monotonic reconciliation rule. The session upsert's conflict
+  `DO NOTHING` similarly preserves whichever delivery arrived first as
+  `started_at`, rather than the earliest occurrence. Existing tests cover only
+  chronological delivery and exact duplicate IDs.
+
+  Approach: use `MIN` for first/started timestamps, `MAX` for last activity,
+  and update last-seen dimensions only when the incoming observation is newer
+  under a deterministic timestamp/sequence/event-ID tie break. Add reverse-
+  delivery and equal-timestamp tests across two releases, plus duplicate replay
+  assertions for every aggregate.
+
+#### Important findings
+
+- [ ] **R4-F6: The frozen first-class `sessionSequence` contract is still not
+      implemented end to end.**
+
+  Evidence: `QueuedEvent`, `WireEventV3`, and `buildEvent()` still have no
+  `sessionSequence`. `resumeMobileSession()` accepts `sequence` but ignores it.
+  The screen controller and lifecycle owner maintain separate counters, custom
+  events receive no sequence, and the screen counter does not reset when a new
+  app session begins after timeout. Ingestion copies the nested screen sequence
+  into `events.session_sequence` only for screen records; lifecycle and generic
+  mobile events remain unordered. This is the unresolved core of R1-F7, not a
+  completed sequence implementation.
+
+  Approach: give Core one session-owned counter, advance it for every event
+  captured while the mobile session is active, serialize it as the optional
+  first-class wire field, validate/store it server-side, and reset it only when
+  a new app session begins. Screen/lifecycle nested sequence values should be
+  derived from or checked against that owner, never maintained independently.
+  Test custom + screen + lifecycle ordering, timeout reset, offline restore,
+  equal timestamps, and attempts to spoof the value in properties.
+
+- [ ] **R4-F7: Reserved validation can still throw, and the claimed HMAC is a
+      plain secret-prefixed hash.**
+
+  Evidence: `validateScreenViewProperties()` calls `Object.entries()` on
+  `$screen_properties` before proving it is a non-null plain object, so
+  `$screen_properties: null` throws instead of returning a coarse rejection.
+  Unknown nested keys in `$screen` and `$lifecycle` are still accepted, while
+  invalid `$app` fields are silently discarded rather than rejected. This keeps
+  the hostile-input portion of R1-F8 open at both SDK and server boundaries.
+
+  Separately, `digestInstallation()` imports `createHash()` and hashes
+  `salt:project:source:installation` even though the code and completion log
+  call it keyed HMAC. A secret-prefixed SHA-256 hash is not HMAC.
+
+  Approach: validate container shape before enumeration, use exact key
+  allowlists for every nested reserved block, bound property count/value depth,
+  and guarantee validators never throw. Replace the digest with
+  `createHmac("sha256", secret)` over an unambiguous versioned/scoped message.
+  Add hostile payload tests and deterministic cross-project/source digest test
+  vectors without exposing the raw installation value.
+
+#### Focused verification notes
+
+- `packages/react-native`: `react-native.test.ts` and
+  `surface-contract.test.ts` pass, 7/7.
+- `apps/analytics-api`: `mobileIngest.test.ts` passes, 3/3.
+- The valid screen projection now carries the authenticated `source_id`, raw
+  installation values are stripped, rejected reserved rows are not persisted,
+  and duplicate screen delivery does not increment `screen_count`.
+- `GATES.md` remains modified only by the implementation agent's reverify
+  evidence; this review did not alter or discard it.
