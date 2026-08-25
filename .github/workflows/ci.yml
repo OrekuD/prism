@@ -69,7 +69,7 @@ jobs:
           EOF
 
       - name: Build and start the stack (internal/egress-blocked network)
-        run: docker compose --env-file deploy/compose.env -f deploy/compose.yml up -d --build
+        run: docker compose --project-directory . --env-file deploy/compose.env -f deploy/compose.yml up -d --build
 
       - name: Wait for readiness through the public origin
         run: |
@@ -81,7 +81,7 @@ jobs:
             sleep 5
           done
           echo "stack did not become ready" >&2
-          docker compose -f deploy/compose.yml logs --tail=50 || true
+          docker compose --project-directory . -f deploy/compose.yml logs --tail=50 || true
           exit 1
 
       - name: Assert the runtime config (self-hosted, local storage, no secrets)
@@ -117,7 +117,7 @@ jobs:
 
       - name: Tear down
         if: always()
-        run: docker compose --env-file deploy/compose.env -f deploy/compose.yml down -v
+        run: docker compose --project-directory . --env-file deploy/compose.env -f deploy/compose.yml down -v
 
   # Documentation certification (task-8): build, typecheck, and lint the
   # Fumadocs site (apps/docs, workspace prism-docs). The legacy Astro docs
@@ -146,4 +146,4 @@ jobs:
         run: yarn workspace prism-docs lint
 
       - name: Brand drift check
-        run: yarn workspace @prism/brand run check
+        run: yarn workspace @prism-analytics/brand run check
