@@ -1,5 +1,8 @@
--- Task 18 slice 6: mobile telemetry projections (review Critical 3)
--- Screen views, app sessions, installations, session sequence, attribution
+-- Task 18 slice 6: mobile telemetry projections (R2-F5)
+-- Same-store FKs only: screen projections cascade with their source event.
+-- App-session/installation aggregates have NO event FK (they outlive single
+-- events); they are swept explicitly by retention.ts and project/source
+-- deletion cleanup.
 
 CREATE TABLE IF NOT EXISTS mobile_screen_views (
   project_id TEXT NOT NULL,
@@ -23,6 +26,7 @@ CREATE TABLE IF NOT EXISTS mobile_screen_views (
   city TEXT,
   geo_provider TEXT,
   PRIMARY KEY (project_id, event_id),
+  -- Same-store composite FK: matches events PK (project_id, id).
   FOREIGN KEY (project_id, event_id) REFERENCES events(project_id, id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_mobile_screen_views_project_session ON mobile_screen_views(project_id, session_id);
@@ -40,8 +44,7 @@ CREATE TABLE IF NOT EXISTS mobile_app_sessions (
   screen_count INTEGER NOT NULL DEFAULT 0,
   app_version TEXT,
   os TEXT,
-  PRIMARY KEY (project_id, session_id),
-  FOREIGN KEY (project_id, source_id) REFERENCES project_sources(id) ON DELETE CASCADE
+  PRIMARY KEY (project_id, session_id)
 );
 CREATE INDEX IF NOT EXISTS idx_mobile_app_sessions_project_started ON mobile_app_sessions(project_id, started_at);
 
@@ -57,6 +60,6 @@ CREATE TABLE IF NOT EXISTS mobile_installations (
 );
 CREATE INDEX IF NOT EXISTS idx_mobile_installations_project_source ON mobile_installations(project_id, source_id);
 
--- Generic event session_sequence for ordering (task requires sequence on every event)
--- Added as nullable for backwards compat; ingestion sets monotonically per session
--- ALTER TABLE events handled in migration runner if not exists
+-- Generic event ordering sequence (nullable for back-compat; mobile
+-- ingestion fills it per accepted reserved record).
+ALTER TABLE events ADD COLUMN session_sequence INTEGER;

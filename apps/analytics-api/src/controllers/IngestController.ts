@@ -1,3 +1,4 @@
+import { digestInstallation, enrichMobileScreenView, enrichAppLifecycle } from "../enrichment/mobileScreenView.js";
 import { randomUUID } from "node:crypto";
 import {
 	INGEST_LIMITS,
@@ -7,9 +8,13 @@ import {
 	sanitizeProperties,
 } from "@prism-analytics/core";
 import {
+	APP_LIFECYCLE_EVENT_NAME,
 	PAGE_VIEW_EVENT_NAME,
+	SCREEN_VIEW_EVENT_NAME,
 	PAGE_VIEW_LIMITS,
+	validateAppLifecycleProperties,
 	validatePageViewProperties,
+	validateScreenViewProperties,
 } from "@prism-analytics/core";
 import type { SessionResource } from "@prism-analytics/types";
 import { config } from "dotenv";
@@ -34,6 +39,7 @@ import {
 	validateIdentityOp,
 } from "../utils/ingestValidation.js";
 import {
+	type IngestRejectReason,
 	type ValidatedEvent,
 	eventIdOf,
 	parseBatchBody,
@@ -197,7 +203,8 @@ export class IngestController {
 		}
 
 		// Task 18: reserved mobile screen + lifecycle validated similarly, gated on react-native source
-		// Task 17 slice 4: reserved page views are validated against the
+		// Task 18: mobile screen/lifecycle gated to react-native source, installation digested, projected atomically
+  // Task 17 slice 4: reserved page views are validated against the
 		// frozen wire schema and the trusted Web-source boundary BEFORE any
 		// write. Malformed or misattributed attempts are INDIVIDUALLY
 		// rejected - never silently stored as ordinary custom events.
@@ -253,6 +260,109 @@ export class IngestController {
 			}
 			pageProjectionIndexes.add(index);
 			incrementPageViewCounter("page_view_validated");
+		}
+
+		// Task 18 (R2-F2): reserved MOBILE records get the same trusted-boundary
+		// treatment as Web page views - gated on the key's react-native source
+		// platform, independently normalized against the frozen wire schema,
+		// installation IDs digested with a SERVER secret before persistence,
+		// and projected only inside the event transaction. A direct HTTP client
+		// can never store a malformed or misattributed mobile record.
+		const mobilePlatform = platform === "react-native";
+		const installationSalt = process.env.ANALYTICS_INSTALLATION_SALT ?? "";
+		const mobileScreenProjections: Array<{
+			index: number;
+			row: {
+				occurredAt: number;
+				sessionId: string;
+				sessionSequence: number;
+				screenName: string;
+				routePattern: string | null;
+				navigation: string;
+				previousScreen: string | null;
+				appVersion: string | null;
+				appBuild: string | null;
+				appEnvironment: string | null;
+				os: string | null;
+				osVersion: string | null;
+				installationDigest: string | null;
+			};
+		}> = [];
+		for (const entry of validEvents) {
+			const isScreen = entry.event.name === SCREEN_VIEW_EVENT_NAME;
+			const isLifecycle = entry.event.name === APP_LIFECYCLE_EVENT_NAME;
+			if (!isScreen && !isLifecycle) continue;
+			const index = entry.index;
+			const reject = (reason: IngestRejectReason) => {
+				results[index] = {
+					index,
+					id: entry.event.eventId,
+					status: "rejected",
+					reason,
+				};
+				entry.event.name = "__rejected_mobile__"; // never persisted
+			};
+			if (!mobilePlatform) {
+				reject("mobile-record-requires-react-native-source");
+				continue;
+			}
+			if (!entry.event.sessionId) {
+				reject("mobile-record-requires-session");
+				continue;
+			}
+			if (isScreen) {
+				const validation = validateScreenViewProperties(entry.event.properties);
+				if (!validation.ok) {
+					reject("invalid-mobile-screen");
+					continue;
+				}
+				// Queue ONLY the normalized value - unknown fields never persist.
+				entry.event.properties =
+					validation.value as unknown as typeof entry.event.properties;
+				const screen = validation.value.$screen;
+				const extras = (
+					entry.event.properties as {
+						$app?: Record<string, unknown>;
+						$installation?: unknown;
+					}
+				) ?? {};
+				const bound = (v: unknown, max: number): string | null =>
+					typeof v === "string" && v.length > 0 && v.length <= max ? v : null;
+				const rawInstallation = extras.$installation;
+				mobileScreenProjections.push({
+					index,
+					row: {
+						occurredAt: entry.event.occurredAt,
+						sessionId: entry.event.sessionId ?? "",
+						sessionSequence: screen.sequence,
+						screenName: screen.name,
+						routePattern: screen.routePattern ?? null,
+						navigation: String(screen.navigation),
+						previousScreen: screen.previousScreen ?? null,
+						appVersion: bound(extras.$app?.version, 32),
+						appBuild: bound(extras.$app?.build, 16),
+						appEnvironment: bound(extras.$app?.environment, 16),
+						os: null, // server derives OS from the source platform claim
+						osVersion: null,
+						installationDigest:
+							typeof rawInstallation === "string" &&
+							rawInstallation.length > 0 &&
+							installationSalt.length > 0
+								? digestInstallation(rawInstallation, installationSalt)
+								: null,
+					},
+				});
+			} else {
+				const validation = validateAppLifecycleProperties(
+					entry.event.properties,
+				);
+				if (!validation.ok) {
+					reject("invalid-mobile-lifecycle");
+					continue;
+				}
+				entry.event.properties =
+					validation.value as unknown as typeof entry.event.properties;
+			}
 		}
 
 		// Enrichment is computed ONCE per request at the trusted boundary:
@@ -541,6 +651,7 @@ export class IngestController {
 						platform: ctx.get("platform") ?? "",
 					},
 					pageProjections,
+					mobileScreenProjections,
 				);
 				persistedEvents = persisted.results;
 				identityResults = persisted.identity;

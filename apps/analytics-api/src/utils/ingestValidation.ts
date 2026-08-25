@@ -27,7 +27,12 @@ export type IngestRejectReason =
   // Task 17: reserved page-view boundary rejections.
   | "page-view-requires-web-source"
   | "invalid-page-view"
-  | "page-view-host-mismatch";
+  | "page-view-host-mismatch"
+  // Task 18: reserved mobile boundary rejections.
+  | "mobile-record-requires-react-native-source"
+  | "mobile-record-requires-session"
+  | "invalid-mobile-screen"
+  | "invalid-mobile-lifecycle";
 
 /** Validated (and not yet sanitized) event ready for persistence. */
 export interface ValidatedEvent {

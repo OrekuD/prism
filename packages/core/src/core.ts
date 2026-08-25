@@ -381,12 +381,16 @@ class PrismClientImpl implements PrismClient {
 					if (!validation.ok) {
 						return { status: "rejected", reason: validation.reason };
 					}
+					// Queue ONLY the normalized value - caller-supplied unknown or
+					// undefined-valued fields never reach sanitization/wire.
+					properties = validation.value as unknown as Record<string, unknown>;
 				}
 				if (name === APP_LIFECYCLE_EVENT_NAME) {
 					const validation = validateAppLifecycleProperties(properties as unknown);
 					if (!validation.ok) {
 						return { status: "rejected", reason: validation.reason };
 					}
+					properties = validation.value as unknown as Record<string, unknown>;
 				}
 				let sanitized: JsonObject | undefined;
 				try {

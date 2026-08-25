@@ -258,6 +258,37 @@ export async function applyRetention(
 			args: [],
 		});
 	}
+	// Task 18 (R2-F5): mobile projections + aggregates. Screen views cascade
+	// with their event via FK; this sweep catches rows that lost their event
+	// through any path. Sessions/installations have NO event FK and are
+	// garbage-collected from the surviving projection set.
+	const tables = await existingTables(client);
+	if (tables.has("mobile_screen_views")) {
+		statements.push({
+			sql: "DELETE FROM mobile_screen_views WHERE event_id NOT IN (SELECT id FROM events WHERE project_id = mobile_screen_views.project_id)",
+			args: [],
+		});
+	}
+	if (tables.has("mobile_app_sessions") && tables.has("mobile_screen_views")) {
+		statements.push({
+			sql: `DELETE FROM mobile_app_sessions WHERE project_id || ':' || session_id NOT IN (
+				SELECT project_id || ':' || session_id FROM mobile_screen_views
+			)`,
+			args: [],
+		});
+	}
+	if (
+		tables.has("mobile_installations") &&
+		tables.has("mobile_app_sessions")
+	) {
+		statements.push({
+			sql: `DELETE FROM mobile_installations WHERE project_id || ':' || installation_digest NOT IN (
+				SELECT project_id || ':' || installation_digest FROM mobile_app_sessions
+				WHERE installation_digest IS NOT NULL
+			)`,
+			args: [],
+		});
+	}
 	let errorOccurrenceIndex = -1;
 	let errorUsersIndex = -1;
 	let errorActivityIndex = -1;

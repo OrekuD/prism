@@ -201,4 +201,14 @@ export const WORKSPACE_PLATFORMS = [ // all known; create dialog filters to CREA
   "server",
 ] as const;
 
+/** Task 18 (R1-F9/R2-F9): platforms a user may actually CREATE. iOS and
+ * Android remain readable reserved values until native SDKs ship; the API
+ * rejects them with the same set. Keep in parity with
+ * apps/api/src/controllers/SourcesController.ts CREATABLE_PLATFORMS. */
+export const CREATABLE_PLATFORMS = [
+	"web",
+	"react-native",
+	"server",
+] as const satisfies readonly WorkspacePlatform[];
+
 export type WorkspacePlatform = (typeof WORKSPACE_PLATFORMS)[number];

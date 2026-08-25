@@ -50,7 +50,7 @@ import {
 } from "@/lib/sources";
 import { cn } from "@/lib/utils";
 import { useActiveMember } from "@/lib/workspace";
-import { WORKSPACE_PLATFORMS } from "@/lib/workspace";
+import { CREATABLE_PLATFORMS } from "@/lib/workspace";
 import {
 	useCreateKeyMutation,
 	useCreateSourceMutation,
@@ -150,7 +150,7 @@ function CreateSourceDialog({
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
-								{WORKSPACE_PLATFORMS.map((value) => (
+								{CREATABLE_PLATFORMS.map((value) => (
 									<SelectItem key={value} value={value}>
 										{PLATFORM_LABELS[value]}
 									</SelectItem>

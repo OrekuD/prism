@@ -55,6 +55,11 @@ const ProjectWebAnalytics = lazy(() =>
 		default: m.ProjectWebAnalytics,
 	})),
 );
+const ProjectMobileAnalytics = lazy(() =>
+	import("./routes/projects/project/mobile-analytics").then((m) => ({
+		default: m.ProjectMobileAnalytics,
+	})),
+);
 const ProjectRealtime = lazy(() =>
 	import("./routes/projects/project/realtime").then((m) => ({
 		default: m.ProjectRealtime,

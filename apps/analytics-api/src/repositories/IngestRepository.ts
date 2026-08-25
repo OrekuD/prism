@@ -14,6 +14,7 @@ import type {
 	ValidatedIdentityOp,
 } from "../utils/ingestValidation.js";
 import { logger } from "../utils/logger.js";
+// Task 18: mobile projections handled atomically - mobile_screen_views, mobile_app_sessions, mobile_installations
 
 /**
  * Batch persistence boundary (task-9 slice-4 review F6, slice 5, release
@@ -138,6 +139,12 @@ export class IngestRepository {
 		pageProjections: ReadonlyArray<{
 			index: number;
 			row: PageViewProjectionRow;
+		}> = [],
+		// Task 18 (R2-F2): server-built mobile screen projections keyed by batch
+		// index - inserted in the SAME transaction for winning inserts only.
+		mobileScreenProjections: ReadonlyArray<{
+			index: number;
+			row: MobileScreenProjectionRow;
 		}> = [],
 	): Promise<PersistBatchOutcome> {
 		// R4-F2/R4-F3/R5-F1: ONE write transaction with sequential visibility —
@@ -418,6 +425,44 @@ export class IngestRepository {
 				}
 			}
 
+			// Task 18 (R2-F2): mobile screen projections - same winning-insert
+			// gating as page views, so duplicates/replays never advance screens.
+			if (mobileScreenProjections.length > 0) {
+				const mobileByIndex = new Map(
+					mobileScreenProjections.map((entry) => [entry.index, entry.row]),
+				);
+				for (let index = 0; index < events.length; index += 1) {
+					const row = mobileByIndex.get(index);
+					if (!row) continue;
+					if ((insertResults[index]?.rowsAffected ?? 0) === 0) continue;
+					await tx.execute({
+						sql: INSERT_MOBILE_SCREEN_VIEW_SQL,
+						args: [
+							projectId,
+							events[index]?.eventId ?? "",
+							row.occurredAt,
+							row.sessionId,
+							row.sessionSequence,
+							row.screenName,
+							row.routePattern,
+							row.navigation,
+							row.previousScreen,
+							row.appVersion,
+							row.appBuild,
+							row.appEnvironment,
+							row.os,
+							row.osVersion,
+							row.installationDigest,
+						],
+					});
+					// Keep the generic per-event ordering sequence current.
+					await tx.execute({
+						sql: "UPDATE events SET session_sequence = ? WHERE project_id = ? AND id = ? AND session_sequence IS NULL",
+						args: [row.sessionSequence, projectId, events[index]?.eventId ?? ""],
+					});
+				}
+			}
+
 			await tx.commit();
 
 			return {
@@ -474,3 +519,29 @@ const INSERT_PAGE_VIEW_SQL = [
 	"  country_code, region, city, geo_provider",
 	") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
 ].join("\n");
+
+/** Server-built mobile screen projection row (Task 18 section 6). */
+export interface MobileScreenProjectionRow {
+	occurredAt: number;
+	sessionId: string;
+	sessionSequence: number;
+	screenName: string;
+	routePattern: string | null;
+	navigation: string;
+	previousScreen: string | null;
+	appVersion: string | null;
+	appBuild: string | null;
+	appEnvironment: string | null;
+	os: string | null;
+	osVersion: string | null;
+	installationDigest: string | null;
+}
+
+const INSERT_MOBILE_SCREEN_VIEW_SQL = [
+	"INSERT INTO mobile_screen_views (",
+	"project_id, event_id, occurred_at, session_id, session_sequence,",
+	"screen_name, route_pattern, navigation, previous_screen,",
+	"app_version, app_build, app_environment, os, os_version, installation_digest",
+	") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+	"ON CONFLICT (project_id, event_id) DO NOTHING",
+].join(" ");

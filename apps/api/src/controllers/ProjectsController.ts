@@ -237,13 +237,117 @@ export class ProjectsController {
    * belong to the project AND carry the trusted `web` platform; the range
    * ceiling is the frozen 13 months.
    */
-  public static async getMobileAnalytics(ctx: Context<HonoConfig>) {
-  const slug = ctx.req.param("slug");
-  if (!slug) return ctx.json(new ErrorResponse("slug_not_found").toJSON(), 404);
-  const user = ctx.get("user");
-  if (!user) return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
-  return ctx.json({ range:{from:Date.now()-86400000,to:Date.now(),timezone:"UTC"}, filters:{sourceIds:[], os:null, release:null}, totals:{appOpens:0,visitors:0,appSessions:0,avgScreensPerSession:0,avgSessionDurationMs:null,observedInstallations:0,excludedBots:0}, comparison:{appOpens:{kind:"no-prior-data"},visitors:{kind:"no-prior-data"},appSessions:{kind:"no-prior-data"},observedInstallations:{kind:"no-prior-data"}}, trend:{bucket:"daily",points:[]}, screens:[], releases:[], installations:{observed:0,rows:[]}, technology:{devices:[],operatingSystems:[],sizeClasses:[],coveragePercent:0}, locations:{countries:[],regions:[],cities:[],coveragePercent:0}, coverage:{technologyPercent:0,geographyPercent:0}});
-}
+    public static async getMobileAnalytics(ctx: Context<HonoConfig>) {
+    const slug = ctx.req.param("slug");
+    if (!slug) {
+      return ctx.json(new ErrorResponse("slug_not_found").toJSON(), 404);
+    }
+    const user = ctx.get("user");
+    if (!user) {
+      return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+    }
+
+    const db = DatabaseManager.getInstance(ctx);
+    // Same non-disclosing boundary as every project read: resolve the
+    // project's organization server-side, then prove membership. The client
+    // never supplies a workspace id.
+    const projects = (await db`
+      SELECT id, organization_id FROM projects WHERE slug = ${slug}`) as Array<{
+      id: string;
+      organization_id: string;
+    }>;
+    if (projects.length === 0) {
+      return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
+    }
+    const projectRow = projects[0];
+    if (!projectRow) {
+      return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
+    }
+    const role = await getWorkspaceRole(
+      ctx,
+      user.id,
+      String(projectRow.organization_id),
+    );
+    if (!role) {
+      return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
+    }
+
+    // Range validation (UTC epoch ms, frozen 13-month ceiling).
+    const now = Date.now();
+    const from = Number(ctx.req.query("from") ?? now - 24 * 60 * 60 * 1000);
+    const to = Number(ctx.req.query("to") ?? now);
+    if (
+      !Number.isFinite(from) ||
+      !Number.isFinite(to) ||
+      to <= from ||
+      to - from > PAGE_VIEW_LIMITS.maxDashboardRangeMs
+    ) {
+      return ctx.json(new ErrorResponse("invalid_range").toJSON(), 400);
+    }
+
+    // Repeatable sourceId params - validated against THIS project's React
+    // Native sources only; unknown or non-mobile ids are ignored (never an
+    // error that discloses other workspaces' source existence).
+    const requestedSourceIds = (ctx.req.queries("sourceId") ?? []).map((v) =>
+      v.slice(0, 64),
+    );
+    let sourceIds: string[] = [];
+    let os: "ios" | "android" | null = null;
+    const osParam = ctx.req.query("os");
+    if (osParam === "ios" || osParam === "android") os = osParam;
+    const release = ctx.req.query("release")?.slice(0, 32) || null;
+    if (requestedSourceIds.length > 0) {
+      const rows = (await db`
+        SELECT id FROM project_sources
+        WHERE project_id = ${String(projectRow.id)} AND platform = 'react-native'`) as Array<{
+        id: string;
+      }>;
+      const allowedMobileSources = new Set(rows.map((r) => String(r.id)));
+      sourceIds = [...new Set(requestedSourceIds)].filter((id) =>
+        allowedMobileSources.has(id),
+      );
+      if (sourceIds.length === 0) {
+        // Explicitly filtered to nothing applicable -> honest empty payload.
+        return ctx.json({
+          range: { from, to, timezone: "UTC" },
+          filters: { sourceIds: [], os: null, release: null },
+          totals: { appOpens: 0, visitors: 0, appSessions: 0, avgScreensPerSession: 0, avgSessionDurationMs: null, observedInstallations: 0, excludedBots: 0 },
+          comparison: { appOpens: { kind: "no-prior-data" }, visitors: { kind: "no-prior-data" }, appSessions: { kind: "no-prior-data" }, observedInstallations: { kind: "no-prior-data" } },
+          trend: { bucket: "daily", points: [] },
+          screens: [],
+          releases: [],
+          installations: { observed: 0, rows: [] },
+          technology: { devices: [], operatingSystems: [], sizeClasses: [], coveragePercent: 0 },
+          locations: { countries: [], regions: [], cities: [], coveragePercent: 0 },
+          coverage: { technologyPercent: 0, geographyPercent: 0 },
+        });
+      }
+    }
+
+    try {
+      // Analytics reads go through the ANALYTICS store (libSQL), never the
+      // product Postgres connection used for membership/sources above.
+      const resource = await loadMobileAnalytics(ctx, {
+        projectId: String(projectRow.id),
+        from,
+        to,
+        sourceIds,
+        os,
+        release,
+      });
+      return ctx.json(resource);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        (error.message === "mobile_range_too_large" ||
+          error.message === "mobile_range_invalid")
+      ) {
+        return ctx.json(new ErrorResponse("invalid_range").toJSON(), 400);
+      }
+      throw error;
+    }
+  }
+
 public static async getWebAnalytics(ctx: Context<HonoConfig>) {
     const slug = ctx.req.param("slug");
     if (!slug) {

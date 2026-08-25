@@ -68,6 +68,10 @@ export function isApprovedResetTarget(url: string): boolean {
 // name — the migration replaces the shape); sessions_v2 is the v2 model;
 // `sessions` is the legacy v1 table.
 const DROP_STATEMENTS = [
+	"DROP TABLE IF EXISTS mobile_screen_views",
+	"DROP TABLE IF EXISTS mobile_app_sessions",
+	"DROP TABLE IF EXISTS mobile_installations",
+	"DROP TABLE IF EXISTS web_page_views",
 	"DROP TABLE IF EXISTS events",
 	"DROP TABLE IF EXISTS sessions_v2",
 	"DROP TABLE IF EXISTS events_v2",
@@ -81,7 +85,6 @@ const DROP_STATEMENTS = [
 	"DROP TABLE IF EXISTS deleted_identities",
 	"DROP TABLE IF EXISTS error_issues",
 	"DROP TABLE IF EXISTS error_occurrences",
-	"DROP TABLE IF EXISTS web_page_views",
 	"DROP TABLE IF EXISTS error_issue_users",
 	"DROP TABLE IF EXISTS error_issue_activity",
 	"DROP TABLE IF EXISTS source_error_settings",

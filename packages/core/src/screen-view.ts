@@ -111,19 +111,31 @@ export function validateScreenViewProperties(
       return { ok: false, reason: "$screen_properties must be an object" };
     }
   }
-  return {
-    ok: true,
-    value: {
-      $screen: {
-        name: s.name as string,
-        routePattern: s.routePattern as string | undefined,
-        navigation: s.navigation as ScreenNavigation,
-        sequence: s.sequence as number,
-        previousScreen: s.previousScreen as string | undefined,
-      },
-      $screen_properties: record.$screen_properties as Record<string, unknown> | undefined,
+  // Omit optional blocks entirely instead of carrying undefined values -
+  // the normalized result must survive strict wire-JSON sanitization.
+  const value: ScreenViewWireProperties = {
+    $screen: {
+      name: s.name as string,
+      ...(s.routePattern !== undefined
+        ? { routePattern: s.routePattern as string }
+        : {}),
+      navigation: s.navigation as ScreenNavigation,
+      sequence: s.sequence as number,
+      ...(s.previousScreen !== undefined
+        ? { previousScreen: s.previousScreen as string }
+        : {}),
     },
   };
+  if (record.$screen_properties !== undefined) {
+    return {
+      ok: true,
+      value: {
+        ...value,
+        $screen_properties: record.$screen_properties as Record<string, unknown>,
+      },
+    };
+  }
+  return { ok: true, value };
 }
 
 export type AppLifecycleValidationResult =
@@ -149,14 +161,26 @@ export function validateAppLifecycleProperties(input: unknown): AppLifecycleVali
   if (l.durationMs !== undefined && (typeof l.durationMs !== "number" || l.durationMs < 0)) {
     return { ok: false, reason: "$lifecycle.durationMs must be number >=0" };
   }
-  return {
-    ok: true,
-    value: {
-      $lifecycle: {
-        transition: l.transition as AppLifecycleTransition,
-        sequence: l.sequence as number,
-        durationMs: l.durationMs as number | undefined,
-      },
-    },
-  };
+  // durationMs is omitted entirely when absent - an explicit undefined
+  // value fails strict wire-JSON validation downstream.
+  return l.durationMs === undefined
+    ? {
+        ok: true,
+        value: {
+          $lifecycle: {
+            transition: l.transition as AppLifecycleTransition,
+            sequence: l.sequence as number,
+          },
+        },
+      }
+    : {
+        ok: true,
+        value: {
+          $lifecycle: {
+            transition: l.transition as AppLifecycleTransition,
+            sequence: l.sequence as number,
+            durationMs: l.durationMs as number,
+          },
+        },
+      };
 }
