@@ -16,7 +16,7 @@ COPY apps/api/package.json apps/api/package.json
 RUN yarn install --frozen-lockfile && yarn cache clean
 COPY . .
 # Workspace packages ship no committed dist — build @prism/types first
-RUN yarn workspace @prism/types build
+RUN yarn workspace @prism-analytics/types build
 RUN yarn workspace prism-api build:node
 
 FROM node:24-alpine

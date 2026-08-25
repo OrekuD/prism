@@ -15,8 +15,8 @@ COPY . .
 # Workspace packages ship no committed dist — build @prism/types and
 # @prism/core first (the analytics API validates against core's shared
 # ingestion limits and sanitizer)
-RUN yarn workspace @prism/types build
-RUN yarn workspace @prism/core build
+RUN yarn workspace @prism-analytics/types build
+RUN yarn workspace @prism-analytics/core build
 RUN yarn workspace prism-analytics-api build
 
 FROM node:24-alpine

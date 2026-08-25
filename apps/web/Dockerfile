@@ -17,10 +17,10 @@ COPY apps/web/package.json apps/web/package.json
 RUN yarn install --frozen-lockfile && yarn cache clean
 COPY . .
 # Workspace packages ship no committed dist — build what the web app imports
-RUN yarn workspace @prism/types build \
-    && yarn workspace @prism/core build \
-    && yarn workspace @prism/browser build \
-    && yarn workspace @prism/react build
+RUN yarn workspace @prism-analytics/types build \
+    && yarn workspace @prism-analytics/core build \
+    && yarn workspace @prism-analytics/browser build \
+    && yarn workspace @prism-analytics/react build
 RUN yarn workspace prism-web build
 
 FROM nginx:1.27-alpine
