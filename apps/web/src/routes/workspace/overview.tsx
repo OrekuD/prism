@@ -7,7 +7,9 @@ import type { TotalsResource } from "@prism-analytics/types";
 import { CodeCopyRow } from "@/components/public/code-copy-row";
 import { Frame } from "@/components/public/frame";
 import { useProjectsQuery } from "@/network/queries/useProjectsQuery";
+import { Loader2, TriangleAlert } from "lucide-react";
 import { IconFolder, IconGlobe, IconDoc } from "@/components/ui/icons";
+import { useResendVerificationEmail } from "@/hooks/useResendVerificationEmail";
 
 import { DOCS_URL } from "@/lib/docs";
 
@@ -121,6 +123,8 @@ function UsageMetric({
 export function Overview() {
   const { wrkSlug } = useParams<{ wrkSlug: string }>();
   const { data: sessionData } = authClient.useSession();
+  const emailVerified = Boolean(sessionData?.user?.emailVerified);
+  const { resend, isPending } = useResendVerificationEmail();
   const { data: projects, isLoading } = useProjectsQuery({ includeSummary: true });
   const totalsQuery = useWorkspaceTotals(projects);
   const sessionSeries = useSessionSeries(projects);
@@ -129,6 +133,24 @@ export function Overview() {
 
   return (
     <>
+      {!emailVerified ? (
+        <div className="mb-4 flex items-center gap-2.5 rounded-[2px] border border-warning/30 bg-warning/10 px-3 py-2.5">
+          <TriangleAlert className="size-3.5 shrink-0 text-warning" aria-hidden="true" />
+          <p className="min-w-0 flex-1 truncate text-[13px] text-text">Verify your email to create workspaces and projects.</p>
+          <button
+            type="button"
+            disabled={isPending}
+            aria-busy={isPending}
+            onClick={() => {
+              if (sessionData?.user?.email) resend(sessionData.user.email);
+            }}
+            className="shrink-0 text-[13px] font-medium text-warning underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-45"
+          >
+            {isPending ? <Loader2 className="mr-1 inline size-3.5 animate-spin align-[-2px]" aria-hidden="true" /> : null}
+            Resend verification email
+          </button>
+        </div>
+      ) : null}
       <h1 className="font-mono text-[26px] font-[650] leading-[1.18] tracking-[-0.025em] text-text">
         <span className="mr-2.5 select-none text-text-subtle">{"//"}</span>Welcome back,{" "}
         {firstName || "there"}
