@@ -33,7 +33,7 @@ export function PublicNav() {
         aria-label="Public"
         className="relative border-b border-border bg-canvas"
       >
-        <div className="mx-auto flex h-[72px] max-w-[1200px] items-center justify-between px-8">
+        <div className="mx-auto flex h-[72px] max-w-[1200px] items-center justify-between px-8 lg:px-10.5">
           <Link
             to="/"
             aria-label="Prism home"
@@ -46,7 +46,9 @@ export function PublicNav() {
           <div className="hidden items-center gap-6 md:flex">
             <a
               href={docsHref}
-              onClick={() => trackTelemetry(TELEMETRY_EVENTS.docsClick, { source: "nav" })}
+              onClick={() =>
+                trackTelemetry(TELEMETRY_EVENTS.docsClick, { source: "nav" })
+              }
               className="text-[13px] text-text-muted transition-colors duration-150 hover:text-text"
             >
               Docs
@@ -106,7 +108,7 @@ export function PublicNav() {
                 onClick={() => setOpen(false)}
                 className={cn(
                   "my-4 flex h-11 items-center justify-center rounded-[2px]",
-                  "bg-accent text-[14px] font-medium text-primary-foreground",
+                  "bg-accent text-[14px] font-medium text-primary-foreground"
                 )}
               >
                 {isAuthenticated ? "Dashboard" : "Get started"}

@@ -23,7 +23,7 @@ export function PageHeader({
     <div
       className={cn(
         "flex w-full flex-wrap items-start justify-between gap-4",
-        className,
+        className
       )}
     >
       <div className="min-w-0">

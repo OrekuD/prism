@@ -4,7 +4,10 @@ import { authBaseUrl, authClient } from "@/lib/authClient";
 import { loadRuntimeConfig } from "@/lib/runtimeConfig";
 import { Frame, SectionLabel } from "@/components/public/frame";
 import { PrismMark } from "@/components/brand/prism-mark";
-import { HomeSkeleton, useWorkspaceHome } from "@/components/workspace/workspace-scope";
+import {
+  HomeSkeleton,
+  useWorkspaceHome,
+} from "@/components/workspace/workspace-scope";
 
 /**
  * Shared authentication shell (design-system.md 11.1-11.2).
@@ -85,7 +88,11 @@ export function OrEmailDivider() {
   return (
     // biome-ignore lint/a11y/useFocusableInteractive: decorative divider with an accessible label (auth divider pattern)
     // biome-ignore lint/a11y/useSemanticElements: decorative divider with an accessible label (auth divider pattern)
-    <div className="flex items-center gap-3" role="separator" aria-label="or email">
+    <div
+      className="flex items-center gap-3"
+      role="separator"
+      aria-label="or email"
+    >
       <span aria-hidden="true" className="h-px flex-1 bg-border" />
       <span className="font-mono text-[10px] uppercase tracking-[0.09em] text-text-subtle">
         Or email
