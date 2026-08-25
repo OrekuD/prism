@@ -4,7 +4,7 @@
 # talks to /api/* and /ws on the same origin), then serves it from nginx,
 # which also proxies /api and /ws to the backend services — one public
 # origin for browser, API, and WebSocket traffic.
-FROM node:22-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /repo
 COPY package.json yarn.lock ./
 COPY packages/config-typescript/package.json packages/config-typescript/package.json

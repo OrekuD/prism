@@ -6,7 +6,9 @@
  * Renders the canonical square PNG logo (packages/brand/assets/prism-logo.png)
  * to icons at every required size, builds favicon.ico (16+32), and composes
  * the 1200x630 Open Graph image (logo + PRISM wordmark with the Geist font
- * embedded as base64 @font-face), so exports are identical on any machine.
+ * embedded as base64 @font-face). Pixels are deterministic on any machine;
+ * `check` compares decoded pixels so platform PNG-encoder differences do
+ * not produce false drift.
  *
  *   yarn workspace @prism-analytics/brand export   # regenerate + copy to consumers
  *   yarn workspace @prism-analytics/brand check    # fail if committed copies drifted
@@ -59,6 +61,22 @@ const FONT_PATH = join(
 async function fontDataUri() {
   const buffer = await readFile(FONT_PATH);
   return `data:font/woff2;base64,${buffer.toString("base64")}`;
+}
+
+/**
+ * Platform-stable signature (R3-CI): sharp's SVG text rasterization embeds
+ * platform-dependent antialiasing, so committed og-image BYTES differ
+ * between macOS and Linux even when pixels are identical. Compare decoded
+ * pixels (+ dimensions) instead; encoder-only differences no longer fail
+ * the gate. ICO containers keep a byte compare (libvips cannot decode).
+ */
+async function pixelSignature(file) {
+  const img = sharp(file).ensureAlpha();
+  const { data, info } = await img.raw().toBuffer({ resolveWithObject: true });
+  return createHash("sha256")
+    .update(`${info.width}x${info.height}:`)
+    .update(data)
+    .digest("hex");
 }
 
 async function renderMarkIcons() {
@@ -123,11 +141,16 @@ async function checkDrift() {
   const repo = join(ROOT, "../..");
   let drifted = false;
   for (const [file, dest] of CONSUMERS) {
-    const generated = await readFile(join(GENERATED, file));
-    const committed = await readFile(join(repo, dest));
-    const g = createHash("sha256").update(generated).digest("hex");
-    const c = createHash("sha256").update(committed).digest("hex");
-    if (g !== c) {
+    const generatedPath = join(GENERATED, file);
+    const committedPath = join(repo, dest);
+    const isPng = file.endsWith(".png");
+    const g = isPng
+      ? await pixelSignature(generatedPath)
+      : createHash("sha256").update(await readFile(generatedPath)).digest("hex");
+    const cHash = isPng
+      ? await pixelSignature(committedPath)
+      : createHash("sha256").update(await readFile(committedPath)).digest("hex");
+    if (g !== cHash) {
       drifted = true;
       console.error(`  ✗ drift: ${dest} differs from the canonical export`);
     } else {

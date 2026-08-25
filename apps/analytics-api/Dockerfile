@@ -1,10 +1,11 @@
 # syntax=docker/dockerfile:1
 # Prism analytics API (Node/Hono, WebSocket support).
-FROM node:22-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /repo
 COPY package.json yarn.lock ./
 COPY packages/config-typescript/package.json packages/config-typescript/package.json
 COPY packages/types/package.json packages/types/package.json
+COPY packages/browser/package.json packages/browser/package.json
 COPY packages/core/package.json packages/core/package.json
 COPY packages/email-templates/package.json packages/email-templates/package.json
 COPY packages/prism-react/package.json packages/prism-react/package.json
@@ -18,11 +19,12 @@ RUN yarn workspace @prism/types build
 RUN yarn workspace @prism/core build
 RUN yarn workspace prism-analytics-api build
 
-FROM node:22-alpine
+FROM node:24-alpine
 ENV NODE_ENV=production
 WORKDIR /repo
 COPY package.json yarn.lock ./
 COPY packages/types/package.json packages/types/package.json
+COPY packages/browser/package.json packages/browser/package.json
 COPY packages/core/package.json packages/core/package.json
 COPY packages/email-templates/package.json packages/email-templates/package.json
 COPY packages/prism-react/package.json packages/prism-react/package.json
