@@ -83,7 +83,17 @@ export function buildAuthOptions(
       useSecureCookies: production,
       defaultCookieAttributes: {
         httpOnly: true,
-        sameSite: "lax",
+        sameSite:
+          production &&
+          (() => {
+            try {
+              return new URL(baseURL).origin !== new URL(env.CLIENT_URL ?? "").origin;
+            } catch {
+              return true;
+            }
+          })()
+            ? "none"
+            : "lax",
         secure: production,
       },
       cookiePrefix: "prism",
