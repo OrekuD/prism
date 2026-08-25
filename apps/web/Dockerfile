@@ -14,7 +14,7 @@ COPY packages/browser/package.json packages/browser/package.json
 COPY packages/email-templates/package.json packages/email-templates/package.json
 COPY packages/prism-react/package.json packages/prism-react/package.json
 COPY apps/web/package.json apps/web/package.json
-RUN yarn install --frozen-lockfile
+RUN yarn install --frozen-lockfile && yarn cache clean
 COPY . .
 # Workspace packages ship no committed dist — build what the web app imports
 RUN yarn workspace @prism/types build \

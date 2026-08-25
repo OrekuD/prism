@@ -64,19 +64,31 @@ async function fontDataUri() {
 }
 
 /**
- * Platform-stable signature (R3-CI): sharp's SVG text rasterization embeds
- * platform-dependent antialiasing, so committed og-image BYTES differ
- * between macOS and Linux even when pixels are identical. Compare decoded
- * pixels (+ dimensions) instead; encoder-only differences no longer fail
- * the gate. ICO containers keep a byte compare (libvips cannot decode).
+ * Platform-stable comparison (R3-CI): sharp's SVG text rasterization embeds
+ * platform-dependent antialiasing, so committed og-image bytes/pixels differ
+ * slightly between macOS and Linux libvips/pango builds. Use a tolerant
+ * pixel diff (per-channel threshold + max diff ratio) so encoder and minor
+ * AA differences don't fail the gate, while real content drift still does.
+ * ICO containers keep a byte compare (libvips cannot decode).
  */
-async function pixelSignature(file) {
-  const img = sharp(file).ensureAlpha();
-  const { data, info } = await img.raw().toBuffer({ resolveWithObject: true });
-  return createHash("sha256")
-    .update(`${info.width}x${info.height}:`)
-    .update(data)
-    .digest("hex");
+async function imagesEqual(aPath, bPath, { threshold = 12, maxRatio = 0.005 } = {}) {
+  const [a, b] = await Promise.all([
+    sharp(aPath).ensureAlpha().raw().toBuffer({ resolveWithObject: true }),
+    sharp(bPath).ensureAlpha().raw().toBuffer({ resolveWithObject: true }),
+  ]);
+  if (a.info.width !== b.info.width || a.info.height !== b.info.height) return false;
+  const total = a.info.width * a.info.height;
+  let diffPixels = 0;
+  for (let i = 0; i < a.data.length; i += 4) {
+    const dr = Math.abs(a.data[i] - b.data[i]);
+    const dg = Math.abs(a.data[i + 1] - b.data[i + 1]);
+    const db = Math.abs(a.data[i + 2] - b.data[i + 2]);
+    const da = Math.abs(a.data[i + 3] - b.data[i + 3]);
+    if (dr > threshold || dg > threshold || db > threshold || da > threshold) diffPixels++;
+    // early exit if already over budget
+    if (diffPixels / total > maxRatio) return false;
+  }
+  return diffPixels / total <= maxRatio;
 }
 
 async function renderMarkIcons() {
@@ -144,13 +156,19 @@ async function checkDrift() {
     const generatedPath = join(GENERATED, file);
     const committedPath = join(repo, dest);
     const isPng = file.endsWith(".png");
-    const g = isPng
-      ? await pixelSignature(generatedPath)
-      : createHash("sha256").update(await readFile(generatedPath)).digest("hex");
-    const cHash = isPng
-      ? await pixelSignature(committedPath)
-      : createHash("sha256").update(await readFile(committedPath)).digest("hex");
-    if (g !== cHash) {
+    let equal;
+    if (isPng) {
+      try {
+        equal = await imagesEqual(generatedPath, committedPath);
+      } catch {
+        equal = false;
+      }
+    } else {
+      const g = createHash("sha256").update(await readFile(generatedPath)).digest("hex");
+      const cHash = createHash("sha256").update(await readFile(committedPath)).digest("hex");
+      equal = g === cHash;
+    }
+    if (!equal) {
       drifted = true;
       console.error(`  ✗ drift: ${dest} differs from the canonical export`);
     } else {

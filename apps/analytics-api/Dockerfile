@@ -10,7 +10,7 @@ COPY packages/core/package.json packages/core/package.json
 COPY packages/email-templates/package.json packages/email-templates/package.json
 COPY packages/prism-react/package.json packages/prism-react/package.json
 COPY apps/analytics-api/package.json apps/analytics-api/package.json
-RUN yarn install --frozen-lockfile
+RUN yarn install --frozen-lockfile && yarn cache clean
 COPY . .
 # Workspace packages ship no committed dist — build @prism/types and
 # @prism/core first (the analytics API validates against core's shared

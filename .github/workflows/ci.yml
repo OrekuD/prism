@@ -41,6 +41,13 @@ jobs:
   self-host-certify:
     runs-on: ubuntu-latest
     steps:
+      - name: Free disk space for Docker builds
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL 2>/dev/null || true
+          sudo docker system prune -af 2>/dev/null || true
+          sudo apt-get clean 2>/dev/null || true
+          df -h
+
       - uses: actions/checkout@v5
 
       - uses: actions/setup-node@v5
