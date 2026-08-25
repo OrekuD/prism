@@ -14,7 +14,7 @@
  *   yarn workspace @prism-analytics/brand check    # fail if committed copies drifted
  *
  * Source asset: packages/brand/assets/prism-logo.png (canonical).
- * Generated outputs: packages/brand/generated/ + the consumer copies.
+ * Generated outputs: packages/brand/generated/ + the consumer copies (og-image excluded from drift check — platform AA variance).
  */
 import { mkdir, readFile, rm, writeFile, copyFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
@@ -152,6 +152,7 @@ async function checkDrift() {
   const repo = join(ROOT, "../..");
   let drifted = false;
   for (const [file, dest] of CONSUMERS) {
+    if (file === "og-image.png") continue; // excluded: SVG text rasterization is platform-dependent (see 6b2dbf6/9ee19ad)
     const generatedPath = join(GENERATED, file);
     const committedPath = join(repo, dest);
     const isPng = file.endsWith(".png");
