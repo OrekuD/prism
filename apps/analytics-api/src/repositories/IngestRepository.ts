@@ -146,6 +146,10 @@ export class IngestRepository {
 			index: number;
 			row: MobileScreenProjectionRow;
 		}> = [],
+		mobileLifecycleProjections: ReadonlyArray<{
+			index: number;
+			row: MobileLifecycleProjectionRow;
+		}> = [],
 	): Promise<PersistBatchOutcome> {
 		// R4-F2/R4-F3/R5-F1: ONE write transaction with sequential visibility —
 		// identity claims gate their mutations (rowsAffected = 1 wins), losing
@@ -440,6 +444,7 @@ export class IngestRepository {
 						args: [
 							projectId,
 							events[index]?.eventId ?? "",
+							row.sourceId,
 							row.occurredAt,
 							row.sessionId,
 							row.sessionSequence,
@@ -455,11 +460,52 @@ export class IngestRepository {
 							row.installationDigest,
 						],
 					});
+					// R3-F5: reconcile the bounded app-session aggregate for this
+					// session (upsert then advance last-activity/screen-count).
+					await tx.execute({
+						sql: UPSERT_MOBILE_SESSION_SQL,
+						args: [projectId, row.sessionId, row.sourceId, row.occurredAt, row.occurredAt, row.os, row.appVersion],
+					});
+					await tx.execute({
+						sql: "UPDATE mobile_app_sessions SET screen_count = screen_count + 1, last_active_at = CASE WHEN last_active_at < ? THEN ? ELSE last_active_at END WHERE project_id = ? AND session_id = ?",
+						args: [row.occurredAt, row.occurredAt, projectId, row.sessionId],
+					});
+					if (row.installationDigest) {
+						await tx.execute({
+							sql: UPSERT_MOBILE_INSTALLATION_SQL,
+							args: [projectId, row.installationDigest, row.sourceId, row.occurredAt, row.occurredAt, row.os, row.appVersion],
+						});
+					}
 					// Keep the generic per-event ordering sequence current.
 					await tx.execute({
 						sql: "UPDATE events SET session_sequence = ? WHERE project_id = ? AND id = ? AND session_sequence IS NULL",
 						args: [row.sessionSequence, projectId, events[index]?.eventId ?? ""],
 					});
+				}
+
+				// R3-F5: lifecycle records reconcile session intervals (foreground
+				// active duration finalizes on background) and keep sessions alive
+				// even when a session has no screens yet.
+				if (mobileLifecycleProjections.length > 0) {
+					const lifecycleByIndex = new Map(
+						mobileLifecycleProjections.map((entry) => [entry.index, entry.row]),
+					);
+					for (let index = 0; index < events.length; index += 1) {
+						const row = lifecycleByIndex.get(index);
+						if (!row) continue;
+						if ((insertResults[index]?.rowsAffected ?? 0) === 0) continue;
+						await tx.execute({
+							sql: UPSERT_MOBILE_SESSION_SQL,
+							args: [projectId, row.sessionId, row.sourceId, row.occurredAt, row.occurredAt, null, null],
+						});
+						await tx.execute({
+							sql: `UPDATE mobile_app_sessions
+								SET last_active_at = CASE WHEN last_active_at < ? THEN ? ELSE last_active_at END,
+								foreground_active_ms = foreground_active_ms + COALESCE(?, 0)
+								WHERE project_id = ? AND session_id = ?`,
+							args: [row.occurredAt, row.occurredAt, row.durationMs, projectId, row.sessionId],
+						});
+					}
 				}
 			}
 
@@ -520,8 +566,19 @@ const INSERT_PAGE_VIEW_SQL = [
 	") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
 ].join("\n");
 
+/** Server-built mobile lifecycle projection row (R3-F5). */
+export interface MobileLifecycleProjectionRow {
+	eventId: string;
+	sourceId: string;
+	occurredAt: number;
+	sessionId: string;
+	sequence: number;
+	durationMs: number | null;
+}
+
 /** Server-built mobile screen projection row (Task 18 section 6). */
 export interface MobileScreenProjectionRow {
+	sourceId: string;
 	occurredAt: number;
 	sessionId: string;
 	sessionSequence: number;
@@ -539,9 +596,28 @@ export interface MobileScreenProjectionRow {
 
 const INSERT_MOBILE_SCREEN_VIEW_SQL = [
 	"INSERT INTO mobile_screen_views (",
-	"project_id, event_id, occurred_at, session_id, session_sequence,",
+	"project_id, event_id, source_id, occurred_at, session_id, session_sequence,",
 	"screen_name, route_pattern, navigation, previous_screen,",
 	"app_version, app_build, app_environment, os, os_version, installation_digest",
-	") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+	") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
 	"ON CONFLICT (project_id, event_id) DO NOTHING",
+].join(" ");
+
+/** R3-F5: bounded app-session aggregate upsert (idempotent per session). */
+const UPSERT_MOBILE_SESSION_SQL = [
+	"INSERT INTO mobile_app_sessions (",
+	"project_id, session_id, source_id, started_at, last_active_at, os, app_version",
+	") VALUES (?, ?, ?, ?, ?, ?, ?)",
+	"ON CONFLICT (project_id, session_id) DO NOTHING",
+].join(" ");
+
+/** R3-F5: observed-installation aggregate upsert. */
+const UPSERT_MOBILE_INSTALLATION_SQL = [
+	"INSERT INTO mobile_installations (",
+	"project_id, installation_digest, source_id, first_seen_at, last_seen_at, last_os, last_app_version",
+	") VALUES (?, ?, ?, ?, ?, ?, ?)",
+	"ON CONFLICT (project_id, installation_digest) DO UPDATE SET",
+	"last_seen_at = excluded.last_seen_at,",
+	"last_os = COALESCE(excluded.last_os, mobile_installations.last_os),",
+	"last_app_version = COALESCE(excluded.last_app_version, mobile_installations.last_app_version)",
 ].join(" ");

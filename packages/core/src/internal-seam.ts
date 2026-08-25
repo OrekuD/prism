@@ -44,6 +44,17 @@ export interface InternalClientSeam {
 	/** Clears any attached Web session without emitting `session_ended`
 	 * (consent withdrawal / reset path). */
 	detachWebSession(): void;
+
+	/** Resolves the consent-gated, source-scoped installation id (R3-F3).
+	 * Null while consent is pending/denied or no durable storage exists. */
+	getInstallationId(): Promise<string | null>;
+
+	/** Subscribes to collection-state transitions (R3-F4). Returns an
+	 * idempotent unsubscribe. Used by adapters to reconcile lifecycle
+	 * ownership when consent changes while the app is foregrounded. */
+	onCollectionStateChange(
+		listener: (state: "pending" | "granted" | "denied") => void,
+	): () => void;
 	/** Task 18: resume/detach mobile app session (foreground active-time) */
 	resumeMobileSession(session: { sessionId: string; startedAt: number; sequence: number }): void;
 	detachMobileSession(): void;

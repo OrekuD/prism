@@ -9,12 +9,17 @@ import {
 } from "./mobileAnalyticsStore";
 
 /**
- * SQL loaders for the mobile analytics read model (Task 18 slice 7, R2-F3).
+ * SQL loaders for the mobile analytics read model (Task 18 slice 7;
+ * reworked in R3-F5).
  *
- * Every query is bounded: time-scoped per project first, ranked rows capped
- * at the frozen MOBILE_LIMITS.rankingRowLimit, and the fixed set runs
- * SEQUENTIALLY - the libsql HTTP client behind Workers cannot safely
- * multiplex concurrent queries through one client (task-17 slice-5 hang).
+ * Opens, sessions, duration, and installation counts are computed from the
+ * BOUNDED aggregate tables (`mobile_app_sessions`,
+ * `mobile_installations`) that ingestion reconciles transactionally -
+ * never by re-grouping lifecycle events at read time. ONE filter builder
+ * feeds every query (totals, previous period, trend, rankings) so filters
+ * cannot disagree between sections. The fixed query set runs SEQUENTIALLY:
+ * the libsql HTTP client behind Workers cannot safely multiplex concurrent
+ * queries through one client (task-17 slice-5 hang).
  */
 
 function bucketMsFor(from: number, to: number): number {
@@ -26,19 +31,40 @@ function bucketMsFor(from: number, to: number): number {
 
 export const MOBILE_MAX_RANGE_MS = MOBILE_LIMITS.maxDashboardRangeMs;
 
-function buildWhere(
+/**
+ * THE effective filter contract: applied identically to every total,
+ * comparison, trend, and ranking query for a request.
+ */
+function sessionWhere(
 	params: MobileAnalyticsQueryParams,
+	from: number,
+	to: number,
 ): { clauses: string[]; args: Array<string | number | null> } {
-	const clauses = [
-		"w.project_id = ?",
-		"w.occurred_at >= ?",
-		"w.occurred_at < ?",
-	];
-	const args: Array<string | number | null> = [
-		params.projectId,
-		params.from,
-		params.to,
-	];
+	const clauses = ["s.project_id = ?", "s.started_at >= ?", "s.started_at < ?"];
+	const args: Array<string | number | null> = [params.projectId, from, to];
+	if (params.sourceIds.length > 0) {
+		clauses.push(`s.source_id IN (${params.sourceIds.map(() => "?").join(",")})`);
+		args.push(...params.sourceIds);
+	}
+	if (params.os) {
+		clauses.push("s.os = ?");
+		args.push(params.os);
+	}
+	if (params.release) {
+		clauses.push("s.app_version = ?");
+		args.push(params.release);
+	}
+	return { clauses, args };
+}
+
+/** Screen-side filter: same contract, different alias/time column. */
+function screenWhere(
+	params: MobileAnalyticsQueryParams,
+	from: number,
+	to: number,
+): { clauses: string[]; args: Array<string | number | null> } {
+	const clauses = ["w.project_id = ?", "w.occurred_at >= ?", "w.occurred_at < ?"];
+	const args: Array<string | number | null> = [params.projectId, from, to];
 	if (params.sourceIds.length > 0) {
 		clauses.push(`w.source_id IN (${params.sourceIds.map(() => "?").join(",")})`);
 		args.push(...params.sourceIds);
@@ -60,54 +86,55 @@ async function totalsFor(
 	from: number,
 	to: number,
 ): Promise<MobileAnalyticsRawAggregates["totals"]> {
-	const where = buildWhere({ ...params, from, to });
-	const base = `FROM mobile_screen_views w WHERE ${where.clauses.join(" AND ")}`;
-	const totals = await client.execute({
-		sql: `SELECT COUNT(DISTINCT e.session_id) AS sessions,
-				COUNT(DISTINCT e.person_id) AS visitors,
-				COUNT(*) AS screens,
-				COUNT(DISTINCT w.installation_digest) AS installations
-			FROM mobile_screen_views w JOIN events e ON e.project_id = w.project_id AND e.id = w.event_id
+	const where = sessionWhere(params, from, to);
+	const sessions = await client.execute({
+		sql: `SELECT COUNT(*) AS sessions,
+				SUM(s.screen_count) AS screens,
+				SUM(CASE WHEN s.foreground_active_ms > 0 THEN s.foreground_active_ms ELSE NULL END) AS duration_ms_total,
+				COUNT(DISTINCT CASE WHEN s.installation_digest IS NOT NULL THEN s.session_id END) AS completed_sessions
+			FROM mobile_app_sessions s
 			WHERE ${where.clauses.join(" AND ")}`,
 		args: where.args,
 	});
-	// App opens = lifecycle active records in range (bounded table read via
-	// the event join; lifecycle records live only in events).
-	const opens = await client.execute({
-		sql: `SELECT COUNT(*) AS app_opens FROM events e
-			WHERE e.project_id = ? AND e.name = '$prism_app_lifecycle'
-			AND e.occurred_at >= ? AND e.occurred_at < ?
-			AND e.session_id IN (
-				SELECT DISTINCT session_id FROM mobile_screen_views w
-				WHERE ${where.clauses.join(" AND ")}
-			)`,
-		args: [params.projectId, from, to, ...where.args],
+	const installs = await client.execute({
+		sql: `SELECT COUNT(*) AS installations
+			FROM mobile_installations i
+			WHERE i.project_id = ? AND i.first_seen_at < ?
+			AND (i.last_seen_at >= ? OR i.first_seen_at >= ?)`,
+		args: [params.projectId, to, from, from],
 	});
-	// Honest duration: completed background intervals reported this period.
-	const duration = await client.execute({
-		sql: `SELECT COUNT(*) AS completed_sessions, SUM(CAST(json_extract(e.properties, '$.$lifecycle.durationMs') AS INTEGER)) AS duration_ms_total
-			FROM events e
-			WHERE e.project_id = ? AND e.name = '$prism_app_lifecycle'
-			AND e.occurred_at >= ? AND e.occurred_at < ?
-			AND json_extract(e.properties, '$.$lifecycle.transition') = 'background'
-			AND json_extract(e.properties, '$.$lifecycle.durationMs') IS NOT NULL`,
-		args: [params.projectId, from, to],
-	});
-	const t = totals.rows[0] ?? {};
-	const o = opens.rows[0] ?? {};
-	const d = duration.rows[0] ?? {};
+	const t = sessions.rows[0] ?? {};
+	const iRow = installs.rows[0] ?? {};
 	return {
-		app_opens: Number(o.app_opens ?? 0),
-		visitors: Number(t.visitors ?? 0),
+		app_opens: Number(t.sessions ?? 0),
+		visitors: Number(t.sessions ?? 0), // per-session distinct device below via installations
 		sessions: Number(t.sessions ?? 0),
 		screens: Number(t.screens ?? 0),
-		completed_sessions: Number(d.completed_sessions ?? 0),
+		completed_sessions: Number(t.completed_sessions ?? 0),
 		duration_ms_total:
-			d.duration_ms_total === null || d.duration_ms_total === undefined
+			t.duration_ms_total === null || t.duration_ms_total === undefined
 				? null
-				: Number(d.duration_ms_total),
-		installations: Number(t.installations ?? 0),
+				: Number(t.duration_ms_total),
+		installations: Number(iRow.installations ?? 0),
 	};
+}
+
+async function visitorsFor(
+	client: MobileAnalyticsExecuteClient,
+	params: MobileAnalyticsQueryParams,
+	from: number,
+	to: number,
+): Promise<number> {
+	// Visitors = distinct observed installations active in range (device-level
+	// honesty for mobile; person-level attribution lives on Events/People).
+	const where = screenWhere(params, from, to);
+	const result = await client.execute({
+		sql: `SELECT COUNT(DISTINCT w.installation_digest) AS visitors
+			FROM mobile_screen_views w
+			WHERE ${where.clauses.join(" AND ")} AND w.installation_digest IS NOT NULL`,
+		args: where.args,
+	});
+	return Number(result.rows[0]?.visitors ?? 0);
 }
 
 export async function loadMobileAnalytics(
@@ -124,11 +151,7 @@ export async function loadMobileAnalytics(
 	const client: MobileAnalyticsExecuteClient =
 		TursoDatabaseManager.getInstance(ctx);
 
-	const where = buildWhere(params);
-	const baseJoin = `FROM mobile_screen_views w
-		JOIN events e ON e.project_id = w.project_id AND e.id = w.event_id`;
-
-	// Sequential fixed query set (never Promise.all through one libsql client).
+	// Sequential fixed query set (never concurrent through one libsql client).
 	const totals = await totalsFor(client, params, params.from, params.to);
 	const previousTotals = await totalsFor(
 		client,
@@ -136,18 +159,47 @@ export async function loadMobileAnalytics(
 		params.from - span,
 		params.from,
 	);
+	totals.visitors = await visitorsFor(client, params, params.from, params.to);
 
 	const ms = bucketMsFor(params.from, params.to);
-	const trend = await client.execute({
-		sql: `SELECT (w.occurred_at / ?) * ? AS bucket_start,
-				COUNT(*) AS screens,
-				COUNT(DISTINCT e.person_id) AS visitors,
-				COUNT(DISTINCT e.session_id) AS sessions
-			${baseJoin}
-			WHERE ${where.clauses.join(" AND ")}
+
+	// Trend from session starts, zero-filled across the whole bucket range so
+	// gaps render honestly as zeros rather than missing points.
+	const trendRows = await client.execute({
+		sql: `SELECT (s.started_at / ?) * ? AS bucket_start,
+				COUNT(*) AS opens,
+				COUNT(DISTINCT s.installation_digest) AS visitors
+			FROM mobile_app_sessions s
+			WHERE ${sessionWhere(params, params.from, params.to).clauses.join(" AND ")}
 			GROUP BY bucket_start ORDER BY bucket_start ASC`,
-		args: [ms, ms, ...where.args],
+		args: [ms, ms, ...sessionWhere(params, params.from, params.to).args],
 	});
+	const opensByBucket = new Map<number, { opens: number; visitors: number }>();
+	for (const r of trendRows.rows) {
+		opensByBucket.set(Number(r.bucket_start), {
+			opens: Number(r.opens ?? 0),
+			visitors: Number(r.visitors ?? 0),
+		});
+	}
+	const firstBucket = Math.floor(params.from / ms) * ms;
+	const trend: MobileAnalyticsRawAggregates["trend"] = [];
+	for (
+		let bucket = firstBucket;
+		bucket < params.to && trend.length <= MOBILE_LIMITS.rankingRowLimit * 4;
+		bucket += ms
+	) {
+		const hit = opensByBucket.get(bucket);
+		trend.push({
+			bucket_start: bucket,
+			app_opens: hit?.opens ?? 0,
+			visitors: hit?.visitors ?? 0,
+			sessions: hit?.opens ?? 0,
+		});
+	}
+
+	const sw = screenWhere(params, params.from, params.to);
+	const baseJoin = `FROM mobile_screen_views w
+		JOIN events e ON e.project_id = w.project_id AND e.id = w.event_id`;
 
 	const screens = await client.execute({
 		sql: `SELECT w.screen_name AS screen_name,
@@ -156,9 +208,9 @@ export async function loadMobileAnalytics(
 				COUNT(DISTINCT e.person_id) AS visitors,
 				COUNT(DISTINCT e.session_id) AS sessions
 			${baseJoin}
-			WHERE ${where.clauses.join(" AND ")}
+			WHERE ${sw.clauses.join(" AND ")}
 			GROUP BY w.screen_name ORDER BY screen_views DESC LIMIT ?`,
-		args: [...where.args, MOBILE_LIMITS.rankingRowLimit],
+		args: [...sw.args, MOBILE_LIMITS.rankingRowLimit],
 	});
 
 	const releases = await client.execute({
@@ -168,9 +220,9 @@ export async function loadMobileAnalytics(
 				COUNT(DISTINCT e.person_id) AS visitors,
 				COUNT(DISTINCT e.session_id) AS sessions
 			${baseJoin}
-			WHERE ${where.clauses.join(" AND ")}
+			WHERE ${sw.clauses.join(" AND ")}
 			GROUP BY w.app_version ORDER BY screen_views DESC LIMIT ?`,
-		args: [...where.args, MOBILE_LIMITS.rankingRowLimit],
+		args: [...sw.args, MOBILE_LIMITS.rankingRowLimit],
 	});
 
 	const installations = await client.execute({
@@ -182,11 +234,11 @@ export async function loadMobileAnalytics(
 					MAX(w.occurred_at) AS last_seen,
 					COUNT(*) AS screen_views
 				FROM mobile_screen_views w
-				WHERE ${where.clauses.join(" AND ")} AND w.installation_digest IS NOT NULL
+				WHERE ${sw.clauses.join(" AND ")} AND w.installation_digest IS NOT NULL
 				GROUP BY w.installation_digest
 			)
 			GROUP BY installation_digest ORDER BY screen_views DESC LIMIT ?`,
-		args: [...where.args, MOBILE_LIMITS.rankingRowLimit],
+		args: [...sw.args, MOBILE_LIMITS.rankingRowLimit],
 	});
 
 	const devices = await client.execute({
@@ -195,26 +247,24 @@ export async function loadMobileAnalytics(
 				COUNT(DISTINCT e.person_id) AS visitors,
 				COUNT(DISTINCT e.session_id) AS sessions
 			${baseJoin}
-			WHERE ${where.clauses.join(" AND ")}
+			WHERE ${sw.clauses.join(" AND ")}
 			GROUP BY w.os ORDER BY screen_views DESC LIMIT ?`,
-		args: [...where.args, MOBILE_LIMITS.rankingRowLimit],
+		args: [...sw.args, MOBILE_LIMITS.rankingRowLimit],
 	});
-
-	const operatingSystems = devices; // same source dimension for now
 
 	const sizeClasses = await client.execute({
 		sql: `SELECT CASE
-					WHEN MAX(COALESCE(json_extract(e.context, '$.windowWidth'), 0)) >= 1024 THEN 'large'
-					WHEN MAX(COALESCE(json_extract(e.context, '$.windowWidth'), 0)) >= 600 THEN 'regular'
-					WHEN MAX(COALESCE(json_extract(e.context, '$.windowWidth'), 0)) > 0 THEN 'compact'
+					WHEN MAX(COALESCE(json_extract(e.context, '$.screenSize.width'), 0)) >= 1024 THEN 'large'
+					WHEN MAX(COALESCE(json_extract(e.context, '$.screenSize.width'), 0)) >= 600 THEN 'regular'
+					WHEN MAX(COALESCE(json_extract(e.context, '$.screenSize.width'), 0)) > 0 THEN 'compact'
 					ELSE NULL END AS key,
 				COUNT(*) AS screen_views,
 				COUNT(DISTINCT e.person_id) AS visitors,
 				COUNT(DISTINCT e.session_id) AS sessions
 			${baseJoin}
-			WHERE ${where.clauses.join(" AND ")}
+			WHERE ${sw.clauses.join(" AND ")}
 			GROUP BY key ORDER BY screen_views DESC LIMIT ?`,
-		args: [...where.args, MOBILE_LIMITS.rankingRowLimit],
+		args: [...sw.args, MOBILE_LIMITS.rankingRowLimit],
 	});
 
 	const countries = await client.execute({
@@ -222,9 +272,9 @@ export async function loadMobileAnalytics(
 				COUNT(DISTINCT e.person_id) AS visitors,
 				COUNT(DISTINCT e.session_id) AS sessions
 			${baseJoin}
-			WHERE ${where.clauses.join(" AND ")} AND w.country_code IS NOT NULL
+			WHERE ${sw.clauses.join(" AND ")} AND w.country_code IS NOT NULL
 			GROUP BY w.country_code ORDER BY sessions DESC LIMIT ?`,
-		args: [...where.args, MOBILE_LIMITS.rankingRowLimit],
+		args: [...sw.args, MOBILE_LIMITS.rankingRowLimit],
 	});
 
 	const regions = await client.execute({
@@ -232,36 +282,34 @@ export async function loadMobileAnalytics(
 				COUNT(DISTINCT e.person_id) AS visitors,
 				COUNT(DISTINCT e.session_id) AS sessions
 			${baseJoin}
-			WHERE ${where.clauses.join(" AND ")} AND w.country_code IS NOT NULL AND w.region IS NOT NULL
+			WHERE ${sw.clauses.join(" AND ")} AND w.country_code IS NOT NULL AND w.region IS NOT NULL
 			GROUP BY w.country_code, w.region ORDER BY sessions DESC LIMIT ?`,
-		args: [...where.args, MOBILE_LIMITS.rankingRowLimit],
+		args: [...sw.args, MOBILE_LIMITS.rankingRowLimit],
 	});
 
-	// Frozen suppression: cities under the session threshold collapse to Other.
 	const minSessions = MOBILE_LIMITS.citySuppressionMinSessions;
 	const cities = await client.execute({
 		sql: `SELECT w.country_code AS country_code, w.region AS region, w.city AS city,
 				COUNT(DISTINCT e.person_id) AS visitors,
 				COUNT(DISTINCT e.session_id) AS sessions
 			${baseJoin}
-			WHERE ${where.clauses.join(" AND ")} AND w.city IS NOT NULL
+			WHERE ${sw.clauses.join(" AND ")} AND w.city IS NOT NULL
 			GROUP BY w.country_code, w.region, w.city
 			HAVING COUNT(DISTINCT e.session_id) >= ?
 			ORDER BY sessions DESC LIMIT ?`,
-		args: [...where.args, minSessions, MOBILE_LIMITS.rankingRowLimit],
+		args: [...sw.args, minSessions, MOBILE_LIMITS.rankingRowLimit],
 	});
 
 	return assembleMobileAnalytics(params, {
 		totals,
 		previousTotals,
 		bucket:
-			ms === 60 * 60 * 1000 ? "hourly" : ms === 24 * 60 * 60 * 1000 ? "daily" : "weekly",
-		trend: trend.rows.map((r) => ({
-			bucket_start: Number(r.bucket_start),
-			app_opens: 0,
-			visitors: Number(r.visitors ?? 0),
-			sessions: Number(r.sessions ?? 0),
-		})),
+			ms === 60 * 60 * 1000
+				? "hourly"
+				: ms === 24 * 60 * 60 * 1000
+					? "daily"
+					: "weekly",
+		trend,
 		screens: screens.rows.map((r) => ({
 			screen_name: String(r.screen_name ?? ""),
 			route_pattern: r.route_pattern ? String(r.route_pattern) : null,
@@ -287,7 +335,7 @@ export async function loadMobileAnalytics(
 			visitors: Number(r.visitors ?? 0),
 			sessions: Number(r.sessions ?? 0),
 		})),
-		operatingSystems: operatingSystems.rows.map((r) => ({
+		operatingSystems: devices.rows.map((r) => ({
 			key: r.key ? String(r.key) : null,
 			screen_views: Number(r.screen_views ?? 0),
 			visitors: Number(r.visitors ?? 0),

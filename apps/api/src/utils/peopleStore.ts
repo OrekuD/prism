@@ -645,6 +645,18 @@ export async function deletePerson(
       // no orphan rows may survive person deletion (privacy contract).
       { sql: "DELETE FROM web_page_views WHERE project_id = ? AND event_id IN (SELECT id FROM events WHERE project_id = ? AND person_id = ?)", args: [projectId, projectId, personId] },
       { sql: "DELETE FROM events WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
+      // Task 18 (R3-F7): person deletion immediately reconciles mobile
+      // aggregates - screens cascade with their events; sessions and
+      // installations with NO surviving telemetry are removed right here.
+      { sql: `DELETE FROM mobile_app_sessions WHERE project_id = ? AND NOT EXISTS (
+        SELECT 1 FROM events e
+        WHERE e.project_id = mobile_app_sessions.project_id
+        AND e.session_id = mobile_app_sessions.session_id
+      )`, args: [projectId] },
+      { sql: `DELETE FROM mobile_installations WHERE project_id = ? AND installation_digest NOT IN (
+        SELECT DISTINCT installation_digest FROM mobile_app_sessions
+        WHERE project_id = ? AND installation_digest IS NOT NULL
+      )`, args: [projectId, projectId] },
       { sql: "DELETE FROM people WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
       { sql: "INSERT INTO deleted_people (project_id, person_id, deleted_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING", args: [projectId, personId, Date.now()] },
       ...errorPurgeStatements,

@@ -128,7 +128,9 @@ export interface IngestResult {
 		| "mobile-record-requires-react-native-source"
 		| "mobile-record-requires-session"
 		| "invalid-mobile-screen"
-		| "invalid-mobile-lifecycle";
+		| "invalid-mobile-lifecycle"
+		| "mobile-digest-unconfigured"
+		| "mobile-installation-required";
 }
 
 /** Success body for POST /api/v2/ingest (200). */

@@ -1643,3 +1643,213 @@ implemented yet (manual controller only); docs page is a stub; packed bare/
 Expo consumer proofs and hosted iOS/Android device proofs remain open -
 slices 4 (adapters), 5, 9, 10 checkboxes stay unchecked until reproducible
 evidence exists.
+
+### 2026-08-25 - focused review round 3 of commit `079803c`
+
+**Decision:** Do not merge. The executable commands in `GATES.md` return zero,
+but they still do not execute the new mobile ingestion or read paths. The
+round-2 implementation has blocking storage, rejection, privacy, lifecycle,
+and metric-correctness defects that typechecking and the existing broad suites
+cannot detect.
+
+#### Critical findings
+
+- [ ] **R3-F1: Every accepted mobile screen projection violates migration 013
+      and rolls the ingestion transaction back.**
+
+  Evidence: `013_mobile_screen_views.sql` declares `source_id TEXT NOT NULL`,
+  but `INSERT_MOBILE_SCREEN_VIEW_SQL` in `IngestRepository.ts` neither names
+  nor supplies `source_id`. A valid `$prism_screen_view` therefore reaches the
+  projection insert, fails the NOT NULL constraint, rolls back the event, and
+  is returned by the controller as a storage-unavailable `503`. G3 passes
+  because no controller/real-store test sends a valid mobile screen through a
+  migrated database.
+
+  Approach: carry the trusted key-derived `sourceId` into the projection row
+  and insert it explicitly. Add a real-store controller test that applies all
+  migrations, ingests one valid React Native screen, and asserts the event and
+  projection commit with the authenticated source. In the same test family,
+  prove duplicate IDs do not increment projections and a projection failure
+  rolls the entire event transaction back.
+
+- [ ] **R3-F2: Rejected reserved records are persisted and reported as
+      accepted, and mixed batches lose valid projections.**
+
+  Evidence: the controller marks an invalid or wrong-platform reserved record
+  rejected, then only renames it to `__rejected_mobile__` or
+  `__rejected_page_view__`. The entry remains in `validEvents`, is passed to
+  `persistBatch()`, and the post-persistence merge overwrites the earlier
+  rejected result with `accepted`/`duplicate`. The sentinel event is therefore
+  stored despite the `never persisted` comment. Separately, projection rows
+  retain the submitted batch index, while `persistBatch()` indexes the compact
+  `validEvents.map(...)` array. If a structurally invalid event appears before
+  a valid screen, the screen event commits without its projection or
+  `session_sequence` update.
+
+  Approach: partition rejected reserved entries out of the persistence input;
+  do not encode rejection by mutating the event name. Carry both a persistence
+  index and submitted index, or pass event/projection records keyed by event ID
+  so compaction cannot change attribution. Add mixed-batch tests with generic
+  invalid, wrong-source reserved, malformed reserved, valid screen, and valid
+  custom events. Assert submitted-order responses and exact stored rows, with
+  zero rows for every rejection.
+
+- [ ] **R3-F3: The installation/release/OS pipeline is still disconnected and
+      the digest is not project/source scoped.**
+
+  Evidence: Core's `ensureInstallation()` is never called, uses the global
+  `prism:installationId` key, and is not cleared on withdrawal. React Native
+  ignores `opts.app` and Dimensions; it casts `os` into runtime context, but
+  Core's `allowlistContext()` drops that field. The screen validator's
+  normalized value drops `$app` and `$installation`, and the ingestion
+  controller overwrites the original properties before attempting to read
+  those blocks. The projection also hardcodes `os: null`. Even a direct valid
+  client therefore cannot populate releases, operating systems, size classes,
+  or observed installations. If a raw installation ID is eventually passed,
+  `digestInstallation()` hashes only `salt + id`; its `projectId`/`sourceId`
+  inputs are unused, so the same installation is correlatable across projects
+  and sources.
+
+  Approach: finish R1-F7/R1-F8 end to end before calling the mobile read model
+  populated. Create the installation only after granted consent and persistent
+  storage, scope its local key by normalized endpoint plus source key, clear it
+  on withdrawal, and attach it only through the reserved internal lane.
+  Validate and preserve bounded app/mobile context long enough for the server
+  to derive projections, then strip the raw installation value before generic
+  event persistence. Use a keyed digest over an unambiguous
+  `projectId + sourceId + installationId` message and require the server secret
+  instead of silently returning `null`. Add cross-project/source digest,
+  withdrawal, release, OS, and raw-value non-persistence tests.
+
+- [ ] **R3-F4: Consent transitions are not connected to the React Native
+      lifecycle owner.**
+
+  Evidence: the factory installs the lifecycle owner immediately. With the
+  documented `initialState: "pending"`, its first `startSession()` and active
+  event are dropped. A later `client.setCollectionState("granted")` does not
+  notify the owner, so an app that remains foregrounded has no session; a
+  subsequent screen can be queued without `sessionId` and is rejected by the
+  server. In the opposite direction, withdrawal clears Core's active session
+  but leaves the owner's local session handle intact. A later foreground calls
+  `resumeMobileSession()` without checking collection state and can reattach
+  the pre-withdrawal session.
+
+  Approach: give the adapter one explicit consent-transition hook/state owner.
+  Grant while active must create a fresh session and active observation without
+  requiring an AppState round trip. Pending/denied must retain no mobile
+  session or sequence state, and denial must invalidate the adapter's local
+  handle before any later foreground. Test pending -> grant while active,
+  granted -> denied -> background/foreground, re-grant, and dispose; assert the
+  actual wire `sessionId` and that no pre-withdrawal state returns.
+
+#### Important findings
+
+- [ ] **R3-F5: The Mobile analytics loader returns materially incorrect app
+      metrics and ignores filters for duration.**
+
+  Evidence: the `app_opens` SQL counts every `$prism_app_lifecycle` record but
+  never filters `$lifecycle.transition`, so active and background records both
+  count as opens. The duration query applies only project and time predicates,
+  ignoring selected source, OS, and release. Trend rows hardcode
+  `app_opens: 0`, and the loader derives sessions/installations only from screen
+  rows even though lifecycle-only sessions are valid. This makes totals,
+  comparisons, filters, and trend disagree for the same range.
+
+  Approach: build/reconcile the frozen `mobile_app_sessions` and
+  `mobile_installations` projections first, then compute opens, warm/cold
+  starts, finalized active duration, and installation counts from those
+  bounded records. Apply one effective filter contract to every total,
+  comparison, trend, and ranking query. Add populated migrated-store tests for
+  active/background pairs, lifecycle-only sessions, source/OS/release filters,
+  previous periods, and zero-filled buckets.
+
+- [ ] **R3-F6: The new gates still certify behavior they do not test.**
+
+  Evidence: G3 runs the Analytics API's existing suite, which has no mobile
+  controller/real-store ingestion case and therefore misses R3-F1/R3-F2. G4
+  has no `getMobileAnalytics` or `loadMobileAnalytics` test and misses R3-F5.
+  The React Native test named `starts a real Core session before screen events
+  carry its sessionId` asserts only that one screen exists; its helper discards
+  `sessionId`, so the claimed wire assertion is absent. G6 says the test reset
+  is not public, but `__resetOwnerForTests` is still exported from the package
+  root and generated production declarations.
+
+  Approach: keep the success-preserving shell commands, but point G2-G4 at
+  focused behavioral suites with a real Core client and migrated libSQL store.
+  Assert full relevant wire fields, not test names or event counts. Move reset
+  helpers behind a non-exported test module or injected test seam, and add an
+  export/declaration contract test. A gate is complete only when the behavior
+  in its label would fail if its implementation were removed.
+
+- [ ] **R3-F7: R2-F5 still covers scheduled retention only, not the required
+      immediate privacy/deletion paths.**
+
+  Evidence: the restored screen-view FK correctly cascades when linked events
+  are deleted, and `retention.ts` later garbage-collects mobile sessions and
+  installations. However, project deletion, source deletion, and person
+  deletion do not explicitly recompute or purge `mobile_app_sessions` and
+  `mobile_installations`. Scheduled retention is not an acceptable delay for a
+  privacy deletion, and the original R2-F5 approach explicitly required these
+  paths.
+
+  Approach: define one analytics-store purge/reconciliation boundary used by
+  project, source, and person deletion. Delete screen/event rows in dependency
+  order, then recompute or remove affected session/installation aggregates in
+  the same privacy operation. Add real-store deletion tests that query every
+  mobile table immediately after each deletion; do not rely on a later
+  retention run.
+
+#### Focused verification notes
+
+- The nine ledger commands now preserve failures and the reported broad suites
+  are green. This is an improvement over round 2's shell-level false positives.
+- Migration 013's composite event foreign key and reset drop order are now
+  structurally correct.
+- The project-membership boundary in `getMobileAnalytics()` now derives the
+  organization from the project and does not trust a workspace header.
+- These improvements do not exercise or override the blocking findings above.
+
+### 2026-08-25 - round-3 fixes (all seven findings; gates re-run ALL MET 9/9)
+
+- R3-F1: INSERT_MOBILE_SCREEN_VIEW_SQL now names and inserts source_id
+  (trusted key-derived); real-store controller test proves event + projection
+  commit with the authenticated source on a fully migrated libSQL store.
+- R3-F2: rejected reserved entries are partitioned OUT of the persistence
+  input (reservedRejectedEvents set) - sentinel renaming removed for both
+  page-view and mobile passes; projection indexes remapped through the
+  compacted persistence array so compaction cannot orphan a valid screen.
+  Mixed-batch test asserts submitted-order statuses, zero stored rows for
+  every rejection, and an intact post-rejection screen projection.
+- R3-F3: installation id is created only after granted consent with durable
+  storage, scoped per endpoint+source key (installationKeyFor), cleared on
+  denial AND reset; exposed via seam getInstallationId and attached by the RN
+  factory to screen records as $installation. digestInstallation is now a
+  keyed hash over projectId:sourceId:installationId (server secret REQUIRED -
+  ingestion fails closed without it). allowlistContext picks bounded
+  os/osVersion for mobile contexts; server derives os/osVersion/app fields
+  from original properties/context BEFORE normalization and strips the raw
+  $installation before persistence (asserted non-persistence in tests).
+  RN adapter reads Platform.OS + Dimensions and attaches bounded $app.
+- R3-F4: core seam gains onCollectionStateChange; setCollectionState notifies
+  listeners after each transition. The RN lifecycle owner reconciles
+  immediately: grant-while-foregrounded creates a fresh session + active
+  observation without an AppState round trip; denied/pending clear the local
+  handle so no pre-withdrawal session can resume; tests cover pending->grant,
+  granted->denied->bg/fg->re-grant with distinct wire sessionIds.
+- R3-F5: loader rebuilt around the bounded aggregates - opens/sessions/
+  duration/installations come from mobile_app_sessions/mobile_installations;
+  ONE filter builder feeds every query; trend is zero-filled per bucket;
+  ingestion upserts both aggregates transactionally (screen_count,
+  foreground_active_ms finalized on background).
+- R3-F6: gates point at focused behavioral suites (mobileIngest.test.ts real
+  store; RN wire-envelope suite + surface contract test asserting no ForTests
+  helpers in dts and no Math.random in dist); resetScreenSequenceForTests
+  removed (instance-owned sequence); __resetOwnerForTests removed entirely.
+- R3-F7: immediate privacy boundary (mobilePurge.ts): project deletion purges
+  all three mobile tables; source deletion purges its telemetry then removes
+  unreferenced installations; person deletion reconciles sessions/install-
+  ations in the SAME batch that deletes their events.
+
+Verification: GATES.md lint OK, gate-check --reverify exit 0, ALL MET 9/9.
+Known remaining gaps: navigation adapters, error-lane docs page, packed bare/
+Expo proofs, hosted iOS/Android device proofs (slices 4-5, 9-10 checkboxes).

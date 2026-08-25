@@ -219,6 +219,10 @@ export class IngestController {
 			}
 		})();
 		const pageProjectionIndexes = new Set<number>();
+		// R3-F2: rejected reserved entries are PARTITIONED OUT of the
+		// persistence input - the sentinel-rename hack let them persist and be
+		// reported accepted after the post-tx merge overwrote the rejection.
+		const reservedRejectedEvents = new Set<ValidatedEvent>();
 		for (const entry of validEvents) {
 			if (entry.event.name !== PAGE_VIEW_EVENT_NAME) continue;
 			const index = entry.index;
@@ -229,7 +233,7 @@ export class IngestController {
 					status: "rejected",
 					reason: "page-view-requires-web-source",
 				};
-				entry.event.name = "__rejected_page_view__"; // never persisted
+				reservedRejectedEvents.add(entry.event);
 				incrementPageViewCounter("page_view_rejected_non_web");
 				continue;
 			}
@@ -241,7 +245,7 @@ export class IngestController {
 					status: "rejected",
 					reason: "invalid-page-view",
 				};
-				entry.event.name = "__rejected_page_view__";
+				reservedRejectedEvents.add(entry.event);
 				incrementPageViewCounter("page_view_rejected_invalid");
 				continue;
 			}
@@ -254,7 +258,7 @@ export class IngestController {
 					status: "rejected",
 					reason: "page-view-host-mismatch",
 				};
-				entry.event.name = "__rejected_page_view__";
+				reservedRejectedEvents.add(entry.event);
 				incrementPageViewCounter("page_view_rejected_host_mismatch");
 				continue;
 			}
@@ -268,26 +272,41 @@ export class IngestController {
 		// installation IDs digested with a SERVER secret before persistence,
 		// and projected only inside the event transaction. A direct HTTP client
 		// can never store a malformed or misattributed mobile record.
+		// Task 13: the key-derived source identity - never client-supplied.
+		const trustedSourceId = ctx.get("sourceId") ?? "";
+		const MOBILE_ID_MAX = 64;
 		const mobilePlatform = platform === "react-native";
+		// R3-F3: the digest secret is REQUIRED - a missing server secret is a
+		// deployment fault, so reserved mobile ingestion fails closed rather
+		// than silently dropping installation attribution.
 		const installationSalt = process.env.ANALYTICS_INSTALLATION_SALT ?? "";
-		const mobileScreenProjections: Array<{
-			index: number;
-			row: {
-				occurredAt: number;
-				sessionId: string;
-				sessionSequence: number;
-				screenName: string;
-				routePattern: string | null;
-				navigation: string;
-				previousScreen: string | null;
-				appVersion: string | null;
-				appBuild: string | null;
-				appEnvironment: string | null;
-				os: string | null;
-				osVersion: string | null;
-				installationDigest: string | null;
-			};
-		}> = [];
+		interface MobileScreenRow {
+			eventId: string;
+			sourceId: string;
+			occurredAt: number;
+			sessionId: string;
+			sessionSequence: number;
+			screenName: string;
+			routePattern: string | null;
+			navigation: string;
+			previousScreen: string | null;
+			appVersion: string | null;
+			appBuild: string | null;
+			appEnvironment: string | null;
+			os: string | null;
+			osVersion: string | null;
+			installationDigest: string | null;
+		}
+		interface MobileLifecycleRow {
+			eventId: string;
+			sourceId: string;
+			occurredAt: number;
+			sessionId: string;
+			sequence: number;
+			durationMs: number | null;
+		}
+		const mobileScreenProjections: Array<{ index: number; row: MobileScreenRow }> = [];
+		const mobileLifecycleProjections: Array<{ index: number; row: MobileLifecycleRow }> = [];
 		for (const entry of validEvents) {
 			const isScreen = entry.event.name === SCREEN_VIEW_EVENT_NAME;
 			const isLifecycle = entry.event.name === APP_LIFECYCLE_EVENT_NAME;
@@ -300,7 +319,7 @@ export class IngestController {
 					status: "rejected",
 					reason,
 				};
-				entry.event.name = "__rejected_mobile__"; // never persisted
+				reservedRejectedEvents.add(entry.event);
 			};
 			if (!mobilePlatform) {
 				reject("mobile-record-requires-react-native-source");
@@ -310,28 +329,49 @@ export class IngestController {
 				reject("mobile-record-requires-session");
 				continue;
 			}
+			if (!installationSalt) {
+				reject("mobile-digest-unconfigured");
+				continue;
+			}
+			// Read bounded extras from the ORIGINAL properties BEFORE the
+			// normalized value replaces them (the normalized result drops
+				// $app/$installation so raw values never persist).
+			let persistProps: Record<string, unknown>;
+			const originalProps = (entry.event.properties ?? {}) as {
+				$app?: Record<string, unknown>;
+				$installation?: unknown;
+			};
 			if (isScreen) {
 				const validation = validateScreenViewProperties(entry.event.properties);
 				if (!validation.ok) {
 					reject("invalid-mobile-screen");
 					continue;
 				}
-				// Queue ONLY the normalized value - unknown fields never persist.
+				persistProps = {
+					...(validation.value as unknown as Record<string, unknown>),
+				};
+				delete persistProps.$installation; // RAW value never persists
 				entry.event.properties =
-					validation.value as unknown as typeof entry.event.properties;
+					persistProps as unknown as typeof entry.event.properties;
 				const screen = validation.value.$screen;
-				const extras = (
-					entry.event.properties as {
-						$app?: Record<string, unknown>;
-						$installation?: unknown;
-					}
-				) ?? {};
 				const bound = (v: unknown, max: number): string | null =>
 					typeof v === "string" && v.length > 0 && v.length <= max ? v : null;
-				const rawInstallation = extras.$installation;
+				const rawInstallation = originalProps.$installation;
+				if (
+					typeof rawInstallation !== "string" ||
+					rawInstallation.length === 0 ||
+					rawInstallation.length > MOBILE_ID_MAX
+				) {
+					reject("mobile-installation-required");
+					continue;
+				}
+				// Keyed, project/source-scoped digest over an unambiguous message.
+				const ctxOs = ((entry.event.context as Record<string, unknown> | undefined)?.os);
 				mobileScreenProjections.push({
 					index,
 					row: {
+						eventId: entry.event.eventId,
+						sourceId: trustedSourceId,
 						occurredAt: entry.event.occurredAt,
 						sessionId: entry.event.sessionId ?? "",
 						sessionSequence: screen.sequence,
@@ -339,29 +379,42 @@ export class IngestController {
 						routePattern: screen.routePattern ?? null,
 						navigation: String(screen.navigation),
 						previousScreen: screen.previousScreen ?? null,
-						appVersion: bound(extras.$app?.version, 32),
-						appBuild: bound(extras.$app?.build, 16),
-						appEnvironment: bound(extras.$app?.environment, 16),
-						os: null, // server derives OS from the source platform claim
-						osVersion: null,
-						installationDigest:
-							typeof rawInstallation === "string" &&
-							rawInstallation.length > 0 &&
-							installationSalt.length > 0
-								? digestInstallation(rawInstallation, installationSalt)
+						appVersion: bound(originalProps.$app?.version, 32),
+						appBuild: bound(originalProps.$app?.build, 16),
+						appEnvironment: bound(originalProps.$app?.environment, 16),
+						os:
+							typeof ctxOs === "string" && ["ios", "android"].includes(ctxOs)
+								? ctxOs
 								: null,
+						osVersion: bound((entry.event.context as Record<string, unknown> | undefined)?.osVersion, 16),
+						installationDigest: digestInstallation(
+							projectId,
+							trustedSourceId,
+							rawInstallation,
+							installationSalt,
+						),
 					},
 				});
 			} else {
-				const validation = validateAppLifecycleProperties(
-					entry.event.properties,
-				);
+				const validation = validateAppLifecycleProperties(entry.event.properties);
 				if (!validation.ok) {
 					reject("invalid-mobile-lifecycle");
 					continue;
 				}
 				entry.event.properties =
 					validation.value as unknown as typeof entry.event.properties;
+				mobileLifecycleProjections.push({
+					index,
+					row: {
+						eventId: entry.event.eventId,
+						sourceId: trustedSourceId,
+						occurredAt: entry.event.occurredAt,
+						sessionId: entry.event.sessionId ?? "",
+						sequence: validation.value.$lifecycle.sequence,
+						durationMs:
+							validation.value.$lifecycle.durationMs ?? null,
+					},
+				});
 			}
 		}
 
@@ -618,6 +671,10 @@ export class IngestController {
 			// replacing a durable mapping (R5-F1/R5-F2).
 		}
 
+		// R3-F2: reserved-rejected entries are excluded from persistence.
+		let persistableEntries: typeof validEvents = validEvents.filter(
+			(entry) => !reservedRejectedEvents.has(entry.event),
+		);
 		let persistedEvents: Array<{ eventId: string; duplicate: boolean }> = [];
 		let identityResults: Array<{
 			index: number;
@@ -627,9 +684,23 @@ export class IngestController {
 		}> = [];
 		if (validEvents.length > 0 || validOps.length > 0) {
 			try {
+				// R3-F2: rejected reserved entries never enter the transaction.
+				persistableEntries = validEvents.filter(
+					(entry) => !reservedRejectedEvents.has(entry.event),
+				);
+				const persistenceIndex = new Map<number, number>();
+				persistableEntries.forEach((entry, i) => persistenceIndex.set(entry.index, i));
+				const remap = <T extends { index: number }>(rows: T[]) =>
+					rows.flatMap((row) => {
+						const mapped = persistenceIndex.get(row.index);
+						return mapped === undefined ? [] : [{ ...row, index: mapped }];
+					});
+				const persistedPageProjections = remap(pageProjections);
+				const persistedMobileScreens = remap(mobileScreenProjections);
+				const persistedMobileLifecycles = remap(mobileLifecycleProjections);
 				const persisted = await new IngestRepository().persistBatch(
 					projectId,
-					validEvents.map((entry) => entry.event),
+					persistableEntries.map((entry) => entry.event),
 					now,
 					parsed.batch.sdk,
 					validOps.filter(
@@ -650,8 +721,9 @@ export class IngestController {
 						sourceId: ctx.get("sourceId") ?? "",
 						platform: ctx.get("platform") ?? "",
 					},
-					pageProjections,
-					mobileScreenProjections,
+					persistedPageProjections,
+					persistedMobileScreens,
+					persistedMobileLifecycles,
 				);
 				persistedEvents = persisted.results;
 				identityResults = persisted.identity;
@@ -683,7 +755,7 @@ export class IngestController {
 				);
 			}
 			for (const [position, outcome] of persistedEvents.entries()) {
-				const entry = validEvents[position];
+				const entry = persistableEntries[position];
 				if (!entry) continue;
 				results[entry.index] = {
 					index: entry.index,

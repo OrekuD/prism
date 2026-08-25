@@ -31,6 +31,10 @@ import {
 import { PAGE_VIEW_LIMITS } from "@prism-analytics/core";
 import { loadWebAnalytics } from "../utils/webAnalyticsLoader";
 import { loadMobileAnalytics } from "../utils/mobileAnalyticsLoader";
+import {
+	executeMobilePurge,
+	purgeMobileProjectStatements,
+} from "../utils/mobilePurge";
 
 export class ProjectsController {
   /**
@@ -182,6 +186,12 @@ export class ProjectsController {
       sql: "DELETE FROM web_page_views WHERE project_id = ?",
       args: [projectId],
     });
+    // Task 18 (R3-F7): mobile telemetry dies with the project in the SAME
+    // privacy operation - never deferred to a later retention run.
+    await executeMobilePurge(
+      TursoDatabaseManager.getInstance(ctx),
+      purgeMobileProjectStatements(projectId),
+    );
     await DatabaseManager.getInstance(
       ctx,
     )`DELETE FROM projects WHERE id = ${projectId}`;

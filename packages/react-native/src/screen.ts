@@ -5,9 +5,9 @@ import { SCREEN_VIEW_EVENT_NAME } from "@prism-analytics/core";
 /**
  * Router-neutral manual screen controller (Task 18 slice 4).
  * Reserved records ALWAYS go through Core's internal seam - the public
- * track() rejects every $prism_ name, so there is no bypass. Sequence is
- * owned by the app-session lifecycle owner; this controller only stamps
- * navigation intent.
+ * track() rejects every $prism_ name, so there is no bypass. The sequence
+ * counter is instance-owned (per controller), so no module-level test reset
+ * exists to leak into production declarations.
  */
 export interface ScreenController {
 	track(
@@ -20,33 +20,41 @@ export interface ScreenController {
 	): { status: string; eventId?: string };
 }
 
-export function createScreenController(client: PrismClient): ScreenController {
+/**
+ * `extrasProvider` supplies the bounded reserved-lane blocks ($app,
+ * $installation) resolved by the factory - they are allowlisted top-level
+ * fields of the frozen wire schema and are validated server-side.
+ */
+export function createScreenController(
+	client: PrismClient,
+	extrasProvider?: () => Record<string, unknown>,
+): ScreenController {
 	const seam = (client as unknown as Record<symbol, unknown>)[INTERNAL_SEAM] as
 		| InternalClientSeam
 		| undefined;
 	if (!seam) throw new Error("prism: internal seam unavailable");
+	let seq = 0;
 	return {
 		track(name, opts) {
-			// Sequence comes from the session owner via the seam-attached state;
-			// screens use a monotonic counter derived from lifecycle sequence.
+			seq += 1;
 			const screen: Record<string, unknown> = {
 				name,
 				navigation: opts?.navigation ?? "manual",
-				sequence: screenSequence(),
+				sequence: seq,
 			};
-			if (opts?.routePattern !== undefined) screen.routePattern = opts.routePattern;
-			if (opts?.previousScreen !== undefined) screen.previousScreen = opts.previousScreen;
-			return seam.createReservedEvent(SCREEN_VIEW_EVENT_NAME, { $screen: screen });
+			if (opts?.routePattern !== undefined) {
+				screen.routePattern = opts.routePattern;
+			}
+			if (opts?.previousScreen !== undefined) {
+				screen.previousScreen = opts.previousScreen;
+			}
+			const payload: Record<string, unknown> = { $screen: screen };
+			if (extrasProvider) {
+				for (const [key, value] of Object.entries(extrasProvider())) {
+					payload[key] = value;
+				}
+			}
+			return seam.createReservedEvent(SCREEN_VIEW_EVENT_NAME, payload);
 		},
 	};
-}
-
-let screenCounter = 0;
-function screenSequence(): number {
-	screenCounter += 1;
-	return screenCounter;
-}
-/** Test-only reset of the module-local screen counter. */
-export function resetScreenSequenceForTests(): void {
-	screenCounter = 0;
 }

@@ -126,16 +126,42 @@ export function validateScreenViewProperties(
         : {}),
     },
   };
+  let normalized: Record<string, unknown> = { ...value };
   if (record.$screen_properties !== undefined) {
-    return {
-      ok: true,
-      value: {
-        ...value,
-        $screen_properties: record.$screen_properties as Record<string, unknown>,
-      },
+    normalized = {
+      ...normalized,
+      $screen_properties: record.$screen_properties as Record<string, unknown>,
     };
   }
-  return { ok: true, value };
+  // R3-F3: bounded $app rides the reserved lane so the SERVER can derive
+  // release/environment projections; the RAW $installation also rides the
+  // lane but the server strips it right after digesting - it never persists.
+  if (
+    record.$app !== undefined &&
+    typeof record.$app === "object" &&
+    !Array.isArray(record.$app)
+  ) {
+    const appIn = record.$app as Record<string, unknown>;
+    const app: Record<string, unknown> = {};
+    for (const key of ["version", "build", "environment"] as const) {
+      const v = appIn[key];
+      if (typeof v === "string" && v.length > 0 && v.length <= 32) {
+        app[key] = v;
+      }
+    }
+    if (Object.keys(app).length > 0) normalized = { ...normalized, $app: app };
+  }
+  if (
+    typeof record.$installation === "string" &&
+    record.$installation.length > 0 &&
+    record.$installation.length <= MOBILE_LIMITS.maxInstallationIdLength
+  ) {
+    normalized = { ...normalized, $installation: record.$installation };
+  }
+  return {
+    ok: true,
+    value: normalized as unknown as ScreenViewWireProperties,
+  };
 }
 
 export type AppLifecycleValidationResult =

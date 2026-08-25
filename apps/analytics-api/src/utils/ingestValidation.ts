@@ -32,7 +32,9 @@ export type IngestRejectReason =
   | "mobile-record-requires-react-native-source"
   | "mobile-record-requires-session"
   | "invalid-mobile-screen"
-  | "invalid-mobile-lifecycle";
+  | "invalid-mobile-lifecycle"
+  | "mobile-digest-unconfigured"
+  | "mobile-installation-required";
 
 /** Validated (and not yet sanitized) event ready for persistence. */
 export interface ValidatedEvent {

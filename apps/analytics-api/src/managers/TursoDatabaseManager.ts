@@ -17,6 +17,15 @@ class TursoDatabaseManager {
 
     return this._instance;
   }
+
+  /**
+   * Test-only injection: points the singleton at an ISOLATED store (e.g. a
+   * fully migrated libSQL :memory: database) for real-store controller
+   * tests. Never call from production code paths.
+   */
+  public setInstanceForTests(client: Client): void {
+    this._instance = client;
+  }
 }
 
 export default new TursoDatabaseManager();

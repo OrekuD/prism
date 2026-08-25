@@ -69,7 +69,10 @@ const DEFAULT_QUEUE: Required<PrismQueueOptions> = {
 };
 
 const ANONYMOUS_ID_KEY = "prism:anonymous_id";
-const INSTALLATION_KEY = "prism:installationId";
+/** Scoped per endpoint+source (R3-F3): an installation is a property of ONE
+ * app install against ONE Prism source, never a cross-context identity. */
+const installationKeyFor = (endpoint: string, sourceKey: string): string =>
+	`prism:installation:${hashString(endpoint)}:${sourceKey}`;
 
 interface PersistedIdentityState {
 	v: 1;
@@ -206,6 +209,10 @@ class PrismClientImpl implements PrismClient {
 	private state: CollectionState;
 	private operationGeneration = 0;
 	private activeSession: SessionHandleImpl | null = null;
+	/** R3-F4: consent-transition observers (internal seam only). */
+	private readonly stateListeners = new Set<
+		(state: "pending" | "granted" | "denied") => void
+	>();
 
 	// Identity (task-10 §3): the known external user, the last identify op,
 	// and the explicit global-property scopes.
@@ -449,6 +456,15 @@ class PrismClientImpl implements PrismClient {
 			detachMobileSession(): void {
 				impl.activeSession = null;
 			},
+			getInstallationId(): Promise<string | null> {
+				return impl.getInstallationId();
+			},
+			onCollectionStateChange(
+				listener: (state: "pending" | "granted" | "denied") => void,
+			): () => void {
+				impl.stateListeners.add(listener);
+				return () => impl.stateListeners.delete(listener);
+			},
 		};
 		(this as unknown as Record<symbol, unknown>)[INTERNAL_SEAM] = seam;
 	}
@@ -483,6 +499,13 @@ class PrismClientImpl implements PrismClient {
 		// flush observes the change before it can mutate the queue again (F15).
 		this.operationGeneration += 1;
 		this.state = state;
+		for (const listener of [...this.stateListeners]) {
+			try {
+				listener(state);
+			} catch {
+				// a faulty adapter listener never breaks consent transitions
+			}
+		}
 		if (state === "denied") {
 			// Consent withdrawal: nothing queued before the withdrawal may be
 			// transmitted, the anonymous identity is deleted, the session
@@ -502,6 +525,11 @@ class PrismClientImpl implements PrismClient {
 			this.inFlightSignal?.abort();
 			this.cancelRetry();
 			await this.runtime.storage?.removeItem(ANONYMOUS_ID_KEY);
+			// R3-F3: withdrawal clears the source-scoped installation id too -
+			// a re-grant must observe a FRESH installation, never the old one.
+			void this.runtime.storage?.removeItem(
+				installationKeyFor(this.endpoint, this.sourceKey),
+			);
 			// R3-F1: persist the SIGNED-OUT identity state (generation advances)
 			// so a re-grant or a fresh client on the same storage can never
 			// restore the pre-withdrawal user.
@@ -699,6 +727,8 @@ class PrismClientImpl implements PrismClient {
 		const picked: {
 			platform?: string;
 			kind?: "web" | "server" | "mobile";
+			os?: string;
+			osVersion?: string;
 			screenSize?: { width: number; height: number };
 			locale?: string;
 			timezone?: string;
@@ -730,6 +760,26 @@ class PrismClientImpl implements PrismClient {
 		}
 		if (typeof context.timezone === "string" && context.timezone.length > 0) {
 			picked.timezone = context.timezone;
+		}
+		// Task 18 (R3-F3): bounded mobile OS dimensions ride the allowlist for
+		// mobile-kind contexts only - they are client-reported display facets,
+		// never identity or authorization inputs.
+		const mobileCtx = (context as { os?: unknown; osVersion?: unknown }).os;
+		if (
+			context.kind === "mobile" &&
+			typeof mobileCtx === "string" &&
+			["ios", "android"].includes(mobileCtx)
+		) {
+			picked.os = mobileCtx;
+		}
+		const osVersionCtx = (context as { osVersion?: unknown }).osVersion;
+		if (
+			context.kind === "mobile" &&
+			typeof osVersionCtx === "string" &&
+			osVersionCtx.length > 0 &&
+			osVersionCtx.length <= 16
+		) {
+			picked.osVersion = osVersionCtx;
 		}
 		if (context.app) {
 			const app: { name?: string; version?: string; build?: string } = {};
@@ -961,8 +1011,27 @@ class PrismClientImpl implements PrismClient {
 		};
 	}
 
-	private async ensureInstallation(): Promise<string | null> { if(this.state!=="granted"||!this.runtime.storage) return null; const existing=await this.runtime.storage.getItem(INSTALLATION_KEY); if(existing && typeof existing==="string") return existing; const id=this.runtime.createId().replace(/-/g,"").slice(0,21); await this.runtime.storage.setItem(INSTALLATION_KEY, id); return id; }
-  async reset(): Promise<ResetResult> {
+	private async ensureInstallation(): Promise<string | null> {
+		// Created ONLY after granted consent AND with durable storage present.
+		if (this.state !== "granted" || !this.runtime.storage) return null;
+		const key = installationKeyFor(this.endpoint, this.sourceKey);
+		const existing = await this.runtime.storage.getItem(key);
+		if (existing && typeof existing === "string") return existing;
+		const id = this.runtime.createId().replace(/-/g, "").slice(0, 21);
+		await this.runtime.storage.setItem(key, id);
+		return id;
+	}
+
+	/** Internal-seam accessor: the consent-gated, source-scoped installation. */
+	private async getInstallationId(): Promise<string | null> {
+		return this.ensureInstallation();
+	}
+
+	async reset(): Promise<ResetResult> {
+		// R3-F3: reset rotates the installation identity for this source.
+		void this.runtime.storage?.removeItem(
+			installationKeyFor(this.endpoint, this.sourceKey),
+		);
 		if (this.closed) return { status: "blocked", reason: "shutdown" };
 		// Close the active session honestly (a session_ended event in the OLD
 		// identity context — queued events are never relabeled).
@@ -1000,9 +1069,6 @@ class PrismClientImpl implements PrismClient {
 		}
 		this.knownUserId = null;
 		this.lastIdentifyOpId = null;
-		// F1: persist the SIGNED-OUT identity state (generation advances) so
-		// a fresh client on the same device never adopts the previous user —
-		// and await it before resolving.
 		this.identityGeneration += 1;
 		try {
 			await this.persistIdentityState();

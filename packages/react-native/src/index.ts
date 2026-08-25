@@ -1,4 +1,4 @@
-import { createPrismClient } from "@prism-analytics/core";
+import { createPrismClient, INTERNAL_SEAM } from "@prism-analytics/core";
 import type {
 	PrismClient,
 	PrismRequest,
@@ -11,7 +11,7 @@ import {
 	SCREEN_VIEW_EVENT_NAME,
 	APP_LIFECYCLE_EVENT_NAME,
 } from "@prism-analytics/core";
-import { Platform } from "react-native";
+import { Dimensions, Platform } from "react-native";
 import { installAppLifecycle, type AppLifecycleOwner } from "./lifecycle";
 import { createScreenController, type ScreenController } from "./screen";
 
@@ -123,11 +123,26 @@ export async function createReactNativeClient(
 				const id = setTimeout(cb, delayMs);
 				return () => clearTimeout(id);
 			},
-			context: {
-				platform: "react-native",
-				kind: "mobile",
-				os,
-			} as unknown as PrismRuntimeAdapter["context"],
+			context: (() => {
+				let windowWidth: number | undefined;
+				let windowHeight: number | undefined;
+				try {
+					const win = Dimensions.get("window");
+					windowWidth = Math.round(win.width);
+					windowHeight = Math.round(win.height);
+				} catch {
+					// Dimensions unavailable in some host environments
+				}
+				return {
+					platform: "react-native",
+					kind: "mobile" as const,
+					os,
+					...(opts.app?.version ? { app: { version: opts.app.version, build: opts.app.build } } : {}),
+					...(windowWidth !== undefined && windowHeight !== undefined
+						? { screenSize: { width: windowWidth, height: windowHeight } }
+						: {}),
+				};
+			})() as unknown as PrismRuntimeAdapter["context"],
 		};
 		const client = (await createPrismClient({
 			sourceKey: opts.sourceKey,
@@ -140,9 +155,28 @@ export async function createReactNativeClient(
 			runtime,
 		} as Parameters<typeof createPrismClient>[0])) as unknown as ReactNativePrismClient;
 
+		const seam = (client as unknown as Record<symbol, unknown>)[
+			INTERNAL_SEAM
+		] as import("@prism-analytics/core").InternalClientSeam;
+		if (!seam) throw new Error("prism: internal seam unavailable");
 		// The ONE lifecycle/session owner - installed AFTER Core resolves.
-		lifecycleOwner = installAppLifecycle(client);
-		client.screenViews = createScreenController(client);
+		let installationId: string | null = null;
+		const refreshInstallation = (): void => {
+			void seam
+				.getInstallationId()
+				.then((id) => {
+					installationId = id;
+				})
+				.catch(() => {
+					installationId = null;
+				});
+		};
+		lifecycleOwner = installAppLifecycle(client, { app: opts.app });
+		client.screenViews = createScreenController(client, () => ({
+			...(opts.app?.version ? { $app: { version: opts.app?.version, build: opts.app?.build, environment: opts.app?.environment } } : {}),
+			...(installationId ? { $installation: installationId } : {}),
+		}));
+		refreshInstallation();
 		client.lifecycle = {
 			dispose() {
 				lifecycleOwner?.dispose();
@@ -159,9 +193,3 @@ export async function createReactNativeClient(
 	}
 }
 
-/** Test-only: force-clear the module owner between test files. */
-export function __resetOwnerForTests(): void {
-	lifecycleOwner?.dispose();
-	lifecycleOwner = null;
-	owner = null;
-}

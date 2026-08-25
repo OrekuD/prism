@@ -5,6 +5,10 @@ import { DatabaseManager } from "../managers/DatabaseManager";
 import { TursoDatabaseManager } from "../managers/TursoDatabaseManager";
 import { purgeSourceErrorData } from "../utils/analyticsErrorPurge";
 import {
+	executeMobilePurge,
+	purgeMobileSourceStatements,
+} from "../utils/mobilePurge";
+import {
 	readSourceErrorSettings,
 	updateSourceErrorSettings,
 	validateErrorSettingsPatch,
@@ -391,6 +395,12 @@ export class SourcesController {
       TursoDatabaseManager.getInstance(ctx),
       project.projectId,
       source.id,
+    );
+    // Task 18 (R3-F7): the source's mobile telemetry is purged in the SAME
+    // privacy operation; aggregates with no remaining telemetry are removed.
+    await executeMobilePurge(
+      TursoDatabaseManager.getInstance(ctx),
+      purgeMobileSourceStatements(project.projectId, source.id),
     );
     await DatabaseManager.getInstance(
       ctx,
