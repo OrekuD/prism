@@ -38,5 +38,8 @@
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts",
     "test": "vitest run"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
