@@ -21,7 +21,7 @@ import { IngestController } from "../controllers/IngestController";
 // createClient({url:""}) would open a second, schema-less database).
 const DB_URL = `file:/tmp/prism-mobile-ingest-${process.pid}-${Date.now()}.db`;
 process.env.TURSO_DATABASE_URL = DB_URL;
-delete process.env.TURSO_AUTH_TOKEN;
+process.env.TURSO_AUTH_TOKEN = undefined;
 
 let client: Client;
 const PROJECT_ID = "mob-project-00000000-0000-0000-0000-000000000000";
@@ -147,7 +147,8 @@ describe("mobile ingestion real store", () => {
 			),
 		);
 		expect(res.status).toBe(200);
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				// biome-ignore lint/suspicious/noExplicitAny: fake Hono ctx response object
+		// biome-ignore lint/suspicious/noExplicitAny: fake Hono ctx response object
 		const body = (res as any).__json as {
 			results: Array<{ status: string; reason?: string }>;
 		};
@@ -214,7 +215,7 @@ describe("mobile ingestion real store", () => {
 			),
 		);
 		expect(res.status).toBe(200);
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				// biome-ignore lint/suspicious/noExplicitAny: fake Hono ctx response object
 		const body = (res as any).__json as {
 			results: Array<{ id: string; status: string; reason?: string }>;
 		};
@@ -250,7 +251,7 @@ describe("mobile ingestion real store", () => {
 		expect(first.status).toBe(200);
 		const second = await IngestController.ingest(makeCtx(body));
 		expect(second.status).toBe(200);
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				// biome-ignore lint/suspicious/noExplicitAny: fake Hono ctx response object
 		const secondBody = (second as any).__json as {
 			results: Array<{ status: string }>;
 		};

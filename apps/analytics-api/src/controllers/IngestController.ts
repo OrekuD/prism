@@ -1,4 +1,4 @@
-import { digestInstallation, enrichMobileScreenView, enrichAppLifecycle } from "../enrichment/mobileScreenView.js";
+import { digestInstallation } from "../enrichment/mobileScreenView.js";
 import { randomUUID } from "node:crypto";
 import {
 	INGEST_LIMITS,
@@ -347,10 +347,11 @@ export class IngestController {
 					reject("invalid-mobile-screen");
 					continue;
 				}
-				persistProps = {
-					...(validation.value as unknown as Record<string, unknown>),
-				};
-				delete persistProps.$installation; // RAW value never persists
+				// RAW installation value never persists - strip it via rest spread
+				// (no delete: shape-stable and lint-clean).
+				const { $installation: _raw, ...persistable } = validation.value as unknown as Record<string, unknown>;
+				void _raw;
+				persistProps = persistable;
 				entry.event.properties =
 					persistProps as unknown as typeof entry.event.properties;
 				const screen = validation.value.$screen;
