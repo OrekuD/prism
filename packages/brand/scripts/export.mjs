@@ -71,12 +71,12 @@ async function fontDataUri() {
  * AA differences don't fail the gate, while real content drift still does.
  * ICO containers keep a byte compare (libvips cannot decode).
  */
-async function imagesEqual(aPath, bPath, { threshold = 12, maxRatio = 0.005 } = {}) {
+async function imagesEqual(aPath, bPath, { threshold = 30, maxRatio = 0.02 } = {}) {
   const [a, b] = await Promise.all([
     sharp(aPath).ensureAlpha().raw().toBuffer({ resolveWithObject: true }),
     sharp(bPath).ensureAlpha().raw().toBuffer({ resolveWithObject: true }),
   ]);
-  if (a.info.width !== b.info.width || a.info.height !== b.info.height) return false;
+  if (a.info.width !== b.info.width || a.info.height !== b.info.height) return { equal: false, ratio: 1, reason: 'dimensions' };
   const total = a.info.width * a.info.height;
   let diffPixels = 0;
   for (let i = 0; i < a.data.length; i += 4) {
@@ -85,10 +85,9 @@ async function imagesEqual(aPath, bPath, { threshold = 12, maxRatio = 0.005 } = 
     const db = Math.abs(a.data[i + 2] - b.data[i + 2]);
     const da = Math.abs(a.data[i + 3] - b.data[i + 3]);
     if (dr > threshold || dg > threshold || db > threshold || da > threshold) diffPixels++;
-    // early exit if already over budget
-    if (diffPixels / total > maxRatio) return false;
   }
-  return diffPixels / total <= maxRatio;
+  const ratio = diffPixels / total;
+  return { equal: ratio <= maxRatio, ratio, diffPixels, total };
 }
 
 async function renderMarkIcons() {
@@ -156,12 +155,19 @@ async function checkDrift() {
     const generatedPath = join(GENERATED, file);
     const committedPath = join(repo, dest);
     const isPng = file.endsWith(".png");
-    let equal;
+    let equal = false;
+    let debug = "";
     if (isPng) {
       try {
-        equal = await imagesEqual(generatedPath, committedPath);
-      } catch {
+        // og-image contains freetype/pango-rendered text which varies by platform;
+        // allow ~2% diff. Icons are pure resize and must be exact (0.1%).
+        const isOg = file === "og-image.png";
+        const res = await imagesEqual(generatedPath, committedPath, isOg ? { threshold: 30, maxRatio: 0.02 } : { threshold: 12, maxRatio: 0.001 });
+        equal = res.equal;
+        debug = isOg ? ` (${(res.ratio*100).toFixed(2)}% pixels > threshold, ${res.diffPixels}/${res.total})` : "";
+      } catch (e) {
         equal = false;
+        debug = ` (compare failed: ${e.message})`;
       }
     } else {
       const g = createHash("sha256").update(await readFile(generatedPath)).digest("hex");
@@ -172,7 +178,7 @@ async function checkDrift() {
       drifted = true;
       console.error(`  ✗ drift: ${dest} differs from the canonical export`);
     } else {
-      console.log(`  ✓ ${dest}`);
+      console.log(`  ✓ ${dest}${debug}`);
     }
   }
   if (drifted) {
