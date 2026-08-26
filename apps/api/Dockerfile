@@ -10,8 +10,7 @@ COPY packages/config-typescript/package.json packages/config-typescript/package.
 COPY packages/types/package.json packages/types/package.json
 COPY packages/core/package.json packages/core/package.json
 COPY apps/api/package.json apps/api/package.json
-RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
-    yarn install --frozen-lockfile
+RUN yarn install --frozen-lockfile
 COPY . .
 # Workspace packages ship no committed dist — build types and core first
 # (the API imports core at runtime for error contracts/limits)
@@ -28,8 +27,7 @@ COPY package.json yarn.lock ./
 COPY packages/types/package.json packages/types/package.json
 COPY packages/core/package.json packages/core/package.json
 COPY apps/api/package.json apps/api/package.json
-RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
-    yarn install --frozen-lockfile --production --ignore-scripts
+RUN yarn install --frozen-lockfile --production --ignore-scripts
 # Runtime imports of @prism-analytics/types and core resolve through the
 # workspace symlinks to their dist — copy both built bundles.
 COPY --from=builder /repo/packages/types/dist ./packages/types/dist

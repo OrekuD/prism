@@ -13,8 +13,7 @@ COPY packages/core/package.json packages/core/package.json
 COPY packages/browser/package.json packages/browser/package.json
 COPY packages/reactjs/package.json packages/reactjs/package.json
 COPY apps/web/package.json apps/web/package.json
-RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
-    yarn install --frozen-lockfile
+RUN yarn install --frozen-lockfile
 COPY . .
 # Workspace packages ship no committed dist — build what the web app imports
 RUN yarn workspace @prism-analytics/types build \
