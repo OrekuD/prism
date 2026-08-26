@@ -11,9 +11,9 @@
  *   E2E_AUTO_VERIFY_EMAIL=1 E2E_SEED_EMAILS=1 node scripts/e2e-smoke.mjs
  *
  * Flow: sign up (Better Auth) -> sign in (cookie session) -> service JWT ->
- * create team -> create project -> start a session via the analytics
- * ingestion API -> read the project summary -> log an event -> read events ->
- * end the session. Exits non-zero with a report on any failure.
+ * create workspace (Better Auth organization) -> create project -> create a
+ * web source + publishable key -> ingest v2 track events through
+ * /api/v2/ingest -> read them back via the project API.
  */
 import { randomUUID } from "node:crypto";
 import { config } from "dotenv";
@@ -22,8 +22,7 @@ import postgres from "postgres";
 const API = process.env.E2E_API_URL ?? "http://localhost:8787";
 const AUTH = process.env.E2E_AUTH_URL ?? API;
 const ORIGIN = process.env.E2E_ORIGIN ?? "http://localhost:3001";
-const ANALYTICS =
-  process.env.E2E_ANALYTICS_URL ?? "http://localhost:8080/api/v1/analytics";
+const INGEST = process.env.E2E_INGEST_URL ?? `${API}/api/v2/ingest`;
 
 let passed = 0;
 let failed = 0;
@@ -181,110 +180,102 @@ if (failed > 0) {
 //    (verified indirectly: ingestion uses the project key below; the JWKS
 //    contract is covered by unit tests).
 
-// 6. Create a team
-const createTeam = await request(`${API}/api/v1/teams`, {
+// 5. A short-lived service JWT is issued for the analytics WebSocket
+//    (kept from the original flow — asserted above at step 4).
+
+// 6. Create a workspace (Better Auth organization)
+const org = await request(`${AUTH}/api/auth/organization/create`, {
   method: "POST",
-  body: { name: `E2E Team ${suffix}` },
-});
-check(
-  "create-team succeeds",
-  createTeam.status === 200,
-  `got ${createTeam.status}`,
-);
-const teams = await request(`${API}/api/v1/teams`);
-teamId = Array.isArray(teams.data)
-  ? teams.data.find((team) => team.name.includes(suffix))?.id
-  : null;
-check("team appears in the teams list", !!teamId);
-
-// 7. Create a project
-const createProject = await request(`${API}/api/v1/projects/${teamId}`, {
-  method: "POST",
-  body: { teamId, name: `E2E Project ${suffix}` },
-});
-check(
-  "create-project succeeds",
-  createProject.status === 200,
-  `got ${createProject.status}`,
-);
-
-// 8. Read the project + its analytics key
-const projects = await request(`${API}/api/v1/teams/${teamId}/projects`);
-const project = Array.isArray(projects.data)
-  ? projects.data.find((p) => p.name.includes(suffix))
-  : null;
-projectId = project?.id;
-check("project appears in the team listing", !!projectId);
-
-const projectDetail = await request(`${API}/api/v1/projects/${project?.slug}`);
-analyticsKey = projectDetail.data?.apiKey;
-check("project detail exposes the analytics key", !!analyticsKey);
-
-// 9. Start a session through the analytics ingestion API
-const start = await request(`${ANALYTICS}/sessions`, {
-  method: "POST",
-  token: analyticsKey,
   body: {
-    referrer: "https://e2e.example",
-    userAgent:
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/126.0 Safari/537.36",
-    location: "E2E",
+    name: `E2E Team ${suffix}`,
+    slug: `e2e-${suffix.slice(0, 13).toLowerCase()}`,
   },
 });
-sessionId = start.data?.sessionId;
-check(
-  "ingestion starts a session",
-  start.status === 200 && !!sessionId,
-  `got ${start.status}`,
-);
+const organizationId = org.data?.id;
+check("create-workspace succeeds", org.status === 200 && !!organizationId, `got ${org.status} ${JSON.stringify(org.data)}`);
 
-// 10. The team-project endpoint summary reflects the session (Turso store)
-const afterStart = await request(`${API}/api/v1/teams/${teamId}/projects`);
-const updated = Array.isArray(afterStart.data)
-  ? afterStart.data.find((p) => p.id === projectId)
-  : null;
-const sessionCount = (updated?.summary ?? []).reduce(
-  (sum, entry) => sum + entry.desktop + entry.mobile,
-  0,
-);
-check(
-  "session appears in the project summary",
-  sessionCount >= 1,
-  `summary ${JSON.stringify(updated?.summary)}`,
-);
-
-// 11. Log an event and read it back
-const event = await request(`${ANALYTICS}/events`, {
+// 7. Create a project inside the workspace
+const createdProject = await request(`${API}/api/v1/projects`, {
   method: "POST",
-  token: analyticsKey,
-  body: { sessionId, name: "e2e-click", data: { label: "smoke" } },
+  body: { organizationId, name: `E2E Project ${suffix}` },
 });
-check("event ingestion succeeds", event.status === 200, `got ${event.status}`);
+project = createdProject.data ?? null;
+projectId = project?.id ?? null;
+check("create-project succeeds", createdProject.status === 200 && !!project?.slug, `got ${createdProject.status}`);
 
+// 8. The workspace listing contains the project, and creating a web source
+//    returns its publishable key exactly once
+const projects = await request(`${API}/api/v1/projects?organizationId=${organizationId}`);
+check(
+  "project appears in the workspace listing",
+  Array.isArray(projects.data) && projects.data.some((p) => p.id === projectId),
+);
+const source = await request(`${API}/api/v1/projects/${project?.slug}/sources`, {
+  method: "POST",
+  body: { name: "E2E Web", platform: "web", allowedOrigins: [ORIGIN] },
+});
+const sourceKey = source.data?.initialKey;
+check(
+  "source exposes its initial key",
+  source.status === 200 &&
+    typeof sourceKey === "string" &&
+    sourceKey.startsWith("psk_"),
+  `got ${source.status}`,
+);
+
+// 9. Ingestion: session-scoped track event via the v3 envelope
+sessionId = randomUUID();
+const now = Date.now();
+const ingest = await request(INGEST, {
+  method: "POST",
+  token: sourceKey,
+  body: {
+    schemaVersion: 3,
+    sentAt: now,
+    sdk: { name: "@prism-analytics/browser", version: "0.0.2" },
+    events: [
+      {
+        schemaVersion: 3,
+        eventId: randomUUID(),
+        type: "track",
+        occurredAt: now,
+        sessionId,
+        name: "e2e-click",
+        properties: { label: "smoke" },
+        context: { platform: "web", screenSize: "1920x1080" },
+      },
+    ],
+  },
+});
+check("event ingestion succeeds", ingest.status === 200, `got ${ingest.status} ${JSON.stringify(ingest.data)?.slice(0,200)}`);
+
+// 10. The event is readable through the project API
 const events = await request(`${API}/api/v1/projects/${project?.slug}/events`);
 check(
   "event appears in the project events",
   Array.isArray(events.data) && events.data.some((e) => e.name === "e2e-click"),
 );
 
-// 12. End the session (scoped to the project key)
-const end = await request(`${ANALYTICS}/sessions/end`, {
-  method: "POST",
-  token: analyticsKey,
-  body: { sessionId },
-});
-check("end-session succeeds", end.status === 200, `got ${end.status}`);
+// 11. Totals reflect the ingested event + session (Turso read model)
+const totals = await request(`${API}/api/v1/projects/${project?.slug}/totals`);
+check(
+  "totals reflect the session and event",
+  totals.status === 200 &&
+    Number(totals.data?.events ?? 0) >= 1 &&
+    Number(totals.data?.sessions ?? 0) >= 1,
+  `got ${totals.status} ${JSON.stringify(totals.data)}`,
+);
 
-// 13. A bogus key cannot end sessions
-const bogusEnd = await request(`${ANALYTICS}/sessions/end`, {
+// 12. A bogus key cannot ingest
+const bogusIngest = await request(INGEST, {
   method: "POST",
   token: "bogus-key",
-  body: { sessionId },
+  body: { schemaVersion: 3, events: [{ eventId: "x", type: "track", occurredAt: Date.now(), name: "nope", schemaVersion: 3 }] },
 });
 check(
-  "a bogus key cannot end sessions",
-  bogusEnd.status === 401,
-  `got ${bogusEnd.status}`,
+  "a bogus key cannot ingest",
+  bogusIngest.status === 401,
+  `got ${bogusIngest.status}`,
 );
 
 // 14. Sign out revokes the session
