@@ -21,6 +21,10 @@ import { describe, expect, it } from "vitest";
 
 const CORE_DIR = resolve(__dirname, "../..");
 const ROOT = resolve(__dirname, "../../../..");
+/** Track package.json — never hardcode the version here. */
+const CORE_VERSION = JSON.parse(
+	readFileSync(join(CORE_DIR, "package.json"), "utf8"),
+).version as string;
 
 function packAndInstallFixture(): { fixture: string; cleanup(): void } {
 	const packDir = mkdtempSync(join(tmpdir(), "prism-core-pack-"));
@@ -53,7 +57,7 @@ function packAndInstallFixture(): { fixture: string; cleanup(): void } {
 			version: string;
 		};
 		expect(tarball.name).toBe("@prism-analytics/core");
-		expect(tarball.version).toBe("0.0.1");
+		expect(tarball.version).toBe(CORE_VERSION);
 		execSync(
 			"npm install --no-audit --no-fund --ignore-scripts --cache " +
 				cacheDir +

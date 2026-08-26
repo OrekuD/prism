@@ -20,7 +20,7 @@ export type WireMobileSequence = number; // sessionSequence optional, bounded in
 /** SDK identity sent with every batch (batch-level, not per event). */
 export const SDK_NAME = "@prism-analytics/core";
 /** Keep in sync with packages/core/package.json version. */
-export const SDK_VERSION = "0.0.1";
+export const SDK_VERSION = "0.0.2";
 
 /** Centralized, tested ingestion limits (task-9 §3). */
 export const INGEST_LIMITS = {

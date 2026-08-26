@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
 	INGEST_LIMITS,
+	SDK_VERSION,
 	type PrismClient,
 	type PrismRequest,
 	type PrismResponse,
@@ -1224,7 +1225,7 @@ describe("v2 wire envelope (slice 4)", () => {
 		expect(typeof envelope.sentAt).toBe("number");
 		expect(envelope.sdk).toEqual({
 			name: "@prism-analytics/core",
-			version: "0.0.1",
+			version: SDK_VERSION,
 		});
 		expect(envelope.events).toHaveLength(1);
 		const event = envelope.events[0] ?? {};

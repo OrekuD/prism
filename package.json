@@ -4,6 +4,7 @@
     "bump": "node scripts/bump.mjs",
     "release": "bash scripts/release.sh",
     "build": "turbo run build",
+    "build:packages": "turbo run build --filter=@prism-analytics/core --filter=@prism-analytics/browser --filter=@prism-analytics/node --filter=@prism-analytics/react --filter=@prism-analytics/react-native",
     "build:analytics-api": "turbo run build --filter=@prism-analytics/types --filter=prism-analytics-api",
     "clean": "turbo run clean",
     "dev": "turbo run dev",

@@ -24,8 +24,8 @@ if [[ -n "$(git status --porcelain)" ]]; then
   exit 1
 fi
 
-echo "Building..."
-yarn build
+echo "Building packages..."
+yarn build:packages
 
 PKGS=("@prism-analytics/core" "@prism-analytics/browser" "@prism-analytics/node" "@prism-analytics/react" "@prism-analytics/react-native")
 TO_PUBLISH=()
