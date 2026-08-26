@@ -16,6 +16,9 @@ services:
         sync: false
       - key: TURSO_AUTH_TOKEN
         sync: false
+      # Product API origin — derives the JWKS endpoint for WebSocket JWT verification.
+      - key: AUTH_BASE_URL
+        value: "https://prism-api.orekud.workers.dev"
       - key: DATABASE_URL
         sync: false
       - key: ANALYTICS_RETENTION_DAYS
