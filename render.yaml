@@ -1,11 +1,11 @@
-# Render Blueprint — Prism analytics/ingestion API (deploy via Render
-# Blueprint, path: deploy/render.yaml). Paths are relative to this file.
+# Render Blueprint — Prism analytics/ingestion API. Blueprint path:
+# render.yaml (repo root). Build paths relative to repo root.
 services:
   - type: web
     name: prism-analytics-api
     runtime: docker
-    dockerfilePath: ../apps/analytics-api/Dockerfile
-    dockerContext: ..
+    dockerfilePath: ./apps/analytics-api/Dockerfile
+    dockerContext: .
     plan: free
     healthCheckPath: /health/live
     autoDeploy: true
