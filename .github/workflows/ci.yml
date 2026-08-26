@@ -68,6 +68,7 @@ jobs:
           POSTGRES_DB=prism
           JWT_SECRET_KEY=$(openssl rand -hex 24)
           SETUP_TOKEN=$(openssl rand -hex 24)
+          TURSO_AUTH_TOKEN=$(openssl rand -hex 24)
           ENVIRONMENT=development
           PRISM_DEPLOYMENT_MODE=self-hosted
           INSTANCE_NAME=CI Prism

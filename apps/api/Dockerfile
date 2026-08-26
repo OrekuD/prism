@@ -15,8 +15,10 @@ COPY packages/reactjs/package.json packages/reactjs/package.json
 COPY apps/api/package.json apps/api/package.json
 RUN yarn install --frozen-lockfile && yarn cache clean
 COPY . .
-# Workspace packages ship no committed dist — build @prism/types first
+# Workspace packages ship no committed dist — build types and core first
+# (the API imports core at runtime for error contracts/limits)
 RUN yarn workspace @prism-analytics/types build
+RUN yarn workspace @prism-analytics/core build
 RUN yarn workspace prism-api build:node
 
 FROM node:24-alpine
@@ -32,9 +34,10 @@ COPY packages/email-templates/package.json packages/email-templates/package.json
 COPY packages/reactjs/package.json packages/reactjs/package.json
 COPY apps/api/package.json apps/api/package.json
 RUN yarn install --frozen-lockfile --production --ignore-scripts && yarn cache clean
-# Runtime imports of @prism/types resolve through the workspace symlink to
-# its dist — copy the built declarations + runtime bundle.
+# Runtime imports of @prism-analytics/types and core resolve through the
+# workspace symlinks to their dist — copy both built bundles.
 COPY --from=builder /repo/packages/types/dist ./packages/types/dist
+COPY --from=builder /repo/packages/core/dist ./packages/core/dist
 COPY --from=builder /repo/apps/api/dist-node ./apps/api/dist-node
 # Drizzle migration assets (SQL + journal) are read at runtime by migrate.
 COPY --from=builder /repo/apps/api/drizzle ./apps/api/drizzle
