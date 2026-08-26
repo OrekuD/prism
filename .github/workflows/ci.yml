@@ -92,6 +92,12 @@ jobs:
             sleep 5
           done
           echo "stack did not become ready" >&2
+          echo "-- public origin probes --"
+          echo "live:  HTTP $(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/health/live || echo conn-failed)"
+          echo "ready: HTTP $(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/health/ready || echo conn-failed)"
+          echo "-- direct container probes --"
+          docker compose --project-directory . --env-file deploy/compose.env -f deploy/compose.yml exec -T web wget -qO- http://api:8787/health/live && echo " (web->api live ok)" || echo "web->api live FAILED"
+          docker compose --project-directory . --env-file deploy/compose.env -f deploy/compose.yml exec -T web wget -qO- http://api:8787/health/ready && echo " (web->api ready ok)" || echo "web->api ready FAILED"
           docker compose --project-directory . --env-file deploy/compose.env -f deploy/compose.yml ps -a || true
           docker compose --project-directory . --env-file deploy/compose.env -f deploy/compose.yml logs --tail=100 || true
           exit 1
