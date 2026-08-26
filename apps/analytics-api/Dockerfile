@@ -5,12 +5,10 @@ WORKDIR /repo
 COPY package.json yarn.lock ./
 COPY packages/config-typescript/package.json packages/config-typescript/package.json
 COPY packages/types/package.json packages/types/package.json
-COPY packages/browser/package.json packages/browser/package.json
 COPY packages/core/package.json packages/core/package.json
-COPY packages/email-templates/package.json packages/email-templates/package.json
-COPY packages/reactjs/package.json packages/reactjs/package.json
 COPY apps/analytics-api/package.json apps/analytics-api/package.json
-RUN yarn install --frozen-lockfile && yarn cache clean
+RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
+    yarn install --frozen-lockfile
 COPY . .
 # Workspace packages ship no committed dist — build @prism/types and
 # @prism/core first (the analytics API validates against core's shared
@@ -24,12 +22,10 @@ ENV NODE_ENV=production
 WORKDIR /repo
 COPY package.json yarn.lock ./
 COPY packages/types/package.json packages/types/package.json
-COPY packages/browser/package.json packages/browser/package.json
 COPY packages/core/package.json packages/core/package.json
-COPY packages/email-templates/package.json packages/email-templates/package.json
-COPY packages/reactjs/package.json packages/reactjs/package.json
 COPY apps/analytics-api/package.json apps/analytics-api/package.json
-RUN yarn install --frozen-lockfile --production --ignore-scripts && yarn cache clean
+RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
+    yarn install --frozen-lockfile --production --ignore-scripts
 # Runtime imports of @prism/types and @prism/core resolve through the
 # workspace symlinks.
 COPY --from=builder /repo/packages/types/dist ./packages/types/dist

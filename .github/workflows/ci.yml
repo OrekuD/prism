@@ -58,6 +58,9 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Generate stack secrets
         run: |
           cat > deploy/compose.env <<EOF

@@ -11,13 +11,9 @@ WORKDIR /repo
 COPY package.json yarn.lock ./
 # Workspace manifests so yarn links the monorepo workspaces.
 COPY packages/config-typescript/package.json packages/config-typescript/package.json
-COPY packages/types/package.json packages/types/package.json
-COPY packages/browser/package.json packages/browser/package.json
-COPY packages/core/package.json packages/core/package.json
-COPY packages/email-templates/package.json packages/email-templates/package.json
-COPY packages/reactjs/package.json packages/reactjs/package.json
 COPY apps/docs/package.json apps/docs/package.json
-RUN yarn install --frozen-lockfile && yarn cache clean
+RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
+    yarn install --frozen-lockfile
 COPY . .
 RUN yarn workspace prism-docs build
 
