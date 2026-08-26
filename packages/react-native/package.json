@@ -1,6 +1,6 @@
 {
   "name": "@prism-analytics/react-native",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Prism Analytics SDK for React Native — Expo and bare workflow support",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
