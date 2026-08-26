@@ -1,6 +1,6 @@
 {
   "name": "@prism-analytics/react-native",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Prism Analytics SDK for React Native — Expo and bare workflow support",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -36,7 +36,7 @@
     "@prism-analytics/core": "*"
   },
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "build": "rm -rf dist && tsup src/index.ts --format cjs,esm --dts",
     "test": "vitest run"
   },
   "publishConfig": {

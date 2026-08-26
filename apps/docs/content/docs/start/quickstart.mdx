@@ -50,6 +50,8 @@ import { createBrowserClient } from "@prism-analytics/browser";
 export const prism = await createBrowserClient({
   sourceKey: "psk_your_key",
   endpoint: "https://your-prism-host", // from the Setup tab
+
+  collection: { initialState: "granted" },
 });
 ```
 
