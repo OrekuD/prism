@@ -30,7 +30,9 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-    networks: [prism]
+    # public: publishes the loopback port (ports are never exposed for
+    # internal-only containers); nothing outside the host can reach it.
+    networks: [prism, public]
     mem_limit: 512m
 
   migrate:
