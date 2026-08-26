@@ -173,6 +173,10 @@ function createFacade(client: PrismClient): PrismReactFacade {
  * Returns a STABLE facade over the client from the nearest PrismProvider.
  * Bound methods keep their identity across renders (no recreated
  * callbacks); throws a specific error outside a provider.
+ *
+ * Hooks cannot be wrapped in try/catch — if your tree may render without
+ * a provider (progressive adoption, tests), use {@link useOptionalPrism}
+ * instead and branch on the result BEFORE calling any other hook.
  */
 export function usePrism(): PrismReactFacade {
 	const client = useContext(PrismContext);
@@ -182,6 +186,25 @@ export function usePrism(): PrismReactFacade {
 		);
 	}
 	return useMemo(() => createFacade(client), [client]);
+}
+
+/**
+ * Non-throwing variant of {@link usePrism}: returns the facade when a
+ * provider is present, or `null` when one is not. Call this at the TOP of
+ * the component and branch on the result — never inside conditionals or
+ * try/catch blocks (Rules of Hooks).
+ *
+ * ```tsx
+ * function AnalyticsButton() {
+ *   const prism = useOptionalPrism();
+ *   if (!prism) return <button>Checkout</button>;
+ *   return <button onClick={() => prism.track("checkout")}>…</button>;
+ * }
+ * ```
+ */
+export function useOptionalPrism(): PrismReactFacade | null {
+	const client = useContext(PrismContext);
+	return useMemo(() => (client ? createFacade(client) : null), [client]);
 }
 
 /** Session handle type re-exported for consumers of the facade. */

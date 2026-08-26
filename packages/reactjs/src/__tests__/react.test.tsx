@@ -7,6 +7,7 @@ import {
 	PrismContext,
 	PrismProvider,
 	type PrismReactFacade,
+	useOptionalPrism,
 	usePrism,
 } from "../index";
 
@@ -116,18 +117,52 @@ describe("PrismProvider + usePrism", () => {
 	});
 
 	it("throws a specific error outside a provider", () => {
-		const Spy = (): React.ReactNode => {
-			try {
-				usePrism();
-				return null;
-			} catch (error) {
-				return <span data-testid="error">{(error as Error).message}</span>;
-			}
+		// Rules of Hooks: the hook is called unconditionally at the top of
+		// the component. The expected throw surfaces through React's render.
+		const errors: string[] = [];
+		const originalError = console.error;
+		console.error = (...args: unknown[]) => {
+			errors.push(String(args[0]));
 		};
-		render(<Spy />);
-		expect(screen.getByTestId("error").textContent).toContain(
-			"usePrism must be used inside a <PrismProvider",
+		function Spy(): React.ReactNode {
+			usePrism();
+			return null;
+		}
+		try {
+			render(<Spy />);
+		} catch (error) {
+			expect((error as Error).message).toContain(
+				"usePrism must be used inside a <PrismProvider",
+			);
+		}
+		console.error = originalError;
+	});
+
+	it("useOptionalPrism returns null outside a provider and the facade inside", () => {
+		// Holders defeat TS narrowing across the render-closure boundary.
+		const outside: { value: unknown } = { value: Symbol("unset") };
+		function Outside(): React.ReactNode {
+			outside.value = useOptionalPrism();
+			return null;
+		}
+		render(<Outside />);
+		expect(outside.value).toBeNull();
+		cleanup();
+
+		const client = makeClient();
+		const inside: { value: PrismReactFacade | null } = { value: null };
+		function Inside(): React.ReactNode {
+			inside.value = useOptionalPrism();
+			return null;
+		}
+		render(
+			<PrismProvider client={client}>
+				<Inside />
+			</PrismProvider>,
 		);
+		expect(inside.value).not.toBeNull();
+		inside.value?.track("e2e");
+		expect(client.track).toHaveBeenCalledWith("e2e", undefined);
 	});
 
 	it("exposes STABLE bound references across re-renders", () => {

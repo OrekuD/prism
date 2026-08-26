@@ -61,18 +61,24 @@ automatic side effects beyond wiring its own queue and storage.
 ## 6. Capture an event
 
 ```ts
-await prism.track("signup_completed", { plan: "free" });
+const result = prism.track("signup_completed", { plan: "free" });
+// { status: "queued", eventId } | { status: "dropped", reason }
 ```
 
-`track` accepts lower_snake_case names and JSON-safe properties. It
-returns `queued` when accepted locally — delivery happens in the
-background. See [Capturing events](/docs/features/capturing-events).
+`track` is synchronous and never throws — it accepts lower_snake_case
+names and JSON-safe properties, and returns a discriminated result.
+`queued` means accepted locally; delivery happens in the background.
+See [Capturing events](/docs/features/capturing-events).
 
 ## 7. Verify it
 
 Open the project's **Events** page in the Prism dashboard. Your event
 appears within seconds of delivery. Start a session with
 `prism.startSession()` and it shows up live on the **Live** page.
+`startSession()` is also synchronous and returns a discriminated
+result — `{ status: "started", session }` or
+`{ status: "blocked", reason }` (consent pending/denied, an active
+session already exists):
 
 ## Next steps
 

@@ -73,6 +73,24 @@ Returns a facade over the client: `track`, `startSession`,
 `collectionState`, plus the raw `client`. Bound methods keep their
 identity across renders. Throws a specific error outside a provider.
 
+Hooks must be called unconditionally at the top of the component —
+never inside conditionals or try/catch blocks. If your tree can render
+without a provider, use the non-throwing `useOptionalPrism()` instead
+and branch on the result:
+
+```tsx
+function AnalyticsButton() {
+  const prism = useOptionalPrism();
+  if (!prism) return <button>Checkout</button>;
+  return <button onClick={() => prism.track("checkout")}>Checkout</button>;
+}
+```
+
+`track` and `startSession` are synchronous and return discriminated
+results (`queued`/`dropped`, `started`/`blocked`) — they never throw and
+never need `await`. Only `identify`, `reset`, `flush`, `shutdown`, and
+the global-property methods are async.
+
 ## `usePrismPageView({ path, title? })`
 
 Captures a page view per path change for the
