@@ -88,7 +88,8 @@ jobs:
             sleep 5
           done
           echo "stack did not become ready" >&2
-          docker compose --project-directory . -f deploy/compose.yml logs --tail=50 || true
+          docker compose --project-directory . --env-file deploy/compose.env -f deploy/compose.yml ps -a || true
+          docker compose --project-directory . --env-file deploy/compose.env -f deploy/compose.yml logs --tail=100 || true
           exit 1
 
       - name: Assert the runtime config (self-hosted, local storage, no secrets)
