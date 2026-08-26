@@ -1,0 +1,22 @@
+# Render Blueprint — Prism analytics/ingestion API (deploy via Render
+# Blueprint, path: deploy/render.yaml). Paths are relative to this file.
+services:
+  - type: web
+    name: prism-analytics-api
+    runtime: docker
+    dockerfilePath: ../apps/analytics-api/Dockerfile
+    dockerContext: ..
+    plan: free
+    healthCheckPath: /health/live
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: ANALYTICS_RETENTION_DAYS
+        value: "0"
