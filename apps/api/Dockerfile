@@ -11,7 +11,7 @@ COPY packages/types/package.json packages/types/package.json
 COPY packages/browser/package.json packages/browser/package.json
 COPY packages/core/package.json packages/core/package.json
 COPY packages/email-templates/package.json packages/email-templates/package.json
-COPY packages/prism-react/package.json packages/prism-react/package.json
+COPY packages/reactjs/package.json packages/reactjs/package.json
 COPY apps/api/package.json apps/api/package.json
 RUN yarn install --frozen-lockfile && yarn cache clean
 COPY . .
@@ -29,7 +29,7 @@ COPY packages/types/package.json packages/types/package.json
 COPY packages/browser/package.json packages/browser/package.json
 COPY packages/core/package.json packages/core/package.json
 COPY packages/email-templates/package.json packages/email-templates/package.json
-COPY packages/prism-react/package.json packages/prism-react/package.json
+COPY packages/reactjs/package.json packages/reactjs/package.json
 COPY apps/api/package.json apps/api/package.json
 RUN yarn install --frozen-lockfile --production --ignore-scripts && yarn cache clean
 # Runtime imports of @prism/types resolve through the workspace symlink to
