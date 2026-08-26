@@ -163,7 +163,10 @@ services:
         condition: service_started
       analytics:
         condition: service_started
-    networks: [prism]
+    # Internal + public: the internal network carries api/analytics proxy
+    # traffic; the plain network exists ONLY so Compose publishes the host
+    # port (ports on internal-only containers are never exposed).
+    networks: [prism, public]
     mem_limit: 256m
 
   # Documentation (task-8): separately deployable image (Next.js +
@@ -187,10 +190,12 @@ services:
     mem_limit: 256m
 
 networks:
-  # Internal: no outbound network access at runtime (images are pulled
-  # before the network attaches). Hosts still reach published ports.
+  # Backend network: no outbound network access at runtime (images are
+  # pulled before the network attaches).
   prism:
     internal: true
+  # Host-facing network for the web origin's published port.
+  public:
 
 volumes:
   pgdata:
