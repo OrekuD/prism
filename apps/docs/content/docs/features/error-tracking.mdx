@@ -19,7 +19,7 @@ import { createBrowserErrorReporter } from "@prism-analytics/browser";
 
 const errors = await createBrowserErrorReporter({
   sourceKey: "psk_your_key",
-  endpoint: "https://your-prism-host",
+  endpoint: "https://prism-analytics-api-gsmo.onrender.com", // hosted — self-host: your PUBLIC_URL
   share: { client: prism }, // share identity + consent with the reporter
   captureGlobalErrors: true, // install window.onerror + unhandledrejection
   release: "frontend@2.1.0",
@@ -70,7 +70,7 @@ import { createNodeErrorReporter, captureProcessErrors } from "@prism-analytics/
 
 const errors = await createNodeErrorReporter({
   sourceKey: "psk_server_key", // secret server key
-  endpoint: "https://your-prism-host",
+  endpoint: "https://prism-analytics-api-gsmo.onrender.com", // hosted — self-host: your PUBLIC_URL
 });
 captureProcessErrors(errors); // opt-in uncaughtException/unhandledRejection
 

@@ -6,8 +6,7 @@ scope: Self-hosted
 lastReviewed: "2026-08-24"
 ---
 
-This page installs a single-host Prism stack with Docker Compose and
-creates the first owner account.
+This page installs Prism either as a single-host Docker Compose stack or as a split deployment with the analytics ingestion API on Render (free tier) via `render.yaml` at the repo root. Both create the first owner account the same way.
 
 ## Prerequisites
 
@@ -19,9 +18,7 @@ creates the first owner account.
 
 ## 1. Get the deployment files
 
-The Compose files live in the repository under `deploy/`:
-`deploy/compose.yml` and `deploy/compose.env`. Copy both to your host
-and fill in `compose.env`.
+The deployment files live in the repository: `deploy/compose.yml` + `deploy/compose.env` for the full single-host stack, and `render.yaml` (repo root) for the analytics API alone on Render. For Compose, copy both `deploy/` files to your host and fill in `compose.env`; for Render, create a Blueprint from `render.yaml` and fill the three prompted secrets (`TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `DATABASE_URL`). `AUTH_BASE_URL` is pre-set to the hosted product API.
 
 ## 2. Configure the environment
 
@@ -33,10 +30,12 @@ DATABASE_URL=postgresql://prism:CHANGE_ME@db:5432/prism
 POSTGRES_PASSWORD=CHANGE_ME
 
 # Analytics store (libSQL)
-TURSO_DATABASE_URL=http://sqld:8080
+TURSO_DATABASE_URL=http://sqld:5001
 TURSO_AUTH_TOKEN=CHANGE_ME
 
-# Public origin of this instance — used for links, cookies, and CORS
+# Analytics ingestion — hosted Render vs self-host Compose
+# Hosted: analytics derives JWKS from the product API origin
+AUTH_BASE_URL=https://prism-api.orekud.workers.dev
 PUBLIC_URL=https://prism.example.com
 CLIENT_URL=https://prism.example.com
 

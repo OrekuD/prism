@@ -18,7 +18,7 @@ Enable page views on the Browser client:
 ```ts
 const prism = await createBrowserClient({
   sourceKey: "psk_your_key",
-  endpoint: "https://your-prism-host",
+  endpoint: "https://prism-analytics-api-gsmo.onrender.com", // hosted — self-host: your PUBLIC_URL
   collection: { initialState: "granted" },
   pageViews: { mode: "history" },
 });

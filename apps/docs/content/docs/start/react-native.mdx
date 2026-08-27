@@ -28,7 +28,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export const prism = await createReactNativeClient({
   sourceKey: "psk_…", // from Prism dashboard -> Sources -> react-native
-  endpoint: "https://prism-api.orekud.workers.dev",
+  endpoint: "https://prism-analytics-api-gsmo.onrender.com", // hosted — self-host: your PUBLIC_URL
   storage: AsyncStorage, // durable queue + installation id
   collection: { initialState: "granted" },
   app: { version: "1.0.0", build: "1", environment: "production" },

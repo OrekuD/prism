@@ -49,7 +49,7 @@ import { createBrowserClient } from "@prism-analytics/browser";
 
 export const prism = await createBrowserClient({
   sourceKey: "psk_your_key",
-  endpoint: "https://your-prism-host", // from the Setup tab
+  endpoint: "https://prism-analytics-api-gsmo.onrender.com", // hosted ingestion origin — self-host: your PUBLIC_URL (bare origin, SDK appends /api/v2/ingest) // from Sources → Setup
 
   collection: { initialState: "granted" },
 });

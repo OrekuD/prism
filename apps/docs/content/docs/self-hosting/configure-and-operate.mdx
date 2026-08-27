@@ -28,18 +28,15 @@ missing or weak values and logs the exact variable at fault.
 **Core**
 
 - `DATABASE_URL` — PostgreSQL connection for the product API.
-- `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` — the analytics (libSQL)
-  store.
-- `PUBLIC_URL`, `CLIENT_URL` — the instance's public origin; drives
-  links, cookies, and trusted CORS origins.
+- `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` — the analytics (libSQL) store. Hosted default is the Render service URL (`https://prism-analytics-api-gsmo.onrender.com`); self-host Compose uses `http://sqld:5001`.
+- `PUBLIC_URL`, `CLIENT_URL` — the instance's public origin; drives links, cookies, and trusted CORS origins. `AUTH_BASE_URL` must point at the product API (`https://prism-api.orekud.workers.dev` for hosted) so the analytics API can verify service JWTs.
 - `SETUP_TOKEN` — first-owner claim token; remove it after setup.
 - `INSTANCE_NAME` — shown in emails and UI.
-- `BETTER_AUTH_SECRET` — session signing secret.
+- `JWT_SECRET_KEY` (`BETTER_AUTH_SECRET` alias) — session signing secret (≥32 chars, `openssl rand -hex 32`).
 
 **Deployment mode**
 
-- `DEPLOY_MODE` — `compose` (default), `hosted`, or `local`; selects
-  defaults for service addresses.
+- `PRISM_DEPLOYMENT_MODE` / `DEPLOY_MODE` — `self-hosted` (Compose) or `hosted`; selects defaults for service addresses.
 
 **Mail** — either SMTP (`MAIL_SMTP_HOST`, `MAIL_SMTP_PORT`,
 `MAIL_SMTP_SECURE`, `MAIL_SMTP_USER`, `MAIL_SMTP_PASS`, `MAIL_FROM`)

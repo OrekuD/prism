@@ -15,7 +15,7 @@ sanitization, and delivery all belong to the core.
 | Field | Type | Description |
 | --- | --- | --- |
 | `sourceKey` | `string` | Publishable, write-only source ingestion key |
-| `endpoint` | `string` | Ingestion origin chosen at runtime — required, never compiled in |
+| `endpoint` | `string` | Analytics ingestion origin (bare origin, SDK appends `/api/v2/ingest`). Hosted: `https://prism-analytics-api-gsmo.onrender.com` — self-host: your `PUBLIC_URL`. Required, never compiled in |
 | `collection` | `{ initialState, anonymousPersistence? }` | Explicit consent; anonymous persistence defaults to `session` |
 | `queue` | `PrismQueueOptions?` | Passed through to the core |
 | `sanitize` | `SanitizeOptions?` | Passed through to the core |

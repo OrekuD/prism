@@ -29,9 +29,9 @@ import { createBrowserClient } from "@prism-analytics/browser";
 
 export const prism = await createBrowserClient({
   sourceKey: "psk_your_key",
-  endpoint: "https://your-prism-host",
+  endpoint: "https://prism-analytics-api-gsmo.onrender.com", // hosted — self-host: your PUBLIC_URL
   collection: { initialState: "granted" },
-  pageViews: { mode: "manual" }, // + collection: { initialState: "granted" } — required // required for usePrismPageView
+  pageViews: { mode: "manual" }, // required for usePrismPageView
 });
 ```
 
