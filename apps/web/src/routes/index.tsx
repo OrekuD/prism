@@ -12,11 +12,11 @@ const EXAMPLE_KEY = "pr_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
 const installCommand = "yarn add @prism-analytics/core";
 const initializeCommand = `const prism = await createPrismClient({
   sourceKey: "${EXAMPLE_KEY}",
-  endpoint: "https://your-prism-instance.example", // runtime choice, never compiled in
+  endpoint: "https://prism-analytics-api-gsmo.onrender.com",
   runtime,
   collection: { initialState: "granted" },
 });`;
-const verifyCommand = `prism.track("app_opened", { source: "landing" });`;
+const verifyCommand = `prism.track("item_added_to_cart", { productId: "sku_123", value: 42 });`;
 
 function Hero() {
   return (
@@ -38,12 +38,14 @@ function Hero() {
           >
             Start hosted
           </Link>
-          <Link
-            to="#self-host"
+          <a
+            href={`${DOCS_URL}/docs/self-hosting/self-host-prism`}
+            target="_blank"
+            rel="noreferrer"
             className="inline-flex h-[42px] items-center rounded-[2px] border border-border-strong px-[18px] text-[13px] font-medium text-text transition-colors duration-150 hover:border-text-subtle hover:bg-surface-hover"
           >
             Self-host Prism
-          </Link>
+          </a>
         </div>
       </div>
 
@@ -58,10 +60,6 @@ function Hero() {
             className="block h-auto w-full"
           />
         </Frame>
-        <p className="mt-3 px-1 text-[12px] leading-relaxed text-text-subtle">
-          The real Prism workspace: usage summary, quick links, and the
-          connect-a-project panel.
-        </p>
       </div>
     </section>
   );
@@ -100,27 +98,57 @@ function ProofBand() {
 
 const snippets = {
   javascript: [
-    ["Install", installCommand],
-    ["Initialize", initializeCommand],
+    ["Install", "yarn add @prism-analytics/browser"],
+    [
+      "Initialize",
+      `const prism = await createBrowserClient({
+  sourceKey: "${EXAMPLE_KEY}",
+  endpoint: "https://prism-analytics-api-gsmo.onrender.com",
+  collection: { initialState: "granted" },
+});`,
+    ],
     ["Verify", verifyCommand],
   ] as const,
   react: [
-    ["Install", installCommand],
+    ["Install", "yarn add @prism-analytics/react @prism-analytics/browser"],
     [
       "Initialize",
-      `const prism = await createPrismClient({
+      `const prism = await createBrowserClient({
   sourceKey: "${EXAMPLE_KEY}",
-  endpoint: "https://your-prism-instance.example",
-  runtime,
+  endpoint: "https://prism-analytics-api-gsmo.onrender.com",
   collection: { initialState: "granted" },
 });`,
     ],
     [
       "Verify",
-      `useEffect(() => {
-  prism.track("app_opened", { source: "landing" });
-}, []);`,
+      `const { track } = usePrism();
+track("item_added_to_cart", { productId: "sku_123", value: 42 });`,
     ],
+  ] as const,
+  "react-native": [
+    ["Install", "yarn add @prism-analytics/react-native"],
+    [
+      "Initialize",
+      `const prism = await createReactNativeClient({
+  sourceKey: "${EXAMPLE_KEY}",
+  endpoint: "https://prism-analytics-api-gsmo.onrender.com",
+  storage: AsyncStorage,
+  collection: { initialState: "granted" },
+});`,
+    ],
+    ["Verify", verifyCommand],
+  ] as const,
+  node: [
+    ["Install", "yarn add @prism-analytics/node"],
+    [
+      "Initialize",
+      `const prism = await createNodeClient({
+  sourceKey: "${EXAMPLE_KEY}",
+  endpoint: "https://prism-analytics-api-gsmo.onrender.com",
+  collection: { initialState: "granted" },
+});`,
+    ],
+    ["Verify", verifyCommand],
   ] as const,
 };
 
@@ -145,6 +173,8 @@ function SetupSection() {
         </div>
         <a
           href={`${DOCS_URL}/docs/start/quickstart`}
+          target="_blank"
+          rel="noreferrer"
           className="inline-flex h-[36px] items-center rounded-[2px] border border-border-strong px-3.5 text-[13px] font-medium text-text transition-colors duration-150 hover:border-text-subtle hover:bg-surface-hover"
         >
           Read the docs
@@ -172,7 +202,7 @@ function SetupSection() {
                     : "text-text-muted hover:bg-surface-hover hover:text-text"
                 )}
               >
-                {name === "javascript" ? "JavaScript" : "React"}
+                {name === "javascript" ? "JavaScript" : name === "react" ? "React" : name === "react-native" ? "React Native" : "Node"}
               </button>
             )
           )}
@@ -250,7 +280,9 @@ function HostedVsSelfHosted() {
             <li>Bring your own database and email provider</li>
           </ul>
           <a
-            href={`${DOCS_URL}/docs/start/quickstart`}
+            href={`${DOCS_URL}/docs/self-hosting/self-host-prism`}
+            target="_blank"
+            rel="noreferrer"
             className="mt-8 inline-flex h-[38px] items-center rounded-[2px] border border-border-strong px-4 text-[13px] font-medium text-text transition-colors duration-150 hover:border-text-subtle hover:bg-surface-hover"
           >
             Deployment guide

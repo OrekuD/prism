@@ -6,9 +6,9 @@ const columns = [
   {
     title: "Product",
     links: [
-      { label: "Realtime", href: "#product" },
-      { label: "Events", href: "#product" },
-      { label: "Self-host", href: "#self-host" },
+      { label: "Live activity", href: `${DOCS_URL}/docs/features/sessions-and-live-activity` },
+      { label: "Event explorer", href: `${DOCS_URL}/docs/features/capturing-events` },
+      { label: "Self-host", href: `${DOCS_URL}/docs/self-hosting/self-host-prism` },
     ],
   },
   {
@@ -21,11 +21,7 @@ const columns = [
   },
   {
     title: "Project",
-    links: [
-      { label: "GitHub", href: "https://github.com" },
-      { label: "Security", href: "#security" },
-      { label: "Deployment", href: "#self-host" },
-    ],
+    links: [{ label: "GitHub", href: "https://github.com/OrekuD/prism" }],
   },
 ];
 
@@ -49,24 +45,28 @@ export function PublicFooter() {
               {column.title}
             </p>
             <ul className="mt-4 grid gap-2.5">
-              {column.links.map((link) => (
-                <li key={link.label}>
-                  <a
-                    href={link.href}
-                    className="text-[13px] text-text-muted transition-colors duration-150 hover:text-text hover:underline"
-                  >
-                    {link.label}
-                  </a>
-                </li>
-              ))}
+              {column.links.map((link) => {
+                const isExternal = link.href.startsWith("http");
+                return (
+                  <li key={link.label}>
+                    <a
+                      href={link.href}
+                      target={isExternal ? "_blank" : undefined}
+                      rel={isExternal ? "noreferrer" : undefined}
+                      className="text-[13px] text-text-muted transition-colors duration-150 hover:text-text hover:underline"
+                    >
+                      {link.label}
+                    </a>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         ))}
       </div>
       <div className="border-t border-border px-6 py-4 lg:px-10">
         <p className="text-[12px] text-text-subtle">
-          © {new Date().getFullYear()} Prism. Self-hosted friendly, no account
-          required to run it yourself.
+          © {new Date().getFullYear()} Prism
         </p>
       </div>
     </footer>
