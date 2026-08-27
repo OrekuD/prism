@@ -12,6 +12,11 @@ import type {
 	ResetResult,
 } from "@prism-analytics/core";
 import { errorToException } from "@prism-analytics/core";
+import type {
+	BrowserClientOptions,
+	BrowserPageViewOptions,
+	BrowserPrismClient,
+} from "@prism-analytics/browser";
 import {
 	Component,
 	createContext,
@@ -19,6 +24,7 @@ import {
 	useEffect,
 	useMemo,
 	useRef,
+	useState,
 } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 
@@ -104,6 +110,106 @@ export function PrismProvider({ client, children }: PrismProviderProps) {
 		<PrismContext.Provider value={value}>{children}</PrismContext.Provider>
 	);
 }
+export interface PrismAnalyticsProps {
+	/** Override env-derived values. Reads VITE_PRISM_SOURCE_KEY / VITE_PRISM_ENDPOINT (Vite), NEXT_PUBLIC_… (Next), or process.env. */
+	sourceKey?: string;
+	endpoint?: string;
+	/** Defaults to { initialState: "granted" } for anonymous analytics. */
+	collection?: BrowserClientOptions["collection"];
+	/** Defaults to { mode: "history" } — zero-config SPA tracking. */
+	pageViews?: BrowserPageViewOptions;
+	/** Suppress console.warn on missing credentials. Default false. */
+	silent?: boolean;
+}
+
+function resolveEnv(key: string): string | undefined {
+	try {
+		// @ts-ignore - import.meta is Vite-specific, may not be available in all builds
+		const viteEnv = (Function('return typeof import !== "undefined" && import.meta?.env')() as Record<string, string> | undefined);
+		if (viteEnv?.[key]) return viteEnv[key];
+	} catch {}
+	try {
+		if (typeof process !== "undefined" && (process as unknown as { env: Record<string, string> }).env?.[key]) {
+			return (process as unknown as { env: Record<string, string> }).env[key];
+		}
+	} catch {}
+	return undefined;
+}
+
+/**
+ * Drop-in analytics component — Vercel Analytics-style.
+ * Reads VITE_PRISM_SOURCE_KEY / VITE_PRISM_ENDPOINT (and NEXT_PUBLIC_ equivalents)
+ * when props are omitted, creates the browser client with useState+useEffect
+ * (no top-level await), provides context, and mounts page-view tracking.
+ */
+export function PrismAnalytics(props: PrismAnalyticsProps): ReactNode {
+	const [client, setClient] = useState<BrowserPrismClient | null>(null);
+
+	useEffect(() => {
+		const sourceKey =
+			props.sourceKey ??
+			resolveEnv("VITE_PRISM_SOURCE_KEY") ??
+			resolveEnv("NEXT_PUBLIC_PRISM_SOURCE_KEY") ??
+			resolveEnv("PRISM_SOURCE_KEY");
+		const endpoint =
+			props.endpoint ??
+			resolveEnv("VITE_PRISM_ENDPOINT") ??
+			resolveEnv("NEXT_PUBLIC_PRISM_ENDPOINT") ??
+			resolveEnv("PRISM_ENDPOINT");
+
+		if (!sourceKey || !endpoint) {
+			if (!props.silent) {
+				console.warn("[prism] PrismAnalytics missing sourceKey/endpoint — analytics disabled");
+			}
+			return;
+		}
+
+		let cancelled = false;
+		let browserClient: BrowserPrismClient | null = null;
+
+		(async () => {
+			try {
+				const { createBrowserClient } = await import("@prism-analytics/browser");
+				const c = (await createBrowserClient({
+					sourceKey,
+					endpoint,
+					collection: props.collection ?? { initialState: "granted" },
+					pageViews: props.pageViews ?? { mode: "history" },
+				})) as unknown as BrowserPrismClient;
+				if (!cancelled) setClient(c);
+				browserClient = c;
+			} catch (e) {
+				if (!props.silent) console.warn("[prism] failed to create client", e);
+			}
+		})();
+
+		return () => {
+			cancelled = true;
+			if (browserClient) void browserClient.shutdown();
+		};
+	}, [props.sourceKey, props.endpoint, JSON.stringify(props.collection), JSON.stringify(props.pageViews)]);
+
+	if (!client) return null;
+
+	return (
+		<PrismProvider client={client as unknown as PrismClient}>
+			<PrismAnalyticsPageTracker />
+		</PrismProvider>
+	);
+}
+
+function PrismAnalyticsPageTracker(): ReactNode {
+	const client = useContext(PrismContext) as unknown as BrowserPrismClient | null;
+	const mode = (client as unknown as { pageViews?: { mode: string } | null })?.pageViews?.mode;
+	if (mode !== "manual") return null;
+	return <PrismAnalyticsManualTracker />;
+}
+
+function PrismAnalyticsManualTracker(): null {
+	usePrismPageView({ path: typeof window !== "undefined" ? window.location.pathname : "/" });
+	return null;
+}
+
 
 export interface PrismErrorBoundaryProviderProps {
 	/** An already-created, ready error reporter (createBrowserErrorReporter). */
@@ -214,7 +320,6 @@ export type { PrismSessionHandle };
 /* Task 17 §React integration: router-neutral manual page-view hook    */
 /* ------------------------------------------------------------------ */
 
-import type { BrowserPageViewOptions } from "@prism-analytics/core";
 
 /**
  * Captures one page view for a normalized route on every path change.
@@ -259,11 +364,9 @@ export function usePrismPageView(options: {
 			'usePrismPageView requires pageViews mode "manual" — history-mode clients capture navigation automatically',
 		);
 	}
-	const pathRef = useRef(options.path);
 	useEffect(() => {
 		// Fire per committed path change; the tracker dedupes Strict Mode's
-		// synchronous double-invoke of this effect.
-		void pathRef.current;
+		// synchronous double-invoke of this effect (500ms hostname+path window).
 		controller.capture({ path: options.path, title: options.title });
 	}, [options.path]); // eslint-disable-line react-hooks/exhaustive-deps -- title follows path commits
 }

@@ -1,67 +1,115 @@
 ---
 title: React Native SDK
-description: Expo + bare support for Prism with offline queue, screen views, and app sessions.
+description: Add Prism analytics to Expo and bare React Native apps.
 audience: Developer
 scope: Both
-lastReviewed: "2026-08-25"
+lastReviewed: "2026-08-27"
 ---
 
-`@prism-analytics/react-native` is the React Native SDK for Prism. It wraps `@prism-analytics/core` with a React Native runtime — Metro-safe transport, `AsyncStorage` persistence, `AppState` lifecycle, and optional navigation adapters — and exposes screen-view capture for the Mobile analytics dashboard.
+Add Prism to your React Native app with Metro-safe transport, durable
+storage, and lifecycle handling for foreground and background states.
+You can track screen views, app sessions, and errors with the same
+privacy controls as the browser SDK.
 
-Supports Expo SDK 53 + React Native 0.79 (Hermes), React 18/19, `@react-native-async-storage/async-storage` 2.x, and `@react-navigation/native` 7 / Expo Router.
+Use this guide to install the SDK, create a client, and verify your
+first events. It covers Expo SDK 53 and React Native 0.79 with Hermes.
 
 ## Installation
 
-```sh
-npm install @prism-analytics/react-native
-# peer: react-native, react
-# optional: @react-native-async-storage/async-storage, @react-navigation/native, expo
-```
+Install the SDK. Prism works with Expo and bare workflows.
 
-## Creating the client
+<InstallTabs pkg="@prism-analytics/react-native" />
 
-Create the client once at app start — outside React — and keep the reference:
+This package requires `react` and `react-native` as peers. For
+durable storage and navigation tracking, you can also install:
+
+* `@react-native-async-storage/async-storage` version 2 for queue
+  persistence and installation identity.
+* `@react-navigation/native` version 7 for automatic screen tracking,
+  or Expo Router.
+
+## Create the client
+
+Create the client once when your app starts, outside any component.
+Keep the reference for the lifetime of the app.
 
 ```ts
 import { createReactNativeClient } from "@prism-analytics/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export const prism = await createReactNativeClient({
-  sourceKey: "psk_…", // from Prism dashboard -> Sources -> react-native
-  endpoint: "https://prism-analytics-api-gsmo.onrender.com", // hosted — self-host: your PUBLIC_URL
-  storage: AsyncStorage, // durable queue + installation id
+  sourceKey: "psk_your_key",
+  endpoint: "https://prism-analytics-api-gsmo.onrender.com",
+  storage: AsyncStorage,
   collection: { initialState: "granted" },
   app: { version: "1.0.0", build: "1", environment: "production" },
 });
 ```
 
-Invalid options throw before any network activity. Runtime conditions (consent denied, queue full) return a discriminated `dropped` result from `track()` instead of throwing.
+Prism validates your options before it sends any data. It checks the
+source key, endpoint, and app metadata. If validation fails, it throws
+a clear error and sends nothing. If consent is denied or the queue is
+full at runtime, `track` returns `{ status: "dropped", reason }` instead
+of throwing.
 
-When the app backgrounds, the SDK flushes queued events and records foreground time; on foreground it resumes the session. Manage consent with `prism.setCollectionState("granted" | "denied")`.
+When your app moves to the background, the SDK flushes queued events
+and records foreground time. When it returns to the foreground, it
+resumes the session. Change consent with
+`prism.setCollectionState("granted")` or
+`prism.setCollectionState("denied")`.
 
-## Screen views
+## Track screen views
 
-Screen views are reserved `$prism_screen_view` records that power **Mobile analytics** (Top screens, Releases, OS, etc.):
+Screen views power the Mobile analytics dashboard, including top
+screens, releases, and OS breakdowns. Each view is a reserved
+`$prism_screen_view` record.
+
+Track a screen manually:
 
 ```ts
-prism.screen("Home", { routePattern: "/home", previousScreen: "Login" });
-// or with navigation adapters:
-// React Navigation 7 / Expo Router adapters wrap this for you
+prism.screen("Home", {
+  routePattern: "/home",
+  previousScreen: "Login",
+});
 ```
 
-Screen names are validated (max 128 chars, required). Branch screen counts and foreground time are aggregated per app session.
+Prism validates the screen name. It must be present and 128 characters
+or fewer.
 
-## App sessions and installations
+You can also use the navigation adapters. They wrap this call for you:
 
-* App sessions have a 30-minute inactivity timeout; the SDK owns lifecycle via `AppState` and `Dimensions`.
-* Installations are a durable random id per `endpoint + sourceKey` (scoped storage key `prism:installation:${endpoint}:${sourceKey}`), digested server-side — raw ids are never stored.
+* React Navigation 7
+* Expo Router
 
-## Error tracking
+Screen counts and foreground time aggregate by app session. Prism groups
+views by screen name and route pattern for the dashboard.
 
-Re-use the browser error lane via `@prism-analytics/react-native` — JS errors are sanitized and grouped server-side like web.
+## Understand app sessions and installations
+
+Prism manages two concepts for mobile:
+
+* **App sessions** group screen views and events with a 30-minute
+  inactivity timeout. The SDK owns the lifecycle through `AppState` and
+  `Dimensions`. You don't need to start or end sessions yourself.
+* **Installations** identify a single install of your app. The SDK
+  generates a random ID once and stores it under the key
+  `prism:installation:${endpoint}:${sourceKey}`. It uses your
+  `AsyncStorage` instance for durability. The server stores only a
+  digested hash, never the raw ID.
+
+## Add error tracking
+
+Prism sanitizes JavaScript errors before it sends them, and it groups
+them server-side. The React Native SDK reuses the browser error lane.
+
+See [Error tracking](../features/error-tracking.mdx) for capture
+options, deduplication, and the dashboard.
 
 ## Next steps
 
-- [Capturing events](/docs/features/capturing-events)
-- [Error tracking](/docs/features/error-tracking)
-- [SDK API and limits](/docs/reference/sdk-api-and-limits)
+* [Capture events](../features/capturing-events.mdx) to learn about
+  event names and properties.
+* [Error tracking](../features/error-tracking.mdx) to add error
+  reporting.
+* [SDK API and limits](../reference/sdk-api-and-limits.mdx) for the
+  complete option reference.

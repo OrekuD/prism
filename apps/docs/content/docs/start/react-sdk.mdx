@@ -1,65 +1,119 @@
 ---
 title: React SDK
-description: The provider and hooks layer over an already-created Browser client.
+description: Add Prism to a React app with a drop-in component or a custom provider setup.
 audience: Developer
 scope: Both
-lastReviewed: "2026-08-24"
+lastReviewed: "2026-08-27"
 ---
 
-`@prism-analytics/react` is a thin provider and hooks layer over an
-already-created, ready Browser client. It never creates a second queue,
-session, consent store, or retry policy — ownership stays with whoever
-called `createBrowserClient`. It supports React 18 and 19
-(`^18.0.0 || ^19.0.0`).
+`@prism-analytics/react` connects your React app to Prism through the
+browser SDK. You can use the zero-config component for most apps, or
+create the client yourself when you need full control. The package
+supports React 18 and 19.
+
+Use this guide to install the SDK, render it in your app, and track
+events with hooks.
 
 ## Installation
 
-```sh
-npm install @prism-analytics/react @prism-analytics/browser
-```
+Install the React package and the browser SDK:
 
-## Create once, provide everywhere
+<InstallTabs pkg="@prism-analytics/react @prism-analytics/browser" />
 
-Create the client outside React — module scope or a loader — and pass
-the ready client to `PrismProvider`:
+## Add Prism with the drop-in component
+
+For most apps, render `<PrismAnalytics />` near the root of your tree.
+You don't need to create a client yourself.
 
 ```tsx
-// prism.ts — created ONCE, outside React
+import { PrismAnalytics } from "@prism-analytics/react";
+import { createRoot } from "react-dom/client";
+import App from "./App.tsx";
+
+createRoot(document.getElementById("root")!).render(
+  <>
+    <App />
+    <PrismAnalytics />
+  </>
+);
+```
+
+Add your credentials as environment variables. The component reads them
+automatically:
+
+* Vite: `VITE_PRISM_SOURCE_KEY` and `VITE_PRISM_ENDPOINT`
+* Next.js: `NEXT_PUBLIC_PRISM_SOURCE_KEY` and
+  `NEXT_PUBLIC_PRISM_ENDPOINT`
+
+For the hosted deployment, set the endpoint to
+`https://prism-analytics-api-gsmo.onrender.com`. For a self-hosted
+instance, use your `PUBLIC_URL`. Use the bare origin — the SDK appends
+`/api/v2/ingest` for you.
+
+You can also pass the values directly as props to override the
+environment:
+
+```tsx
+<PrismAnalytics
+  sourceKey="psk_your_key"
+  endpoint="https://prism-analytics-api-gsmo.onrender.com"
+  collection={{ initialState: "granted" }}
+/>
+```
+
+By default, the component creates the client with collection
+set to `granted` and page views set to `history`. It shows nothing
+on the page, and it cleans up automatically when it unmounts. To
+handle page views yourself, pass `pageViews` set to `manual` and use
+`usePrismPageView` as shown below.
+
+## Create the client yourself
+
+Create the client outside React when you need to share it with
+non-React code or control its lifecycle. Create it once and pass the
+ready client to the provider.
+
+```tsx
+// prism.ts — create once, outside React
 import { createBrowserClient } from "@prism-analytics/browser";
 
 export const prism = await createBrowserClient({
   sourceKey: "psk_your_key",
-  endpoint: "https://prism-analytics-api-gsmo.onrender.com", // hosted — self-host: your PUBLIC_URL
+  endpoint: "https://prism-analytics-api-gsmo.onrender.com",
   collection: { initialState: "granted" },
-  pageViews: { mode: "manual" }, // required for usePrismPageView
+  pageViews: { mode: "history" },
 });
 ```
 
 ```tsx
-// entry.tsx
+// main.tsx
 import { PrismProvider } from "@prism-analytics/react";
-import { prism } from "./prism";
+import { prism } from "./prism.ts";
 
-root.render(
+createRoot(document.getElementById("root")!).render(
   <PrismProvider client={prism}>
     <App />
-  </PrismProvider>,
+  </PrismProvider>
 );
 ```
 
-The provider accepts a ready client — never an initialization config —
-so no half-initialized context exists. It registers no effects,
-listeners, or timers, which means React Strict Mode double-mounting can
-never duplicate SDK work. Cleanup stays where ownership is: call
-`prism.shutdown()` in your own lifecycle, not a React effect.
+The provider accepts a ready client only. It doesn't create a second
+queue, session, or retry policy, and it doesn't register effects,
+listeners, or timers. This means React Strict Mode can't duplicate work.
+You own cleanup — call `prism.shutdown()` in your app's lifecycle, not
+inside a React effect.
 
-## `usePrism()`
+## Track events with `usePrism`
+
+Call `usePrism` inside the provider to get a stable facade for the
+client:
 
 ```tsx
 import { usePrism } from "@prism-analytics/react";
 
 function CheckoutButton() {
-  const { track } = usePrism(); // stable bound method
+  const { track } = usePrism();
+
   return (
     <button onClick={() => track("checkout_started", { value: 42 })}>
       Checkout
@@ -68,55 +122,98 @@ function CheckoutButton() {
 }
 ```
 
-Returns a facade over the client: `track`, `startSession`,
-`setCollectionState`, `flush`, `shutdown`, `onDiagnostic`,
-`collectionState`, plus the raw `client`. Bound methods keep their
-identity across renders. Throws a specific error outside a provider.
+The facade exposes `track`, `startSession`, `setCollectionState`,
+`flush`, `shutdown`, `onDiagnostic`, and the read-only `client`,
+`collectionState`, and `identity` fields. Bound methods keep the same
+identity across renders.
 
-Hooks must be called unconditionally at the top of the component —
-never inside conditionals or try/catch blocks. If your tree can render
-without a provider, use the non-throwing `useOptionalPrism()` instead
-and branch on the result:
+You must call hooks at the top of your component. Don't wrap them in
+conditions or `try/catch` blocks. If part of your tree can render
+without a provider (for example, in tests), use the optional version:
 
 ```tsx
+import { useOptionalPrism } from "@prism-analytics/react";
+
 function AnalyticsButton() {
   const prism = useOptionalPrism();
+
   if (!prism) return <button>Checkout</button>;
-  return <button onClick={() => prism.track("checkout")}>Checkout</button>;
+
+  return (
+    <button onClick={() => prism.track("checkout_started")}>Checkout</button>
+  );
 }
 ```
 
-`track` and `startSession` are synchronous and return discriminated
-results (`queued`/`dropped`, `started`/`blocked`) — they never throw and
-never need `await`. Only `identify`, `reset`, `flush`, `shutdown`, and
-the global-property methods are async.
+`track` and `startSession` run synchronously and return a
+discriminated result. They never throw and never require `await`:
 
-## `usePrismPageView({ path, title? })`
+* `track` returns `{ status: "queued", eventId }` or
+  `{ status: "dropped", reason }`.
+* `startSession` returns `{ status: "started", session }` or
+  `{ status: "blocked", reason }`.
 
-Captures a page view per path change for the
-[Page analytics](/docs/features/page-analytics) dashboard:
+Only `identify`, `reset`, `flush`, `shutdown`, and the global-property
+methods are async.
+
+## Capture page views with `usePrismPageView`
+
+Use this hook when you create the client with
+`pageViews: { mode: "manual" }`:
 
 ```tsx
+import { usePrismPageView } from "@prism-analytics/react";
+
 function App() {
   usePrismPageView({ path: location.pathname });
+
   return <Outlet />;
 }
 ```
 
-The hook requires a provider whose client was created with
-`pageViews: { mode: "manual" }`. It throws a specific error when the
-provider is missing, page tracking is unconfigured, or the client runs
-in history mode. Captures exactly once per path — including under React
-Strict Mode.
+The hook captures one page view per path change, including under React
+Strict Mode. Manual captures for the same hostname and path within 500
+milliseconds are deduplicated and return
+`{ status: "dropped", reason: "duplicate-manual-capture" }`.
 
-## Error boundary
+The hook throws a clear error if the provider is missing, the client has
+no page tracking, or it runs in `history` mode. Use `history` mode when
+you want automatic captures for every `pushState` and `popstate`
+navigation with no extra code.
 
-`@prism-analytics/react` also ships an error boundary that reports
-caught render errors to Prism's error tracker. See
-[Error tracking](/docs/features/error-tracking).
+## Handle errors with the boundary (optional)
+
+The package includes an opt-in error boundary that reports render errors
+to Prism. Wrap your app only if you want this behavior:
+
+```tsx
+import {
+  PrismErrorBoundary,
+  PrismErrorBoundaryProvider,
+} from "@prism-analytics/react";
+import { createBrowserErrorReporter } from "@prism-analytics/browser";
+
+const reporter = await createBrowserErrorReporter({
+  sourceKey: "psk_your_key",
+  endpoint: "https://prism-analytics-api-gsmo.onrender.com",
+  share: { client: prism },
+});
+
+<PrismErrorBoundaryProvider reporter={reporter}>
+  <PrismErrorBoundary fallback={<ErrorScreen />}>
+    <App />
+  </PrismErrorBoundary>
+</PrismErrorBoundaryProvider>;
+```
+
+See [Error tracking](../features/error-tracking.mdx) for the full
+setup.
 
 ## Next steps
 
-- [Capturing events](/docs/features/capturing-events)
-- [Identifying users](/docs/features/identifying-users)
-- [SDK API and limits](/docs/reference/sdk-api-and-limits)
+* [Capture events](../features/capturing-events.mdx) to learn about
+  event names and properties.
+* [Identify users](../features/identifying-users.mdx) to link activity
+  to people.
+* [SDK API and limits](../reference/sdk-api-and-limits.mdx) for the
+  complete option and method reference.

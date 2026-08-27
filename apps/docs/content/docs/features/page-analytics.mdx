@@ -18,7 +18,7 @@ Enable page views on the Browser client:
 ```ts
 const prism = await createBrowserClient({
   sourceKey: "psk_your_key",
-  endpoint: "https://prism-analytics-api-gsmo.onrender.com", // hosted — self-host: your PUBLIC_URL
+  endpoint: "https://prism-analytics-api-gsmo.onrender.com",
   collection: { initialState: "granted" },
   pageViews: { mode: "history" },
 });
@@ -39,6 +39,9 @@ usePrismPageView({ path: location.pathname });
 ```
 
 It captures exactly once per path, including under React Strict Mode.
+Manual captures for the same hostname+path within 500ms are deduplicated
+(`dropped("duplicate-manual-capture")`) — this collapses Strict Mode's
+double-invoke and rapid re-renders without dropping intentional navigations.
 See [React SDK](/docs/start/react-sdk).
 
 ### What is captured

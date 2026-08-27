@@ -89,6 +89,26 @@ export type BrowserPrismClient = PrismClient & {
  * - Unload flushes use an AUTHENTICATED fetch keepalive — never an
  *   unauthenticated sendBeacon fallback.
  */
+function normalizeEndpoint(raw: string): string {
+	try {
+		const url = new URL(raw);
+		const originalPath = url.pathname;
+		url.pathname = url.pathname.replace(/\/api\/v2\/ingest\/?$/, "");
+		url.search = "";
+		url.hash = "";
+		const normalized = url.origin + url.pathname.replace(/\/$/, "");
+		const trimmedRaw = raw.replace(/\/$/, "");
+		if (normalized !== trimmedRaw) {
+			console.warn(
+				`[prism] endpoint normalized: "${raw}" -> "${normalized}" (SDK appends /api/v2/ingest — use the bare origin)`,
+			);
+		}
+		return normalized;
+	} catch {
+		return raw.replace(/\/$/, "");
+	}
+}
+
 export async function createBrowserClient(
 	options: BrowserClientOptions,
 ): Promise<BrowserPrismClient> {
@@ -102,10 +122,11 @@ export async function createBrowserClient(
 			"endpoint is required — choose the ingestion origin at runtime",
 		);
 	}
+	const endpoint = normalizeEndpoint(options.endpoint);
 	const runtime = createBrowserRuntime();
 	const client = await createPrismClient({
 		sourceKey: options.sourceKey,
-		endpoint: options.endpoint.replace(/\/$/, ""),
+		endpoint,
 		runtime,
 		collection: {
 			// Session-scoped identity by default (§4): the browser default
@@ -135,7 +156,7 @@ export async function createBrowserClient(
 		client: coreClient,
 		options: options.pageViews,
 		sourceKey: options.sourceKey,
-		endpoint: options.endpoint.replace(/\/$/, ""),
+		endpoint,
 	});
 	browserClient.pageViews = {
 		mode: tracker.mode,

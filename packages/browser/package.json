@@ -37,5 +37,14 @@
   "publishConfig": {
     "access": "public"
   },
-  "description": "Prism Analytics SDK for the browser"
+  "description": "Prism Analytics SDK for the browser",
+  "homepage": "https://prism-analytics-docs.vercel.app/docs/start/javascript-sdk",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OrekuD/prism.git",
+    "directory": "packages/browser"
+  },
+  "bugs": {
+    "url": "https://github.com/OrekuD/prism/issues"
+  }
 }

@@ -15,27 +15,24 @@ sessions, errors, consent — lives on its own page and links back here.
 
 ## Installation
 
-```sh
-npm install @prism-analytics/browser
-```
+<InstallTabs pkg="@prism-analytics/browser" />
 
 ## Creating the client
 
 `createBrowserClient` is an async factory that resolves to a ready
 client. One options object, no positional arguments:
 
+For the hosted deployment, use
+`https://prism-analytics-api-gsmo.onrender.com`. For a self-hosted
+instance, use your `PUBLIC_URL`.
+
 ```ts
 import { createBrowserClient } from "@prism-analytics/browser";
 
 const prism = await createBrowserClient({
-  // Publishable source key — safe to embed, write-only.
   sourceKey: "psk_your_key",
-  // Your Prism ingestion origin. Copy it from Sources → Setup;
-  // never hardcode someone else's instance.
-  endpoint: "https://prism-analytics-api-gsmo.onrender.com", // hosted — self-host: your PUBLIC_URL
-  // Optional consent state machine (see Consent and privacy).
-  collection: { initialState: "pending" },
-  // Optional automatic page views (see Page analytics).
+  endpoint: "https://prism-analytics-api-gsmo.onrender.com",
+  collection: { initialState: "granted" },
   pageViews: { mode: "history" },
 });
 ```

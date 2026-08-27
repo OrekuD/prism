@@ -46,6 +46,8 @@ export function PublicNav() {
           <div className="hidden items-center gap-6 md:flex">
             <a
               href={docsHref}
+              target="_blank"
+              rel="noreferrer"
               onClick={() =>
                 trackTelemetry(TELEMETRY_EVENTS.docsClick, { source: "nav" })
               }
@@ -89,6 +91,8 @@ export function PublicNav() {
             <div className="mx-auto max-w-[1200px] px-6">
               <a
                 href={docsHref}
+                target="_blank"
+                rel="noreferrer"
                 onClick={() => setOpen(false)}
                 className="flex h-12 items-center border-b border-border text-[14px] text-text-muted hover:text-text"
               >

@@ -31,26 +31,29 @@ source's key.
 ## 3. Copy the setup snippet
 
 Open the source's **Setup** tab. It shows a ready-made snippet containing
-your publishable source key (`psk_...`) and the exact ingestion endpoint
-of your Prism instance. Publishable keys are safe to embed in client
-code — they can only write analytics data, and the project is derived
-from the key on every request.
+your publishable source key (`psk_...`) and the ingestion **origin**
+(bare origin like `https://prism-analytics-api-gsmo.onrender.com` — the
+SDK appends `/api/v2/ingest` automatically). Copy the origin, not the
+full ingest URL. Publishable keys are safe to embed in client code —
+they can only write analytics data, and the project is derived from the
+key on every request.
 
 ## 4. Install the SDK
 
-```sh
-npm install @prism-analytics/browser
-```
+<InstallTabs pkg="@prism-analytics/browser" />
 
 ## 5. Initialize the client
+
+For the hosted deployment, use
+`https://prism-analytics-api-gsmo.onrender.com`. For a self-hosted
+instance, use your `PUBLIC_URL`.
 
 ```ts
 import { createBrowserClient } from "@prism-analytics/browser";
 
 export const prism = await createBrowserClient({
   sourceKey: "psk_your_key",
-  endpoint: "https://prism-analytics-api-gsmo.onrender.com", // hosted ingestion origin — self-host: your PUBLIC_URL (bare origin, SDK appends /api/v2/ingest) // from Sources → Setup
-
+  endpoint: "https://prism-analytics-api-gsmo.onrender.com",
   collection: { initialState: "granted" },
 });
 ```

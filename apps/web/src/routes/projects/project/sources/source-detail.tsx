@@ -153,7 +153,7 @@ export function SourceDetail() {
 		);
 	}
 
-	const endpoint = `${window.location.origin}/api/v2/ingest`;
+	const endpoint = window.location.origin;
 	const activeKeys = data.keys.filter((key) => key.status === "active");
 	const snippetKey =
 		data.keys.find(

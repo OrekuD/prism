@@ -10,9 +10,7 @@ lastReviewed: "2026-08-24"
 
 ## Installation
 
-```sh
-npm install @prism-analytics/node @prism-analytics/core
-```
+<InstallTabs pkg="@prism-analytics/node" />
 
 Requires Node 18+ (`globalThis.fetch` and `crypto.randomUUID`).
 
@@ -24,13 +22,9 @@ Requires Node 18+ (`globalThis.fetch` and `crypto.randomUUID`).
 import { createNodeErrorReporter } from "@prism-analytics/node";
 
 const errors = await createNodeErrorReporter({
-  // Secret source key — keep it out of client bundles.
   sourceKey: "psk_your_key",
-  // Your Prism ingestion origin. Copy it from Sources → Setup.
-  endpoint: "https://prism-analytics-api-gsmo.onrender.com", // hosted — self-host: your PUBLIC_URL
-  // Share identity + consent with the reporter when you also run analytics.
+  endpoint: "https://prism-analytics-api-gsmo.onrender.com",
   share: { client: prism },
-  // Optional release / environment stamped on every report.
   release: "api@2.1.0",
   environment: "production",
 });
