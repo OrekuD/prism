@@ -84,7 +84,7 @@ export function useBreadcrumbs(): Crumb[] {
 					}
 				}
 			} else if (sub) {
-				crumbs.push({ label: cap(sub) });
+				crumbs.push({ label: sub.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) });
 			}
 		}
 	} else {

@@ -29,7 +29,7 @@ function bucketMsFor(from: number, to: number): number {
 	return 7 * 24 * 60 * 60 * 1000;
 }
 
-export const MOBILE_MAX_RANGE_MS = MOBILE_LIMITS.maxDashboardRangeMs;
+export const MOBILE_MAX_RANGE_MS = 366 * 24 * 60 * 60 * 1000; // MOBILE_LIMITS.maxDashboardRangeMs — literal to avoid workerd TDZ at startup
 
 /**
  * THE effective filter contract: applied identically to every total,

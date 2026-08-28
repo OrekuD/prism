@@ -114,8 +114,6 @@ export function InstallTabs({ pkg }: { pkg: string }) {
     } catch {}
   };
 
-  console.log({ html });
-
   return (
     <div className="my-4 overflow-hidden rounded-lg border border-fd-border">
       <div

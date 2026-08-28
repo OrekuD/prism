@@ -5,6 +5,7 @@
   "scripts": {
     "start": "node dist/src/index.js",
     "dev": "tsx watch src/index.ts",
+    "sqld": "mkdir -p ./data/sqld && /Users/david/.turso/sqld --db-path ./data/sqld --http-listen-addr 127.0.0.1:5001 --no-welcome",
     "build": "rm -rf ./dist && tsc -p tsconfig.json",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",

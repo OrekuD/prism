@@ -380,7 +380,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 						/>
 						<Active
 							to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/web-analytics`}
-							label="Web analytics"
+							label="Web Analytics"
 							icon={<I.IconTrend />}
 						/>
 <Active

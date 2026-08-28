@@ -30,3 +30,6 @@ package-lock.json
 research/
 
 GATES.md
+
+# Local analytics file DB (sqld without Docker) — persists across reboots
+apps/analytics-api/data/
