@@ -15,7 +15,7 @@ export function ProjectSettingsLayout() {
   const path = pathname.split("/")[pathname.split("/").length - 1] || "";
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-10">
       <PageHeader
         title="Settings"
         description="Manage your project settings."
@@ -33,7 +33,7 @@ export function ProjectSettingsLayout() {
                   className={cn(
                     buttonVariants({ variant: "ghost" }),
                     isActive ? "bg-muted hover:bg-muted" : "hover:bg-muted",
-                    "justify-start transition-colors duration-200",
+                    "justify-start transition-colors duration-200"
                   )}
                 >
                   {item.label}

@@ -71,7 +71,17 @@ function makeStore(options: {
       return [{ id: SOURCE_ID }];
     }
     if (sql.includes("INSERT INTO project_api_keys")) {
-      return [{ id: KEY_ID }];
+      return [
+        {
+          id: KEY_ID,
+          name: "Rotation key",
+          key: "psk_test1234567890abcdef",
+          keyType: "publishable",
+          status: "active",
+          createdAt: new Date().toISOString(),
+          lastUsedAt: null,
+        },
+      ];
     }
     if (sql.includes("UPDATE project_sources")) {
       return [{ id: SOURCE_ID }];

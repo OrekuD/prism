@@ -178,7 +178,7 @@ function EventDetails({ event, base }: { event: EventResource; base: string }) {
 		<>
 			<SheetHeader className="gap-2 border-b border-border pr-10">
 				<div className="flex flex-wrap items-center gap-2">
-					<SheetTitle className="break-words font-mono text-[16px] font-medium tracking-[-0.01em] text-text">
+					<SheetTitle className="break-words font-sans text-[16px] font-medium tracking-[-0.015em] text-text">
 						{event.name}
 					</SheetTitle>
 				</div>

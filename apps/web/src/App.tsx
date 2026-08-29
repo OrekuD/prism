@@ -115,6 +115,11 @@ const SourceDetail = lazy(() =>
 		default: m.SourceDetail,
 	})),
 );
+const SourceDetailDialog = lazy(() =>
+	import("./components/sources/detail/dialog").then((m) => ({
+		default: m.SourceDetailDialog,
+	})),
+);
 const ProjectErrors = lazy(() =>
 	import("./routes/projects/project/errors").then((m) => ({
 		default: m.ProjectErrors,
@@ -129,11 +134,22 @@ const IssueDetail = lazy(() =>
 /**
  * /sources/:seg is ambiguous on purpose: a known type word (web / mobile /
  * server) renders the type Sources page, anything else (a src_* id) renders
- * the dedicated source page.
+ * the source detail as a dialog overlay on top of the list (same pattern as
+ * errors/:issueId → Sheet). The list stays mounted underneath via
+ * ProjectSources; closing the dialog navigates deterministically to the list
+ * base (never history -1).
  */
 function SourcesDispatch() {
 	const { seg } = useParams();
-	if (seg && !SOURCE_TYPE_WORDS.includes(seg)) return <SourceDetail />;
+	const isSource = seg !== undefined && !SOURCE_TYPE_WORDS.includes(seg);
+	if (isSource) {
+		return (
+			<>
+				<ProjectSources />
+				<SourceDetailDialog />
+			</>
+		);
+	}
 	return <ProjectSources />;
 }
 const AccountLayout = lazy(() =>
@@ -243,7 +259,9 @@ const router = createBrowserRouter(
 								<Route path=":issueId" element={<IssueDetail />} />
 							</Route>
 							<Route path="sources" element={<Navigate to="web" replace />} />
-							<Route path="sources/:type/:tab" element={<ProjectSources />} />
+							<Route path="sources/:type/:tab" element={<ProjectSources />}>
+								<Route path=":sourceId" element={<SourceDetailDialog />} />
+							</Route>
 							<Route path="sources/:seg" element={<SourcesDispatch />} />
 							<Route path="settings" element={<ProjectSettingsLayout />}>
 								<Route path="" element={<Navigate to="general" />} />

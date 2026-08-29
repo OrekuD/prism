@@ -14,7 +14,7 @@ import {
 	useSearchParams,
 } from "react-router-dom";
 
-import { Frame, SectionLabel } from "@/components/public/frame";
+import { Frame } from "@/components/public/frame";
 import { PageHeader } from "@/components/public/page-header";
 import { Button } from "@/components/ui/button";
 import { DataTablePagination } from "@/components/ui/data-pagination";
@@ -35,7 +35,6 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import {
-	FAMILY_DESCRIPTIONS,
 	FAMILY_LABELS,
 	type PlatformFamily,
 	agoLabel,
@@ -113,8 +112,6 @@ export function ProjectEvents() {
 	const q = searchParams.get("q") ?? "";
 	const type = (searchParams.get("type") ?? "all") as TypeFilter;
 	const sourceId = searchParams.get("source") ?? "all";
-	const person = searchParams.get("person") ?? "";
-	const session = searchParams.get("session") ?? "";
 	const searchTimer = React.useRef<number | null>(null);
 
 	const updateFilter = (patch: Record<string, string | null>): void => {
@@ -134,17 +131,11 @@ export function ProjectEvents() {
 	const events = React.useMemo(() => data ?? [], [data]);
 
 	const hasActiveFilter =
-		q.trim() !== "" ||
-		type !== "all" ||
-		sourceId !== "all" ||
-		person.trim() !== "" ||
-		session.trim() !== "";
+		q.trim() !== "" || type !== "all" || sourceId !== "all";
 
 	// Pre-filter outside TanStack (typed URL-backed filters); the table owns
 	// pagination + the global text search over name/identity columns.
 	const filteredData = React.useMemo(() => {
-		const personNeedle = person.trim().toLowerCase();
-		const sessionNeedle = session.trim().toLowerCase();
 		let rows = events;
 		if (type !== "all") {
 			rows = rows.filter((event) => familyOf(event) === type);
@@ -152,48 +143,8 @@ export function ProjectEvents() {
 		if (sourceId !== "all") {
 			rows = rows.filter((event) => event.source?.id === sourceId);
 		}
-		if (personNeedle) {
-			rows = rows.filter((event) =>
-				[event.userId, event.anonymousId, event.personId]
-					.filter(Boolean)
-					.join(" ")
-					.toLowerCase()
-					.includes(personNeedle),
-			);
-		}
-		if (sessionNeedle) {
-			rows = rows.filter((event) =>
-				(event.sessionId ?? "").toLowerCase().includes(sessionNeedle),
-			);
-		}
 		return rows;
-	}, [events, type, sourceId, person, session]);
-
-	// Breakdown over the same base minus its own drill-down dimension.
-	const breakdownBase = React.useMemo(() => {
-		const personNeedle = person.trim().toLowerCase();
-		const sessionNeedle = session.trim().toLowerCase();
-		const qNeedle = q.trim().toLowerCase();
-		let rows = events;
-		if (qNeedle) {
-			rows = rows.filter((event) => event.name.toLowerCase().includes(qNeedle));
-		}
-		if (personNeedle) {
-			rows = rows.filter((event) =>
-				[event.userId, event.anonymousId, event.personId]
-					.filter(Boolean)
-					.join(" ")
-					.toLowerCase()
-					.includes(personNeedle),
-			);
-		}
-		if (sessionNeedle) {
-			rows = rows.filter((event) =>
-				(event.sessionId ?? "").toLowerCase().includes(sessionNeedle),
-			);
-		}
-		return rows;
-	}, [events, q, person, session]);
+	}, [events, type, sourceId]);
 
 	const openEvent = React.useCallback(
 		(row: Row<EventResource>) => {
@@ -304,64 +255,9 @@ export function ProjectEvents() {
 		getCoreRowModel: getCoreRowModel(),
 		getFilteredRowModel: getFilteredRowModel(),
 		getPaginationRowModel: getPaginationRowModel(),
-		initialState: { pagination: { pageSize: 50 } },
+		initialState: { pagination: { pageSize: 10 } },
 		autoResetPageIndex: true,
 	});
-
-	// Breakdown card models.
-	interface BreakdownCard {
-		key: string;
-		label: string;
-		description: string;
-		dotClass: string;
-		count: number;
-		active: boolean;
-	}
-	let cards: BreakdownCard[] = [];
-	if (type === "all") {
-		const families: PlatformFamily[] = ["web", "mobile", "server"];
-		const present = new Set(
-			breakdownBase.map(familyOf).filter(Boolean) as PlatformFamily[],
-		);
-		cards = families
-			.filter((f) => present.has(f))
-			.map((f) => ({
-				key: f,
-				label: FAMILY_LABELS[f],
-				description: FAMILY_DESCRIPTIONS[f],
-				dotClass:
-					f === "web"
-						? "bg-info"
-						: f === "server"
-							? "bg-text-subtle"
-							: "bg-warning",
-				count: breakdownBase.filter((e) => familyOf(e) === f).length,
-				active: false,
-			}));
-	} else {
-		const bySource = new Map<string, number>();
-		for (const event of breakdownBase) {
-			if (familyOf(event) !== type) continue;
-			const id = event.source?.id;
-			if (!id) continue;
-			bySource.set(id, (bySource.get(id) ?? 0) + 1);
-		}
-		cards = [...bySource.entries()]
-			.sort((a, b) => b[1] - a[1])
-			.map(([id, count]) => {
-				const s = (sourcesQuery.data ?? []).find((src) => src.id === id);
-				return {
-					key: id,
-					label: s?.name ?? id.slice(0, 12),
-					description: s?.platform ?? "",
-					dotClass: platformDotClass(s?.platform ?? ""),
-					count,
-					active: sourceId === id,
-				};
-			});
-	}
-	const breakdownTotal = cards.reduce((sum, c) => sum + c.count, 0);
-	const maxCount = Math.max(1, ...cards.map((c) => c.count));
 
 	const sourceOptions = (sourcesQuery.data ?? []).filter((s) => {
 		if (type === "all") return true;
@@ -376,79 +272,6 @@ export function ProjectEvents() {
 					type === "all" ? "" : ` · ${FAMILY_LABELS[type]}`
 				}.`}
 			/>
-
-			{/* By source type — trusted platform stored at ingestion */}
-			<div className="mt-6 flex items-center justify-between gap-3">
-				<SectionLabel>By source type</SectionLabel>
-				<span className="font-mono text-[11px] text-text-subtle">
-					{fmt.format(breakdownTotal)} events in query
-				</span>
-			</div>
-			<p className="mt-1 text-[11px] leading-[1.5] text-text-subtle">
-				Grouped by trusted <span className="font-mono">platform</span> stored at
-				ingestion (key → source → platform). Web includes React web apps — use
-				the source name for the exact installation.
-			</p>
-			{isLoading ? (
-				<div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-					{[0, 1, 2].map((i) => (
-						<Frame key={i} className="p-4 pt-5">
-							<Skeleton className="h-[12px] w-1/2" />
-							<Skeleton className="mt-3 h-[24px] w-2/3" />
-						</Frame>
-					))}
-				</div>
-			) : cards.length > 0 ? (
-				<div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-					{cards.map((card) => (
-						<button
-							key={card.key}
-							type="button"
-							aria-pressed={card.active}
-							onClick={() =>
-								type === "all"
-									? updateFilter({ type: card.key })
-									: updateFilter({ source: card.active ? null : card.key })
-							}
-							className={cn(
-								"flex min-h-[104px] cursor-pointer flex-col gap-2 rounded-[2px] border border-border bg-surface p-4 text-left transition-colors hover:border-border-strong hover:bg-surface-hover",
-								card.active && "border-accent bg-accent-soft",
-							)}
-						>
-							<span className="flex items-center gap-2">
-								<span
-									className={cn("size-[7px] rounded-full", card.dotClass)}
-									aria-hidden="true"
-								/>
-								<span className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-muted">
-									{card.label}
-								</span>
-								<span className="ml-auto font-mono text-[11px] text-text-subtle">
-									{card.description}
-								</span>
-							</span>
-							<span className="flex items-baseline gap-1.5">
-								<span className="font-mono text-[20px] font-[600] tracking-[-0.02em] text-text tabular-nums">
-									{fmt.format(card.count)}
-								</span>
-								<span className="font-mono text-[11px] text-text-subtle">
-									{breakdownTotal
-										? `${Math.round((card.count / breakdownTotal) * 100)}%`
-										: "0%"}
-								</span>
-							</span>
-							<span className="block h-[3px] overflow-hidden rounded-[2px] bg-border">
-								<span
-									className="block h-full bg-accent"
-									style={{
-										width: `${Math.round((card.count / maxCount) * 100)}%`,
-									}}
-								/>
-							</span>
-						</button>
-					))}
-				</div>
-			) : null}
 
 			{/* Filters */}
 			<div className="mb-3 mt-6 flex flex-wrap items-center gap-2.5">
@@ -509,34 +332,6 @@ export function ProjectEvents() {
 						))}
 					</SelectContent>
 				</Select>
-				<input
-					type="search"
-					defaultValue={person}
-					placeholder="Person · user or anon"
-					aria-label="Filter by person"
-					onChange={(e) => {
-						const value = e.target.value;
-						if (searchTimer.current) window.clearTimeout(searchTimer.current);
-						searchTimer.current = window.setTimeout(() => {
-							updateFilter({ person: value || null });
-						}, 250);
-					}}
-					className="h-[34px] w-[180px] rounded-[2px] border border-border-strong bg-surface px-3 font-mono text-[13px] text-text placeholder:text-text-subtle focus-visible:outline-2 focus-visible:outline-focus"
-				/>
-				<input
-					type="search"
-					defaultValue={session}
-					placeholder="Session"
-					aria-label="Filter by session"
-					onChange={(e) => {
-						const value = e.target.value;
-						if (searchTimer.current) window.clearTimeout(searchTimer.current);
-						searchTimer.current = window.setTimeout(() => {
-							updateFilter({ session: value || null });
-						}, 250);
-					}}
-					className="h-[34px] w-[160px] rounded-[2px] border border-border-strong bg-surface px-3 font-mono text-[13px] text-text placeholder:text-text-subtle focus-visible:outline-2 focus-visible:outline-focus"
-				/>
 				<Button
 					variant="ghost"
 					size="sm"
@@ -545,8 +340,6 @@ export function ProjectEvents() {
 							q: null,
 							type: null,
 							source: null,
-							person: null,
-							session: null,
 						})
 					}
 					disabled={!hasActiveFilter}
@@ -635,8 +428,6 @@ export function ProjectEvents() {
 									q: null,
 									type: null,
 									source: null,
-									person: null,
-									session: null,
 								})
 							}
 						>

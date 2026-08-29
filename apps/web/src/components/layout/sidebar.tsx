@@ -33,6 +33,7 @@ import {
 	Monitor,
 	Plus,
 	ShieldCheck,
+	Smartphone,
 	Sun,
 	User,
 } from "lucide-react";
@@ -385,8 +386,8 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 						/>
 <Active
 							to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/mobile-analytics`}
-							label="Mobile analytics"
-							icon={<I.IconTrend />}
+							label="Mobile Analytics"
+							icon={<Smartphone className="size-4 shrink-0" />}
 						/>
 						<Active
 							to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/people`}

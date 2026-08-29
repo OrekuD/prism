@@ -295,10 +295,10 @@ function IssueDetails({
 					<StatusTag status={issue.status} />
 					<DeltaTag delta={issue.delta} />
 				</div>
-				<SheetTitle className="font-mono text-[17px] leading-snug font-[550] tracking-[-0.012em] text-text">
+				<SheetTitle className="font-sans text-[17px] font-medium leading-snug tracking-[-0.015em] text-text">
 					{issue.title}
 				</SheetTitle>
-				<SheetDescription className="font-mono text-[12px] text-text-subtle">
+				<SheetDescription className="font-sans text-[13px] leading-[1.5] text-text-muted">
 					{issue.location ?? "No captured top-frame location."}
 				</SheetDescription>
 			</SheetHeader>

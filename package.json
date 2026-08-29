@@ -9,14 +9,16 @@
     "clean": "turbo run clean",
     "sqld": "mkdir -p apps/analytics-api/data/sqld && /Users/david/.turso/sqld --db-path ./apps/analytics-api/data/sqld --http-listen-addr 127.0.0.1:5001 --no-welcome",
     "dev:sqld": "yarn sqld",
-    "dev:all": "concurrently \"yarn sqld\" \"yarn dev\"",
-    "dev": "turbo run dev",
+    "dev:turbo": "turbo run dev",
+    "dev:all": "concurrently --kill-others --names sqld,turbo --prefix-colors cyan,magenta \"yarn sqld\" \"yarn dev:turbo\"",
+    "dev": "concurrently --kill-others --names sqld,turbo --prefix-colors cyan,magenta \"yarn sqld\" \"yarn dev:turbo\"",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "lint": "turbo run lint",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck"
   },
   "devDependencies": {
+    "concurrently": "^8.2.2",
     "prettier": "^3.9.6",
     "turbo": "^2.10.9",
     "portless": "0.15.5"
