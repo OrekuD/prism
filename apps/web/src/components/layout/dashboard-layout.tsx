@@ -17,6 +17,8 @@ export function DashboardLayout() {
   // biome-ignore lint/correctness/useExhaustiveDependencies: drawer closes on any route change
   React.useEffect(() => setNavOpen(false), [pathname]);
 
+  const isRealtime = pathname.includes("/realtime");
+
   return (
     <div className="flex min-h-dvh">
       <Sidebar navOpen={navOpen} />
@@ -27,13 +29,22 @@ export function DashboardLayout() {
         onClick={() => setNavOpen(false)}
         className={cn(
           "fixed inset-0 z-55 bg-black/50 transition-opacity max-[1023px]:block",
-          navOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
+          navOpen
+            ? "pointer-events-auto opacity-100"
+            : "pointer-events-none opacity-0"
         )}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <Toolbar onMenu={() => setNavOpen(true)} />
-        <div className="mx-auto w-full max-w-[1800px] flex-1 px-7 pb-[72px] pt-8 max-[1023px]:px-5 max-[1023px]:pt-6 max-[767px]:px-4 max-[767px]:pt-5">
-          <main className="animate-in fade-in duration-150">
+        <div
+          className={cn(
+            "flex flex-1 flex-col",
+            isRealtime
+              ? "w-full px-7 py-8 max-[1023px]:px-5 max-[1023px]:py-6 max-[767px]:px-4 max-[767px]:py-5"
+              : "mx-auto w-full max-w-[1800px] px-7 py-8 max-[1023px]:px-5 max-[1023px]:py-6 max-[767px]:px-4 max-[767px]:py-5",
+          )}
+        >
+          <main className="flex min-h-0 flex-1 flex-col animate-in fade-in duration-150">
             <Outlet />
           </main>
         </div>

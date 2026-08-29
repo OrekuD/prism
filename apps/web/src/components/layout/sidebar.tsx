@@ -31,6 +31,7 @@ import {
 	Loader2,
 	LogOut,
 	Monitor,
+	MonitorCloud,
 	Plus,
 	ShieldCheck,
 	Smartphone,
@@ -382,7 +383,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 						<Active
 							to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/web-analytics`}
 							label="Web Analytics"
-							icon={<I.IconTrend />}
+							icon={<MonitorCloud className="size-4 shrink-0" />}
 						/>
 <Active
 							to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/mobile-analytics`}
@@ -508,14 +509,6 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 						})}
 					</DropdownMenuContent>
 				</DropdownMenu>
-				<div className="flex items-center gap-2 px-1 pt-2">
-					<span className="font-mono text-[10px] uppercase tracking-[0.06em] rounded-[2px] border border-border px-[5px] py-0.5 text-text-subtle">
-						Self-hosted
-					</span>
-					<span className="font-mono text-[11px] text-text-subtle">
-						{workspaceName ?? "Prism"}
-					</span>
-				</div>
 				<div className="mt-2 border-t border-border px-1 pt-2">
 					<DropdownMenu
 						open={userMenuOpen}

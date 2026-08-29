@@ -217,7 +217,7 @@ export function ProjectWebAnalytics() {
   const isEmpty = !loading && !!data && data.totals.pageViews === 0;
 
   return (
-    <div className="mx-auto w-full max-w-[1240px]">
+    <div className="w-full">
       {/* head + filters — single row, no description */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-[26px] font-semibold leading-[1.18] tracking-[-0.025em]">
