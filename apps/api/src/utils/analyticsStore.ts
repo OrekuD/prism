@@ -137,18 +137,111 @@ export async function projectEvents(
   projectId: string,
   limit = 200,
 ): Promise<EventResource[]> {
+  const { events } = await paginatedProjectEvents(client, projectId, { limit });
+  return events;
+}
+
+/** Cursor helpers for keyset pagination on (received_at DESC, id DESC). */
+function encodeEventCursor(cursor: { receivedAt: number; id: string }): string {
+  const json = JSON.stringify([cursor.receivedAt, cursor.id]);
+  if (typeof Buffer !== "undefined") {
+    return (Buffer as unknown as { from(s: string): { toString(e: string): string } }).from(json).toString("base64url");
+  }
+  const b64 = btoa(json);
+  return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function decodeEventCursor(cursor: string): { receivedAt: number; id: string } | null {
+  try {
+    let json: string;
+    if (typeof Buffer !== "undefined") {
+      json = (Buffer as unknown as { from(s: string, e: string): { toString(e: string): string } }).from(cursor, "base64url").toString("utf8");
+    } else {
+      let b64 = cursor.replace(/-/g, "+").replace(/_/g, "/");
+      while (b64.length % 4) b64 += "=";
+      json = atob(b64);
+    }
+    const parsed = JSON.parse(json) as unknown;
+    if (!Array.isArray(parsed) || parsed.length !== 2) return null;
+    const [receivedAt, id] = parsed as [unknown, unknown];
+    if (typeof receivedAt !== "number" || typeof id !== "string") return null;
+    if (!Number.isFinite(receivedAt) || id.length === 0) return null;
+    return { receivedAt, id };
+  } catch {
+    return null;
+  }
+}
+
+export type PaginatedProjectEventsParams = {
+  cursor?: string;
+  limit?: number;
+  q?: string;
+  sourceId?: string;
+  platformFamily?: "web" | "mobile" | "server";
+};
+
+export async function paginatedProjectEvents(
+  client: AnalyticsClient,
+  projectId: string,
+  params: PaginatedProjectEventsParams = {},
+): Promise<{ events: EventResource[]; nextCursor: string | null }> {
+  const limit = Math.min(Math.max(params.limit ?? 50, 1), 100);
+  const clauses: string[] = ["project_id = ?"];
+  const args: Array<string | number | null> = [projectId];
+
+  if (params.q && params.q.trim().length > 0) {
+    const term = `%${params.q.trim()}%`;
+    // Search event name + source name via post-hydration? For now server searches name only (LIKE is case-insensitive in SQLite for ASCII).
+    clauses.push("lower(name) LIKE lower(?)");
+    args.push(term);
+  }
+  if (params.sourceId) {
+    clauses.push("source_id = ?");
+    args.push(params.sourceId);
+  }
+  if (params.platformFamily) {
+    if (params.platformFamily === "web") {
+      clauses.push("platform = 'web'");
+    } else if (params.platformFamily === "server") {
+      clauses.push("platform = 'server'");
+    } else if (params.platformFamily === "mobile") {
+      clauses.push("platform IN ('ios','android','react-native')");
+    }
+  }
+
+  if (params.cursor) {
+    const decoded = decodeEventCursor(params.cursor);
+    if (decoded) {
+      clauses.push("((received_at < ?) OR (received_at = ? AND id < ?))");
+      args.push(decoded.receivedAt, decoded.receivedAt, decoded.id);
+    }
+  }
+
+  const where = clauses.join(" AND ");
   const { rows } = await client.execute({
     sql: `SELECT id, session_id, project_id, name, type, properties, context,
                  occurred_at, received_at, schema_version,
                  anonymous_id, user_id, person_id,
                  source_id, platform, sdk_name, sdk_version
           FROM events
-          WHERE project_id = ?
+          WHERE ${where}
           ORDER BY received_at DESC, id DESC
           LIMIT ?`,
-    args: [projectId, limit],
+    args: [...args, limit + 1],
   });
-  return rows.map((row) => ({
+
+  const hasMore = rows.length > limit;
+  const pageRows = hasMore ? rows.slice(0, limit) : rows;
+  const last = pageRows[pageRows.length - 1];
+  const nextCursor =
+    hasMore && last
+      ? encodeEventCursor({
+          receivedAt: Number((last as Record<string, unknown>).received_at),
+          id: String((last as Record<string, unknown>).id),
+        })
+      : null;
+
+  const events = pageRows.map((row) => ({
     id: String(row.id),
     sessionId: row.session_id === null || row.session_id === undefined
       ? null
@@ -190,6 +283,8 @@ export async function projectEvents(
         ? null
         : String(row.sdk_version),
   }));
+
+  return { events, nextCursor };
 }
 
 /** The full bounded analytics payload for the project page. */

@@ -18,6 +18,7 @@ import { ProjectResponse } from "../network/responses/ProjectResponse";
 import { ProjectDetailedResponse } from "../network/responses/ProjectDetailedResponse";
 import {
   dailySessionSummary,
+  paginatedProjectEvents,
   projectAnalytics,
   projectEvents,
 } from "../utils/analyticsStore";
@@ -499,10 +500,67 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
       return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
     }
 
-    // v2 event listing (task-9 slice 6): bounded query, properties
-    // decoded into typed JSON values at this boundary. Task 16 Events UI:
-    // trusted source attribution (id/name/platform) is hydrated ONCE per
-    // response from the product database — never one query per event.
+    // v2 event listing: server-paginated + filtered. Query params are the
+    // source of truth — search and pagination hit the DB via keyset cursor,
+    // not an unbounded in-memory load. Legacy callers with no pagination
+    // params still get the bounded array for backwards compat.
+    const q = ctx.req.query("q") ?? ctx.req.query("eventName") ?? undefined;
+    const cursor = ctx.req.query("cursor") ?? undefined;
+    const limitRaw = ctx.req.query("limit");
+    const sourceId = ctx.req.query("sourceId") ?? ctx.req.query("source") ?? undefined;
+    const sourcePlatform = ctx.req.query("sourcePlatform") ?? ctx.req.query("type") ?? undefined;
+    const hasPagination =
+      q !== undefined || cursor !== undefined || limitRaw !== undefined || sourceId !== undefined || sourcePlatform !== undefined;
+
+    if (hasPagination) {
+      const limit = limitRaw ? Number(limitRaw) : undefined;
+      const platformFamily =
+        sourcePlatform === "web" || sourcePlatform === "mobile" || sourcePlatform === "server"
+          ? (sourcePlatform as "web" | "mobile" | "server")
+          : undefined;
+
+      const { events, nextCursor } = await paginatedProjectEvents(
+        TursoDatabaseManager.getInstance(ctx),
+        project[0].id,
+        {
+          q: q && q.trim().length > 0 ? q : undefined,
+          cursor,
+          limit: Number.isFinite(limit as number) ? limit : undefined,
+          sourceId: sourceId && sourceId !== "all" ? sourceId : undefined,
+          platformFamily,
+        },
+      );
+
+      const db = DatabaseManager.getInstance(ctx);
+      const sources = (await db`
+        SELECT id, name, platform FROM project_sources
+        WHERE project_id = ${project[0].id}`) as Array<{
+        id: string;
+        name: string;
+        platform: string;
+      }>;
+      const byId = new Map(sources.map((s) => [s.id, s]));
+
+      const hydrated = events.map((event) => {
+        if (!event.sourceId) return { ...event, source: null };
+        const s = byId.get(event.sourceId);
+        return {
+          ...event,
+          source: s ? { id: s.id, name: s.name, platform: s.platform } : null,
+        };
+      });
+
+      if (nextCursor) ctx.header("x-prism-next-cursor", nextCursor);
+      // New callers expect { events, nextCursor }; legacy e2e checks Array.isArray.
+      const wantsJson = ctx.req.query("format") === "json" || q !== undefined || cursor !== undefined || limitRaw !== undefined;
+      if (wantsJson) {
+        return ctx.json({ events: hydrated, nextCursor });
+      }
+      return ctx.json(hydrated);
+    }
+
+    // Legacy bounded path (no pagination params) — keep returning a plain array
+    // so existing e2e/scripts that do Array.isArray(data) keep passing.
     const events = await projectEvents(
       TursoDatabaseManager.getInstance(ctx),
       project[0].id,

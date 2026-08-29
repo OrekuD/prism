@@ -8,7 +8,7 @@ import { Link, useParams } from "react-router-dom";
 export function ProjectSummary() {
   const { slug } = useParams<{ slug: string }>();
   const { data, isLoading } = useProjectQuery({ slug, duration: "three-months" });
-  const eventsQuery = useProjectEventsQuery(slug);
+  const eventsQuery = useProjectEventsQuery(slug, { limit: 50 });
   // Error health (task-15 item 437): unresolved issues + error events in a
   // fixed window, computed from the same server-filtered source the Errors
   // page uses. Only real grouped issues contribute — never a fabricated graph.
@@ -45,7 +45,7 @@ export function ProjectSummary() {
             id: "events",
             label: "Events",
             icon: "events",
-            value: eventsQuery.data?.length ?? 0,
+            value: eventsQuery.data?.events.length ?? 0,
             unit: "logged",
           },
           {

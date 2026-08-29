@@ -3,23 +3,22 @@ import { useQueryClient } from "@tanstack/react-query";
 import React, { useSyncExternalStore } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { SectionLabel } from "@/components/public/frame";
+import { Frame, SectionLabel } from "@/components/public/frame";
 import { CopyButton } from "@/components/ui/copy-button";
 import {
-	Sheet,
-	SheetContent,
-	SheetFooter,
-	SheetHeader,
-	SheetTitle,
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-	agoLabel,
-	clockLabel,
-	isoLabel,
-	platformDotClass,
-	platformFamily,
-	platformLabel,
+  agoLabel,
+  clockLabel,
+  isoLabel,
+  platformDotClass,
+  platformFamily,
+  platformLabel,
 } from "@/lib/events";
 import { cn } from "@/lib/utils";
 
@@ -40,393 +39,453 @@ import { cn } from "@/lib/utils";
 const ENTRIES_PREFIX = (slug: string | undefined) => ["project-events", slug];
 
 function findEvent(
-	queryClient: ReturnType<typeof useQueryClient>,
-	slug: string | undefined,
-	eventId: string | undefined,
+  queryClient: ReturnType<typeof useQueryClient>,
+  slug: string | undefined,
+  eventId: string | undefined
 ): EventResource | undefined {
-	if (!slug || !eventId) return undefined;
-	const entries = queryClient.getQueriesData<EventResource[]>({
-		queryKey: ENTRIES_PREFIX(slug),
-	});
-	for (const [, payload] of entries) {
-		const found = (payload ?? []).find((event) => event.id === eventId);
-		if (found) return found;
-	}
-	return undefined;
+  if (!slug || !eventId) return undefined;
+  const entries = queryClient.getQueriesData<unknown>({
+    queryKey: ENTRIES_PREFIX(slug),
+  });
+  for (const [, payload] of entries) {
+    if (!payload) continue;
+    // New paginated shape: { events, nextCursor }
+    const events = Array.isArray(payload)
+      ? (payload as EventResource[])
+      : ((payload as { events?: EventResource[] }).events ?? null);
+    if (!events) continue;
+    const found = events.find((event) => event.id === eventId);
+    if (found) return found;
+  }
+  return undefined;
 }
 
 function useEventFromCache(
-	slug: string | undefined,
-	eventId: string | undefined,
+  slug: string | undefined,
+  eventId: string | undefined
 ): EventResource | undefined {
-	const queryClient = useQueryClient();
-	return useSyncExternalStore(
-		(callback) => queryClient.getQueryCache().subscribe(callback),
-		() => findEvent(queryClient, slug, eventId),
-		() => undefined,
-	);
+  const queryClient = useQueryClient();
+  return useSyncExternalStore(
+    (callback) => queryClient.getQueryCache().subscribe(callback),
+    () => findEvent(queryClient, slug, eventId),
+    () => undefined
+  );
 }
 
-/** Key/value cell like the v2 `ev-detail-kv`. */
+/** Key/value cell like the v2 `ev-detail-kv` — now a Frame. */
 function Kv({ k, children }: { k: string; children: React.ReactNode }) {
-	return (
-		<div className="min-w-0 rounded-[2px] border border-border bg-surface px-3 py-2.5">
-			<div className="mb-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
-				{k}
-			</div>
-			<div className="break-words font-mono text-[12px] leading-[1.4] text-text">
-				{children}
-			</div>
-		</div>
-	);
+  return (
+    <Frame inset className="min-w-0 px-3 py-3">
+      <div className="mb-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
+        {k}
+      </div>
+      <div className="break-words font-mono text-[12.5px] leading-[1.5] text-text">
+        {children}
+      </div>
+    </Frame>
+  );
 }
 
 function NullValue({ label = "null" }: { label?: string }) {
-	return <span className="text-text-subtle">{label}</span>;
+  return <span className="font-mono text-text-subtle">{label}</span>;
 }
 
-/** Bounded JSON kv grid for properties/context objects. */
-function KvGrid({
-	value,
+function ShikiJson({ code }: { code: string }) {
+  const [html, setHtml] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    import("shiki")
+      .then(({ codeToHtml }) =>
+        codeToHtml(code, { lang: "json", theme: "github-dark" })
+      )
+      .then((out) => {
+        if (!cancelled) setHtml(out);
+      })
+      .catch(() => {
+        if (!cancelled) setHtml(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [code]);
+  if (html) {
+    return (
+      <div
+        className="max-h-[320px] overflow-auto p-4 font-mono text-[12px] leading-[1.65] [&_pre]:!m-0 [&_pre]:!bg-transparent [&_pre]:p-0 [&_code]:!bg-transparent"
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: shiki HTML is trusted
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    );
+  }
+  return (
+    <pre className="m-0 max-h-[320px] overflow-auto whitespace-pre-wrap break-words bg-transparent p-4 font-mono text-[12px] leading-[1.65] text-[#e6edf3]">
+      {code}
+    </pre>
+  );
+}
+
+function JsonBlock({
+  value,
+  emptyLabel = "No values stored.",
 }: {
-	value: Record<string, unknown> | null | undefined;
+  value: Record<string, unknown> | null | undefined;
+  emptyLabel?: string;
 }) {
-	if (!value || Object.keys(value).length === 0) {
-		return (
-			<div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-				<Kv k="empty">
-					<NullValue label="No values stored." />
-				</Kv>
-			</div>
-		);
-	}
-	// Deterministic order; bounded value preview with full value in title.
-	return (
-		<div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-			{Object.entries(value).map(([key, val]) => {
-				const text =
-					typeof val === "object" && val !== null
-						? JSON.stringify(val)
-						: String(val);
-				return (
-					<Kv key={key} k={key}>
-						<span className="break-all" title={text}>
-							{text.length > 140 ? `${text.slice(0, 140)}…` : text}
-						</span>
-					</Kv>
-				);
-			})}
-		</div>
-	);
+  if (!value || Object.keys(value).length === 0) {
+    return (
+      <Frame
+       
+        className="border-dashed bg-surface/40 px-3 py-6 text-center"
+      >
+        <p className="font-mono text-[12px] leading-none text-text-subtle">
+          {emptyLabel}
+        </p>
+      </Frame>
+    );
+  }
+  const code = JSON.stringify(value, null, 2);
+  return (
+    <Frame className="bg-[#0d1117] p-0">
+      <ShikiJson code={code} />
+    </Frame>
+  );
 }
 
 function Tag({
-	children,
-	tone = "default",
+  children,
+  tone = "default",
 }: {
-	children: React.ReactNode;
-	tone?: "default" | "ok";
+  children: React.ReactNode;
+  tone?: "default" | "ok";
 }) {
-	return (
-		<span
-			className={cn(
-				"inline-flex items-center rounded-[2px] border border-border px-2 py-0.5 font-mono text-[11px] uppercase tracking-[0.06em]",
-				tone === "ok"
-					? "border-success/40 bg-success/10 text-success"
-					: "text-text-muted",
-			)}
-		>
-			{children}
-		</span>
-	);
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-[2px] border px-2 py-1 font-mono text-[10px] font-medium uppercase leading-none tracking-[0.07em]",
+        tone === "ok"
+          ? "border-success/30 bg-success/10 text-success"
+          : "border-border bg-surface text-text-muted"
+      )}
+    >
+      {children}
+    </span>
+  );
 }
 
 function EventDetails({ event, base }: { event: EventResource; base: string }) {
-	const platform = event.platform ?? event.source?.platform ?? null;
-	const lagMs = Math.max(0, event.receivedAt - event.occurredAt);
-	const payload = React.useMemo(
-		() =>
-			JSON.stringify(
-				{
-					id: event.id,
-					name: event.name,
-					type: event.type ?? "track",
-					occurredAt: event.occurredAt,
-					receivedAt: event.receivedAt,
-					sessionId: event.sessionId,
-					properties: event.properties,
-					source: event.source ?? null,
-					person: {
-						personId: event.personId ?? null,
-						userId: event.userId ?? null,
-						anonymousId: event.anonymousId ?? null,
-					},
-					sdk:
-						event.sdkName || event.sdkVersion
-							? { name: event.sdkName, version: event.sdkVersion }
-							: null,
-					context: event.context ?? null,
-					schema_version: event.schemaVersion,
-				},
-				null,
-				2,
-			),
-		[event],
-	);
+  const platform = event.platform ?? event.source?.platform ?? null;
+  const lagMs = Math.max(0, event.receivedAt - event.occurredAt);
+  const payload = React.useMemo(
+    () =>
+      JSON.stringify(
+        {
+          id: event.id,
+          name: event.name,
+          type: event.type ?? "track",
+          occurredAt: event.occurredAt,
+          receivedAt: event.receivedAt,
+          sessionId: event.sessionId,
+          properties: event.properties,
+          source: event.source ?? null,
+          person: {
+            personId: event.personId ?? null,
+            userId: event.userId ?? null,
+            anonymousId: event.anonymousId ?? null,
+          },
+          sdk:
+            event.sdkName || event.sdkVersion
+              ? { name: event.sdkName, version: event.sdkVersion }
+              : null,
+          context: event.context ?? null,
+          schema_version: event.schemaVersion,
+        },
+        null,
+        2
+      ),
+    [event]
+  );
+  const [highlighted, setHighlighted] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    import("shiki")
+      .then(({ codeToHtml }) =>
+        codeToHtml(payload, { lang: "json", theme: "github-dark" })
+      )
+      .then((out) => {
+        if (!cancelled) setHighlighted(out);
+      })
+      .catch(() => {
+        if (!cancelled) setHighlighted(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [payload]);
 
-	return (
-		<>
-			<SheetHeader className="gap-2 border-b border-border pr-10">
-				<div className="flex flex-wrap items-center gap-2">
-					<SheetTitle className="break-words font-sans text-[16px] font-medium tracking-[-0.015em] text-text">
-						{event.name}
-					</SheetTitle>
-				</div>
-				<div className="flex flex-wrap items-center gap-1.5">
-					<Tag>{event.type ?? "track"}</Tag>
-					<Tag>v{event.schemaVersion}</Tag>
-					{platform ? <Tag>{platform}</Tag> : null}
-					{platform ? (
-						<Tag tone="ok">{platformFamily(platform)} family</Tag>
-					) : null}
-				</div>
-			</SheetHeader>
+  return (
+    <>
+      <SheetHeader className="gap-3 border-b border-border px-6 pb-4 pt-6 pr-10">
+        <div className="min-w-0">
+          <SheetTitle className="break-words pr-2 text-left font-sans text-[17px] font-semibold leading-[1.25] tracking-[-0.02em] text-text">
+            {event.name}
+          </SheetTitle>
+          <p
+            className="mt-1.5 flex flex-wrap items-center gap-1.5 font-sans text-[11px] leading-none text-text-subtle"
+            title={isoLabel(event.occurredAt)}
+          >
+            <span className="tabular-nums">{humanAt(event.occurredAt)}</span>
+            <span className="size-1 rounded-full bg-border-strong" aria-hidden />
+            <span className="tabular-nums">{agoLabel(event.occurredAt)}</span>
+          </p>
+        </div>
 
-			<div className="flex flex-col gap-5 overflow-y-auto p-4 pb-6">
-				<section>
-					<SectionLabel>Identifiers · stored internally</SectionLabel>
-					<div className="mt-2.5 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-						<Kv k="id (idempotency)">
-							<span className="break-all text-[11px]">{event.id}</span>
-						</Kv>
-						<Kv k="project_id (derived)">
-							<span className="break-all text-[11px]">{event.projectId}</span>
-						</Kv>
-						<Kv k="source_id (trusted)">
-							{event.sourceId ? (
-								<span className="break-all text-[11px]">{event.sourceId}</span>
-							) : (
-								<NullValue />
-							)}
-						</Kv>
-						<Kv k="platform (trusted)">
-							{platform ? platformLabel(platform) : <NullValue />}
-						</Kv>
-					</div>
-				</section>
+      </SheetHeader>
 
-				<section>
-					<SectionLabel>Timing & SDK</SectionLabel>
-					<div className="mt-2.5 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-						<Kv k="occurred_at (client)">
-							<span className="text-[11px]">{isoLabel(event.occurredAt)}</span>
-							<br />
-							<span className="text-text-subtle">
-								{agoLabel(event.occurredAt)}
-							</span>
-						</Kv>
-						<Kv k="received_at (server)">
-							<span className="text-[11px]">{isoLabel(event.receivedAt)}</span>
-							<br />
-							<span className="text-text-subtle">+{fmtLag(lagMs)}ms lag</span>
-						</Kv>
-						<Kv k="sdk_name + version">
-							{event.sdkName ? (
-								<span>
-									{event.sdkName} @ {event.sdkVersion ?? "?"}
-								</span>
-							) : (
-								<NullValue label="null — pre-SDK-column row" />
-							)}
-						</Kv>
-						<Kv k="schema_version">v{event.schemaVersion}</Kv>
-					</div>
-					<p className="mt-2 text-[11px] leading-[1.5] text-text-subtle">
-						Source attribution: Bearer key → project_api_keys → source_id →
-						project_sources → trusted source_id & platform. Client-supplied
-						fields cannot override.
-					</p>
-				</section>
+      <div className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto p-6">
+        <section>
+          <SectionLabel>Timing & SDK</SectionLabel>
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Kv k="occurred_at (client)">
+              <span
+                className="font-sans text-[12px] leading-[1.5] tracking-[-0.01em] text-text"
+                title={isoLabel(event.occurredAt)}
+              >
+                {humanAt(event.occurredAt)}
+                <span className="mx-1.5 text-text-subtle">·</span>
+                <span className="text-text-subtle">{agoLabel(event.occurredAt)}</span>
+              </span>
+            </Kv>
+            <Kv k="received_at (server)">
+              <span
+                className="font-sans text-[12px] leading-[1.5] tracking-[-0.01em] text-text"
+                title={isoLabel(event.receivedAt)}
+              >
+                {humanAt(event.receivedAt)}
+                <span className="mx-1.5 text-text-subtle">·</span>
+                <span className="tabular-nums text-text-subtle">
+                  +{fmtLag(lagMs)} ms
+                </span>
+              </span>
+            </Kv>
+            <Kv k="sdk">
+              {event.sdkName ? (
+                <span className="break-all">
+                  {event.sdkName} @ {event.sdkVersion ?? "?"}
+                </span>
+              ) : (
+                <span className="text-text-subtle">—</span>
+              )}
+            </Kv>
+            <Kv k="platform">
+              {platform ? (
+                <span className="inline-flex items-center gap-2">
+                  <span
+                    className={cn(
+                      "size-2 shrink-0 rounded-full",
+                      platformDotClass(platform),
+                    )}
+                    aria-hidden="true"
+                  />
+                  <span>{platformLabel(platform)}</span>
+                </span>
+              ) : (
+                <span className="text-text-subtle">—</span>
+              )}
+            </Kv>
+            <Kv k="source">
+              {event.source ? (
+                <span className="font-mono text-[12.5px] font-medium leading-none tracking-[-0.01em] text-text">
+                  {event.source.name}
+                </span>
+              ) : (
+                <span className="font-mono text-[12px] leading-none text-text-subtle">
+                  —
+                </span>
+              )}
+            </Kv>
+            <Kv k="schema">
+              <span className="font-mono">v{event.schemaVersion}</span>
+            </Kv>
+          </div>
+        </section>
 
-				<section>
-					<SectionLabel>Source</SectionLabel>
-					{event.source ? (
-						<div className="mt-2.5 flex flex-wrap items-center gap-2.5 rounded-[2px] border border-border bg-surface px-3 py-2.5">
-							<span
-								className={cn(
-									"size-[7px] shrink-0 rounded-full",
-									platformDotClass(event.source.platform),
-								)}
-								aria-hidden="true"
-							/>
-							<b className="font-mono text-[13px] font-medium text-text">
-								{event.source.name}
-							</b>
-							<span className="font-mono text-[12px] text-text-muted">
-								· {platformLabel(event.source.platform)}
-							</span>
-							<span className="ml-auto break-all font-mono text-[11px] text-text-subtle">
-								{event.source.id}
-							</span>
-						</div>
-					) : (
-						<p className="mt-2.5 font-mono text-[12px] text-text-muted">
-							This event predates source attribution (no source_id stored).
-						</p>
-					)}
-				</section>
+        <section>
+          <SectionLabel>Person & session</SectionLabel>
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Kv k="person_id (Prism person)">
+              {event.personId ? (
+                <span className="break-all text-[11px] leading-[1.5] tracking-[-0.01em]">
+                  {event.personId}
+                </span>
+              ) : (
+                <NullValue />
+              )}
+            </Kv>
+            <Kv k="user_id (identify)">
+              {event.userId ? (
+                <span className="break-all">{event.userId}</span>
+              ) : (
+                <NullValue label="null — anonymous" />
+              )}
+            </Kv>
+            <Kv k="anonymous_id (SDK)">
+              {event.anonymousId ? (
+                <span className="break-all text-[11px] leading-[1.5] tracking-[-0.01em]">
+                  {event.anonymousId}
+                </span>
+              ) : (
+                <NullValue />
+              )}
+            </Kv>
+            <Kv k="session_id">
+              {event.sessionId ? (
+                <span className="break-all text-[11px] leading-[1.5] tracking-[-0.01em]">
+                  {event.sessionId}
+                </span>
+              ) : (
+                <NullValue label="null — server event has no session" />
+              )}
+            </Kv>
+          </div>
+        </section>
 
-				<section>
-					<SectionLabel>Person & session</SectionLabel>
-					<div className="mt-2.5 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-						<Kv k="person_id (Prism person)">
-							{event.personId ? (
-								<span className="break-all text-[11px]">{event.personId}</span>
-							) : (
-								<NullValue />
-							)}
-						</Kv>
-						<Kv k="user_id (identify)">
-							{event.userId ? (
-								event.userId
-							) : (
-								<NullValue label="null — anonymous" />
-							)}
-						</Kv>
-						<Kv k="anonymous_id (SDK)">
-							{event.anonymousId ? (
-								<span className="break-all text-[11px]">
-									{event.anonymousId}
-								</span>
-							) : (
-								<NullValue />
-							)}
-						</Kv>
-						<Kv k="session_id">
-							{event.sessionId ? (
-								<span className="break-all text-[11px]">{event.sessionId}</span>
-							) : (
-								<NullValue label="null — server event has no session" />
-							)}
-						</Kv>
-					</div>
-				</section>
+        <section>
+          <div className="flex items-center justify-between gap-2">
+            <SectionLabel>Properties</SectionLabel>
+            {event.properties && Object.keys(event.properties).length > 0 ? (
+              <CopyButton
+                value={JSON.stringify(event.properties, null, 2)}
+                iconOnly
+                className="size-7"
+              />
+            ) : null}
+          </div>
+          <div className="mt-3">
+            <JsonBlock value={event.properties} emptyLabel="No properties." />
+          </div>
+        </section>
 
-				<section>
-					<SectionLabel>Properties · sanitized</SectionLabel>
-					<div className="mt-2.5">
-						<KvGrid value={event.properties} />
-					</div>
-				</section>
+        <section>
+          <div className="flex items-center justify-between gap-2">
+            <SectionLabel>Context</SectionLabel>
+            {event.context && Object.keys(event.context).length > 0 ? (
+              <CopyButton
+                value={JSON.stringify(event.context, null, 2)}
+                iconOnly
+                className="size-7"
+              />
+            ) : null}
+          </div>
+          <div className="mt-3">
+            <JsonBlock value={event.context} emptyLabel="No context." />
+          </div>
+        </section>
 
-				<section>
-					<SectionLabel>Context · sanitized runtime</SectionLabel>
-					<div className="mt-2.5">
-						<KvGrid value={event.context} />
-					</div>
-				</section>
-
-				<section>
-					<div className="flex items-center justify-between gap-2">
-						<SectionLabel>Complete payload</SectionLabel>
-						<CopyButton value={payload} label="Copy JSON" />
-					</div>
-					<pre className="mt-2.5 max-h-[240px] overflow-auto whitespace-pre-wrap break-words rounded-[2px] border border-border bg-surface p-3 font-mono text-[12px] leading-[1.6] text-text">
-						{payload}
-					</pre>
-					<p className="mt-2 font-mono text-[11px] leading-[1.5] text-text-subtle">
-						Read API:{" "}
-						<span className="break-all">
-							GET /api/v1/projects/…/events?name={event.name}&limit=50
-						</span>
-					</p>
-				</section>
-			</div>
-
-			<SheetFooter className="border-t border-border">
-				<div className="flex w-full items-center justify-between gap-2">
-					{event.personId ? (
-						<Link
-							to={`/workspace/${base.split("/").at(-3)}/projects/${base.split("/").at(-1)}/people/${event.personId}`}
-							className="font-mono text-[12px] font-medium text-link hover:underline"
-						>
-							View person →
-						</Link>
-					) : (
-						<span className="font-mono text-[11px] text-text-subtle">
-							Anonymous event
-						</span>
-					)}
-					<CopyButton value={payload} label="Copy payload" />
-				</div>
-			</SheetFooter>
-		</>
-	);
+        <section>
+          <div className="flex items-center justify-between gap-2">
+            <SectionLabel>Complete payload</SectionLabel>
+            <CopyButton value={payload} iconOnly className="size-7" />
+          </div>
+          <Frame className="mt-3 bg-[#0d1117] p-0">
+            {highlighted ? (
+              <div
+                className="max-h-[320px] overflow-auto p-4 font-mono text-[12px] leading-[1.65] [&_pre]:!m-0 [&_pre]:!bg-transparent [&_pre]:p-0 [&_code]:!bg-transparent"
+                // biome-ignore lint/security/noDangerouslySetInnerHtml: shiki HTML is trusted — generated from stringified event JSON
+                dangerouslySetInnerHTML={{ __html: highlighted }}
+              />
+            ) : (
+              <pre className="m-0 max-h-[320px] overflow-auto whitespace-pre-wrap break-words bg-transparent p-4 font-mono text-[12px] leading-[1.65] text-[#e6edf3]">
+                {payload}
+              </pre>
+            )}
+          </Frame>
+        </section>
+      </div>
+    </>
+  );
 }
 
 function fmtLag(ms: number): string {
-	return ms.toLocaleString("en-US");
+  return ms.toLocaleString("en-US");
+}
+
+function humanAt(ts: number): string {
+  const d = new Date(ts);
+  const date = d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  const time = d.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return `${date} at ${time}`;
 }
 
 function EventDetailSkeleton() {
-	return (
-		<div className="flex flex-col gap-4 p-4">
-			<Skeleton className="h-[16px] w-3/4" />
-			<Skeleton className="h-[12px] w-1/2" />
-			<div className="mt-2 grid grid-cols-2 gap-4">
-				<Skeleton className="h-[48px] w-full" />
-				<Skeleton className="h-[48px] w-full" />
-				<Skeleton className="h-[48px] w-full" />
-				<Skeleton className="h-[48px] w-full" />
-			</div>
-		</div>
-	);
+  return (
+    <div className="flex flex-col gap-4 p-6">
+      <Skeleton className="h-4 w-3/4" />
+      <Skeleton className="h-3 w-1/2" />
+      <div className="mt-2 grid grid-cols-2 gap-3">
+        <Skeleton className="h-[76px] w-full rounded-[2px]" />
+        <Skeleton className="h-[76px] w-full rounded-[2px]" />
+        <Skeleton className="h-[76px] w-full rounded-[2px]" />
+        <Skeleton className="h-[76px] w-full rounded-[2px]" />
+      </div>
+      <Skeleton className="h-[120px] w-full rounded-[2px]" />
+    </div>
+  );
 }
 
 function EventMissing({ base }: { base: string }) {
-	return (
-		<div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
-			<p className="font-mono text-[13px] text-text-muted">
-				This event isn't in the loaded window.
-			</p>
-			<span className="max-w-[300px] text-[12px] leading-[1.5] text-text-subtle">
-				It may have fallen outside the latest 200 events for this project, or
-				filters changed after the link was copied.
-			</span>
-			<Link to={base} className="mt-1 font-medium text-link hover:underline">
-				Back to all events
-			</Link>
-		</div>
-	);
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
+      <p className="font-sans text-[14px] font-medium tracking-[-0.01em] text-text">
+        Event not in window
+      </p>
+      <p className="max-w-[320px] text-pretty font-mono text-[12.5px] leading-[1.5] text-text-muted">
+        This event isn't in the loaded window. It may have fallen outside the
+        latest 200 events or filters changed after the link was copied.
+      </p>
+      <Link
+        to={base}
+        className="mt-1 inline-flex h-8 items-center rounded-[2px] border border-border bg-surface px-3 font-mono text-[12px] font-medium text-text hover:bg-surface-hover"
+      >
+        Back to events
+      </Link>
+    </div>
+  );
 }
 
 export function EventDetail() {
-	const { slug, wrkSlug, eventId } = useParams();
-	const navigate = useNavigate();
-	const queryClient = useQueryClient();
-	const event = useEventFromCache(slug, eventId);
+  const { slug, wrkSlug, eventId } = useParams();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const event = useEventFromCache(slug, eventId);
 
-	const base = `/workspace/${wrkSlug ?? ""}/projects/${slug ?? ""}/events`;
+  const base = `/workspace/${wrkSlug ?? ""}/projects/${slug ?? ""}/events`;
 
-	return (
-		<Sheet
-			open
-			onOpenChange={(open) => {
-				if (!open) navigate(base);
-			}}
-		>
-			<SheetContent className="w-full gap-0 p-0 sm:max-w-[640px]">
-				{event ? (
-					<EventDetails event={event} base={base} />
-				) : queryClient
-						.getQueryCache()
-						.findAll({ queryKey: ENTRIES_PREFIX(slug) })
-						.some((query) => query.state.status === "pending") ? (
-					<EventDetailSkeleton />
-				) : (
-					<EventMissing base={base} />
-				)}
-			</SheetContent>
-		</Sheet>
-	);
+  return (
+    <Sheet
+      open
+      onOpenChange={(open) => {
+        if (!open) navigate(base);
+      }}
+    >
+      <SheetContent className="w-full gap-0 p-0 sm:max-w-[640px]">
+        {event ? (
+          <EventDetails event={event} base={base} />
+        ) : queryClient
+            .getQueryCache()
+            .findAll({ queryKey: ENTRIES_PREFIX(slug) })
+            .some((query) => query.state.status === "pending") ? (
+          <EventDetailSkeleton />
+        ) : (
+          <EventMissing base={base} />
+        )}
+      </SheetContent>
+    </Sheet>
+  );
 }
