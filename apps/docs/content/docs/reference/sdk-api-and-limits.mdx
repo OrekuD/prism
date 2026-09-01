@@ -31,7 +31,9 @@ Symbol references:
 ## Events and properties
 
 - Event names: non-empty, at most 128 characters, no control
-  characters. The `$prism_` prefix is SDK-reserved.
+  characters. The `$prism_` prefix is SDK-reserved — `track("$prism_*")` throws; only `prism.events.*` and build-in automatic events can create it.
+- Standard Events: `prism.events` namespace (25 helpers) under the same delivery lane (`type: "track"`, same queue, consent, retry, and `CaptureResult`). Each helper owns a protected `$prism_*` name and an exact `$standard: { schemaVersion: 1, key, data }` shape. Unknown `$prism_*` → `unknown-reserved-event`; malformed Standard → `invalid-standard-event`. See [Standard Events](/docs/features/standard-events) for the catalog and limits.
+- Actor override: `prism.events.signUp({ method }, { userId })` — per-call `{ userId }` applies only to that event, does not mutate global identity. `signUp`/`login`/`logout` require an identified user (via `identify()` or actor) and throw otherwise.
 - Properties and traits: strict JSON values only — no functions,
   symbols, bigint, non-finite numbers, dates, class instances,
   accessors, or cycles. Keys `__proto__`, `constructor`, and
@@ -40,6 +42,7 @@ Symbol references:
 - Credential-like keys (`password`, `token`, `apiKey`,
   `authorization`, and similar) are redacted server-side.
 - Trait keys: 1–128 characters, no control characters.
+- Standard Event limits: stable token `1-64` chars (`^[a-z][a-z0-9._-]*$`), opaque analytics ID `1-128` (`^[A-Za-z0-9][A-Za-z0-9._:-]*$`), currency `3` uppercase letters, money `≥0` safe integer minor units, count/duration `≥0`, effective timestamp `>0`, rating `1-5`, trial duration `1-3660` days. Unknown keys, `undefined`, non-finite, and provider payloads are rejected.
 
 ## Sizes and batching
 

@@ -61,17 +61,17 @@ export const prism = await createBrowserClient({
 The factory is async and resolves to a ready client. It performs no
 automatic side effects beyond wiring its own queue and storage.
 
-## 6. Capture an event
+## 6. Identify and capture a Standard Event
 
 ```ts
-const result = prism.track("signup_completed", { plan: "free" });
+await prism.identify(user.id);
+prism.events.signUp({ method: "email" });
+
+const result = prism.track("report_exported", { format: "csv" });
 // { status: "queued", eventId } | { status: "dropped", reason }
 ```
 
-`track` is synchronous and never throws — it accepts lower_snake_case
-names and JSON-safe properties, and returns a discriminated result.
-`queued` means accepted locally; delivery happens in the background.
-See [Capturing events](/docs/features/capturing-events).
+`track` and `prism.events.*` are synchronous. Invalid caller input (empty name, invalid token, non-JSON properties, wrong Standard Event schema) throws; consent, shutdown, and queue-capacity return a `dropped` result. `queued` means accepted locally; delivery happens in the background. See [Standard Events](/docs/features/standard-events) and [Capturing events](/docs/features/capturing-events).
 
 ## 7. Verify it
 

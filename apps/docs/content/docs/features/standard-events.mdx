@@ -1,0 +1,209 @@
+---
+title: Standard Events
+description: Stable, typed helpers for common product and commercial lifecycle events.
+audience: Developer
+scope: Both
+lastReviewed: "2026-09-01"
+---
+
+Prism **Standard Events** are a frozen catalog of 25 developer-invoked helpers with protected names, exact schemas, and shared validation. They ride the same pipeline as custom and automatic events — no second queue, table, or endpoint.
+
+## Custom vs Standard vs Automatic
+
+- **Custom event** — you define the name and schema: `prism.track("report_exported", { format: "csv" })`. Use for project-specific actions.
+- **Standard Event** — Prism defines the helper, protected name, and versioned schema: `prism.events.signUp({ method: "email" })`. Use for common lifecycle outcomes so every project uses the same names.
+- **Automatic event** — the SDK emits it from runtime behavior: `$prism_page_view`, `$prism_screen_view`, `$prism_app_lifecycle`, `session_started`. You do not call a helper for these.
+
+Standard Events are **developer-invoked**. The SDK never infers them from a click, route, or API response.
+
+## Identity-first browser sign-up
+
+Link the person first, then record the durable outcome:
+
+```ts
+await prism.identify(user.id);
+prism.events.signUp({ method: "email" });
+```
+
+`signUp`, `login`, and `logout` require an identified user. Pass either a global identity via `identify()` or a per-call actor:
+
+```ts
+prism.events.login({ method: "password" }, { userId: user.id });
+```
+
+The actor applies only to that event — it does not rotate anonymous identity, start a session, or affect the next event. Prefer `identify()` in Browser/React Native (it links surrounding activity) and the per-call actor in Node (a shared client handles concurrent users).
+
+## Concurrency-safe Node
+
+A server process handles many users on one client. Never mutate global identity inside a request handler. Use the per-call actor and the Node factory:
+
+```ts
+import { createNodeClient } from "@prism-analytics/node";
+
+const prism = await createNodeClient({
+  sourceKey: process.env.PRISM_SOURCE_KEY!,
+  endpoint: process.env.PRISM_ENDPOINT!,
+  collection: { initialState: "granted" },
+});
+
+// inside a request handler for user.id
+prism.events.subscriptionCancelled(
+  { subscriptionId: subscription.analyticsId, planId: "pro_monthly" },
+  { userId: user.id },
+);
+```
+
+`createNodeClient` is a thin wrapper over `createPrismClient` + `createNodeRuntime`. It requires explicit `endpoint`, `sourceKey`, and `initialState`, uses a server source key, and reuses the same queue, retry, and flush lifecycle — `flush()` and bounded `shutdown()` remain available for jobs and graceful termination. It does not install `uncaughtException` handlers.
+
+## Catalog (version 1)
+
+All helpers are under `prism.events`. Do not use `track("$prism_*")` — it throws. Only the helper can create the protected name.
+
+### Identity and access — requires identified user
+
+| Helper | Protected name / key | Input | Meaning |
+| --- | --- | --- | --- |
+| `signUp` | `$prism_sign_up` / `sign_up` | `{ method: StableToken }` | Durable account creation succeeded. |
+| `login` | `$prism_login` / `login` | `{ method: StableToken }` | Authenticated session established. |
+| `logout` | `$prism_logout` / `logout` | `{ reasonCode?: StableToken }` | Known user logout completed. Call before `reset()`. |
+
+`method` examples: `email`, `password`, `google`, `github`, `apple`, `magic_link`.
+
+**Boundary:** call after the operation succeeds — not on submit or OAuth start.
+
+### Onboarding
+
+| Helper | Protected name / key | Input |
+| --- | --- | --- |
+| `onboardingStarted` | `$prism_onboarding_started` / `onboarding_started` | `{ flowId?: StableToken }` |
+| `onboardingStepCompleted` | `$prism_onboarding_step_completed` / `onboarding_step_completed` | `{ stepId: StableToken; flowId?: StableToken }` |
+| `onboardingCompleted` | `$prism_onboarding_completed` / `onboarding_completed` | `{ flowId?: StableToken; durationMs?: number }` |
+
+Completion means the flow's defined completion condition was reached. No `onboardingAbandoned` in v1 — abandonment is derived, not a synchronous outcome.
+
+### Acquisition and collaboration
+
+| Helper | Protected name / key | Input |
+| --- | --- | --- |
+| `leadGenerated` | `$prism_lead_generated` / `lead_generated` | `{ channel?: StableToken; campaignId?: StableToken }` |
+| `inviteSent` | `$prism_invite_sent` / `invite_sent` | `{ channel?: StableToken; role?: StableToken }` |
+| `inviteAccepted` | `$prism_invite_accepted` / `invite_accepted` | `{ channel?: StableToken; role?: StableToken }` |
+
+Call `leadGenerated` only when the product's lead qualification boundary succeeds — not for every page view.
+
+### Trials
+
+| Helper | Protected name / key | Input |
+| --- | --- | --- |
+| `trialStarted` | `$prism_trial_started` / `trial_started` | `{ trialId: OpaqueId; planId: StableToken; durationDays?: number }` |
+| `trialEnded` | `$prism_trial_ended` / `trial_ended` | `{ trialId: OpaqueId; planId: StableToken; outcome: "converted" \| "expired" \| "cancelled" }` |
+
+No second `trialConverted` event — `outcome` is the canonical final state.
+
+### Subscriptions
+
+| Helper | Protected name / key | Input |
+| --- | --- | --- |
+| `subscriptionStarted` | `$prism_subscription_started` / `subscription_started` | `{ subscriptionId: OpaqueId; planId: StableToken; billingInterval?: "month" \| "year" \| "other" }` |
+| `subscriptionRenewed` | `$prism_subscription_renewed` / `subscription_renewed` | same |
+| `subscriptionChanged` | `$prism_subscription_changed` / `subscription_changed` | `{ subscriptionId: OpaqueId; fromPlanId: StableToken; toPlanId: StableToken }` — IDs must differ |
+| `subscriptionPaused` | `$prism_subscription_paused` / `subscription_paused` | `{ subscriptionId: OpaqueId; planId: StableToken; reasonCode?: StableToken }` |
+| `subscriptionResumed` | `$prism_subscription_resumed` / `subscription_resumed` | `{ subscriptionId: OpaqueId; planId: StableToken }` |
+| `subscriptionCancelled` | `$prism_subscription_cancelled` / `subscription_cancelled` | `{ subscriptionId: OpaqueId; planId: StableToken; reasonCode?: StableToken; effectiveAtMs?: number }` |
+| `subscriptionExpired` | `$prism_subscription_expired` / `subscription_expired` | `{ subscriptionId: OpaqueId; planId: StableToken; reasonCode?: StableToken; endedAtMs?: number }` |
+
+**Cancellation vs expiration:** cancellation is intent accepted (access may remain until `effectiveAtMs`); expiration is entitlement actually ended (`endedAtMs`). A cancellation scheduled for period end is not an expiration until access ends.
+
+### Payments and commerce
+
+| Helper | Protected name / key | Input |
+| --- | --- | --- |
+| `paymentSucceeded` | `$prism_payment_succeeded` / `payment_succeeded` | `{ transactionId: OpaqueId; valueMinor: number; currency: Currency; provider?: StableToken }` |
+| `paymentFailed` | `$prism_payment_failed` / `payment_failed` | `{ transactionId: OpaqueId; valueMinor?: number; currency?: Currency; provider?: StableToken; failureCode?: StableToken }` — `valueMinor` and `currency` together or omitted |
+| `purchase` | `$prism_purchase` / `purchase` | `{ transactionId: OpaqueId; valueMinor: number; currency: Currency; itemCount?: number }` |
+| `refund` | `$prism_refund` / `refund` | `{ refundId: OpaqueId; transactionId: OpaqueId; valueMinor: number; currency: Currency; reasonCode?: StableToken }` |
+
+**Payment vs purchase:** `paymentSucceeded` is a processor-confirmed payment attempt; `purchase` is a completed order. Some products use only one. If both are sent for one checkout they are two events and must never be summed as one revenue measure in future work.
+
+**Money is integer minor units — never floating point:**
+
+```ts
+prism.events.purchase({
+  transactionId: "order_2026_1042",
+  valueMinor: 1299, // $12.99
+  currency: "USD",
+  itemCount: 2,
+});
+```
+
+`1299` is `USD 12.99`. `12.99` is rejected.
+
+### Engagement and feedback
+
+| Helper | Protected name / key | Input |
+| --- | --- | --- |
+| `search` | `$prism_search` / `search` | `{ category?: StableToken; resultCount?: number }` |
+| `share` | `$prism_share` / `share` | `{ method: StableToken; contentType?: StableToken }` |
+| `feedbackSubmitted` | `$prism_feedback_submitted` / `feedback_submitted` | `{ kind?: StableToken; rating?: 1 \| 2 \| 3 \| 4 \| 5 }` |
+
+No raw search text, shared content IDs, feedback bodies, or provider payloads in v1 — they carry personal data and high cardinality.
+
+## Producer guidance
+
+- **Client owned?** Search, share — Browser/React Native. Prefer `identify()` so surrounding activity links.
+- **Server owned?** Account, trial, subscription, payment, purchase, refund — server via `createNodeClient` with per-call actor whenever the server owns truth.
+- **Exactly one producer per outcome** — emitting the same business outcome from both client and server creates two accepted events. Do not describe a client-emitted payment as a ledger entry; source metadata shows `web` vs `server`.
+- Webhook retries and business deduplication are application responsibilities. Prism dedupes only delivery retries of the same queued event ID.
+
+## Limits and validation
+
+Frozen in `STANDARD_EVENT_LIMITS` and enforced identically in SDK and ingestion:
+
+- Stable token `1-64` chars; lowercase letter first, then `a-z0-9._-`
+- Opaque analytics ID `1-128` chars `^[A-Za-z0-9][A-Za-z0-9._:-]*$` (no `@`, whitespace, `/`, secret, email, raw provider payload)
+- Currency exactly `3` uppercase letters
+- Money `≥0` safe integer minor units
+- Count `≥0` safe integer; duration `≥0` ms; effective timestamp `>0` epoch ms
+- Rating `1..5`; trial duration `1..3660` days
+- `subscriptionChanged` rejects equal plan IDs; `paymentFailed` requires `valueMinor`+`currency` together
+
+Unknown keys, `undefined`, non-finite numbers, dates, class instances, arrays where an object is required, dangerous keys, and values outside limits are rejected. Validators create new normalized objects and never mutate inputs. Unknown Standard Event? `unknown-reserved-event`. Known event with wrong schema? `invalid-standard-event`. Rejected protected events never persist.
+
+Every helper validates before sanitization, then queues the exact wire shape:
+
+```ts
+{ $standard: { schemaVersion: 1, key: "sign_up", data: { method: "email" } } }
+```
+
+Protected name and `key` must agree (`$prism_sign_up` ↔ `sign_up`). The only top-level key is `$standard`; its only keys are `schemaVersion`, `key`, `data`. Do not merge global custom properties into `$standard` — they ride the dedicated wire fields (`userId`, `sessionId`, `context`, `source`).
+
+## Privacy
+
+- `userId`, `transactionId`, `refundId`, `trialId`, `subscriptionId` are opaque developer-owned IDs. Do not send emails, names, secrets, card data, provider tokens, or raw webhook payloads.
+- Reason/failure codes are low-cardinality stable tokens, not free text — no cancellation message, no search query, no feedback body.
+- Keep money as integer minor units; no floating point.
+- Per-call actor is event-local so one request cannot relabel another's event.
+- Standard Events store as canonical `events` rows — existing retention, person deletion, and project deletion apply automatically.
+
+## Delivery
+
+Helpers are synchronous like `track()`:
+
+- Valid input → `{ status: "queued", eventId }` (event ID is the batch idempotency key) and delivery via the existing queue, batching, retry, diagnostic, `flush()`, `shutdown()` path.
+- Invalid input (empty token, unknown key, wrong type, etc.) → `throw` before queue mutation.
+- Consent: `consent-pending` / `consent-denied` → `{ status: "dropped", reason }`
+- Queue full / shutdown → `{ status: "dropped", reason: "queue-full" | "shutdown" }`
+- Transport failures → diagnostic `delivery_failed`, bounded retry, `batch_dropped` after `maxRetries`, with `Retry-After` honored as a minimum.
+
+`prism.track("$prism_sign_up", …)` still throws for the reserved prefix — only `prism.events` can create it.
+
+## In the dashboard
+
+Standard Events appear in the existing **Events** list and detail Sheet — no new page. The product API derives `standardEvent: { key, displayName, category, schemaVersion }` from the stored protected name via the shared registry (never from client payload).
+
+- List shows `Sign up` + `STANDARD · IDENTITY` where applicable, with the raw `$prism_*` name as a secondary line.
+- Detail shows the display name as the title, a `Standard` label + category, and the raw name for debugging, plus the validated `$standard` data in the property viewer.
+- Custom and automatic events keep their current rendering; `standardEvent` is `null` there.
+- Searching still matches the stored raw name.
+
+No charts, metric cards, or aggregate filters ship in this task — aiming, analysis, and AI build on these contracts later.

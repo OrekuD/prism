@@ -49,8 +49,15 @@ export const prism = await createReactNativeClient({
 Prism validates your options before it sends any data. It checks the
 source key, endpoint, and app metadata. If validation fails, it throws
 a clear error and sends nothing. If consent is denied or the queue is
-full at runtime, `track` returns `{ status: "dropped", reason }` instead
+full at runtime, `track` and `prism.events.*` return `{ status: "dropped", reason }` instead
 of throwing.
+
+```ts
+prism.events.search({ category: "documentation", resultCount: 8 });
+prism.events.share({ method: "email", contentType: "report" });
+```
+
+See [Standard Events](../features/standard-events.mdx) for the full catalog.
 
 When your app moves to the background, the SDK flushes queued events
 and records foreground time. When it returns to the foreground, it
