@@ -1,4 +1,5 @@
 import type { MobileContext } from "./mobile-context";
+import type { PrismStandardEvents } from "./standard-events";
 /**
  * Frozen public contract for `@prism-analytics/core` (task-9 slice 1 + review
  * corrections, ADR 0002).
@@ -461,6 +462,9 @@ export interface PrismClient {
 
 	/** Current identity state (anonymous + known). */
 	readonly identity: PrismIdentityState;
+
+	/** Typed Standard Event helpers — stable namespace, synchronous, validated. */
+	readonly events: PrismStandardEvents;
 
 	/** Subscribe to diagnostics; returns an idempotent remove handle. */
 	onDiagnostic(

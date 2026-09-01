@@ -21,6 +21,8 @@
  * keys, no undefined, no non-finite numbers, no provider payloads).
  */
 
+import type { CaptureResult } from "./contract";
+
 export const STANDARD_EVENT_LIMITS = {
   stableTokenMaxLength: 64,
   opaqueIdMaxLength: 128,
@@ -267,31 +269,31 @@ export type StandardEventDefinition = {
 };
 
 export interface PrismStandardEvents {
-  signUp(input: Readonly<SignUpProperties>, actor?: Readonly<StandardEventActor>): import("./contract").CaptureResult;
-  login(input: Readonly<LoginProperties>, actor?: Readonly<StandardEventActor>): import("./contract").CaptureResult;
-  logout(input?: Readonly<LogoutProperties>, actor?: Readonly<StandardEventActor>): import("./contract").CaptureResult;
-  onboardingStarted(input?: Readonly<OnboardingStartedProperties>, actor?: Readonly<StandardEventActor>): import("./contract").CaptureResult;
-  onboardingStepCompleted(input: Readonly<OnboardingStepCompletedProperties>, actor?: Readonly<StandardEventActor>): import("./contract").CaptureResult;
-  onboardingCompleted(input?: Readonly<OnboardingCompletedProperties>, actor?: Readonly<StandardEventActor>): import("./contract").CaptureResult;
-  leadGenerated(input?: Readonly<LeadGeneratedProperties>, actor?: Readonly<StandardEventActor>): import("./contract").CaptureResult;
-  inviteSent(input?: Readonly<InviteSentProperties>, actor?: Readonly<StandardEventActor>): import("./contract").CaptureResult;
-  inviteAccepted(input?: Readonly<InviteAcceptedProperties>, actor?: Readonly<StandardEventActor>): import("./contract").CaptureResult;
-  trialStarted(input: Readonly<TrialStartedProperties>, actor?: Readonly<StandardEventActor>): import("./contract").CaptureResult;
-  trialEnded(input: Readonly<TrialEndedProperties>, actor?: Readonly<StandardEventActor>): import("./contract").CaptureResult;
-  subscriptionStarted(input: Readonly<SubscriptionStartedProperties>, actor?: Readonly<StandardEventActor>): import("./contract").CaptureResult;
-  subscriptionRenewed(input: Readonly<SubscriptionRenewedProperties>, actor?: Readonly<StandardEventActor>): import("./contract").CaptureResult;
-  subscriptionChanged(input: Readonly<SubscriptionChangedProperties>, actor?: Readonly<StandardEventActor>): import("./contract").CaptureResult;
-  subscriptionPaused(input: Readonly<SubscriptionPausedProperties>, actor?: Readonly<StandardEventActor>): import("./contract").CaptureResult;
-  subscriptionResumed(input: Readonly<SubscriptionResumedProperties>, actor?: Readonly<StandardEventActor>): import("./contract").CaptureResult;
-  subscriptionCancelled(input: Readonly<SubscriptionCancelledProperties>, actor?: Readonly<StandardEventActor>): import("./contract").CaptureResult;
-  subscriptionExpired(input: Readonly<SubscriptionExpiredProperties>, actor?: Readonly<StandardEventActor>): import("./contract").CaptureResult;
-  paymentSucceeded(input: Readonly<PaymentSucceededProperties>, actor?: Readonly<StandardEventActor>): import("./contract").CaptureResult;
-  paymentFailed(input: Readonly<PaymentFailedProperties>, actor?: Readonly<StandardEventActor>): import("./contract").CaptureResult;
-  purchase(input: Readonly<PurchaseProperties>, actor?: Readonly<StandardEventActor>): import("./contract").CaptureResult;
-  refund(input: Readonly<RefundProperties>, actor?: Readonly<StandardEventActor>): import("./contract").CaptureResult;
-  search(input?: Readonly<SearchProperties>, actor?: Readonly<StandardEventActor>): import("./contract").CaptureResult;
-  share(input: Readonly<ShareProperties>, actor?: Readonly<StandardEventActor>): import("./contract").CaptureResult;
-  feedbackSubmitted(input?: Readonly<FeedbackSubmittedProperties>, actor?: Readonly<StandardEventActor>): import("./contract").CaptureResult;
+  signUp(input: Readonly<SignUpProperties>, actor?: Readonly<StandardEventActor>): CaptureResult;
+  login(input: Readonly<LoginProperties>, actor?: Readonly<StandardEventActor>): CaptureResult;
+  logout(input?: Readonly<LogoutProperties>, actor?: Readonly<StandardEventActor>): CaptureResult;
+  onboardingStarted(input?: Readonly<OnboardingStartedProperties>, actor?: Readonly<StandardEventActor>): CaptureResult;
+  onboardingStepCompleted(input: Readonly<OnboardingStepCompletedProperties>, actor?: Readonly<StandardEventActor>): CaptureResult;
+  onboardingCompleted(input?: Readonly<OnboardingCompletedProperties>, actor?: Readonly<StandardEventActor>): CaptureResult;
+  leadGenerated(input?: Readonly<LeadGeneratedProperties>, actor?: Readonly<StandardEventActor>): CaptureResult;
+  inviteSent(input?: Readonly<InviteSentProperties>, actor?: Readonly<StandardEventActor>): CaptureResult;
+  inviteAccepted(input?: Readonly<InviteAcceptedProperties>, actor?: Readonly<StandardEventActor>): CaptureResult;
+  trialStarted(input: Readonly<TrialStartedProperties>, actor?: Readonly<StandardEventActor>): CaptureResult;
+  trialEnded(input: Readonly<TrialEndedProperties>, actor?: Readonly<StandardEventActor>): CaptureResult;
+  subscriptionStarted(input: Readonly<SubscriptionStartedProperties>, actor?: Readonly<StandardEventActor>): CaptureResult;
+  subscriptionRenewed(input: Readonly<SubscriptionRenewedProperties>, actor?: Readonly<StandardEventActor>): CaptureResult;
+  subscriptionChanged(input: Readonly<SubscriptionChangedProperties>, actor?: Readonly<StandardEventActor>): CaptureResult;
+  subscriptionPaused(input: Readonly<SubscriptionPausedProperties>, actor?: Readonly<StandardEventActor>): CaptureResult;
+  subscriptionResumed(input: Readonly<SubscriptionResumedProperties>, actor?: Readonly<StandardEventActor>): CaptureResult;
+  subscriptionCancelled(input: Readonly<SubscriptionCancelledProperties>, actor?: Readonly<StandardEventActor>): CaptureResult;
+  subscriptionExpired(input: Readonly<SubscriptionExpiredProperties>, actor?: Readonly<StandardEventActor>): CaptureResult;
+  paymentSucceeded(input: Readonly<PaymentSucceededProperties>, actor?: Readonly<StandardEventActor>): CaptureResult;
+  paymentFailed(input: Readonly<PaymentFailedProperties>, actor?: Readonly<StandardEventActor>): CaptureResult;
+  purchase(input: Readonly<PurchaseProperties>, actor?: Readonly<StandardEventActor>): CaptureResult;
+  refund(input: Readonly<RefundProperties>, actor?: Readonly<StandardEventActor>): CaptureResult;
+  search(input?: Readonly<SearchProperties>, actor?: Readonly<StandardEventActor>): CaptureResult;
+  share(input: Readonly<ShareProperties>, actor?: Readonly<StandardEventActor>): CaptureResult;
+  feedbackSubmitted(input?: Readonly<FeedbackSubmittedProperties>, actor?: Readonly<StandardEventActor>): CaptureResult;
 }
 
 // ---------------------------------------------------------------------------

@@ -88,6 +88,8 @@ export interface PrismReactFacade {
 	readonly collectionState: PrismClient["collectionState"];
 	/** Readonly observed identity state (task-10). */
 	readonly identity: PrismClient["identity"];
+	/** Stable Standard Event helpers (task-19). Same object as `client.events`. */
+	readonly events: PrismClient["events"];
 }
 
 /** Context carries the READY client — never an initialization config. */
@@ -264,6 +266,8 @@ function createFacade(client: PrismClient): PrismReactFacade {
 		flush: () => client.flush(),
 		shutdown: (options) => client.shutdown(options),
 		onDiagnostic: (listener) => client.onDiagnostic(listener),
+		// Standard Events namespace — stable object identity from the client.
+		events: client.events,
 		// Getter (release review): a snapshot would go stale after consent
 		// changes; React-side rerender subscriptions are a later concern.
 		get collectionState() {

@@ -46,6 +46,13 @@ import {
 	validateAppLifecycleProperties,
 	validateScreenViewProperties,
 } from "./screen-view";
+import {
+	STANDARD_EVENT_BY_KEY,
+	validateStandardEventData,
+	type StandardEventActor,
+	type StandardEventKey,
+	type PrismStandardEvents,
+} from "./standard-events";
 import { EventQueue, type QueuedEvent, utf8Length } from "./queue";
 import {
 	assertEndpoint,
@@ -246,6 +253,7 @@ class PrismClientImpl implements PrismClient {
 	private identityGeneration = 0;
 	private readonly wireContext: WireContext;
 	private persistChain: Promise<void> = Promise.resolve();
+	readonly events: PrismStandardEvents;
 
 	constructor(options: PrismClientOptions) {
 		assertSourceKey(options.sourceKey);
@@ -467,6 +475,43 @@ class PrismClientImpl implements PrismClient {
 			},
 		};
 		(this as unknown as Record<symbol, unknown>)[INTERNAL_SEAM] = seam;
+
+		// Task 19: stable Standard Event namespace — one shared capture path, stable object/method identity.
+		this.events = this.createStandardEvents();
+	}
+
+	private createStandardEvents(): PrismStandardEvents {
+		const capture = (key: StandardEventKey, input: unknown, actor: unknown): CaptureResult =>
+			this.captureStandardEvent(key, input, actor);
+		// Each helper is a stable bound arrow — destructuring preserves `this`.
+		const events: PrismStandardEvents = {
+			signUp: (input, actor) => capture("sign_up", input, actor),
+			login: (input, actor) => capture("login", input, actor),
+			logout: (input, actor) => capture("logout", input ?? {}, actor),
+			onboardingStarted: (input, actor) => capture("onboarding_started", input ?? {}, actor),
+			onboardingStepCompleted: (input, actor) => capture("onboarding_step_completed", input, actor),
+			onboardingCompleted: (input, actor) => capture("onboarding_completed", input ?? {}, actor),
+			leadGenerated: (input, actor) => capture("lead_generated", input ?? {}, actor),
+			inviteSent: (input, actor) => capture("invite_sent", input ?? {}, actor),
+			inviteAccepted: (input, actor) => capture("invite_accepted", input ?? {}, actor),
+			trialStarted: (input, actor) => capture("trial_started", input, actor),
+			trialEnded: (input, actor) => capture("trial_ended", input, actor),
+			subscriptionStarted: (input, actor) => capture("subscription_started", input, actor),
+			subscriptionRenewed: (input, actor) => capture("subscription_renewed", input, actor),
+			subscriptionChanged: (input, actor) => capture("subscription_changed", input, actor),
+			subscriptionPaused: (input, actor) => capture("subscription_paused", input, actor),
+			subscriptionResumed: (input, actor) => capture("subscription_resumed", input, actor),
+			subscriptionCancelled: (input, actor) => capture("subscription_cancelled", input, actor),
+			subscriptionExpired: (input, actor) => capture("subscription_expired", input, actor),
+			paymentSucceeded: (input, actor) => capture("payment_succeeded", input, actor),
+			paymentFailed: (input, actor) => capture("payment_failed", input, actor),
+			purchase: (input, actor) => capture("purchase", input, actor),
+			refund: (input, actor) => capture("refund", input, actor),
+			search: (input, actor) => capture("search", input ?? {}, actor),
+			share: (input, actor) => capture("share", input, actor),
+			feedbackSubmitted: (input, actor) => capture("feedback_submitted", input ?? {}, actor),
+		};
+		return Object.freeze(events);
 	}
 
 	/** Called by the factory before resolving — the client is fully ready. */
@@ -585,6 +630,113 @@ class PrismClientImpl implements PrismClient {
 		}
 		void this.afterEnqueue();
 		return { status: "queued", eventId: event.eventId };
+	}
+
+	private captureStandardEvent(
+		key: StandardEventKey,
+		rawInput: unknown,
+		rawActor: unknown,
+	): CaptureResult {
+		// 1. Actor validation (does not mutate input/actor)
+		let actorUserId: string | null = null;
+		if (rawActor !== undefined) {
+			if (
+				typeof rawActor !== "object" ||
+				rawActor === null ||
+				Array.isArray(rawActor)
+			) {
+				throw new Error("actor must be an object with userId");
+			}
+			const rec = rawActor as Record<string, unknown>;
+			const keys = Object.keys(rec);
+			if (keys.length !== 1 || keys[0] !== "userId") {
+				throw new Error("actor must contain exactly userId");
+			}
+			const u = rec.userId;
+			if (
+				typeof u !== "string" ||
+				u.length === 0 ||
+				u.length > 256 ||
+				/[\x00-\x1f\x7f]/.test(u)
+			) {
+				throw new Error(
+					"actor.userId must be a 1..256 character string without control characters",
+				);
+			}
+			actorUserId = u;
+		}
+		const resolvedUserId = actorUserId ?? this.knownUserId ?? null;
+		const def = STANDARD_EVENT_BY_KEY.get(key);
+		if (!def) throw new Error(`unknown Standard Event key "${key}"`);
+		if (def.requiresUser && !resolvedUserId) {
+			throw new Error(
+				`${def.sdkMethod} requires an identified user — call identify(userId) or pass { userId } as the second argument`,
+			);
+		}
+		// 2. Input validation — before any queue mutation
+		const dataInput = rawInput === undefined ? {} : rawInput;
+		const validation = validateStandardEventData(key, dataInput);
+		if (!validation.ok) {
+			throw new Error(validation.reason);
+		}
+		const wireProps: JsonObject = {
+			$standard: {
+				schemaVersion: 1,
+				key,
+				data: validation.value,
+			},
+		} as unknown as JsonObject;
+
+		// 3. Consent / shutdown gating (after validation, like track)
+		if (this.closed) return { status: "dropped", reason: "shutdown" };
+		if (this.state === "pending")
+			return { status: "dropped", reason: "consent-pending" };
+		if (this.state === "denied")
+			return { status: "dropped", reason: "consent-denied" };
+
+		const event = this.buildStandardEvent(
+			def.protectedName,
+			wireProps,
+			resolvedUserId,
+		);
+		if (!this.queue.enqueue(event)) {
+			return { status: "dropped", reason: "queue-full" };
+		}
+		void this.afterEnqueue();
+		return { status: "queued", eventId: event.eventId };
+	}
+
+	private buildStandardEvent(
+		name: string,
+		properties: JsonObject,
+		resolvedUserId: string | null,
+	): QueuedEvent {
+		const eventId = this.runtime.createId();
+		const now = this.runtime.now();
+		const sessionId = this.activeSession?.sessionId;
+		const envelope: WireEnvelope & { userId?: string } = {
+			schemaVersion: WIRE_SCHEMA_VERSION,
+			eventId,
+			type: "track",
+			occurredAt: now,
+			sessionId,
+			anonymousId: this.anonymousId ?? undefined,
+			...(resolvedUserId ? { userId: resolvedUserId } : {}),
+			name,
+			properties,
+			context: this.wireContext,
+		};
+		const serialized = JSON.stringify(envelope);
+		return {
+			owner: this.instanceId,
+			kind: "event",
+			eventId,
+			name,
+			properties,
+			timestamp: now,
+			sessionId,
+			serialized,
+		};
 	}
 
 	startSession(options?: { properties?: JsonObject }): SessionStartResult {
