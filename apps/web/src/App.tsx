@@ -125,11 +125,6 @@ const ProjectErrors = lazy(() =>
 		default: m.ProjectErrors,
 	})),
 );
-const IssueDetail = lazy(() =>
-	import("./routes/projects/project/issue-detail").then((m) => ({
-		default: m.IssueDetail,
-	})),
-);
 
 /**
  * /sources/:seg is ambiguous on purpose: a known type word (web / mobile /
@@ -252,13 +247,14 @@ const router = createBrowserRouter(
 								<Route path=":eventId" element={<EventDetail />} />
 							</Route>
 							<Route path="web-analytics" element={<ProjectWebAnalytics />} />
-                            <Route path="mobile-analytics" element={<ProjectMobileAnalytics />} />
+							<Route
+								path="mobile-analytics"
+								element={<ProjectMobileAnalytics />}
+							/>
 							<Route path="realtime" element={<ProjectRealtime />} />
 							<Route path="people" element={<ProjectPeople />} />
 							<Route path="people/:personId" element={<PersonDetail />} />
-							<Route path="errors" element={<ProjectErrors />}>
-								<Route path=":issueId" element={<IssueDetail />} />
-							</Route>
+							<Route path="errors/*" element={<ProjectErrors />} />
 							<Route path="sources" element={<Navigate to="web" replace />} />
 							<Route path="sources/:type/:tab" element={<ProjectSources />}>
 								<Route path=":sourceId" element={<SourceDetailDialog />} />

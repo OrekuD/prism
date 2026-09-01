@@ -254,9 +254,9 @@ export async function loadMobileAnalytics(
 
 	const sizeClasses = await client.execute({
 		sql: `SELECT CASE
-					WHEN MAX(COALESCE(json_extract(e.context, '$.screenSize.width'), 0)) >= 1024 THEN 'large'
-					WHEN MAX(COALESCE(json_extract(e.context, '$.screenSize.width'), 0)) >= 600 THEN 'regular'
-					WHEN MAX(COALESCE(json_extract(e.context, '$.screenSize.width'), 0)) > 0 THEN 'compact'
+					WHEN COALESCE(json_extract(e.context, '$.screenSize.width'), 0) >= 1024 THEN 'large'
+					WHEN COALESCE(json_extract(e.context, '$.screenSize.width'), 0) >= 600 THEN 'regular'
+					WHEN COALESCE(json_extract(e.context, '$.screenSize.width'), 0) > 0 THEN 'compact'
 					ELSE NULL END AS key,
 				COUNT(*) AS screen_views,
 				COUNT(DISTINCT e.person_id) AS visitors,

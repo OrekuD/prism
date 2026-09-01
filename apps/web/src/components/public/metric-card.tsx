@@ -1,4 +1,5 @@
 import type React from "react";
+import { Frame } from "./frame";
 
 /**
  * v2 frame metric card: a bordered frame with a floating mono frame-label,
@@ -14,16 +15,16 @@ export function MetricCard({
 	caption?: string;
 }) {
 	return (
-		<div className="relative rounded-[2px] border border-border p-4 pt-5">
+		<Frame className="flex h-[88px] flex-col justify-between p-4 pt-5">
 			<span className="absolute -top-[7px] left-[14px] bg-canvas px-[5px] font-mono text-[10px] font-medium uppercase tracking-[0.09em] text-text-muted">
 				{label}
 			</span>
-			<div className="flex items-center justify-between gap-2">{children}</div>
+			<div className="flex items-center justify-between gap-2 leading-none">{children}</div>
 			{caption ? (
-				<span className="mt-[5px] block text-[10px] text-text-muted">
-					{caption}
-				</span>
-			) : null}
-		</div>
+				<span className="block text-[10px] leading-none text-text-muted">{caption}</span>
+			) : (
+				<span className="block h-[10px]" aria-hidden="true" />
+			)}
+		</Frame>
 	);
 }

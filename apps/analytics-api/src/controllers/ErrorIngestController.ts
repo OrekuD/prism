@@ -191,7 +191,8 @@ export class ErrorIngestController {
 			}
 			const item = validation.item;
 			const fingerprint = fingerprintV1(item.exception);
-			const sanitized = sanitizeErrorPayload(item);
+			const language = parsed.sdk?.language?.trim() || "javascript";
+			const sanitized = sanitizeErrorPayload({ ...item, language });
 			items.push({
 				index,
 				occurrenceId: randomUUID(),

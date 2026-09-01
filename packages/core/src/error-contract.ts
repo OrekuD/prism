@@ -162,7 +162,7 @@ export interface WireErrorItem {
 export interface WireErrorBatch {
 	schemaVersion: 1;
 	sentAt: number;
-	sdk: { name: string; version: string };
+	sdk: { name: string; version: string; language?: string };
 	errors: Array<WireErrorItem>;
 }
 

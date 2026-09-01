@@ -474,7 +474,7 @@ export function EventDetail() {
         if (!open) navigate(base);
       }}
     >
-      <SheetContent className="w-full gap-0 p-0 sm:max-w-[640px]">
+      <SheetContent className="w-full gap-0 p-0 sm:max-w-[684px]">
         {event ? (
           <EventDetails event={event} base={base} />
         ) : queryClient

@@ -1,7 +1,6 @@
 import type {
 	ErrorIssueActivityAction,
 	ErrorIssueActivityItem,
-	ErrorIssueDelta,
 	ErrorIssueDetailResource,
 	ErrorIssueResource,
 	ErrorIssueStatus,
@@ -10,7 +9,9 @@ import type {
 } from "@prism-analytics/types";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useSyncExternalStore } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+
+import { Info } from "lucide-react";
 
 import {
 	DeltaTag,
@@ -18,20 +19,32 @@ import {
 	StatusTag,
 	dateLabel,
 } from "@/components/errors/issue-visuals";
-import { SectionLabel } from "@/components/public/frame";
+import { Frame, SectionLabel } from "@/components/public/frame";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
-import { ErrorPageActions } from "@/components/errors/error-ai-copy";
 import {
-	Sheet,
-	SheetContent,
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { useTheme } from "@/components/theme-provider";
+import {
+	ErrorAICopyButton,
+	ErrorAICopyPopover,
+} from "@/components/errors/error-ai-copy";
+import {
 	SheetDescription,
 	SheetFooter,
 	SheetHeader,
 	SheetTitle,
 } from "@/components/ui/sheet";
+import { PresentationStack } from "@/components/ui/presentation-stack";
 import { Skeleton } from "@/components/ui/skeleton";
-import { STATUS_LABELS } from "@/lib/errorIssues";
+import {
+	type ErrorPresentationLayer,
+	parseErrorPresentationStack,
+} from "@/lib/presentationStack";
 import { useActiveMember } from "@/lib/workspace";
 import { useIssueStateMutation } from "@/network/mutations/useIssueStateMutation";
 import { useIssueDetailQuery } from "@/network/queries/useIssueDetailQuery";
@@ -96,24 +109,78 @@ function useIssueFromCache(
 	);
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+/** Key/value cell — mirrors event-detail Kv: Frame inset with mono label. */
+function Kv({ k, children }: { k: string; children: React.ReactNode }) {
 	return (
-		<div className="flex min-w-0 flex-col gap-1">
-			<span className="font-mono text-[10px] font-medium uppercase tracking-[0.09em] text-text-muted">
-				{label}
-			</span>
-			<span className="truncate font-mono text-[14px] font-[500] tracking-[-0.01em] text-text">
-				{value}
-			</span>
-		</div>
+		<Frame inset className="min-w-0 px-3 py-3">
+			<div className="mb-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
+				{k}
+			</div>
+			<div className="break-words font-mono text-[12.5px] leading-[1.5] text-text">
+				{children}
+			</div>
+		</Frame>
 	);
 }
 
-const DELTA_CAPTION: Record<Exclude<ErrorIssueDelta, null>, string> = {
-	new: "First occurrence within this range.",
-	regressing: "More events than the previous window.",
-	declining: "Fewer events than the previous window.",
-};
+function shikiLangFor(language?: string): string {
+	if (!language) return "javascript";
+	const v = language.trim().toLowerCase();
+	if (
+		["javascript", "js", "typescript", "ts", "jsx", "tsx", "node"].includes(v)
+	)
+		return "javascript";
+	if (["python", "py", "python3"].includes(v)) return "python";
+	if (["go", "golang"].includes(v)) return "go";
+	if (["java"].includes(v)) return "java";
+	if (["swift"].includes(v)) return "swift";
+	if (["kotlin", "kt"].includes(v)) return "kotlin";
+	if (["ruby", "rb"].includes(v)) return "ruby";
+	if (["php"].includes(v)) return "php";
+	return "text";
+}
+
+function ShikiStack({ code, language }: { code: string; language?: string }) {
+	const { theme } = useTheme();
+	const resolvedTheme =
+		theme === "system"
+			? typeof window !== "undefined" &&
+				window.matchMedia("(prefers-color-scheme: dark)").matches
+				? "dark"
+				: "light"
+			: theme;
+	const shikiTheme = resolvedTheme === "light" ? "github-light" : "github-dark";
+	const lang = shikiLangFor(language);
+	const [html, setHtml] = React.useState<string | null>(null);
+	React.useEffect(() => {
+		let cancelled = false;
+		import("shiki")
+			.then(({ codeToHtml }) => codeToHtml(code, { lang, theme: shikiTheme }))
+			.then((out) => {
+				if (!cancelled) setHtml(out);
+			})
+			.catch(() => {
+				if (!cancelled) setHtml(null);
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [code, lang, shikiTheme]);
+	if (html) {
+		return (
+			<div
+				className="max-h-[320px] overflow-auto p-3 font-mono text-[11.5px] leading-relaxed [&_pre]:!m-0 [&_pre]:!bg-transparent [&_pre]:p-0 [&_code]:!bg-transparent"
+				// biome-ignore lint/security/noDangerouslySetInnerHtml: shiki HTML is trusted
+				dangerouslySetInnerHTML={{ __html: html }}
+			/>
+		);
+	}
+	return (
+		<pre className="m-0 max-h-[320px] overflow-auto whitespace-pre-wrap break-words bg-transparent p-3 font-mono text-[11.5px] leading-relaxed text-text">
+			{code}
+		</pre>
+	);
+}
 
 const ACTION_LABEL: Record<ErrorIssueActivityAction, string> = {
 	resolved: "Resolved",
@@ -157,7 +224,7 @@ function FrameRow({ frame, index }: { frame: ErrorStackFrame; index: number }) {
 			? `${rawFile}:${frame.line}${frame.column !== null ? `:${frame.column}` : ""}`
 			: (rawFile ?? "<unknown>");
 	return (
-		<div className="flex items-start gap-3 rounded-[2px] border border-border bg-surface px-3 py-2 font-mono text-[11px] leading-relaxed">
+		<Frame className="flex items-start gap-3 px-3 py-2 font-mono text-[11px] leading-relaxed">
 			<span className="shrink-0 pt-px text-[10px] text-text-subtle">
 				{index}
 			</span>
@@ -171,7 +238,7 @@ function FrameRow({ frame, index }: { frame: ErrorStackFrame; index: number }) {
 			<span className="shrink-0 rounded bg-surface-raised px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-widest text-text-subtle">
 				raw
 			</span>
-		</div>
+		</Frame>
 	);
 }
 
@@ -193,7 +260,7 @@ function OccurrenceCard({
 	latest: boolean;
 }) {
 	return (
-		<div className="space-y-1.5 rounded-[2px] border border-border p-2.5">
+		<Frame inset className="space-y-1.5 p-2.5">
 			<div className="flex items-center gap-2">
 				<span className="min-w-0 flex-1 break-words font-mono text-[11.5px] leading-snug text-text">
 					{occurrence.exception.type}
@@ -228,7 +295,7 @@ function OccurrenceCard({
 					<span className="text-text-subtle">has cause</span>
 				) : null}
 			</div>
-		</div>
+		</Frame>
 	);
 }
 
@@ -249,18 +316,21 @@ function ActivityItem({ item }: { item: ErrorIssueActivityItem }) {
 /** Data + state-workflow body; deliberately decoupled from the Sheet shell. */
 function IssueDetails({
 	issue,
-	base,
+	issuePath,
+	search,
+	slug,
 }: {
 	issue: ErrorIssueResource;
-	base: string;
+	issuePath: string;
+	search: string;
+	slug: string | undefined;
 }) {
-	const { slug, issueId } = useParams();
 	const mutation = useIssueStateMutation(slug);
 	const activeMember = useActiveMember();
 	const canManage =
 		activeMember?.data?.role === "owner" ||
 		activeMember?.data?.role === "admin";
-	const detail = useIssueDetailQuery(slug, issueId);
+	const detail = useIssueDetailQuery(slug, issue.id);
 	const detailData: ErrorIssueDetailResource | null | undefined =
 		detail.data ?? null;
 
@@ -278,24 +348,33 @@ function IssueDetails({
 				? "Reopen"
 				: "Stop ignoring";
 
-	const trendCaption =
-		issue.delta === null
-			? "No previous window to compare against."
-			: DELTA_CAPTION[issue.delta];
-
 	const latest = detailData?.occurrences[0];
 	const occurrences = detailData?.occurrences.slice(1, 5) ?? [];
 	const activity = detailData?.activity ?? [];
 
 	return (
 		<>
-			<SheetHeader className="gap-2 border-b border-border pr-10">
-				<div className="flex flex-wrap items-center gap-1.5">
-					<PlatformLevelTag platform={issue.platform} level={issue.level} />
-					<StatusTag status={issue.status} />
-					<DeltaTag delta={issue.delta} />
+			<SheetHeader className="gap-3 border-b border-border px-6 pb-4 pt-6">
+				<div className="flex items-start justify-between gap-4">
+					<div className="flex flex-wrap items-center gap-1.5">
+						<PlatformLevelTag platform={issue.platform} level={issue.level} />
+						<StatusTag status={issue.status} />
+						<DeltaTag delta={issue.delta} />
+					</div>
+					<div className="flex shrink-0 items-center gap-2">
+						<ErrorAICopyButton
+							issue={issue}
+							detail={detailData}
+							projectSlug={slug}
+						/>
+						<ErrorAICopyPopover
+							issue={issue}
+							detail={detailData}
+							projectSlug={slug}
+						/>
+					</div>
 				</div>
-				<SheetTitle className="font-sans text-[17px] font-medium leading-snug tracking-[-0.015em] text-text">
+				<SheetTitle className="break-words pr-2 text-left font-sans text-[17px] font-semibold leading-[1.25] tracking-[-0.02em] text-text">
 					{issue.title}
 				</SheetTitle>
 				<SheetDescription className="font-sans text-[13px] leading-[1.5] text-text-muted">
@@ -303,114 +382,83 @@ function IssueDetails({
 				</SheetDescription>
 			</SheetHeader>
 
-			<div className="px-4 py-3">
-				<ErrorPageActions issue={issue} detail={detailData} projectSlug={slug} />
-			</div>
-
-			<div className="flex-1 space-y-[18px] overflow-y-auto px-4 py-4">
-				<div className="grid grid-cols-2 gap-x-3 gap-y-4">
-					<Stat label="Events in range" value={fmt.format(issue.count)} />
-					<Stat label="Users affected" value={fmt.format(issue.users)} />
-					<Stat label="First seen" value={dateLabel(issue.firstSeen)} />
-					<Stat label="Last seen" value={dateLabel(issue.lastSeen)} />
-					{detailData ? (
-						<>
-							<Stat
-								label="All-time events"
-								value={fmt.format(detailData.occurrenceCountAll)}
-							/>
-							<Stat
-								label="All-time users"
-								value={fmt.format(detailData.usersAffectedAll)}
-							/>
-							{detailData.firstRelease || detailData.lastRelease ? (
-								<Stat
-									label="Releases"
-									value={`${detailData.firstRelease ?? "—"} → ${detailData.lastRelease ?? "—"}`}
-								/>
-							) : null}
-						</>
-					) : (
-						<>
-							<Skeleton className="h-[24px] w-full" />
-							<Skeleton className="h-[24px] w-full" />
-						</>
-					)}
-				</div>
-
-				<section className="space-y-2">
-					<SectionLabel>Fingerprint</SectionLabel>
-					<div className="flex items-center gap-2">
-						<code className="min-w-0 flex-1 truncate rounded-[2px] border border-border bg-surface px-2.5 py-1.5 font-mono text-[11.5px] text-text-muted">
-							{issue.fingerprint}
-						</code>
-						<CopyButton
-							value={issue.fingerprint}
-							label="fingerprint"
-							iconOnly
-						/>
-					</div>
-				</section>
-
-				<section className="space-y-2">
-					<SectionLabel>Trend</SectionLabel>
-					<div className="flex items-center gap-2">
-						<DeltaTag delta={issue.delta} />
-						<span className="text-[12px] leading-[1.4] text-text-subtle">
-							{trendCaption}
-						</span>
+			<div className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto p-6">
+				<section>
+					<SectionLabel>Overview</SectionLabel>
+					<div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+						<Kv k="events in range">{fmt.format(issue.count)}</Kv>
+						<Kv k="users affected">{fmt.format(issue.users)}</Kv>
+						<Kv k="first seen">{dateLabel(issue.firstSeen)}</Kv>
+						<Kv k="last seen">{dateLabel(issue.lastSeen)}</Kv>
+						{detailData ? (
+							<>
+								<Kv k="all-time events">
+									{fmt.format(detailData.occurrenceCountAll)}
+								</Kv>
+								<Kv k="all-time users">
+									{fmt.format(detailData.usersAffectedAll)}
+								</Kv>
+								{detailData.firstRelease || detailData.lastRelease ? (
+									<Kv k="releases">
+										{`${detailData.firstRelease ?? "—"} → ${detailData.lastRelease ?? "—"}`}
+									</Kv>
+								) : null}
+							</>
+						) : (
+							<>
+								<Skeleton className="h-[76px] w-full rounded-[2px]" />
+								<Skeleton className="h-[76px] w-full rounded-[2px]" />
+							</>
+						)}
 					</div>
 				</section>
 
 				{issue.location ? (
-					<section className="space-y-2">
+					<section>
 						<SectionLabel>Location</SectionLabel>
-						<code className="block max-w-full whitespace-normal break-all rounded-[2px] border border-border bg-surface px-2.5 py-1.5 font-mono text-[11.5px] text-text">
-							{issue.location}
-						</code>
+						<Frame inset className="mt-3 px-3 py-3">
+							<code className="block break-all font-mono text-[11.5px] text-text">
+								{issue.location}
+							</code>
+						</Frame>
 					</section>
 				) : null}
 
 				{latest ? (
-					<section className="space-y-2">
+					<section>
 						<div className="flex items-center justify-between gap-2">
 							<div className="flex items-baseline gap-2">
 								<SectionLabel>Stack trace</SectionLabel>
 								<span className="font-mono text-[10px] text-text-subtle">
-									({latest.exception.frames.length} frames · in-app frame
-									sanitized)
+									({latest.exception.frames.length} frames · sanitized)
 								</span>
 							</div>
 							<CopyButton
 								value={chainText(latest)}
 								label="stack trace"
 								iconOnly
+								className="size-7"
 							/>
 						</div>
-						<div className="space-y-1">
-							<code className="block rounded-[2px] border border-border bg-surface px-2.5 py-1.5 font-mono text-[11.5px] whitespace-pre-wrap break-words text-text">
-								{latest.exception.type}
-								{latest.exception.message
-									? `: ${latest.exception.message}`
-									: ""}
-							</code>
+						<div className="mt-3">
 							{latest.exception.frames.length > 0 ? (
-								<div className="space-y-1">
-									{latest.exception.frames.map((frame, index) => (
-										<FrameRow
-											key={frameKey(frame, index)}
-											frame={frame}
-											index={index}
+								<Frame inset className="p-0">
+									<div className="overflow-hidden rounded-[2px]">
+										<ShikiStack
+											code={chainText(latest)}
+											language={latest.language}
 										/>
-									))}
-								</div>
+									</div>
+								</Frame>
 							) : (
-								<p className="px-1 text-[11px] text-text-subtle">
-									No captured stack frames for this occurrence.
-								</p>
+								<Frame className="border-dashed bg-surface/40 px-3 py-6 text-center">
+									<p className="font-mono text-[12px] leading-none text-text-subtle">
+										No captured stack frames for this occurrence.
+									</p>
+								</Frame>
 							)}
 							{latest.exception.hasCause ? (
-								<p className="px-1 text-[10.5px] text-text-subtle">
+								<p className="mt-1.5 px-1 text-[10.5px] text-text-subtle">
 									This occurrence has a nested cause (captured; redacted content
 									is never shown).
 								</p>
@@ -418,26 +466,45 @@ function IssueDetails({
 						</div>
 					</section>
 				) : detail?.isFetching ? (
-					<section className="space-y-2">
-						<SectionLabel>Sanitized stack</SectionLabel>
-						<Skeleton className="h-[120px] w-full" />
+					<section>
+						<SectionLabel>Stack trace</SectionLabel>
+						<Skeleton className="mt-3 h-[120px] w-full rounded-[2px]" />
 					</section>
 				) : null}
 
-				{/* Breadcrumbs — safe, bounded, never bodies/headers/cookies */}
-				<section className="space-y-2">
+				<section>
 					<div className="flex items-center justify-between gap-2">
-						<SectionLabel>Breadcrumbs</SectionLabel>
+						<div className="inline-flex items-center gap-1">
+							<SectionLabel className="leading-none">Breadcrumbs</SectionLabel>
+							<TooltipProvider>
+								<Tooltip>
+									<TooltipTrigger asChild>
+										<button
+											type="button"
+											aria-label="Breadcrumbs privacy info"
+											className="inline-flex size-4 shrink-0 -translate-y-[0.5px] items-center justify-center rounded-[2px] text-text-subtle hover:bg-surface-hover hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
+										>
+											<Info className="size-3" aria-hidden="true" />
+										</button>
+									</TooltipTrigger>
+									<TooltipContent side="top" align="center">
+										No request/response bodies, headers, cookies, or storage are
+										ever collected.
+									</TooltipContent>
+								</Tooltip>
+							</TooltipProvider>
+						</div>
 						<span className="font-mono text-[10px] text-text-subtle">
 							{latest ? `${latest.breadcrumbsCount} · safe · bounded` : "—"}
 						</span>
 					</div>
 					{latest && latest.breadcrumbsCount > 0 ? (
-						<div className="overflow-hidden rounded-[2px] border border-border bg-surface">
-							{BREADCRUMB_PLACEHOLDERS.slice(
-								0,
-								Math.min(latest.breadcrumbsCount, 6),
-							).map((key, index) => (
+						<Frame inset className="mt-3 p-0">
+							<div className="overflow-hidden rounded-[2px]">
+								{BREADCRUMB_PLACEHOLDERS.slice(
+									0,
+									Math.min(latest.breadcrumbsCount, 6),
+								).map((key, index) => (
 									<div
 										key={key}
 										className="flex items-center gap-3 border-t border-border px-3 py-2 first:border-t-0"
@@ -450,104 +517,108 @@ function IssueDetails({
 											Breadcrumb {index + 1} — safe, sanitized
 										</span>
 										<span className="shrink-0 font-mono text-[10px] text-text-subtle">
-											{relativeTime(
-												latest.receivedAt - (index + 1) * 90_000,
-											)}
+											{relativeTime(latest.receivedAt - (index + 1) * 90_000)}
 										</span>
 									</div>
 								))}
-						</div>
+							</div>
+						</Frame>
 					) : (
-						<p className="px-1 text-[11px] text-text-subtle">
-							No breadcrumbs collected for this occurrence.
-						</p>
-					)}
-					<p className="px-1 font-mono text-[11px] leading-relaxed text-text-subtle">
-						No request/response bodies, headers, cookies, or storage are ever
-						collected.
-					</p>
-				</section>
-
-				{/* Context tags — sanitized counts only */}
-				<section className="space-y-2">
-					<SectionLabel>Context tags</SectionLabel>
-					{latest && (latest.tagsCount > 0 || latest.extrasCount > 0) ? (
-						<div className="grid grid-cols-2 gap-0 overflow-hidden rounded-[2px] border border-border">
-							<div className="flex items-center justify-between gap-2 border-b border-r border-border bg-surface px-3 py-2 last:border-b-0">
-								<span className="font-mono text-[11px] text-text-muted">
-									tags
-								</span>
-								<span className="font-mono text-[11px] font-medium text-text">
-									{latest.tagsCount}
-								</span>
-							</div>
-							<div className="flex items-center justify-between gap-2 border-b border-border bg-surface px-3 py-2 last:border-b-0">
-								<span className="font-mono text-[11px] text-text-muted">
-									extras
-								</span>
-								<span className="font-mono text-[11px] font-medium text-text">
-									{latest.extrasCount}
-								</span>
-							</div>
-							<div className="flex items-center justify-between gap-2 border-r border-border bg-surface px-3 py-2">
-								<span className="font-mono text-[11px] text-text-muted">
-									level
-								</span>
-								<span className="font-mono text-[11px] font-medium text-text">
-									{latest.level}
-								</span>
-							</div>
-							<div className="flex items-center justify-between gap-2 bg-surface px-3 py-2">
-								<span className="font-mono text-[11px] text-text-muted">
-									handled
-								</span>
-								<span className="font-mono text-[11px] font-medium text-text">
-									{latest.handled ? "true" : "false"}
-								</span>
-							</div>
-						</div>
-					) : (
-						<p className="px-1 text-[11px] text-text-subtle">
-							No additional context for this occurrence.
-						</p>
+						<Frame className="mt-3 border-dashed bg-surface/40 px-3 py-6 text-center">
+							<p className="font-mono text-[12px] leading-none text-text-subtle">
+								No breadcrumbs collected for this occurrence.
+							</p>
+						</Frame>
 					)}
 				</section>
 
-				{/* Sanitized payload — copyable, redacted */}
-				{latest ? (
-					<section className="space-y-2">
-						<div className="flex items-center justify-between gap-2">
-							<SectionLabel>Sanitized payload</SectionLabel>
-							<CopyButton
-								value={chainText(latest)}
-								label="sanitized payload"
-								iconOnly
-							/>
+				<section>
+					<SectionLabel>Context</SectionLabel>
+					{latest &&
+					((latest.tags && Object.keys(latest.tags).length > 0) ||
+						(latest.extras && Object.keys(latest.extras).length > 0) ||
+						latest.environment ||
+						latest.release) ? (
+						<div className="mt-3 space-y-4">
+							{latest.environment || latest.release ? (
+								<div>
+									<div className="mb-2 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
+										Deployment
+									</div>
+									<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+										{latest.environment ? (
+											<Kv k="environment">{latest.environment}</Kv>
+										) : null}
+										{latest.release ? (
+											<Kv k="release">{latest.release}</Kv>
+										) : null}
+									</div>
+								</div>
+							) : null}
+							{latest.tags && Object.keys(latest.tags).length > 0 ? (
+								<div>
+									<div className="mb-2 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
+										Tags
+									</div>
+									<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+										{Object.entries(latest.tags).map(([k, v]) => (
+											<Kv key={k} k={k}>
+												{String(v)}
+											</Kv>
+										))}
+									</div>
+								</div>
+							) : null}
+							{latest.extras && Object.keys(latest.extras).length > 0 ? (
+								<div>
+									<div className="mb-2 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
+										Extras
+									</div>
+									<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+										{Object.entries(latest.extras).map(([k, v]) => (
+											<Kv key={k} k={k}>
+												{typeof v === "string"
+													? v
+													: Array.isArray(v) || typeof v === "object"
+														? JSON.stringify(v)
+														: String(v ?? "")}
+											</Kv>
+										))}
+									</div>
+								</div>
+							) : null}
 						</div>
-						<pre className="max-h-[260px] overflow-auto whitespace-pre-wrap break-words rounded-[2px] border border-border bg-surface p-3 font-mono text-[11px] leading-relaxed text-text">
-							{chainText(latest)}
-						</pre>
-						<p className="px-1 font-mono text-[11px] leading-relaxed text-text-subtle">
-							Sensitive values redacted before storage. beforeSend cannot
-							recover them.
-						</p>
-					</section>
-				) : null}
+					) : (
+						<Frame className="mt-3 border-dashed bg-surface/40 px-3 py-6 text-center">
+							<p className="font-mono text-[12px] leading-none text-text-subtle">
+								No additional context for this occurrence.
+							</p>
+						</Frame>
+					)}
+				</section>
 
 				{occurrences.length > 0 ? (
-					<section className="space-y-2">
+					<section>
 						<SectionLabel>Recent occurrences</SectionLabel>
-						<div className="space-y-1.5">
+						<div className="mt-3 space-y-1.5">
 							{occurrences.map((occurrence) => (
-								<OccurrenceCard
+								<Link
 									key={occurrence.id}
-									occurrence={occurrence}
-									latest={false}
-								/>
+									to={{
+										pathname: `${issuePath}/occurrences/${occurrence.id}`,
+										search,
+									}}
+									data-presentation-trigger={`occurrence:0:${occurrence.id}`}
+									className="block rounded-[2px] focus-visible:outline-2 focus-visible:outline-focus"
+								>
+									<div className="transition-colors hover:opacity-80">
+										<OccurrenceCard occurrence={occurrence} latest={false} />
+									</div>
+								</Link>
 							))}
 						</div>
 						{detailData?.hasMoreOccurrences ? (
-							<p className="px-1 font-mono text-[10.5px] text-text-subtle">
+							<p className="mt-2 px-1 font-mono text-[10.5px] text-text-subtle">
 								Only the most recent occurrences are shown.
 							</p>
 						) : null}
@@ -555,23 +626,22 @@ function IssueDetails({
 				) : null}
 
 				{activity.length > 0 ? (
-					<section className="space-y-1">
+					<section>
 						<SectionLabel>Workflow history</SectionLabel>
-						<div className="divide-y divide-border rounded-[2px] border border-border px-2.5">
-							{activity.map((item) => (
-								<ActivityItem key={item.id} item={item} />
-							))}
-						</div>
+						<Frame inset className="mt-3 px-2.5">
+							<div className="divide-y divide-border">
+								{activity.map((item) => (
+									<ActivityItem key={item.id} item={item} />
+								))}
+							</div>
+						</Frame>
 					</section>
 				) : null}
 			</div>
 
 			<SheetFooter className="border-t border-border">
 				{canManage ? (
-					<div className="flex w-full items-center justify-between gap-2">
-						<span className="font-mono text-[11px] uppercase tracking-[0.06em] text-text-muted">
-							{STATUS_LABELS[issue.status]}
-						</span>
+					<div className="flex w-full items-center justify-end gap-2">
 						<div className="flex items-center gap-2">
 							{issue.status === "unresolved" ? (
 								<Button
@@ -594,10 +664,7 @@ function IssueDetails({
 						</div>
 					</div>
 				) : (
-					<div className="flex w-full items-center justify-between gap-2">
-						<span className="font-mono text-[11px] uppercase tracking-[0.06em] text-text-muted">
-							{STATUS_LABELS[issue.status]}
-						</span>
+					<div className="flex w-full items-center justify-end gap-2">
 						<span className="text-[11px] text-text-subtle">
 							Owner or admin can change issue state
 						</span>
@@ -610,15 +677,16 @@ function IssueDetails({
 
 function IssueDetailSkeleton() {
 	return (
-		<div className="flex flex-col gap-4 p-4">
-			<Skeleton className="h-[16px] w-3/4" />
-			<Skeleton className="h-[12px] w-1/2" />
-			<div className="mt-2 grid grid-cols-2 gap-4">
-				<Skeleton className="h-[24px] w-full" />
-				<Skeleton className="h-[24px] w-full" />
-				<Skeleton className="h-[24px] w-full" />
-				<Skeleton className="h-[24px] w-full" />
+		<div className="flex flex-col gap-4 p-6">
+			<Skeleton className="h-4 w-3/4" />
+			<Skeleton className="h-3 w-1/2" />
+			<div className="mt-2 grid grid-cols-2 gap-3">
+				<Skeleton className="h-[76px] w-full rounded-[2px]" />
+				<Skeleton className="h-[76px] w-full rounded-[2px]" />
+				<Skeleton className="h-[76px] w-full rounded-[2px]" />
+				<Skeleton className="h-[76px] w-full rounded-[2px]" />
 			</div>
+			<Skeleton className="h-[120px] w-full rounded-[2px]" />
 		</div>
 	);
 }
@@ -640,9 +708,19 @@ function IssueMissing({ base }: { base: string }) {
 	);
 }
 
-export function IssueDetail() {
-	const { slug, wrkSlug, issueId } = useParams();
-	const navigate = useNavigate();
+function IssuePresentationContent({
+	base,
+	issueId,
+	issuePath,
+	search,
+	slug,
+}: {
+	base: string;
+	issueId: string;
+	issuePath: string;
+	search: string;
+	slug: string | undefined;
+}) {
 	const queryClient = useQueryClient();
 	const issue = useIssueFromCache(slug, issueId);
 
@@ -651,24 +729,365 @@ export function IssueDetail() {
 		.findAll({ queryKey: ENTRIES_PREFIX(slug) })
 		.some((query) => query.state.status === "pending");
 
+	if (issue) {
+		return (
+			<IssueDetails
+				issue={issue}
+				issuePath={issuePath}
+				search={search}
+				slug={slug}
+			/>
+		);
+	}
+	if (listPending) return <IssueDetailSkeleton />;
+	return <IssueMissing base={base} />;
+}
+
+function findOccurrence(
+	queryClient: ReturnType<typeof useQueryClient>,
+	slug: string | undefined,
+	issueId: string | undefined,
+	occurrenceId: string | undefined,
+): ErrorOccurrenceSummary | undefined {
+	if (!slug || !issueId || !occurrenceId) return undefined;
+	// Try the detail cache first (the 15 we already have)
+	const detailQueries = queryClient.getQueriesData<ErrorIssueDetailResource>({
+		queryKey: ["project-issue-detail", slug, issueId],
+	});
+	for (const [, payload] of detailQueries) {
+		const found = (payload as ErrorIssueDetailResource)?.occurrences?.find(
+			(o) => o.id === occurrenceId,
+		);
+		if (found) return found;
+	}
+	// Fallback: scan the detail resource shape we store under issue-detail
+	const alt = queryClient.getQueryData<ErrorIssueDetailResource>([
+		"project-issue-detail",
+		slug,
+		issueId,
+	]);
+	return alt?.occurrences?.find((o) => o.id === occurrenceId);
+}
+
+function useOccurrenceFromCache(
+	slug: string | undefined,
+	issueId: string | undefined,
+	occurrenceId: string | undefined,
+): ErrorOccurrenceSummary | undefined {
+	const queryClient = useQueryClient();
+	return useSyncExternalStore(
+		(callback) => queryClient.getQueryCache().subscribe(callback),
+		() => findOccurrence(queryClient, slug, issueId, occurrenceId),
+		() => undefined,
+	);
+}
+
+function OccurrenceDetails({
+	issue,
+	occurrence,
+}: {
+	issue: ErrorIssueResource;
+	occurrence: ErrorOccurrenceSummary;
+}) {
+	const code = chainText(occurrence);
+	return (
+		<>
+			<SheetHeader className="gap-3 border-b border-border px-6 pb-4 pt-6">
+				<div className="flex flex-wrap items-center gap-1.5">
+					<PlatformLevelTag
+						platform={issue.platform}
+						level={occurrence.level}
+					/>
+					<span className="inline-flex h-[18px] items-center rounded-[2px] border border-border bg-surface px-[6px] font-mono text-[10px] font-medium uppercase tracking-[0.05em] text-text-muted">
+						{occurrence.handled ? "handled" : "unhandled"}
+					</span>
+					{occurrence.environment ? (
+						<span className="inline-flex h-[18px] items-center rounded-[2px] border border-border bg-surface px-[6px] font-mono text-[10px] font-medium uppercase tracking-[0.05em] text-text-muted">
+							{occurrence.environment}
+						</span>
+					) : null}
+				</div>
+				<SheetTitle className="break-words pr-2 text-left font-mono text-[13px] font-[550] leading-snug text-text">
+					{occurrence.exception.type}
+					{occurrence.exception.message
+						? `: ${occurrence.exception.message}`
+						: ""}
+				</SheetTitle>
+				<SheetDescription className="flex flex-wrap items-center gap-1.5 font-mono text-[11px] leading-none text-text-subtle">
+					<span>{dateLabel(occurrence.receivedAt)}</span>
+					<span className="size-1 rounded-full bg-border-strong" aria-hidden />
+					<span>{relativeTime(occurrence.receivedAt)}</span>
+					<span className="size-1 rounded-full bg-border-strong" aria-hidden />
+					<span className="truncate">{occurrence.id.slice(0, 8)}</span>
+				</SheetDescription>
+			</SheetHeader>
+
+			<div className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto p-6">
+				<section>
+					<SectionLabel>Stack trace</SectionLabel>
+					<div className="mt-3">
+						{occurrence.exception.frames.length > 0 ? (
+							<Frame inset className="p-0">
+								<div className="overflow-hidden rounded-[2px]">
+									<ShikiStack code={code} language={occurrence.language} />
+								</div>
+							</Frame>
+						) : (
+							<Frame className="border-dashed bg-surface/40 px-3 py-6 text-center">
+								<p className="font-mono text-[12px] leading-none text-text-subtle">
+									No captured stack frames for this occurrence.
+								</p>
+							</Frame>
+						)}
+					</div>
+				</section>
+
+				<section>
+					<SectionLabel>Context</SectionLabel>
+					{(occurrence.tags && Object.keys(occurrence.tags).length > 0) ||
+					(occurrence.extras && Object.keys(occurrence.extras).length > 0) ||
+					occurrence.environment ||
+					occurrence.release ? (
+						<div className="mt-3 space-y-4">
+							{occurrence.environment || occurrence.release ? (
+								<div>
+									<div className="mb-2 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
+										Deployment
+									</div>
+									<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+										{occurrence.environment ? (
+											<Kv k="environment">{occurrence.environment}</Kv>
+										) : null}
+										{occurrence.release ? (
+											<Kv k="release">{occurrence.release}</Kv>
+										) : null}
+									</div>
+								</div>
+							) : null}
+							{occurrence.tags && Object.keys(occurrence.tags).length > 0 ? (
+								<div>
+									<div className="mb-2 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
+										Tags
+									</div>
+									<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+										{Object.entries(occurrence.tags).map(([k, v]) => (
+											<Kv key={k} k={k}>
+												{String(v)}
+											</Kv>
+										))}
+									</div>
+								</div>
+							) : null}
+							{occurrence.extras &&
+							Object.keys(occurrence.extras).length > 0 ? (
+								<div>
+									<div className="mb-2 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
+										Extras
+									</div>
+									<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+										{Object.entries(occurrence.extras).map(([k, v]) => (
+											<Kv key={k} k={k}>
+												{typeof v === "string"
+													? v
+													: Array.isArray(v) || typeof v === "object"
+														? JSON.stringify(v)
+														: String(v ?? "")}
+											</Kv>
+										))}
+									</div>
+								</div>
+							) : null}
+							<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+								<Kv k="handled">{occurrence.handled ? "true" : "false"}</Kv>
+								<Kv k="level">{occurrence.level}</Kv>
+								{occurrence.language ? (
+									<Kv k="language">{occurrence.language}</Kv>
+								) : null}
+							</div>
+						</div>
+					) : (
+						<Frame className="mt-3 border-dashed bg-surface/40 px-3 py-6 text-center">
+							<p className="font-mono text-[12px] leading-none text-text-subtle">
+								No additional context for this occurrence.
+							</p>
+						</Frame>
+					)}
+				</section>
+
+				<section>
+					<div className="flex items-center gap-1">
+						<SectionLabel className="leading-none">Breadcrumbs</SectionLabel>
+						<TooltipProvider>
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<button
+										type="button"
+										aria-label="Breadcrumbs privacy info"
+										className="inline-flex size-4 shrink-0 -translate-y-[0.5px] items-center justify-center rounded-[2px] text-text-subtle hover:bg-surface-hover hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
+									>
+										<Info className="size-3" aria-hidden="true" />
+									</button>
+								</TooltipTrigger>
+								<TooltipContent side="top" align="center">
+									No request/response bodies, headers, cookies, or storage are
+									ever collected.
+								</TooltipContent>
+							</Tooltip>
+						</TooltipProvider>
+					</div>
+					<div className="mt-3 flex items-center gap-2 font-mono text-[10px] text-text-subtle">
+						<span>{occurrence.breadcrumbsCount} · safe · bounded</span>
+					</div>
+					{occurrence.breadcrumbsCount > 0 ? (
+						<Frame inset className="mt-3 p-0">
+							<div className="overflow-hidden rounded-[2px]">
+								{BREADCRUMB_PLACEHOLDERS.slice(
+									0,
+									Math.min(occurrence.breadcrumbsCount, 6),
+								).map((key, index) => (
+									<div
+										key={key}
+										className="flex items-center gap-3 border-t border-border px-3 py-2 first:border-t-0"
+									>
+										<span
+											className="h-1.5 w-1.5 shrink-0 rounded-full bg-info"
+											aria-hidden
+										/>
+										<span className="min-w-0 flex-1 truncate font-mono text-[11px] leading-relaxed text-text-muted">
+											Breadcrumb {index + 1} — safe, sanitized
+										</span>
+										<span className="shrink-0 font-mono text-[10px] text-text-subtle">
+											{relativeTime(
+												occurrence.receivedAt - (index + 1) * 90_000,
+											)}
+										</span>
+									</div>
+								))}
+							</div>
+						</Frame>
+					) : (
+						<Frame className="mt-3 border-dashed bg-surface/40 px-3 py-6 text-center">
+							<p className="font-mono text-[12px] leading-none text-text-subtle">
+								No breadcrumbs collected for this occurrence.
+							</p>
+						</Frame>
+					)}
+				</section>
+			</div>
+		</>
+	);
+}
+
+function OccurrencePresentationContent({
+	issueId,
+	occurrenceId,
+	parentPath,
+	search,
+	slug,
+}: {
+	issueId: string;
+	occurrenceId: string;
+	parentPath: string;
+	search: string;
+	slug: string | undefined;
+}) {
+	const detailQuery = useIssueDetailQuery(slug, issueId);
+	const cachedIssue = useIssueFromCache(slug, issueId);
+	const issue = cachedIssue ?? detailQuery.data?.issue ?? null;
+	const cached = useOccurrenceFromCache(slug, issueId, occurrenceId);
+	const occurrence =
+		cached ?? detailQuery.data?.occurrences.find((o) => o.id === occurrenceId);
+
+	if (occurrence && issue) {
+		return <OccurrenceDetails issue={issue} occurrence={occurrence} />;
+	}
+	if (detailQuery.isPending) {
+		return (
+			<div className="flex flex-col gap-4 p-6">
+				<Skeleton className="h-4 w-3/4" />
+				<Skeleton className="h-3 w-1/2" />
+				<Skeleton className="mt-2 h-[120px] w-full rounded-[2px]" />
+			</div>
+		);
+	}
+	return (
+		<div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
+			<p className="font-mono text-[13px] text-text-muted">
+				Occurrence not found
+			</p>
+			<span className="max-w-[300px] text-[12px] leading-[1.5] text-text-subtle">
+				It may have been pruned by retention or the issue detail hasn&apos;t
+				loaded yet.
+			</span>
+			<Link
+				to={{ pathname: parentPath, search }}
+				className="mt-1 font-medium text-link hover:underline"
+			>
+				Back one level
+			</Link>
+		</div>
+	);
+}
+
+/** URL-derived host for issue and recursively nested occurrence sheets. */
+export function ErrorPresentationStack() {
+	const {
+		slug,
+		wrkSlug,
+		"*": splat,
+	} = useParams<{
+		slug: string;
+		wrkSlug: string;
+		"*": string;
+	}>();
+	const location = useLocation();
+	const navigate = useNavigate();
 	const base = `/workspace/${wrkSlug ?? ""}/projects/${slug ?? ""}/errors`;
+	const parsed = React.useMemo(
+		() => parseErrorPresentationStack(base, splat),
+		[base, splat],
+	);
+	const issueLayer = parsed.layers[0];
+
+	React.useEffect(() => {
+		if (!parsed.valid) {
+			navigate({ pathname: base, search: location.search }, { replace: true });
+		}
+	}, [base, location.search, navigate, parsed.valid]);
+
+	if (!parsed.valid) return null;
+
+	const renderLayer = (layer: ErrorPresentationLayer) => {
+		if (layer.kind === "issue") {
+			return (
+				<IssuePresentationContent
+					base={base}
+					issueId={layer.resourceId}
+					issuePath={layer.path}
+					search={location.search}
+					slug={slug}
+				/>
+			);
+		}
+		if (!issueLayer) return null;
+		return (
+			<OccurrencePresentationContent
+				issueId={issueLayer.resourceId}
+				occurrenceId={layer.resourceId}
+				parentPath={layer.parentPath}
+				search={location.search}
+				slug={slug}
+			/>
+		);
+	};
 
 	return (
-		<Sheet
-			open
-			onOpenChange={(open) => {
-				if (!open) navigate(base);
-			}}
-		>
-			<SheetContent className="w-full gap-0 p-0 sm:max-w-[760px]">
-				{issue ? (
-					<IssueDetails issue={issue} base={base} />
-				) : listPending ? (
-					<IssueDetailSkeleton />
-				) : (
-					<IssueMissing base={base} />
-				)}
-			</SheetContent>
-		</Sheet>
+		<PresentationStack
+			items={parsed.layers}
+			onDismiss={(layer) =>
+				navigate({ pathname: layer.parentPath, search: location.search })
+			}
+			renderItem={renderLayer}
+		/>
 	);
 }

@@ -315,6 +315,7 @@ export type ErrorOccurrenceSummary = {
 	release?: string;
 	environment?: string;
 	anonymousId?: string;
+	language?: string;
 	exception: {
 		type: string;
 		message?: string;
@@ -324,6 +325,10 @@ export type ErrorOccurrenceSummary = {
 	tagsCount: number;
 	extrasCount: number;
 	breadcrumbsCount: number;
+	/** Sanitized tag map (string values, bounded, redacted) — for UI, not just count. */
+	tags?: Record<string, string>;
+	/** Sanitized extras map (bounded, redacted) — for UI. */
+	extras?: Record<string, unknown>;
 };
 
 export type ErrorIssueActivityAction = "resolved" | "ignored" | "reopened";

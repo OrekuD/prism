@@ -12,6 +12,7 @@ import {
 import { Frame } from "@/components/public/frame";
 import { PageHeader } from "@/components/public/page-header";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Select,
   SelectContent,
@@ -371,30 +372,16 @@ export function ProjectEvents() {
             </div>
           </div>
         ) : isError ? (
-          <Frame className="p-6">
-            <div className="flex items-start gap-3">
-              <span className="grid size-8 place-items-center rounded-[2px] bg-danger/10 text-danger">
-                <SearchX className="size-4" />
-              </span>
-              <div>
-                <p className="font-sans text-[13px] font-medium leading-none text-text">
-                  Could not load events
-                </p>
-                <p className="mt-1.5 max-w-[48ch] font-mono text-[12px] leading-[1.5] text-text-muted">
-                  The stream is temporarily unavailable. Retry or check your
-                  connection.
-                </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => refetch()}
-                  className="mt-3 h-8"
-                >
-                  Retry
-                </Button>
-              </div>
-            </div>
-          </Frame>
+          <EmptyState
+            icon={<SearchX className="size-4" aria-hidden="true" />}
+            title="Could not load events"
+            description="The stream is temporarily unavailable. Retry or check your connection."
+            action={
+              <Button variant="outline" size="sm" onClick={() => refetch()} className="h-8">
+                Retry
+              </Button>
+            }
+          />
         ) : table.getRowModel().rows.length > 0 ? (
           <>
             <div className="overflow-hidden rounded-[2px] border border-border bg-background">
@@ -529,61 +516,42 @@ export function ProjectEvents() {
             </div>
           </>
         ) : (
-          <Frame className="p-8 text-center" marks={false}>
-            <div className="mx-auto flex max-w-[420px] flex-col items-center">
-              <span className="grid size-9 place-items-center rounded-[2px] border border-border bg-surface text-text-subtle">
-                <SearchX className="size-4" />
-              </span>
-              <h3 className="mt-3 font-sans text-[14px] font-medium leading-none tracking-[-0.01em] text-text">
-                {hasActiveFilter ? "No matching events" : "No events yet"}
-              </h3>
-              <p className="mt-1.5 text-pretty font-mono text-[12.5px] leading-[1.5] text-text-muted">
-                {hasActiveFilter
-                  ? "Try a different query or clear the filters to see more of the stream."
-                  : "Raw event stream for this project. Once your sources emit events, they'll appear here for inspection."}
-              </p>
-              {hasActiveFilter ? (
+          <EmptyState
+            icon={<SearchX className="size-4" aria-hidden="true" />}
+            title={hasActiveFilter ? "No matching events" : "No events yet"}
+            description={
+              hasActiveFilter
+                ? "Try a different query or clear the filters to see more of the stream."
+                : "Raw event stream for this project. Once your sources emit events, they'll appear here for inspection."
+            }
+            action={
+              hasActiveFilter ? (
                 <Button
                   variant="outline"
                   size="sm"
-                  className="mt-4 h-8 font-mono text-[13px]"
-                  onClick={() =>
-                    updateFilter({ q: null, type: null, source: null })
-                  }
+                  className="h-8 font-mono text-[13px]"
+                  onClick={() => updateFilter({ q: null, type: null, source: null })}
                 >
                   Clear filters
                 </Button>
               ) : (
-                <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                <>
                   <Button
                     size="sm"
                     className="h-8 font-mono text-[13px]"
-                    onClick={() =>
-                      navigate(
-                        `/workspace/${wrkSlug ?? ""}/projects/${slug ?? ""}/sources`
-                      )
-                    }
+                    onClick={() => navigate(`/workspace/${wrkSlug ?? ""}/projects/${slug ?? ""}/sources`)}
                   >
                     View sources
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 font-mono text-[13px]"
-                    asChild
-                  >
-                    <a
-                      href="https://prism.dev/docs"
-                      target="_blank"
-                      rel="noreferrer"
-                    >
+                  <Button variant="outline" size="sm" className="h-8 font-mono text-[13px]" asChild>
+                    <a href="https://prism.dev/docs" target="_blank" rel="noreferrer">
                       View docs
                     </a>
                   </Button>
-                </div>
-              )}
-            </div>
-          </Frame>
+                </>
+              )
+            }
+          />
         )}
       </div>
 

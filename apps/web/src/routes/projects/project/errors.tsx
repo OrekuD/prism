@@ -1,16 +1,25 @@
-import { Search, TriangleAlert } from "lucide-react";
+import {
+	Check,
+	ChevronLeft,
+	ChevronRight,
+	Eye,
+	RotateCcw,
+	Search,
+	TriangleAlert,
+} from "lucide-react";
 import React from "react";
 import {
 	Link,
-	Outlet,
+	useNavigate,
 	useParams,
 	useSearchParams,
 } from "react-router-dom";
 
-import { Frame } from "@/components/public/frame";
 import { MetricCard } from "@/components/public/metric-card";
 import { PageHeader } from "@/components/public/page-header";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Frame } from "@/components/public/frame";
 import {
 	Select,
 	SelectContent,
@@ -37,11 +46,11 @@ import { STATUS_LABELS } from "@/lib/errorIssues";
 import { useActiveMember } from "@/lib/workspace";
 import { useIssueStateMutation } from "@/network/mutations/useIssueStateMutation";
 import {
-	fetchIssuePage,
 	useIssuesQuery,
 	type IssueListQuery,
 } from "@/network/queries/useIssuesQuery";
 import { useProjectQuery } from "@/network/queries/useProjectQuery";
+import { ErrorPresentationStack } from "@/routes/projects/project/issue-detail";
 
 type StatusFilter = "all" | ErrorIssueStatus;
 type LevelFilter = "all" | ErrorIssueLevel;
@@ -65,6 +74,11 @@ const TH =
 	"px-3.5 py-2.5 text-left font-mono text-[11px] font-medium uppercase tracking-[0.09em]";
 
 const fmt = new Intl.NumberFormat();
+const fmtCompact = new Intl.NumberFormat("en-US", {
+	notation: "compact",
+	maximumFractionDigits: 1,
+});
+const fmtC = (n: number) => fmtCompact.format(n).replace("K", "k");
 
 function IssueAction({
 	issue,
@@ -80,27 +94,35 @@ function IssueAction({
 
 	const nextStatus: ErrorIssueStatus =
 		issue.status === "unresolved" ? "resolved" : "unresolved";
-	const label =
-		issue.status === "unresolved"
-			? "Resolve"
-			: issue.status === "resolved"
-				? "Reopen"
-				: "Stop ignoring";
+	const isUnresolved = issue.status === "unresolved";
+	const isResolved = issue.status === "resolved";
+	const label = isUnresolved
+		? "Resolve"
+		: isResolved
+			? "Reopen"
+			: "Stop ignoring";
+	const Icon = isUnresolved ? Check : isResolved ? RotateCcw : Eye;
 
 	return (
 		<Button
 			variant="ghost"
-			size="sm"
-			onClick={() => mutation.mutate({ issueId: issue.id, status: nextStatus })}
+			size="icon-sm"
+			onClick={(e) => {
+				e.stopPropagation();
+				mutation.mutate({ issueId: issue.id, status: nextStatus });
+			}}
 			disabled={mutation.isPending}
+			aria-label={label}
+			title={label}
 		>
-			{label}
+			<Icon className="size-4" />
 		</Button>
 	);
 }
 
 export function ProjectErrors() {
 	const { slug, wrkSlug } = useParams<{ slug: string; wrkSlug: string }>();
+	const navigate = useNavigate();
 	// URL is the source of truth for range + filters (task-15: preserved in
 	// the URL). Changing any control refetches genuinely filtered server data.
 	const [searchParams, setSearchParams] = useSearchParams();
@@ -125,14 +147,27 @@ export function ProjectErrors() {
 		setSearchParams(next, { replace: true });
 	};
 
+	const [limit, setLimit] = React.useState(10);
+	const [cursorStack, setCursorStack] = React.useState<Array<string | null>>([
+		null,
+	]);
+	const currentCursor = cursorStack[cursorStack.length - 1] ?? undefined;
+	const pageIndex = cursorStack.length - 1;
+
+	React.useEffect(() => {
+		setCursorStack([null]);
+	}, [range, status, level, platform, query, limit]);
+
 	const queryParams: IssueListQuery = {
 		range,
 		status: status === "all" ? undefined : status,
 		level: level === "all" ? undefined : level,
 		platform: platform === "all" ? undefined : platform,
 		q: query || undefined,
+		cursor: currentCursor ?? undefined,
+		limit,
 	};
-	const { data, isLoading, isError, refetch } = useIssuesQuery(
+	const { data, isLoading, isError, isFetching, refetch } = useIssuesQuery(
 		slug,
 		queryParams,
 	);
@@ -143,33 +178,15 @@ export function ProjectErrors() {
 		activeMember?.data?.role === "owner" ||
 		activeMember?.data?.role === "admin";
 
-	// Accumulate pages as the user loads more; reset whenever the server query
-	// (filters/range) changes so the base page is always the freshly filtered one.
-	const [accumulated, setAccumulated] = React.useState<ErrorIssueResource[]>([]);
-	const [nextCursor, setNextCursor] = React.useState<string | null>(null);
-	const [loadingMore, setLoadingMore] = React.useState(false);
-
-	React.useEffect(() => {
-		setAccumulated(data?.items ?? []);
-		setNextCursor(data?.nextCursor ?? null);
-	}, [data]);
-
-	const issues = accumulated;
-
-	const loadMore = async (): Promise<void> => {
-		if (!nextCursor || loadingMore) return;
-		setLoadingMore(true);
-		try {
-			const page = await fetchIssuePage(slug, queryParams, nextCursor);
-			setAccumulated((prev) => {
-				const seen = new Set(prev.map((issue) => issue.id));
-				const fresh = page.items.filter((issue) => !seen.has(issue.id));
-				return [...prev, ...fresh];
-			});
-			setNextCursor(page.nextCursor);
-		} finally {
-			setLoadingMore(false);
-		}
+	const issues = data?.items ?? [];
+	const nextCursor = data?.nextCursor ?? null;
+	const hasNext = Boolean(nextCursor);
+	const hasPrev = cursorStack.length > 1;
+	const handleNext = () => {
+		if (nextCursor) setCursorStack((prev) => [...prev, nextCursor]);
+	};
+	const handlePrev = () => {
+		setCursorStack((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev));
 	};
 
 	const totalEvents = issues.reduce((sum, issue) => sum + issue.count, 0);
@@ -204,33 +221,39 @@ export function ProjectErrors() {
 
 			{isLoading ? (
 				<div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-					{[0, 1, 2, 3].map((i) => (
-						<Frame key={i} className="p-4 pt-5">
-							<Skeleton className="h-[12px] w-1/2" />
-							<Skeleton className="mt-3 h-[24px] w-2/3" />
-						</Frame>
-					))}
+					<MetricCard label="Error events" caption="occurrences in range">
+						<Skeleton className="h-[23px] w-16 rounded-[2px]" />
+					</MetricCard>
+					<MetricCard label="Unresolved" caption="issues needing triage">
+						<Skeleton className="h-[23px] w-12 rounded-[2px]" />
+					</MetricCard>
+					<MetricCard label="New in range" caption="first seen this range">
+						<Skeleton className="h-[23px] w-12 rounded-[2px]" />
+					</MetricCard>
+					<MetricCard label="Users affected" caption="across all issues">
+						<Skeleton className="h-[23px] w-16 rounded-[2px]" />
+					</MetricCard>
 				</div>
 			) : (
 				<div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
 					<MetricCard label="Error events" caption="occurrences in range">
-						<span className="font-mono text-[23px] tracking-[-0.06em] text-text">
-							{fmt.format(totalEvents)}
+						<span className="font-mono text-[23px] leading-none tracking-[-0.06em] text-text">
+							{fmtC(totalEvents)}
 						</span>
 					</MetricCard>
 					<MetricCard label="Unresolved" caption="issues needing triage">
-						<span className="font-mono text-[23px] tracking-[-0.06em] text-text">
-							{fmt.format(unresolvedCount)}
+						<span className="font-mono text-[23px] leading-none tracking-[-0.06em] text-text">
+							{fmtC(unresolvedCount)}
 						</span>
 					</MetricCard>
 					<MetricCard label="New in range" caption="first seen this range">
-						<span className="font-mono text-[23px] tracking-[-0.06em] text-text">
-							{fmt.format(newInRange)}
+						<span className="font-mono text-[23px] leading-none tracking-[-0.06em] text-text">
+							{fmtC(newInRange)}
 						</span>
 					</MetricCard>
 					<MetricCard label="Users affected" caption="across all issues">
-						<span className="font-mono text-[23px] tracking-[-0.06em] text-text">
-							{fmt.format(usersAffected)}
+						<span className="font-mono text-[23px] leading-none tracking-[-0.06em] text-text">
+							{fmtC(usersAffected)}
 						</span>
 					</MetricCard>
 				</div>
@@ -240,31 +263,41 @@ export function ProjectErrors() {
 				<fieldset className="m-0 inline-flex min-w-0 items-center overflow-hidden rounded-[2px] border border-border p-0">
 					<legend className="sr-only">Issue status</legend>
 					{(["all", "unresolved", "resolved", "ignored"] as const).map(
-						(entry, index) => (
-							<button
-								key={entry}
-								type="button"
-								onClick={() => updateFilter({ status: entry })}
-								className={cn(
-									"inline-flex h-8 items-center gap-1.5 px-3.5 text-[13px] font-medium transition-colors",
-									index > 0 && "border-l border-border",
-									status === entry
-										? "bg-accent-soft text-text"
-										: "text-text-muted hover:bg-surface-hover hover:text-text",
-								)}
-								aria-pressed={status === entry}
-							>
-								{entry === "all" ? "All" : STATUS_LABELS[entry]}
-								<span
+						(entry, index) => {
+							const w =
+								entry === "all"
+									? "w-[72px]"
+									: entry === "unresolved"
+										? "w-[120px]"
+										: entry === "resolved"
+											? "w-[96px]"
+											: "w-[92px]";
+							return (
+								<button
+									key={entry}
+									type="button"
+									onClick={() => updateFilter({ status: entry })}
 									className={cn(
-										"font-mono text-[11px]",
-										status === entry ? "text-accent" : "text-text-subtle",
+										`inline-flex h-8 ${w} items-center justify-center gap-1.5 px-2 text-[13px] font-medium transition-colors`,
+										index > 0 && "border-l border-border",
+										status === entry
+											? "bg-accent-soft text-text"
+											: "text-text-muted hover:bg-surface-hover hover:text-text",
 									)}
+									aria-pressed={status === entry}
 								>
-									{statusCounts[entry]}
-								</span>
-							</button>
-						),
+									{entry === "all" ? "All" : STATUS_LABELS[entry]}
+									<span
+										className={cn(
+											"font-mono text-[13px] font-medium tabular-nums leading-none",
+											status === entry ? "text-accent" : "text-text-muted",
+										)}
+									>
+										{fmtC(statusCounts[entry])}
+									</span>
+								</button>
+							);
+						},
 					)}
 				</fieldset>
 
@@ -326,125 +359,213 @@ export function ProjectErrors() {
 
 			<div className="mt-5 mb-14">
 				{isError ? (
-					<Frame className="flex flex-col items-center justify-center gap-2.5 p-10 text-center">
-						<TriangleAlert
-							className="size-[22px] text-text-subtle"
-							aria-hidden="true"
-						/>
-						<p className="font-mono text-[13px] text-text-muted">
-							Could not load issues.
-						</p>
-						<span className="max-w-[400px] text-[12px] leading-[1.5] text-text-subtle">
-							The error list is unavailable right now. Nothing is shown until
-							the request succeeds — no fabricated issues or graphs.
-						</span>
-						<Button variant="outline" size="sm" onClick={() => refetch()}>
-							Retry
-						</Button>
-					</Frame>
+					<EmptyState
+						icon={<TriangleAlert className="size-4" aria-hidden="true" />}
+						title="Could not load issues"
+						description="The error list is unavailable right now. Nothing is shown until the request succeeds — no fabricated issues or graphs."
+						action={
+							<Button variant="outline" size="sm" onClick={() => refetch()}>
+								Retry
+							</Button>
+						}
+					/>
 				) : isLoading ? (
 					<div className="space-y-2">
 						<Skeleton className="h-12 w-full" />
 						<Skeleton className="h-12 w-full" />
 						<Skeleton className="h-12 w-full" />
 					</div>
-				) : !showEmpty ? ( <>
-					<div className="overflow-x-auto rounded-[2px] border border-border">
-						<table className="w-full border-collapse text-[13px]">
-							<thead>
-								<tr className="bg-canvas-subtle text-text-muted">
-									<th className={TH}>Issue</th>
-									<th className={cn(TH, "text-right")}>Events</th>
-									<th className={cn(TH, "text-right")}>Users</th>
-									<th className={TH}>Δ</th>
-									<th className={TH}>Level</th>
-									<th className={TH}>First seen</th>
-									<th className={TH}>Last seen</th>
-									<th className={cn(TH, "text-right")}>Actions</th>
-								</tr>
-							</thead>
-							<tbody>
-								{issues.map((issue) => (
-									<tr
-										key={issue.id}
-										className="group border-t border-border"
-									>
-										<td className="max-w-[300px] px-3.5 py-2.5">
-											<Link
-												to={issue.id}
-												className="block truncate font-mono text-[13px] font-[550] text-text transition-colors hover:text-link"
-												aria-label={`Open issue: ${issue.title}`}
-											>
-												{issue.title}
-											</Link>
-											<div className="mt-1 flex items-center gap-2">
-												<PlatformLevelTag
-													platform={issue.platform}
-													level={issue.level}
-												/>
-												{issue.location ? (
-													<span className="min-w-0 truncate font-mono text-[11px] text-text-subtle">
-														{issue.location}
-													</span>
-												) : null}
-											</div>
-										</td>
-										<td className="px-3.5 py-2.5 text-right font-mono text-text">
-											{fmt.format(issue.count)}
-										</td>
-										<td className="px-3.5 py-2.5 text-right font-mono text-text">
-											{fmt.format(issue.users)}
-										</td>
-										<td className="px-3.5 py-2.5">
-											<DeltaTag delta={issue.delta} />
-										</td>
-										<td className="px-3.5 py-2.5">
-											<LevelTag level={issue.level} />
-										</td>
-										<td className="px-3.5 py-2.5 text-[12px] whitespace-nowrap text-text-muted">
-											{dateLabel(issue.firstSeen)}
-										</td>
-										<td className="px-3.5 py-2.5 text-[12px] whitespace-nowrap text-text-muted">
-											{dateLabel(issue.lastSeen)}
-										</td>
-										<td className="px-3.5 py-2.5">
-											<span className="flex items-center justify-end opacity-100 transition-opacity focus-within:opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
-												<IssueAction
-													issue={issue}
-													slug={slug}
-													canManage={canManage}
-												/>
-											</span>
-										</td>
+				) : !showEmpty ? (
+					<>
+						<div className="overflow-x-auto rounded-[2px] border border-border">
+							<table className="w-full border-collapse text-[13px]">
+								<thead>
+									<tr className="bg-canvas-subtle text-text-muted">
+										<th className={TH}>Issue</th>
+										<th className={cn(TH, "text-right")}>Events</th>
+										<th className={cn(TH, "text-right")}>Users</th>
+										<th className={TH}>Δ</th>
+										<th className={TH}>Level</th>
+										<th className={TH}>First seen</th>
+										<th className={TH}>Last seen</th>
+										<th className={cn(TH, "text-right")}>Actions</th>
 									</tr>
-								))}
-							</tbody>
-						</table>
-					</div>
-					{nextCursor ? (
-						<div className="mt-3 flex justify-center">
-							<Button
-								variant="outline"
-								size="sm"
-								onClick={() => void loadMore()}
-								disabled={loadingMore}
-							>
-								{loadingMore ? "Loading…" : "Load more"}
-							</Button>
+								</thead>
+								<tbody>
+									{isFetching
+										? Array.from({ length: limit }).map((_, i) => (
+												<tr
+													key={`skeleton-${i}`}
+													className="border-t border-border"
+												>
+													<td className="px-3.5 py-2.5">
+														<Skeleton className="h-3 w-[180px]" />
+														<div className="mt-1 flex gap-2">
+															<Skeleton className="h-4 w-12 rounded-[2px]" />
+															<Skeleton className="h-3 w-20" />
+														</div>
+													</td>
+													<td className="px-3.5 py-2.5">
+														<Skeleton className="ml-auto h-3 w-10" />
+													</td>
+													<td className="px-3.5 py-2.5">
+														<Skeleton className="ml-auto h-3 w-10" />
+													</td>
+													<td className="px-3.5 py-2.5">
+														<Skeleton className="h-5 w-12 rounded-[2px]" />
+													</td>
+													<td className="px-3.5 py-2.5">
+														<Skeleton className="h-5 w-12 rounded-[2px]" />
+													</td>
+													<td className="px-3.5 py-2.5">
+														<Skeleton className="h-3 w-20" />
+													</td>
+													<td className="px-3.5 py-2.5">
+														<Skeleton className="h-3 w-20" />
+													</td>
+													<td className="px-3.5 py-2.5">
+														<Skeleton className="ml-auto size-8 rounded-[2px]" />
+													</td>
+												</tr>
+											))
+										: issues.map((issue) => (
+												<tr
+													key={issue.id}
+													onClick={() =>
+														navigate(
+															`/workspace/${wrkSlug ?? ""}/projects/${slug ?? ""}/errors/${issue.id}`,
+														)
+													}
+													className="group cursor-pointer border-t border-border hover:bg-surface/60"
+												>
+													<td className="max-w-[300px] px-3.5 py-2.5">
+														<button
+															type="button"
+															onClick={(e) => {
+																e.stopPropagation();
+																navigate(
+																	`/workspace/${wrkSlug ?? ""}/projects/${slug ?? ""}/errors/${issue.id}`,
+																);
+															}}
+															className="block max-w-full truncate text-left font-mono text-[13px] font-[550] text-text transition-colors hover:text-link group-hover:text-link focus-visible:outline-2 focus-visible:outline-focus"
+															title={issue.title}
+															aria-label={`Open issue: ${issue.title}`}
+														>
+															{issue.title}
+														</button>
+														<div className="mt-1 flex items-center gap-2">
+															<PlatformLevelTag
+																platform={issue.platform}
+																level={issue.level}
+															/>
+															{issue.location ? (
+																<span className="min-w-0 truncate font-mono text-[11px] text-text-subtle">
+																	{issue.location}
+																</span>
+															) : null}
+														</div>
+													</td>
+													<td className="px-3.5 py-2.5 text-right font-mono text-text">
+														{fmtC(issue.count)}
+													</td>
+													<td className="px-3.5 py-2.5 text-right font-mono text-text">
+														{fmtC(issue.users)}
+													</td>
+													<td className="px-3.5 py-2.5">
+														<DeltaTag delta={issue.delta} />
+													</td>
+													<td className="px-3.5 py-2.5">
+														<LevelTag level={issue.level} />
+													</td>
+													<td className="px-3.5 py-2.5 text-[12px] whitespace-nowrap text-text-muted">
+														{dateLabel(issue.firstSeen)}
+													</td>
+													<td className="px-3.5 py-2.5 text-[12px] whitespace-nowrap text-text-muted">
+														{dateLabel(issue.lastSeen)}
+													</td>
+													<td className="px-3.5 py-2.5">
+														<span className="flex items-center justify-end">
+															<IssueAction
+																issue={issue}
+																slug={slug}
+																canManage={canManage}
+															/>
+														</span>
+													</td>
+												</tr>
+											))}
+								</tbody>
+							</table>
 						</div>
-					) : null} </>
+						<div className="flex flex-wrap items-center justify-between gap-3 px-0.5 pt-3">
+							<div className="font-mono text-[12px] text-text-muted tabular-nums">
+								{isFetching ? (
+									"Loading…"
+								) : (
+									<>
+										Page {pageIndex + 1} · {issues.length} issue
+										{issues.length === 1 ? "" : "s"}
+										{hasNext ? " · more" : ""}
+									</>
+								)}
+							</div>
+							<div className="flex items-center gap-4">
+								<div className="flex items-center gap-2">
+									<span className="hidden font-mono text-[11px] text-text-subtle sm:inline">
+										Rows per page
+									</span>
+									<Select
+										value={String(limit)}
+										onValueChange={(value) => setLimit(Number(value))}
+									>
+										<SelectTrigger className="h-8 w-[72px] font-mono text-[12px]">
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent side="top">
+											{[10, 25, 50].map((size) => (
+												<SelectItem key={size} value={String(size)}>
+													{size}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+								</div>
+								<div className="flex items-center gap-1.5">
+									<Button
+										variant="outline"
+										size="icon-sm"
+										className="size-8"
+										onClick={handlePrev}
+										disabled={!hasPrev || isFetching}
+										aria-label="Previous page"
+									>
+										<ChevronLeft className="size-4" />
+									</Button>
+									<Button
+										variant="outline"
+										size="icon-sm"
+										className="size-8"
+										onClick={handleNext}
+										disabled={!hasNext || isFetching}
+										aria-label="Next page"
+									>
+										<ChevronRight className="size-4" />
+									</Button>
+								</div>
+							</div>
+						</div>{" "}
+					</>
 				) : (
-					<Frame className="flex flex-col items-center justify-center gap-2.5 p-10 text-center">
-						<TriangleAlert
-							className="size-[22px] text-text-subtle"
-							aria-hidden="true"
-						/>
-						{!hasActiveFilter && hasNoIssues ? (
-							<>
-								<p className="font-mono text-[13px] text-text-muted">
-									No captured errors yet.
-								</p>
-								<span className="max-w-[420px] text-[12px] leading-[1.5] text-text-subtle">
+					<EmptyState
+						icon={<TriangleAlert className="size-4" aria-hidden="true" />}
+						title={
+							!hasActiveFilter && hasNoIssues
+								? "No captured errors yet"
+								: "No issues match this search"
+						}
+						description={
+							!hasActiveFilter && hasNoIssues ? (
+								<span>
 									Aggregated issues appear here once a source connects opt-in
 									error capture. Configure capture from{" "}
 									<Link
@@ -455,21 +576,14 @@ export function ProjectErrors() {
 									</Link>
 									.
 								</span>
-							</>
-						) : (
-							<>
-								<p className="font-mono text-[13px] text-text-muted">
-									No issues match this search.
-								</p>
-								<span className="text-[12px] text-text-subtle">
-									Try a different query or clear the filters.
-								</span>
-							</>
-						)}
-					</Frame>
+							) : (
+								"Try a different query or clear the filters."
+							)
+						}
+					/>
 				)}
 			</div>
-			<Outlet />
+			<ErrorPresentationStack />
 		</div>
 	);
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import type * as React from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import { XIcon } from "lucide-react";
 import { Dialog as SheetPrimitive } from "radix-ui";
 
@@ -85,6 +86,154 @@ function SheetContent({
 	);
 }
 
+type PresentationEntryMode = "forward" | "restore";
+
+type PresentationSheetContentProps = Omit<
+	React.ComponentProps<typeof SheetPrimitive.Content>,
+	"asChild" | "forceMount"
+> & {
+	depth: number;
+	entryMode?: PresentationEntryMode;
+	isBaseLayer: boolean;
+	isTop: boolean;
+	layerIndex: number;
+	open: boolean;
+	onBackdropDismiss?: () => void;
+	onExitComplete?: () => void;
+	showCloseButton?: boolean;
+};
+
+const PRESENTATION_DEPTH = [
+	{ scale: 1, x: 0 },
+	{ scale: 0.97, x: -12 },
+	{ scale: 0.94, x: -24 },
+	{ scale: 0.91, x: -36 },
+] as const;
+
+const PRESENTATION_EASE_OUT = [0.23, 1, 0.32, 1] as const;
+
+const presentationTransform = (depth: number, restore = false): string => {
+	const state =
+		PRESENTATION_DEPTH[Math.min(depth, PRESENTATION_DEPTH.length - 1)] ??
+		PRESENTATION_DEPTH[0];
+	const scale = restore ? state.scale * 0.99 : state.scale;
+	return `translate3d(${state.x}px, 0, 0) scale(${scale})`;
+};
+
+/**
+ * A route-backed sheet layer for nested presentation stacks. The top layer is
+ * the only interactive dialog; parents remain mounted and readable, but inert.
+ */
+function PresentationSheetContent({
+	className,
+	children,
+	depth,
+	entryMode = "forward",
+	isBaseLayer,
+	isTop,
+	layerIndex,
+	open,
+	onBackdropDismiss,
+	onExitComplete,
+	showCloseButton = false,
+	style,
+	...props
+}: PresentationSheetContentProps) {
+	const shouldReduceMotion = useReducedMotion();
+	const effectiveDepth = shouldReduceMotion ? 0 : depth;
+	const targetTransform = presentationTransform(effectiveDepth);
+	const closedTransform = "translate3d(100%, 0, 0) scale(1)";
+	const initialTransform =
+		entryMode === "restore"
+			? presentationTransform(effectiveDepth, true)
+			: closedTransform;
+	const contentZIndex = 61 + layerIndex * 2;
+	const overlayZIndex = contentZIndex - 1;
+	const overlayOpacity = isBaseLayer ? 0.58 : 0.12;
+	const contentTransition = shouldReduceMotion
+		? { duration: 0.15, ease: PRESENTATION_EASE_OUT }
+		: {
+				transform: {
+					type: "spring" as const,
+					stiffness: 300,
+					damping: 28,
+					mass: 0.9,
+				},
+				opacity: { duration: 0.15, ease: PRESENTATION_EASE_OUT },
+			};
+
+	return (
+		<SheetPortal forceMount>
+			<SheetPrimitive.Overlay forceMount asChild>
+				<motion.div
+					aria-hidden="true"
+					data-presentation-overlay=""
+					className="fixed inset-0 bg-black"
+					onPointerDown={(event) => {
+						if (!isTop || !open || event.target !== event.currentTarget) return;
+						event.preventDefault();
+						onBackdropDismiss?.();
+					}}
+					initial={{ opacity: 0 }}
+					animate={{ opacity: open ? overlayOpacity : 0 }}
+					transition={{
+						duration: shouldReduceMotion ? 0.15 : 0.18,
+						ease: PRESENTATION_EASE_OUT,
+					}}
+					style={{
+						zIndex: overlayZIndex,
+						pointerEvents: isTop && open ? "auto" : "none",
+					}}
+				/>
+			</SheetPrimitive.Overlay>
+			<SheetPrimitive.Content forceMount asChild {...props}>
+				<motion.div
+					data-presentation-depth={depth}
+					data-presentation-layer=""
+					data-presentation-top={isTop ? "true" : "false"}
+					aria-hidden={isTop ? undefined : true}
+					inert={isTop ? undefined : true}
+					tabIndex={-1}
+					className={cn(
+						"fixed inset-y-0 right-0 flex h-full w-full origin-left flex-col gap-4 overflow-hidden border-l border-border bg-background shadow-[-20px_0_56px_rgb(0_0_0/0.24)] outline-none sm:max-w-[684px]",
+						className,
+					)}
+					initial={{
+						transform: shouldReduceMotion
+							? entryMode === "restore"
+								? targetTransform
+								: closedTransform
+							: initialTransform,
+						opacity: entryMode === "restore" && !shouldReduceMotion ? 0 : 1,
+					}}
+					animate={{
+						transform: open ? targetTransform : closedTransform,
+						opacity:
+							open || entryMode !== "restore" || shouldReduceMotion ? 1 : 0,
+					}}
+					transition={contentTransition}
+					onAnimationComplete={() => {
+						if (!open) onExitComplete?.();
+					}}
+					style={{
+						...style,
+						zIndex: contentZIndex,
+						pointerEvents: isTop && open ? "auto" : "none",
+					}}
+				>
+					{children}
+					{showCloseButton ? (
+						<SheetPrimitive.Close className="absolute top-4 right-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none">
+							<XIcon className="size-4" />
+							<span className="sr-only">Close</span>
+						</SheetPrimitive.Close>
+					) : null}
+				</motion.div>
+			</SheetPrimitive.Content>
+		</SheetPortal>
+	);
+}
+
 function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
 	return (
 		<div
@@ -142,6 +291,7 @@ export {
 	SheetTrigger,
 	SheetClose,
 	SheetContent,
+	PresentationSheetContent,
 	SheetHeader,
 	SheetFooter,
 	SheetTitle,
