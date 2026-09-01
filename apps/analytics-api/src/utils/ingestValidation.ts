@@ -34,7 +34,10 @@ export type IngestRejectReason =
   | "invalid-mobile-screen"
   | "invalid-mobile-lifecycle"
   | "mobile-digest-unconfigured"
-  | "mobile-installation-required";
+  | "mobile-installation-required"
+  // Task 19: Standard Event boundary rejections.
+  | "unknown-reserved-event"
+  | "invalid-standard-event";
 
 /** Validated (and not yet sanitized) event ready for persistence. */
 export interface ValidatedEvent {
