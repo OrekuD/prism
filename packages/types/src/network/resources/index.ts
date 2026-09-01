@@ -88,6 +88,7 @@ export type EventResource = {
 	sdkVersion?: string | null;
 	/** Hydrated source attribution (pre-archive interim shape until slice 2 adds status). */
 	source?: { id: string; name: string; platform: string } | null;
+	standardEvent?: StandardEventAttribution | null;
 };
 
 // ---------------------------------------------------------------------------

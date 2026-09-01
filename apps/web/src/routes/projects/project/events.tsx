@@ -40,7 +40,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useProjectEventsQuery } from "@/network/queries/useProjectEventsQuery";
 import { useSourcesQuery } from "@/network/queries/useSourcesQuery";
-import type { EventResource } from "@prism-analytics/types";
+import type { EventResource, EventListItemResource } from "@prism-analytics/types";
 
 function formatTimeDisplay(ts: number): string {
   const now = Date.now();
@@ -169,7 +169,39 @@ export function ProjectEvents() {
       header: "Event",
       size: 280,
       cell: ({ row }) => {
-        const event = row.original;
+        const event = row.original as EventResource & { standardEvent?: EventListItemResource["standardEvent"] };
+        const std = event.standardEvent ?? null;
+        if (std) {
+          return (
+            <div className="flex min-w-0 flex-col gap-1">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpen(row);
+                  }}
+                  className="max-w-[160px] truncate rounded-[2px] text-left font-mono text-[13px] font-medium leading-none tracking-[-0.01em] text-text underline-offset-4 hover:text-link hover:underline focus-visible:outline-2 focus-visible:outline-focus"
+                  title={`Open ${std.displayName} — ${event.name}`}
+                  aria-label={`${std.displayName}, Standard ${std.category}`}
+                >
+                  {std.displayName}
+                </button>
+                <span className="inline-flex shrink-0 items-center gap-1" aria-hidden="true">
+                  <span className="rounded-[2px] border border-border bg-surface px-1 py-0.5 font-mono text-[9px] font-medium uppercase leading-none tracking-[0.08em] text-text-subtle">
+                    Standard
+                  </span>
+                  <span className="font-mono text-[10px] uppercase leading-none tracking-[0.05em] text-text-subtle">
+                    {std.category}
+                  </span>
+                </span>
+              </div>
+              <span className="block max-w-[260px] truncate font-mono text-[11px] leading-none text-text-subtle" title={event.name}>
+                {event.name}
+              </span>
+            </div>
+          );
+        }
         return (
           <div className="min-w-0">
             <button

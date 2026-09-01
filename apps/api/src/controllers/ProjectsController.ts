@@ -32,6 +32,7 @@ import {
 import { PAGE_VIEW_LIMITS } from "@prism-analytics/core";
 import { loadWebAnalytics } from "../utils/webAnalyticsLoader";
 import { loadMobileAnalytics } from "../utils/mobileAnalyticsLoader";
+import { deriveStandardEvent } from "../utils/standardEvent";
 import {
 	executeMobilePurge,
 	purgeMobileProjectStatements,
@@ -542,11 +543,20 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
       const byId = new Map(sources.map((s) => [s.id, s]));
 
       const hydrated = events.map((event) => {
-        if (!event.sourceId) return { ...event, source: null };
+        const standardEvent = deriveStandardEvent(event.name);
+        if (!event.sourceId) return { ...event, source: null, standardEvent };
         const s = byId.get(event.sourceId);
         return {
           ...event,
-          source: s ? { id: s.id, name: s.name, platform: s.platform } : null,
+          source: s
+            ? {
+                id: s.id,
+                name: s.name,
+                platform: s.platform as unknown as import("@prism-analytics/types").SourcePlatform,
+                status: "active" as const,
+              }
+            : null,
+          standardEvent,
         };
       });
 
@@ -578,11 +588,20 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
 
     return ctx.json(
       events.map((event) => {
-        if (!event.sourceId) return { ...event, source: null };
+        const standardEvent = deriveStandardEvent(event.name);
+        if (!event.sourceId) return { ...event, source: null, standardEvent };
         const s = byId.get(event.sourceId);
         return {
           ...event,
-          source: s ? { id: s.id, name: s.name, platform: s.platform } : null,
+          source: s
+            ? {
+                id: s.id,
+                name: s.name,
+                platform: s.platform as unknown as import("@prism-analytics/types").SourcePlatform,
+                status: "active" as const,
+              }
+            : null,
+          standardEvent,
         };
       }),
     );

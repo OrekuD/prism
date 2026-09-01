@@ -1,4 +1,4 @@
-import type { EventResource } from "@prism-analytics/types";
+import type { EventResource, StandardEventAttribution } from "@prism-analytics/types";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useSyncExternalStore } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -175,6 +175,7 @@ function Tag({
 function EventDetails({ event, base }: { event: EventResource; base: string }) {
   const platform = event.platform ?? event.source?.platform ?? null;
   const lagMs = Math.max(0, event.receivedAt - event.occurredAt);
+  const std = (event as EventResource & { standardEvent?: StandardEventAttribution | null }).standardEvent ?? null;
   const payload = React.useMemo(
     () =>
       JSON.stringify(
@@ -227,8 +228,25 @@ function EventDetails({ event, base }: { event: EventResource; base: string }) {
       <SheetHeader className="gap-3 border-b border-border px-6 pb-4 pt-6 pr-10">
         <div className="min-w-0">
           <SheetTitle className="break-words pr-2 text-left font-sans text-[17px] font-semibold leading-[1.25] tracking-[-0.02em] text-text">
-            {event.name}
+            {std ? std.displayName : event.name}
           </SheetTitle>
+          {std ? (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span className="inline-flex items-center rounded-[2px] border border-border bg-surface px-1.5 py-0.5 font-mono text-[9px] font-medium uppercase leading-none tracking-[0.08em] text-text-subtle" aria-hidden="true">
+                Standard
+              </span>
+              <span className="font-mono text-[10px] uppercase leading-none tracking-[0.05em] text-text-subtle" aria-hidden="true">
+                {std.category}
+              </span>
+              <span className="font-mono text-[10px] leading-none text-text-subtle" aria-hidden="true">
+                ·
+              </span>
+              <span className="font-mono text-[11px] leading-none text-text-subtle" title={event.name}>
+                {event.name}
+              </span>
+              <span className="sr-only">{`Standard ${std.category}, ${std.displayName}, raw name ${event.name}`}</span>
+            </div>
+          ) : null}
           <p
             className="mt-1.5 flex flex-wrap items-center gap-1.5 font-sans text-[11px] leading-none text-text-subtle"
             title={isoLabel(event.occurredAt)}
