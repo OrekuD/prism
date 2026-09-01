@@ -38,6 +38,7 @@ describe("Task 16 slice 1 — event contracts and cursor", () => {
       personId: "person_1",
       sessionId: "sess_1",
       source: { id: "src_1", name: "Acme Web", platform: "web", status: "active" },
+      standardEvent: null,
     };
     expect(item.source?.platform).toBe("web");
     // archived sources retain exact platform

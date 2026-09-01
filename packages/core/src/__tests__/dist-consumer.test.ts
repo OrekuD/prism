@@ -164,8 +164,13 @@ describe("clean installed-package consumption", () => {
 		// 112 KiB: task-17 slice 1 adds the reserved page-view contract
 		// (frozen property schema, strict validator, viewport buckets) shared
 		// by Core, Browser, and ingestion — ~6 KiB of runtime code.
+		// 165 KiB: task-19 slice 1 adds the frozen 25-event Standard Event
+		// catalog (registry, 25 exact data validators, wire-wrapper validator,
+		// typed input interfaces) shared by Core/SDKs, ingestion, and product
+		// API — ~31 KiB of runtime + type code; ESM consumers tree-shake
+		// unused validators while the CJS guard prevents runaway growth.
 		const dist = join(CORE_DIR, "dist", "index.js");
 		expect(existsSync(dist)).toBe(true);
-		expect(statSync(dist).size).toBeLessThan(120 * 1024);
+		expect(statSync(dist).size).toBeLessThan(165 * 1024);
 	});
 });

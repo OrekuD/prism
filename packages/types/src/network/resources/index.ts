@@ -107,6 +107,41 @@ export type EventSourceAttribution = {
 	status: SourceStatus;
 };
 
+/** Frozen Standard Event display metadata — derived from the shared Core registry, never from client payload. */
+export type StandardEventKey =
+	| "sign_up"
+	| "login"
+	| "logout"
+	| "onboarding_started"
+	| "onboarding_step_completed"
+	| "onboarding_completed"
+	| "lead_generated"
+	| "invite_sent"
+	| "invite_accepted"
+	| "trial_started"
+	| "trial_ended"
+	| "subscription_started"
+	| "subscription_renewed"
+	| "subscription_changed"
+	| "subscription_paused"
+	| "subscription_resumed"
+	| "subscription_cancelled"
+	| "subscription_expired"
+	| "payment_succeeded"
+	| "payment_failed"
+	| "purchase"
+	| "refund"
+	| "search"
+	| "share"
+	| "feedback_submitted";
+
+export type StandardEventAttribution = {
+	key: StandardEventKey;
+	displayName: string;
+	category: string;
+	schemaVersion: 1;
+};
+
 /** Lightweight list item — what the Events table renders without opening detail. */
 export type EventListItemResource = {
 	id: string;
@@ -118,6 +153,7 @@ export type EventListItemResource = {
 	personId: string | null;
 	sessionId: string | null;
 	source: EventSourceAttribution | null;
+	standardEvent: StandardEventAttribution | null;
 };
 
 /** Full detail — authorized view for the drawer/route. Identity/context/SDK are nullable. */
