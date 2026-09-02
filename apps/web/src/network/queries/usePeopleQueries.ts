@@ -1,7 +1,9 @@
 import { axiosInstance } from "@/utils/axiosInstance";
 import type {
   BreakdownResource,
+  EventResource,
   PeopleListResource,
+  PeopleRange,
   PersonDetailResource,
   TotalsResource,
 } from "@prism-analytics/types";
@@ -12,14 +14,18 @@ import { useQuery } from "@tanstack/react-query";
  * the §5/§6 APIs.
  */
 
-export function usePeopleQuery(slug: string | undefined, params: { cursor?: string; q?: string; limit?: number }) {
+export function usePeopleQuery(
+  slug: string | undefined,
+  params: { cursor?: string; q?: string; limit?: number; range?: PeopleRange },
+) {
   return useQuery<PeopleListResource>({
-    queryKey: ["people", slug, params.cursor, params.q],
+    queryKey: ["people", slug, params.range, params.cursor, params.q, params.limit],
     queryFn: async () => {
       const search = new URLSearchParams();
       if (params.cursor) search.set("cursor", params.cursor);
       if (params.q) search.set("q", params.q);
       if (params.limit) search.set("limit", String(params.limit));
+      if (params.range) search.set("range", params.range);
       const response = await axiosInstance.get<PeopleListResource>(
         `/projects/${slug}/people?${search.toString()}`,
       );
@@ -27,6 +33,8 @@ export function usePeopleQuery(slug: string | undefined, params: { cursor?: stri
     },
     enabled: Boolean(slug),
     refetchOnWindowFocus: false,
+    staleTime: 30_000,
+    placeholderData: (previous) => previous,
   });
 }
 
@@ -35,7 +43,7 @@ export function usePersonQuery(slug: string | undefined, personId: string | unde
     queryKey: ["person", slug, personId],
     queryFn: async () => {
       const response = await axiosInstance.get<PersonDetailResource>(
-        `/projects/${slug}/people/${personId}`,
+        `/projects/${slug}/people/${encodeURIComponent(personId ?? "")}`,
       );
       return response.data;
     },
@@ -45,11 +53,11 @@ export function usePersonQuery(slug: string | undefined, personId: string | unde
 }
 
 export function usePersonActivityQuery(slug: string | undefined, personId: string | undefined) {
-  return useQuery<Array<{ id: string; name: string; properties: Record<string, unknown> | null; occurredAt: number; sessionId: string | null }>>({
+  return useQuery<EventResource[]>({
     queryKey: ["person-activity", slug, personId],
     queryFn: async () => {
       const response = await axiosInstance.get(
-        `/projects/${slug}/people/${personId}/activity`,
+        `/projects/${slug}/people/${encodeURIComponent(personId ?? "")}/activity`,
       );
       return response.data;
     },

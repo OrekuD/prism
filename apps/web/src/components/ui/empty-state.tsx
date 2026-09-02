@@ -36,9 +36,11 @@ export function EmptyState({
             {label}
           </p>
         ) : null}
-        <h3 className={cn("font-sans text-[14px] font-medium leading-none tracking-[-0.01em] text-text", (icon || label) && "mt-3")}>
+        {/* h2: empty states sit directly under the page h1 — an h3 here
+            breaks heading order everywhere this component is used. */}
+        <h2 className={cn("font-sans text-[14px] font-medium leading-none tracking-[-0.01em] text-text", (icon || label) && "mt-3")}>
           {title}
-        </h3>
+        </h2>
         {description ? (
           typeof description === "string" ? (
             <p className="mt-1.5 text-pretty font-mono text-[12.5px] leading-[1.5] text-text-muted">
