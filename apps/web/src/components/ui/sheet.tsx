@@ -164,28 +164,32 @@ function PresentationSheetContent({
 
 	return (
 		<SheetPortal forceMount>
-			<SheetPrimitive.Overlay forceMount asChild>
-				<motion.div
-					aria-hidden="true"
-					data-presentation-overlay=""
-					className="fixed inset-0 bg-black"
-					onPointerDown={(event) => {
-						if (!isTop || !open || event.target !== event.currentTarget) return;
-						event.preventDefault();
-						onBackdropDismiss?.();
-					}}
-					initial={{ opacity: 0 }}
-					animate={{ opacity: open ? overlayOpacity : 0 }}
-					transition={{
-						duration: shouldReduceMotion ? 0.15 : 0.18,
-						ease: PRESENTATION_EASE_OUT,
-					}}
-					style={{
-						zIndex: overlayZIndex,
-						pointerEvents: isTop && open ? "auto" : "none",
-					}}
-				/>
-			</SheetPrimitive.Overlay>
+			{/* The backdrop is owned by the presentation layer and rendered for
+			    EVERY sheet, not just the modal top. Radix's DialogOverlay returns
+			    null for non-modal roots (the modal check gates before
+			    forceMount), which used to unmount a parent's backdrop as soon as
+			    a child sheet took the top slot. Rendering it directly keeps the
+			    initial backdrop mounted and dimmed behind every nested layer. */}
+			<motion.div
+				aria-hidden="true"
+				data-presentation-overlay=""
+				className="fixed inset-0 bg-black"
+				onPointerDown={(event) => {
+					if (!isTop || !open || event.target !== event.currentTarget) return;
+					event.preventDefault();
+					onBackdropDismiss?.();
+				}}
+				initial={{ opacity: 0 }}
+				animate={{ opacity: open ? overlayOpacity : 0 }}
+				transition={{
+					duration: shouldReduceMotion ? 0.15 : 0.18,
+					ease: PRESENTATION_EASE_OUT,
+				}}
+				style={{
+					zIndex: overlayZIndex,
+					pointerEvents: isTop && open ? "auto" : "none",
+				}}
+			/>
 			<SheetPrimitive.Content forceMount asChild {...props}>
 				<motion.div
 					data-presentation-depth={depth}

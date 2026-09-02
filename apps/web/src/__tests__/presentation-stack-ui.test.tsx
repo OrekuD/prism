@@ -138,6 +138,27 @@ describe("PresentationStack", () => {
 		expect(onDismiss).toHaveBeenCalledWith(items[1]);
 	});
 
+	it("keeps the parent backdrop mounted when a child sheet mounts on top", () => {
+		// Radix's DialogOverlay renders null for non-modal roots, which used
+		// to unmount the parent's backdrop the moment a nested sheet took the
+		// top slot. Every layer owns its backdrop; only the top is
+		// interactive.
+		render(
+			<PresentationStack
+				items={items.slice(0, 2)}
+				onDismiss={() => undefined}
+				renderItem={(item) => <SheetTitle>{item.key}</SheetTitle>}
+			/>,
+		);
+
+		const overlays = document.querySelectorAll<HTMLElement>(
+			"[data-presentation-overlay]",
+		);
+		expect(overlays).toHaveLength(2);
+		expect(overlays[0]?.style.pointerEvents).toBe("none");
+		expect(overlays[overlays.length - 1]?.style.pointerEvents).toBe("auto");
+	});
+
 	it("renders a nested popover above the active sheet", () => {
 		render(
 			<PresentationStack
