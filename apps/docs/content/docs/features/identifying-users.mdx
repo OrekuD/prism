@@ -3,7 +3,7 @@ title: Identifying users
 description: Anonymous identity, identify, traits, People, export, and deletion.
 audience: Developer
 scope: Both
-lastReviewed: "2026-08-24"
+lastReviewed: "2026-09-02"
 ---
 
 Prism links activity to **people**. A person starts as an anonymous
@@ -59,18 +59,52 @@ like event properties.
 ## The People dashboard
 
 Identified people appear on the project's **People** page after an
-`identify()` call — anonymous-only traffic does not create people rows.
+`identify()` call — anonymous-only traffic never appears as a People row.
 
-- The **people list** shows each person's external ID, traits, first and
-  last seen, and event volume, with search and filters.
-- A **person profile** shows identity links (anonymous IDs and external
-  IDs), traits, and the person's event history.
+- The **summary strip** counts identified people (all time), identified
+  people active in the selected 7/30/90-day range, people first identified
+  in the range, and anonymous-only subjects active in the range. Each
+  number states exactly what it covers.
+- The **people list** leads with what the developer supplied: a display
+  name, username, or email from explicit traits, with the external user ID
+  alongside. Search matches the exact developer-supplied user ID — no
+  fuzzy name or email search.
+- A **person profile** shows supplied traits, linked identities (anonymous
+  history collapsed by default), a sessions/events summary, and the
+  person's source-aware event timeline. Rows open the same event detail
+  view as the Events page.
 - **Export** produces a complete copy of the person's data — identity
-  links, traits, sessions, and events — for data-portability requests.
-- **Delete person** permanently removes identity links, traits,
-  sessions, and events. The action requires typing `delete` to confirm.
-  A later `identify()` with the same external ID creates a new person
-  with a clean slate — deleted history never silently returns.
+  links, traits, sessions, events, and error occurrences — for
+  data-portability requests. Owner and admin only.
+- **Delete person** permanently removes identity links, traits, sessions,
+  and events. The action is owner/admin only, requires typing `delete` to
+  confirm, and a later `identify()` with the same external ID creates a
+  new person with a clean slate — deleted history never silently returns.
+
+The page never shows Prism's internal person ID as an identity. It stays
+in the profile's technical details, where it belongs.
+
+## Troubleshooting People
+
+- **No rows appear.** People appear only after the SDK calls
+  `identify()` with a user ID and the call queues successfully. Check the
+  console diagnostics for `identify_rejected` or consent drops, and
+  confirm the events actually arrive (the Events page should show the
+  identified events).
+- **Two rows for one user.** The same external user ID resolves to one
+  person per project. Two rows usually mean two different user IDs were
+  sent — for example a raw email on one platform and an opaque ID on
+  another. Pick one stable, application-owned ID and use it everywhere.
+- **Missing traits.** Traits update only through
+  `identify(userId, traits)`. Re-identify with the traits you want set;
+  remove stale keys with `$unset`. Prism never fills traits from event
+  properties.
+- **Wrong user after logout.** Call `reset()` on logout and account
+  switching. Without it, the next user on the device inherits the
+  previous identity's links.
+- **Deleting data.** Deletion is permanent and project-scoped: the same
+  external ID in another project is a different person and is not
+  affected.
 
 ## Consent and identity
 
