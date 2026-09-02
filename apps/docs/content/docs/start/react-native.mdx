@@ -3,7 +3,7 @@ title: React Native SDK
 description: Add Prism analytics to Expo and bare React Native apps.
 audience: Developer
 scope: Both
-lastReviewed: "2026-08-27"
+lastReviewed: "2026-09-02"
 ---
 
 Add Prism to your React Native app with Metro-safe transport, durable
@@ -49,15 +49,15 @@ export const prism = await createReactNativeClient({
 Prism validates your options before it sends any data. It checks the
 source key, endpoint, and app metadata. If validation fails, it throws
 a clear error and sends nothing. If consent is denied or the queue is
-full at runtime, `track` and `prism.events.*` return `{ status: "dropped", reason }` instead
-of throwing.
+full at runtime, `track` and `prism.events.*` return
+`{ status: "dropped", reason }` instead of throwing.
 
 ```ts
 prism.events.search({ category: "documentation", resultCount: 8 });
 prism.events.share({ method: "email", contentType: "report" });
 ```
 
-See [Standard Events](../features/standard-events.mdx) for the full catalog.
+See [Standard Events](/docs/features/standard-events) for the full catalog.
 
 When your app moves to the background, the SDK flushes queued events
 and records foreground time. When it returns to the foreground, it

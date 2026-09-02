@@ -3,7 +3,7 @@ title: Quickstart
 description: From signup to a verified event in about five minutes.
 audience: Developer
 scope: Hosted
-lastReviewed: "2026-08-24"
+lastReviewed: "2026-09-02"
 ---
 
 This guide takes you from a fresh Prism account to a verified event on
@@ -71,7 +71,12 @@ const result = prism.track("report_exported", { format: "csv" });
 // { status: "queued", eventId } | { status: "dropped", reason }
 ```
 
-`track` and `prism.events.*` are synchronous. Invalid caller input (empty name, invalid token, non-JSON properties, wrong Standard Event schema) throws; consent, shutdown, and queue-capacity return a `dropped` result. `queued` means accepted locally; delivery happens in the background. See [Standard Events](/docs/features/standard-events) and [Capturing events](/docs/features/capturing-events).
+`track` and `prism.events.*` are synchronous. Invalid caller input (empty
+name, invalid token, non-JSON properties, wrong Standard Event schema)
+throws; consent, shutdown, and queue-capacity return a `dropped` result.
+`queued` means accepted locally; delivery happens in the background. See
+[Standard Events](/docs/features/standard-events) and
+[Capturing events](/docs/features/capturing-events).
 
 ## 7. Verify it
 

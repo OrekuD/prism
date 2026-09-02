@@ -3,7 +3,7 @@ title: Node SDK
 description: Server-side setup with @prism-analytics/node for error reporting and @prism-analytics/core for events.
 audience: Developer
 scope: Both
-lastReviewed: "2026-08-24"
+lastReviewed: "2026-09-02"
 ---
 
 `@prism-analytics/node` is the server SDK for Prism. It reports errors from Node processes into the Errors dashboard, and the runtime-neutral `@prism-analytics/core` engine handles event capture when you need it. This page covers server setup and lifecycle ownership.
@@ -95,7 +95,15 @@ prism.events.purchase({
 });
 ```
 
-`createNodeClient` is a thin wrapper over `createPrismClient` + `createNodeRuntime` with the same queue, batching, retry, and `flush()`/`shutdown()` lifecycle. It requires explicit `endpoint`, `sourceKey`, and `initialState`, uses a server source key (platform stays server-authoritative at ingestion), and must use the per-call `{ userId }` actor in concurrent handlers. See [Standard Events](/docs/features/standard-events) for the full catalog and [SDK API and limits](/docs/reference/sdk-api-and-limits) for the adapter contract.
+`createNodeClient` is a thin wrapper around the core engine with a Node
+runtime — the same queue, batching, retry, and `flush()`/`shutdown()`
+lifecycle. It requires an explicit `endpoint`, `sourceKey`, and
+`collection.initialState`, and it uses a server source key, so the source
+platform stays server-authoritative at ingestion. In concurrent handlers,
+always attribute events with the per-call `{ userId }` actor. See
+[Standard Events](/docs/features/standard-events) for the full catalog
+and [SDK API and limits](/docs/reference/sdk-api-and-limits) for the
+adapter contract.
 
 ## Next steps
 

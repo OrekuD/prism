@@ -3,7 +3,7 @@ title: JavaScript SDK
 description: The complete browser setup with @prism-analytics/browser.
 audience: Developer
 scope: Both
-lastReviewed: "2026-08-24"
+lastReviewed: "2026-09-02"
 ---
 
 `@prism-analytics/browser` is the browser SDK for Prism. It wraps the
@@ -62,7 +62,9 @@ tearing the client down.
 ## What the client exposes
 
 - `track(name, properties?)` — capture a custom event.
-- `prism.events.signUp({ method: "email" })` — capture a Standard Event (see [Standard Events](/docs/features/standard-events) for the 25 helpers).
+- `prism.events.signUp({ method: "email" })` — capture a Standard
+  Event (see [Standard Events](/docs/features/standard-events) for the
+  25 helpers).
 - `startSession(properties?)` — start a client-owned session.
 - `pageViews` — the page-view controller, or `null` when no `pageViews`
   config was passed.
