@@ -433,5 +433,40 @@ describe("ProjectsController (organization-bound authorization)", () => {
       expect(events.find((e) => e.id === "evt-page")?.standardEvent).toBeNull();
       expect(events.find((e) => e.id === "evt-page")?.name).toBe("$prism_page_view");
     });
+
+    it("returns null attribution for automatic mobile records: screen_view and app_lifecycle", async () => {
+      const neon = makeStore("member");
+      getInstance.mockReturnValue(neon as never);
+      makeTurso([
+        eventRow({
+          id: "evt-screen",
+          name: "$prism_screen_view",
+          properties: JSON.stringify({
+            $screen: { name: "Home", navigation: "initial", sequence: 1 },
+          }),
+        }),
+        eventRow({
+          id: "evt-lifecycle",
+          name: "$prism_app_lifecycle",
+          properties: JSON.stringify({
+            $lifecycle: { transition: "active", sequence: 1 },
+          }),
+        }),
+      ]);
+
+      const result = await ProjectsController.getProjectEvents(
+        ctxFor(USER_ID, { slug: SLUG }),
+      );
+
+      const events = bodyOf(result) as unknown as Array<{
+        id: string;
+        standardEvent: unknown;
+        name: string;
+      }>;
+      expect(events.find((e) => e.id === "evt-screen")?.standardEvent).toBeNull();
+      expect(events.find((e) => e.id === "evt-screen")?.name).toBe("$prism_screen_view");
+      expect(events.find((e) => e.id === "evt-lifecycle")?.standardEvent).toBeNull();
+      expect(events.find((e) => e.id === "evt-lifecycle")?.name).toBe("$prism_app_lifecycle");
+    });
   });
 });

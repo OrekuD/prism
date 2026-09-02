@@ -1167,8 +1167,9 @@ Commands and actual results:
   react-native 7; `@prism-analytics/types` tsc clean.
 
 Discriminator proof (R1-F5 acceptance): with the boundary sources restored to
-`432b8b4` and the NEW tests in place —
-`git checkout HEAD -- <IngestController.ts, standardEvent.ts, ProjectsController.ts, core.ts, standard-events.ts, index.ts>` —
+`432b8b4` and the NEW tests in place — `git checkout 432b8b4 -- <IngestController.ts,
+standardEvent.ts, ProjectsController.ts, core.ts, standard-events.ts, index.ts>`
+(the explicit SHA form; see the round-2 correction below) —
 - analytics-api IngestController suite: **4 failed** (anonymous sign_up /
   login / logout accepted instead of rejected + mixed-batch case), 38 passed;
 - product API projects suite: **1 failed** (malformed legacy row received
@@ -1182,6 +1183,68 @@ clean `432b8b4`, unrelated components): `prism-web` full suite has 2 failures
 — `gallery.test.tsx` "calendar date selection" (`aria-selected`) and
 `people.test.tsx` "has no axe violations" (`heading-order`). Neither touches
 task-19 surfaces; both fail identically without the R1 changes.
+
+### 2026-09-02 - review round 2 (R1-F5 re-open + real-store evidence)
+
+Round 2 confirmed R1-F1…R1-F4 resolved and re-opened R1-F5: the ingestion
+tests mocked the Turso transaction layer (branching/statements only, no real
+persistence), the API suite covered only `$prism_page_view` for automatic
+events, and the round-1 failing-first command was recorded as
+`git checkout HEAD -- <files>` — accurate only while the fixes were uncommitted
+on `432b8b4`, and wrong as a reproducible recipe once they were committed.
+CORRECTION: the reproducible form is `git checkout 432b8b4 -- <files>` (the
+explicit SHA), and the proof below was re-run with exactly that command.
+
+New real-store coverage — `apps/analytics-api/src/__tests__/integration/
+standardEvents.flows.test.ts` (opt-in, real libSQL):
+
+- WEB: the documented `identify()` → `events.signUp()` flow in one v3 batch —
+  accepted event row with key-derived `platform='web'`, trusted `source_id`,
+  normalized stored property JSON, and REAL identity attribution proven across
+  tables: `external_identities` link, `people` row, `anonymous_identities`
+  link, and the event's `person_id` all agree on one project-scoped person.
+- WEB: anonymous `sign_up`/`login`/`logout` each rejected
+  `invalid-standard-event` at the trust boundary with zero `events` rows, zero
+  `anonymous_identities` links, and zero `people` rows.
+- REACT-NATIVE: `search` accepted with normalized properties and
+  `platform='react-native'`; a real `$prism_screen_view` persists its
+  `mobile_screen_views` projection with a 32-hex `installation_digest` that is
+  never the raw installation id, and the raw id is absent from the stored
+  event properties (existing protected mobile lane does not regress).
+- SERVER: `subscription_cancelled` with the per-call actor persists with
+  `platform='server'`, `user_id` set, and normalized properties.
+- Mixed batch on WEB: `[custom, anonymous sign_up, unknown $prism_*,
+  malformed sign_up, identified login]` → positional
+  `[accepted, rejected×3, accepted]`; afterward the `events` table contains
+  EXACTLY the two accepted rows and every rejected id is absent.
+
+Commands and actual results (round 2):
+
+- isolated store: `/Users/david/.turso/sqld --db-path <tmp> --http-listen-addr
+  127.0.0.1:8082`, then `TURSO_DATABASE_URL=http://127.0.0.1:8082
+  TURSO_AUTH_TOKEN=test-token npx tsx apps/analytics-api/src/database/migrate.ts`
+  → applied 13/13 migrations
+- `PRISM_RUN_INTEGRATION=1 TURSO_DATABASE_URL=http://127.0.0.1:8082
+  TURSO_AUTH_TOKEN=test-token yarn workspace prism-analytics-api run test --
+  src/__tests__/integration/standardEvents.flows.test.ts` → **5/5 passed**
+  (real libSQL, real migrations, real transaction)
+- opt-in gate: the same suite WITHOUT the flag → `5 tests | 5 skipped`;
+  full default analytics-api suite → 16 files passed | 4 skipped, 179 passed |
+  10 skipped
+- `yarn workspace prism-api run test -- src/__tests__/projects.test.ts` →
+  **19/19 passed** (new: `$prism_screen_view` and `$prism_app_lifecycle`
+  rows receive `standardEvent: null` with raw names retained)
+- corrected failing-first re-run from the FIXED tree:
+  `git checkout 432b8b4 -- packages/core/src/{core.ts,standard-events.ts,index.ts}
+  apps/analytics-api/src/controllers/IngestController.ts
+  apps/api/src/utils/standardEvent.ts apps/api/src/controllers/ProjectsController.ts`
+  → analytics-api IngestController suite **4 failed | 38 passed** (anonymous
+  sign_up/login/logout accepted instead of rejected + mixed batch);
+  api projects suite **1 failed | 18 passed** (malformed legacy row received
+  attribution); core capture suite **2 failed | 13 passed** (denyList conflict
+  queued; accessors accepted). Sources restored → green: core 202/202,
+  analytics-api 179 passed | 10 skipped, api 177 passed | 19 skipped,
+  real-store 5/5.
 
 ## Review feedback
 
@@ -1344,7 +1407,8 @@ readonly checks.
 #### R1-F5 - Changed trust boundaries lack regression coverage
 
 **Severity:** Important  
-**Status:** Resolved (2026-09-02)
+**Status:** Re-opened by review round 2 (real-store coverage was missing) —
+Resolved (2026-09-02) with the evidence in R2-F1.
 
 The reviewed commit range adds Core and Node tests, but it does not add or
 modify analytics-api, product API, or Web tests. Existing suite counts therefore
@@ -1368,3 +1432,45 @@ Resolve this finding with focused coverage rather than unrelated broad tests:
 Acceptance requires new regression tests that fail against commits `d93875d`
 through `432b8b4` for the affected behavior and pass after the corresponding
 fixes. Passing unrelated pre-existing tests is not closure evidence.
+
+### Review round 2 - September 2, 2026
+
+Review round 2 confirmed R1-F1 through R1-F4 are correctly resolved. One
+Important finding remained: R1-F5 had been closed without the required
+real-store coverage.
+
+#### R2-F1 - R1-F5 closed without real-store coverage and with an inaccurate log
+
+**Severity:** Important  
+**Status:** Resolved (2026-09-02)
+
+The new ingestion tests mocked the complete Turso transaction layer. They
+verify controller branching and generated statements, but not actual libSQL
+persistence, constraints, identity resolution, or projection behavior — which
+does not satisfy the explicit real-sqld requirement in the implementation
+checklist (Slice 4). Additionally, the API checklist claimed page AND mobile
+automatic-event coverage while only `$prism_page_view` was tested, and the
+recorded failing-first command (`git checkout HEAD -- <files>`) restores the
+FIXED head once the fixes are committed, not `432b8b4`.
+
+Resolution:
+
+- [x] Add opt-in real-store tests for Web, React Native, and Server Standard
+  Events using the existing `integration/analytics.flows.test.ts` harness
+  contract (real-sqld gate `PRISM_RUN_INTEGRATION=1` + isolated
+  `TURSO_DATABASE_URL`).
+- [x] Query the actual tables to prove accepted rows, normalized stored
+  properties, identity attribution (external_identities / people /
+  anonymous_identities all agreeing on one project-scoped person), digested
+  mobile projections with the raw installation id never persisted, and the
+  complete absence of rows for every rejected protected event — including a
+  mixed batch where only the two valid rows exist afterward.
+- [x] Add API cases for `$prism_screen_view` and `$prism_app_lifecycle`
+  (automatic mobile records must not receive Standard Event attribution).
+- [x] Correct the recorded failing-first command to the reproducible explicit
+  form (`git checkout 432b8b4 -- <files>`) and re-verify all three
+  discriminators with it.
+
+Acceptance: the real-store suite passes against a real migrated libSQL store,
+is skipped by default, and the corrected failing-first command reproduces the
+round-1 discriminator failures from the fixed tree.
