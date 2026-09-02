@@ -301,60 +301,66 @@ export function ProjectErrors() {
 					)}
 				</fieldset>
 
-				<div className="flex h-9 items-center gap-2 rounded-[2px] border border-border-strong bg-surface px-2.5">
-					<Search className="size-[14px] text-text-subtle" aria-hidden="true" />
-					<input
-						type="search"
-						value={query}
-						onChange={(event) => {
-							const raw = event.target.value;
-							if (searchTimer.current) window.clearTimeout(searchTimer.current);
-							if (raw.trim() === "") {
-								updateFilter({ q: null });
-								return;
-							}
-							searchTimer.current = window.setTimeout(() => {
-								updateFilter({ q: raw });
-							}, 300);
-						}}
-						placeholder="Search issues"
-						aria-label="Search issues"
-						className="min-w-0 flex-1 bg-transparent text-[13px] text-text outline-none placeholder:text-text-subtle"
-					/>
-				</div>
+				<div className="ml-auto flex flex-wrap items-center gap-3">
+					<div className="flex h-9 items-center gap-2 rounded-[2px] border border-border-strong bg-surface px-2.5">
+						<Search className="size-[14px] text-text-subtle" aria-hidden="true" />
+						<input
+							type="search"
+							value={query}
+							onChange={(event) => {
+								const raw = event.target.value;
+								if (searchTimer.current)
+									window.clearTimeout(searchTimer.current);
+								if (raw.trim() === "") {
+									updateFilter({ q: null });
+									return;
+								}
+								searchTimer.current = window.setTimeout(() => {
+									updateFilter({ q: raw });
+								}, 300);
+							}}
+							placeholder="Search issues"
+							aria-label="Search issues"
+							className="min-w-0 flex-1 bg-transparent text-[13px] text-text outline-none placeholder:text-text-subtle"
+						/>
+					</div>
 
-				<Select
-					value={level}
-					onValueChange={(value) => updateFilter({ level: value })}
-				>
-					<SelectTrigger aria-label="Filter by level" className="h-9 w-[140px]">
-						<SelectValue placeholder="All levels" />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value="all">All levels</SelectItem>
-						<SelectItem value="error">Error</SelectItem>
-						<SelectItem value="warning">Warning</SelectItem>
-					</SelectContent>
-				</Select>
-
-				<Select
-					value={platform}
-					onValueChange={(value) => updateFilter({ platform: value })}
-				>
-					<SelectTrigger
-						aria-label="Filter by platform"
-						className="h-9 w-[150px]"
+					<Select
+						value={level}
+						onValueChange={(value) => updateFilter({ level: value })}
 					>
-						<SelectValue placeholder="All platforms" />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value="all">All platforms</SelectItem>
-						<SelectItem value="web">Web</SelectItem>
-						<SelectItem value="ios">iOS</SelectItem>
-						<SelectItem value="android">Android</SelectItem>
-						<SelectItem value="server">Server</SelectItem>
-					</SelectContent>
-				</Select>
+						<SelectTrigger
+							aria-label="Filter by level"
+							className="h-9 w-[140px]"
+						>
+							<SelectValue placeholder="All levels" />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="all">All levels</SelectItem>
+							<SelectItem value="error">Error</SelectItem>
+							<SelectItem value="warning">Warning</SelectItem>
+						</SelectContent>
+					</Select>
+
+					<Select
+						value={platform}
+						onValueChange={(value) => updateFilter({ platform: value })}
+					>
+						<SelectTrigger
+							aria-label="Filter by platform"
+							className="h-9 w-[150px]"
+						>
+							<SelectValue placeholder="All platforms" />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="all">All platforms</SelectItem>
+							<SelectItem value="web">Web</SelectItem>
+							<SelectItem value="ios">iOS</SelectItem>
+							<SelectItem value="android">Android</SelectItem>
+							<SelectItem value="server">Server</SelectItem>
+						</SelectContent>
+					</Select>
+				</div>
 			</div>
 
 			<div className="mt-5 mb-14">
