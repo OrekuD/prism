@@ -222,19 +222,41 @@ export function decodeEventCursor(cursor: string): EventCursor | null {
 	}
 }
 
+/** A bounded time window supported by the People explorer. */
+export type PeopleRange = "7d" | "30d" | "90d";
+
 /**
- * Person resource (task-10 §5): opaque personId (the deterministic
- * internal id — clients need it for detail/export/delete), safe trait
- * values, first/last seen, and honest distinct counts. No email/name
- * inference — only developer-supplied data is ever present.
+ * Summary for the People explorer. Identified and anonymous subjects stay
+ * separate so the dashboard never presents an SDK-generated identifier as a
+ * known user.
+ */
+export type PeopleSummaryResource = {
+	range: PeopleRange;
+	from: number;
+	to: number;
+	/** Every current person with at least one developer-supplied external ID. */
+	identifiedPeople: number;
+	/** Identified people with accepted activity inside the selected range. */
+	activePeople: number;
+	/** People first linked to an external ID inside the selected range. */
+	newPeople: number;
+	/** Anonymous-only analytics subjects active inside the selected range. */
+	anonymousPeople: number;
+};
+
+/**
+ * Identified person resource (task-10 §5): the external ID is the useful
+ * display identity; personId remains an opaque locator for detail/privacy
+ * routes. Traits contain only values explicitly supplied through identify().
  */
 export type PeopleResource = {
 	personId: string;
+	primaryExternalId: string | null;
 	firstSeenAt: number;
 	lastSeenAt: number;
 	traits: Record<string, unknown>;
-	/** Distinct linked identities (external + anonymous). */
-	identityCount: number;
+	externalIdentityCount: number;
+	anonymousIdentityCount: number;
 	/** Distinct sessions across the person's events. */
 	sessionCount: number;
 	/** Event occurrences. */
@@ -248,6 +270,7 @@ export type PersonDetailResource = PeopleResource & {
 
 export type PeopleListResource = {
 	people: Array<PeopleResource>;
+	summary: PeopleSummaryResource;
 	/** Keyset cursor for the next page (opaque; absent on the last page). */
 	nextCursor: string | null;
 };

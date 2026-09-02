@@ -16,7 +16,28 @@ import { TursoDatabaseManager } from "../managers/TursoDatabaseManager";
 import { DatabaseManager } from "../managers/DatabaseManager";
 import type { Project } from "../models/Project";
 import { ErrorResponse } from "../network/responses/ErrorResponse";
-import { getWorkspaceRole } from "../utils/workspaceAuth";
+import { deriveStandardEvent } from "../utils/standardEvent";
+import { getWorkspaceRole, isAdminRole, type WorkspaceRole } from "../utils/workspaceAuth";
+import type { PeopleRange, SourcePlatform } from "@prism-analytics/types";
+
+const PEOPLE_RANGE_DAYS: Record<PeopleRange, number> = {
+  "7d": 7,
+  "30d": 30,
+  "90d": 90,
+};
+
+function resolvePeopleRange(raw: string | undefined, now: number): {
+  range: PeopleRange;
+  from: number;
+  to: number;
+} {
+  const range: PeopleRange = raw === "7d" || raw === "90d" ? raw : "30d";
+  return {
+    range,
+    from: now - PEOPLE_RANGE_DAYS[range] * 86_400_000,
+    to: now,
+  };
+}
 
 /**
  * People + baseline query APIs (task-10 §5): authenticated,
@@ -29,7 +50,7 @@ export class PeopleController {
   private static async projectForSlug(
     ctx: Context,
     slug: string,
-  ): Promise<Project | null> {
+  ): Promise<{ project: Project; role: WorkspaceRole } | null> {
     // Task 13: authorization derives the project's Better Auth organization
     // and proves membership on the canonical member table. A valid session
     // from another workspace is a non-member: 404, non-disclosing.
@@ -45,7 +66,7 @@ export class PeopleController {
       user.id,
       String(project.organization_id),
     );
-    return role ? project : null;
+    return role ? { project, role } : null;
   }
 
   private static store(ctx: Context) {
@@ -54,8 +75,8 @@ export class PeopleController {
 
   public static async list(ctx: Context) {
     const slug = ctx.req.param("slug") ?? "";
-    const project = await PeopleController.projectForSlug(ctx, slug);
-    if (!project) {
+    const access = await PeopleController.projectForSlug(ctx, slug);
+    if (!access) {
       return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
     }
     const cursor = ctx.req.query("cursor");
@@ -64,9 +85,11 @@ export class PeopleController {
     const traitKey = ctx.req.query("traitKey");
     const traitValue = ctx.req.query("traitValue");
 
-    const result = await peopleList(PeopleController.store(ctx), project.id, {
+    const range = resolvePeopleRange(ctx.req.query("range"), Date.now());
+    const result = await peopleList(PeopleController.store(ctx), access.project.id, {
       cursor,
       limit: Number.isFinite(limit) ? limit : 50,
+      ...range,
       ...(searchUserId ? { searchUserId } : {}),
       ...(traitKey && traitValue ? { searchTrait: { key: traitKey, value: traitValue } } : {}),
     });
@@ -76,11 +99,11 @@ export class PeopleController {
   public static async detail(ctx: Context) {
     const slug = ctx.req.param("slug") ?? "";
     const personId = ctx.req.param("personId") ?? "";
-    const project = await PeopleController.projectForSlug(ctx, slug);
-    if (!project) {
+    const access = await PeopleController.projectForSlug(ctx, slug);
+    if (!access) {
       return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
     }
-    const person = await personDetail(PeopleController.store(ctx), project.id, personId);
+    const person = await personDetail(PeopleController.store(ctx), access.project.id, personId);
     if (!person) {
       return ctx.json(new ErrorResponse("person_not_found").toJSON(), 404);
     }
@@ -90,11 +113,11 @@ export class PeopleController {
   public static async activity(ctx: Context) {
     const slug = ctx.req.param("slug") ?? "";
     const personId = ctx.req.param("personId") ?? "";
-    const project = await PeopleController.projectForSlug(ctx, slug);
-    if (!project) {
+    const access = await PeopleController.projectForSlug(ctx, slug);
+    if (!access) {
       return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
     }
-    if (!(await personExists(PeopleController.store(ctx), project.id, personId))) {
+    if (!(await personExists(PeopleController.store(ctx), access.project.id, personId))) {
       return ctx.json(new ErrorResponse("person_not_found").toJSON(), 404);
     }
     // F14: activity limits are clamped to a documented integer range —
@@ -106,17 +129,41 @@ export class PeopleController {
         : 200;
     const events = await personActivity(
       PeopleController.store(ctx),
-      project.id,
+      access.project.id,
       personId,
       limit,
     );
-    return ctx.json(events);
+    const sources = (await DatabaseManager.getInstance(ctx)`
+      SELECT id, name, platform FROM project_sources
+      WHERE project_id = ${access.project.id}`) as Array<{
+      id: string;
+      name: string;
+      platform: string;
+    }>;
+    const sourceById = new Map(sources.map((source) => [source.id, source]));
+    return ctx.json(
+      events.map((event) => {
+        const source = event.sourceId ? sourceById.get(event.sourceId) : undefined;
+        return {
+          ...event,
+          source: source
+            ? {
+                id: source.id,
+                name: source.name,
+                platform: source.platform as SourcePlatform,
+                status: "active" as const,
+              }
+            : null,
+          standardEvent: deriveStandardEvent(event.name, event.properties),
+        };
+      }),
+    );
   }
 
   public static async events(ctx: Context) {
     const slug = ctx.req.param("slug") ?? "";
-    const project = await PeopleController.projectForSlug(ctx, slug);
-    if (!project) {
+    const access = await PeopleController.projectForSlug(ctx, slug);
+    if (!access) {
       return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
     }
     const query = ctx.req.queries();
@@ -130,14 +177,14 @@ export class PeopleController {
       propertyValue: query.propertyValue?.[0],
       limit: query.limit ? Number(query.limit[0]) : undefined,
     };
-    const events = await filteredEvents(PeopleController.store(ctx), project.id, params);
+    const events = await filteredEvents(PeopleController.store(ctx), access.project.id, params);
     return ctx.json(events);
   }
 
   public static async breakdown(ctx: Context) {
     const slug = ctx.req.param("slug") ?? "";
-    const project = await PeopleController.projectForSlug(ctx, slug);
-    if (!project) {
+    const access = await PeopleController.projectForSlug(ctx, slug);
+    if (!access) {
       return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
     }
     const dimension = ctx.req.query("dimension") as BreakdownDimension;
@@ -155,7 +202,7 @@ export class PeopleController {
     const to = ctx.req.query("to");
     const result = await breakdown(
       PeopleController.store(ctx),
-      project.id,
+      access.project.id,
       dimension,
       from ? Number(from) : undefined,
       to ? Number(to) : undefined,
@@ -166,11 +213,14 @@ export class PeopleController {
   public static async export(ctx: Context) {
     const slug = ctx.req.param("slug") ?? "";
     const personId = ctx.req.param("personId") ?? "";
-    const project = await PeopleController.projectForSlug(ctx, slug);
-    if (!project) {
+    const access = await PeopleController.projectForSlug(ctx, slug);
+    if (!access) {
       return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
     }
-    const exported = await exportPerson(PeopleController.store(ctx), project.id, personId);
+    if (!isAdminRole(access.role)) {
+      return ctx.json(new ErrorResponse("forbidden").toJSON(), 403);
+    }
+    const exported = await exportPerson(PeopleController.store(ctx), access.project.id, personId);
     if (!exported) {
       return ctx.json(new ErrorResponse("person_not_found").toJSON(), 404);
     }
@@ -180,9 +230,12 @@ export class PeopleController {
   public static async remove(ctx: Context) {
     const slug = ctx.req.param("slug") ?? "";
     const personId = ctx.req.param("personId") ?? "";
-    const project = await PeopleController.projectForSlug(ctx, slug);
-    if (!project) {
+    const access = await PeopleController.projectForSlug(ctx, slug);
+    if (!access) {
       return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
+    }
+    if (!isAdminRole(access.role)) {
+      return ctx.json(new ErrorResponse("forbidden").toJSON(), 403);
     }
     // explicit destructive action: confirmation is a contract-level
     // requirement (the dashboard requires a typed confirmation; the API
@@ -191,21 +244,21 @@ export class PeopleController {
     if (!confirmed) {
       return ctx.json(new ErrorResponse("confirmation_required").toJSON(), 400);
     }
-    const result = await deletePerson(PeopleController.store(ctx), project.id, personId);
+    const result = await deletePerson(PeopleController.store(ctx), access.project.id, personId);
     return ctx.json({ deleted: result.deleted, personId });
   }
 
   public static async totals(ctx: Context) {
     const slug = ctx.req.param("slug") ?? "";
-    const project = await PeopleController.projectForSlug(ctx, slug);
-    if (!project) {
+    const access = await PeopleController.projectForSlug(ctx, slug);
+    if (!access) {
       return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
     }
     const from = ctx.req.query("from");
     const to = ctx.req.query("to");
     const result = await honestTotals(
       PeopleController.store(ctx),
-      project.id,
+      access.project.id,
       from ? Number(from) : undefined,
       to ? Number(to) : undefined,
     );
