@@ -1068,3 +1068,303 @@ schema, privacy boundary, and compatibility story explicitly.
   semantics, ingestion boundary, Events representation, docs requirements,
   implementation slices, and closure gates were frozen for handoff.
 - No implementation was performed as part of task creation.
+
+### 2026-09-02 - slices 1-6 implemented (commits d93875d…432b8b4)
+
+- Slice 1 `d93875d`: frozen registry, types, per-event validators, fixtures;
+  types package `StandardEventAttribution`; core CJS budget 120→165 KiB.
+- Slices 2-3 `0c96de7`: stable `prism.events` namespace on `PrismClient`;
+  React facade `events`; Node `createNodeClient` + secure `nodeCreateId`.
+- Slice 4 `af39e4d`: ingestion dispatch for `$prism_*` with
+  `unknown-reserved-event` / `invalid-standard-event` rejections.
+- Slice 5 `d8fca76`: product API derives `standardEvent` metadata; Events
+  list/detail render display name + STANDARD label + category + raw name.
+- Slice 6 `432b8b4`: dedicated docs page + reconciled quickstart/SDK/reference
+  docs.
+
+### 2026-09-02 - review round 1 (R1-F1 … R1-F5) resolved
+
+Implementation fixes (one logical change set):
+
+- **R1-F1** `apps/analytics-api/src/controllers/IngestController.ts`: replaced
+  the name-only membership check with `standardEventDefinitionForProtectedName()`;
+  when `definition.requiresUser` is true the event must carry a non-empty
+  validated `userId`, otherwise it is rejected with `invalid-standard-event`,
+  positionally, and partitioned out of every persistence/projection input.
+- **R1-F2** `packages/core/src/core.ts` `captureStandardEvent()`: raw input
+  now passes `validateJsonValue()` (strict JSON, INGEST_LIMITS bounds) before
+  any per-event validator reads a field; the normalized `$standard` object
+  passes the client's configured sanitizer (`validateAndSanitize`), and the
+  sanitized result is revalidated with `validateStandardEventProperties()`
+  before queue mutation. A redaction-invalidated field throws locally with a
+  developer-actionable error ("remove this field from sanitize.denyList…").
+- **R1-F3** `apps/api/src/utils/standardEvent.ts`: `deriveStandardEvent(name,
+  properties)` now validates the stored name+properties pair with
+  `validateStandardEventProperties()` and builds metadata from the registry
+  definition selected by the validated key; malformed legacy rows return
+  `null` while the raw name/properties remain available. Both the paginated
+  and legacy hydration paths in `ProjectsController` pass `event.properties`.
+- **R1-F4** `packages/core/src/standard-events.ts`: `STANDARD_EVENT_LIMITS`,
+  the registry array, and every definition are deep-frozen at module
+  initialization; the three lookup Maps are module-private and the exported
+  boundary is `standardEventDefinitionForKey/ForProtectedName/ForSdkMethod`
+  (no `set`/`delete`/`clear` surface). Validator regexes, ceilings, and error
+  text derive from `STANDARD_EVENT_LIMITS` (including per-field
+  `planIdMaxLength` / `reasonCodeMaxLength`). Ingestion, Core capture, and
+  API attribution all consume the immutable lookup boundary.
+- **R1-F5** new regression tests (below) across analytics-api, product API,
+  and Web.
+
+New regression coverage:
+
+- `packages/core/src/__tests__/standard-events.test.ts` (10 tests): registry
+  one-to-one invariants via lookup functions, plus R1-F4 runtime immutability
+  (frozen array/definitions/limits, mutation attempts throw, helper behavior
+  unchanged, no exported Map surface).
+- `packages/core/src/__tests__/standard-events-capture.test.ts` (15 tests):
+  R1-F2 denyList conflict fails locally with no queue mutation and no raw
+  value in transport payloads; same denyList still redacts regular `track()`;
+  accessor/non-plain-object/nested-undefined rejected as `not JSON-safe`;
+  failed captures leave the queue unchanged.
+- `apps/analytics-api/src/__tests__/IngestController.test.ts` (42 tests):
+  identified `sign_up` accepted with the normalized wire shape persisted and
+  `user_id` resolved; identified `login`/`logout` accepted; anonymous
+  `sign_up`/`login`/`logout` each rejected `invalid-standard-event` with no
+  event insert; mixed batch `[custom, anonymous sign_up, identified login]`
+  keeps positional outcomes and persists nothing for the rejected entry;
+  malformed recognized + unknown `$prism_*` rejected; non-allowlist platform
+  (`android`) rejected; react-native/server sources accepted; response never
+  echoes properties or actor ids.
+- `apps/api/src/__tests__/projects.test.ts` (18 tests): valid name+schema pair
+  derives attribution (paginated path) with the raw name retained; malformed
+  legacy row with a recognized protected name returns `standardEvent: null`
+  while keeping raw name/properties; custom event and `$prism_page_view`
+  return `null` (legacy path). `helpers.ts` `makeCtx` gained a key-aware
+  `req.query`/`req.queries` mock (backward-compatible).
+- `apps/web/src/__tests__/standard-events-rendering.test.tsx` (4 tests):
+  mixed Standard/custom rows; readable label + STANDARD label + category +
+  retained raw `$prism_sign_up` secondary line; custom row keeps raw rendering;
+  accessible name `Sign up, Standard Identity` (no color reliance); detail
+  sheet shows the display-name title with Standard label, category, raw name,
+  and explicit screen-reader text.
+
+Commands and actual results:
+
+- `yarn workspace @prism-analytics/core run test` → 11 files, 202/202 passed
+  (was 197; +4 R1-F2, +1 R1-F4)
+- `yarn workspace @prism-analytics/core run lint` (tsc) → clean
+- `yarn workspace @prism-analytics/core run build` → CJS/ESM/DTS success
+- `yarn workspace prism-analytics-api run build` → clean
+- `yarn workspace prism-analytics-api run test` → 16 files passed | 3 skipped,
+  179 passed | 5 skipped (was 169; +10 Standard Events ingestion tests)
+- `yarn workspace prism-api run typecheck` → clean
+- `yarn workspace prism-api run test` → 16 files | 2 skipped, 176 passed |
+  19 skipped (was 173; +3 R1-F3 tests)
+- `yarn workspace prism-web run typecheck` → clean
+- `yarn workspace prism-web run test -- src/__tests__/standard-events-rendering.test.tsx`
+  → 4/4 passed
+- Adapters unaffected and green: browser 67, react 31, node 12,
+  react-native 7; `@prism-analytics/types` tsc clean.
+
+Discriminator proof (R1-F5 acceptance): with the boundary sources restored to
+`432b8b4` and the NEW tests in place —
+`git checkout HEAD -- <IngestController.ts, standardEvent.ts, ProjectsController.ts, core.ts, standard-events.ts, index.ts>` —
+- analytics-api IngestController suite: **4 failed** (anonymous sign_up /
+  login / logout accepted instead of rejected + mixed-batch case), 38 passed;
+- product API projects suite: **1 failed** (malformed legacy row received
+  attribution), 17 passed;
+- core capture suite: **2 failed** (denyList conflict queued instead of
+  throwing; accessor/non-plain objects accepted), 13 passed.
+Sources were then restored and every suite returned to green (counts above).
+
+Known unrelated pre-existing failures (verified by `git stash` → run → pop on
+clean `432b8b4`, unrelated components): `prism-web` full suite has 2 failures
+— `gallery.test.tsx` "calendar date selection" (`aria-selected`) and
+`people.test.tsx` "has no axe violations" (`heading-order`). Neither touches
+task-19 surfaces; both fail identically without the R1 changes.
+
+## Review feedback
+
+This section records focused implementation reviews. A finding remains open
+until its code change and targeted regression coverage are both present. Test,
+typecheck, or build counts from an unchanged suite do not resolve a missing
+boundary test.
+
+### Review round 1 - September 2, 2026
+
+The review covered commits `d93875d` through `432b8b4`. It inspected the
+Standard Event registry, Core capture path, Node adapter, ingestion boundary,
+product API attribution, Events presentation, and related tests. No broad test
+suite was run during the review.
+
+#### R1-F1 - Ingestion does not enforce identity-required events
+
+**Severity:** Important  
+**Status:** Resolved (2026-09-02)
+
+The Core helper rejects `signUp`, `login`, and `logout` without a current user
+or per-call actor. The analytics ingestion boundary does not enforce the same
+rule. `apps/analytics-api/src/controllers/IngestController.ts` checks whether a
+protected name exists and whether its properties pass validation, but it does
+not inspect the definition's `requiresUser` value or require `event.userId`.
+
+An authenticated direct HTTP client can therefore persist anonymous
+`$prism_sign_up`, `$prism_login`, or `$prism_logout` events. This weakens the
+deterministic meaning of the catalog and makes identity metrics disagree with
+the documented SDK contract. The ingestion service is the trust boundary, so
+SDK-only enforcement is insufficient.
+
+Resolve this finding as follows:
+
+- [x] Replace the name-only membership check with a registry-definition
+  lookup.
+- [x] When `definition.requiresUser` is true, require a validated, non-empty
+  `event.userId` before persistence.
+- [x] Reject a missing user with the existing coarse
+  `invalid-standard-event` reason. Do not echo the event name, properties, or
+  actor identifier.
+- [x] Keep the rejection positional in mixed batches and exclude the event
+  from every persistence and projection input.
+- [x] Add focused real-ingestion coverage for anonymous rejection and
+  identified acceptance for all three identity-required events.
+- [x] Add a mixed-batch case proving that the rejected identity event does not
+  alter the order or outcome of adjacent valid events.
+
+Acceptance requires proof that a direct HTTP submission cannot bypass the
+identity requirement and that valid SDK-produced events still resolve to the
+correct project-scoped person.
+
+#### R1-F2 - Standard Events bypass Core sanitization and strict JSON checks
+
+**Severity:** Important  
+**Status:** Resolved (2026-09-02)
+
+`packages/core/src/core.ts` validates and normalizes Standard Event data, builds
+the `$standard` wrapper, and queues it without using the shared
+`validateAndSanitize()` path. Regular `track()` calls and internal reserved
+events use that path.
+
+This difference has two concrete effects:
+
+- A configured `sanitize.denyList`, such as `transactionId`, does not apply to
+  Standard Event data, so a value the application explicitly classified as
+  sensitive can leave the process unchanged.
+- Raw inputs do not pass the shared plain-object and accessor checks before the
+  per-event validator reads their fields. Runtime values can therefore violate
+  the strict JSON policy even though TypeScript types appear correct.
+
+Resolve this finding as follows:
+
+- [x] Run the raw data input through the shared strict JSON validator before a
+  Standard Event validator reads any field.
+- [x] Normalize the event through `validateStandardEventData()` without
+  mutating the caller's input.
+- [x] Run the complete normalized `$standard` property object through the
+  client's configured sanitizer.
+- [x] Revalidate the sanitized result against
+  `validateStandardEventProperties()` before queue mutation.
+- [x] If redaction makes a required Standard Event field invalid, fail locally
+  with a developer-actionable error instead of queuing the original sensitive
+  value or widening the frozen schema to accept a redaction marker.
+- [x] Add tests for a conflicting custom deny-list entry, accessor properties,
+  non-plain objects, no queue mutation after rejection, and absence of the raw
+  value from transport payloads.
+
+Acceptance requires Standard Events to follow the same privacy configuration
+and strict JSON boundary as every other Core event while retaining their exact
+version-1 wire schema.
+
+#### R1-F3 - Malformed legacy rows receive Standard Event attribution
+
+**Severity:** Important  
+**Status:** Resolved (2026-09-02)
+
+`apps/api/src/utils/standardEvent.ts` derives display metadata from the stored
+event name alone. Its comment and this task require malformed legacy records to
+return `standardEvent: null`, but the function never receives or validates the
+stored properties. Any old or manually inserted row named
+`$prism_sign_up`, for example, receives a `STANDARD` label even when it lacks a
+valid `$standard` wrapper.
+
+Resolve this finding as follows:
+
+- [x] Change the derivation boundary to accept both the stored event name and
+  decoded properties.
+- [x] Call `validateStandardEventProperties(name, properties)` and return
+  `null` when validation fails.
+- [x] Build display metadata from the trusted registry definition selected by
+  the validated key. Never accept display names, categories, or versions from
+  stored client properties.
+- [x] Update both paginated and legacy event-list hydration paths, plus every
+  full-detail resource path that derives the same field.
+- [x] Add API regression cases for a valid Standard Event, a malformed legacy
+  event with a recognized protected name, a custom event, and the existing
+  page/mobile automatic events.
+
+Acceptance requires only a valid name-and-schema pair to receive Standard Event
+metadata. The raw stored event name and properties must remain available for
+authorized diagnosis even when attribution is `null`.
+
+#### R1-F4 - The exported registry is mutable at runtime
+
+**Severity:** Important  
+**Status:** Resolved (2026-09-02)
+
+`packages/core/src/standard-events.ts` describes the catalog as frozen, but it
+exports an unfrozen array, mutable definition objects, mutable limits, and raw
+`Map` instances. `as const` and `ReadonlyMap` protect TypeScript call sites
+only. JavaScript consumers, casts, or accidental shared-module mutation can
+change the same lookup structures used by Core capture, ingestion, and API
+presentation.
+
+For example, clearing `STANDARD_EVENT_BY_KEY` makes every helper fail, while
+changing a definition's protected name can make Core emit a name that ingestion
+rejects. The exported `STANDARD_EVENT_LIMITS` object is also not used by the
+validators, so it is not currently the stated source of truth.
+
+Resolve this finding as follows:
+
+- [x] Deep-freeze the limits object, registry array, and every definition at
+  module initialization.
+- [x] Keep mutable lookup maps private. Export lookup functions or an immutable
+  facade that does not expose `set`, `delete`, or `clear` at runtime.
+- [x] Update ingestion, Core capture, and product API attribution to use the
+  immutable lookup boundary.
+- [x] Derive validator ceilings and corresponding error text from
+  `STANDARD_EVENT_LIMITS` instead of repeating numeric literals.
+- [x] Add runtime tests that attempt to mutate definitions, limits, and lookup
+  structures and prove helper behavior remains unchanged.
+- [x] Retain one-to-one completeness tests across key, protected name, helper,
+  category, version, and validator.
+
+Acceptance requires the shared registry to remain unchanged for the lifetime
+of every consuming process, including JavaScript consumers without TypeScript
+readonly checks.
+
+#### R1-F5 - Changed trust boundaries lack regression coverage
+
+**Severity:** Important  
+**Status:** Resolved (2026-09-02)
+
+The reviewed commit range adds Core and Node tests, but it does not add or
+modify analytics-api, product API, or Web tests. Existing suite counts therefore
+do not prove the new ingestion rejection behavior, derived API metadata, or
+accessible Events rendering. This gap allowed R1-F1 and R1-F3 to pass the
+reported checks.
+
+Resolve this finding with focused coverage rather than unrelated broad tests:
+
+- [x] Add analytics-api integration or real-store tests for recognized,
+  malformed, unknown, wrong-platform, and identity-missing Standard Events.
+- [x] Prove rejected protected events persist no canonical event, person,
+  session, or derived record in a mixed batch.
+- [x] Add product API tests for valid, malformed legacy, custom, page-view, and
+  mobile protected rows in paginated and legacy responses.
+- [x] Add Web tests for mixed Standard and custom rows, readable labels,
+  retained raw names, categories, detail presentation, and accessible names.
+- [x] Record the exact targeted commands and actual results in the progress
+  log only after the new tests pass.
+
+Acceptance requires new regression tests that fail against commits `d93875d`
+through `432b8b4` for the affected behavior and pass after the corresponding
+fixes. Passing unrelated pre-existing tests is not closure evidence.

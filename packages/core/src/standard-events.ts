@@ -34,17 +34,25 @@ export const STANDARD_EVENT_LIMITS = {
   minRating: 1,
   schemaVersion: 1,
 } as const;
+// R1-F4: the exported limits are FROZEN at module initialization — a JS
+// consumer cannot widen a ceiling for the whole process.
+Object.freeze(STANDARD_EVENT_LIMITS);
 
 // ---------------------------------------------------------------------------
-// Stable vocabulary
+// Stable vocabulary — regexes DERIVED from STANDARD_EVENT_LIMITS (R1-F4),
+// never repeated numeric literals.
 // ---------------------------------------------------------------------------
 
-/** 1-64 chars; lowercase ASCII letter first; then lowercase letters, digits, `.`, `_`, `-` */
-const STABLE_TOKEN_RE = /^[a-z][a-z0-9._-]{0,63}$/;
-/** 1-128 ASCII chars matching `[A-Za-z0-9][A-Za-z0-9._:-]*` */
-const OPAQUE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-/** Exactly 3 uppercase ASCII letters */
-const CURRENCY_RE = /^[A-Z]{3}$/;
+/** 1..max chars; lowercase ASCII letter first; then lowercase letters, digits, `.`, `_`, `-` */
+const STABLE_TOKEN_RE = new RegExp(
+  `^[a-z][a-z0-9._-]{0,${STANDARD_EVENT_LIMITS.stableTokenMaxLength - 1}}$`,
+);
+/** 1..max ASCII chars matching `[A-Za-z0-9][A-Za-z0-9._:-]*` */
+const OPAQUE_ID_RE = new RegExp(
+  `^[A-Za-z0-9][A-Za-z0-9._:-]{0,${STANDARD_EVENT_LIMITS.opaqueIdMaxLength - 1}}$`,
+);
+/** Exactly `currencyLength` uppercase ASCII letters */
+const CURRENCY_RE = new RegExp(`^[A-Z]{${STANDARD_EVENT_LIMITS.currencyLength}}$`);
 
 function isStableToken(value: unknown): value is string {
   return typeof value === "string" && STABLE_TOKEN_RE.test(value);
@@ -328,17 +336,45 @@ export const STANDARD_EVENT_DEFINITIONS: readonly StandardEventDefinition[] = [
   { key: "feedback_submitted", protectedName: "$prism_feedback_submitted", sdkMethod: "feedbackSubmitted", displayName: "Feedback submitted", category: "Engagement", schemaVersion: 1, requiresUser: false },
 ] as const;
 
-export const STANDARD_EVENT_BY_KEY: ReadonlyMap<StandardEventKey, StandardEventDefinition> = new Map(
+// R1-F4: the lookup maps are MODULE-PRIVATE. Exporting raw Map instances
+// would let any consumer (or a confused shared import) clear or rewrite the
+// same structures used by Core capture, ingestion, and API presentation.
+// The only exported boundary is lookup functions that hand out the frozen
+// definition objects.
+const byKey = new Map<StandardEventKey, StandardEventDefinition>(
   STANDARD_EVENT_DEFINITIONS.map((d) => [d.key, d]),
 );
-
-export const STANDARD_EVENT_BY_PROTECTED_NAME: ReadonlyMap<string, StandardEventDefinition> = new Map(
+const byProtectedName = new Map<string, StandardEventDefinition>(
   STANDARD_EVENT_DEFINITIONS.map((d) => [d.protectedName, d]),
 );
-
-export const STANDARD_EVENT_BY_SDK_METHOD: ReadonlyMap<string, StandardEventDefinition> = new Map(
+const bySdkMethod = new Map<string, StandardEventDefinition>(
   STANDARD_EVENT_DEFINITIONS.map((d) => [d.sdkMethod, d]),
 );
+Object.freeze(STANDARD_EVENT_DEFINITIONS);
+for (const definition of STANDARD_EVENT_DEFINITIONS) {
+  Object.freeze(definition);
+}
+
+/** Frozen registry definition for a Standard Event key, or null. */
+export function standardEventDefinitionForKey(
+  key: StandardEventKey,
+): StandardEventDefinition | null {
+  return byKey.get(key) ?? null;
+}
+
+/** Frozen registry definition for a protected `$prism_*` name, or null. */
+export function standardEventDefinitionForProtectedName(
+  name: string,
+): StandardEventDefinition | null {
+  return byProtectedName.get(name) ?? null;
+}
+
+/** Frozen registry definition for an SDK helper method name, or null. */
+export function standardEventDefinitionForSdkMethod(
+  method: string,
+): StandardEventDefinition | null {
+  return bySdkMethod.get(method) ?? null;
+}
 
 // ---------------------------------------------------------------------------
 // Shared scalar validators — exact, low-cardinality, no widening
@@ -359,18 +395,32 @@ function assertExactKeys(
   return null;
 }
 
-function validateStableTokenField(value: unknown, field: string): string | null {
-  if (!isStableToken(value)) return `${field} must be a stable token (1-64 chars, lowercase letter first, then a-z 0-9 . _ -)`;
+/** Stable-token ceiling: field-specific limits where one exists (R1-F4). */
+function validateStableTokenField(
+  value: unknown,
+  field: string,
+  max: number = STANDARD_EVENT_LIMITS.stableTokenMaxLength,
+): string | null {
+  if (typeof value !== "string" || value.length === 0 || value.length > max) {
+    return `${field} must be 1-${max} characters`;
+  }
+  if (!STABLE_TOKEN_RE.test(value)) {
+    return `${field} must be a stable token (lowercase letter first, then a-z 0-9 . _ -)`;
+  }
   return null;
 }
 
 function validateOpaqueIdField(value: unknown, field: string): string | null {
-  if (!isOpaqueId(value)) return `${field} must be an opaque analytics ID (1-128 chars, [A-Za-z0-9][A-Za-z0-9._:-]*)`;
+  if (!isOpaqueId(value)) {
+    return `${field} must be an opaque analytics ID (1-${STANDARD_EVENT_LIMITS.opaqueIdMaxLength} chars, [A-Za-z0-9][A-Za-z0-9._:-]*)`;
+  }
   return null;
 }
 
 function validateCurrencyField(value: unknown, field: string): string | null {
-  if (!isCurrency(value)) return `${field} must be a 3-letter uppercase currency code`;
+  if (!isCurrency(value)) {
+    return `${field} must be exactly ${STANDARD_EVENT_LIMITS.currencyLength} uppercase ASCII letters`;
+  }
   return null;
 }
 
@@ -426,7 +476,7 @@ function validateLogoutData(data: unknown): ReturnType<DataValidator> {
   const e = assertExactKeys(r, new Set(["reasonCode"]), "logout");
   if (e) return { ok: false, reason: e };
   if (r.reasonCode !== undefined) {
-    const m = validateStableTokenField(r.reasonCode, "reasonCode");
+    const m = validateStableTokenField(r.reasonCode, "reasonCode", STANDARD_EVENT_LIMITS.reasonCodeMaxLength);
     if (m) return { ok: false, reason: m };
     return { ok: true, value: { reasonCode: r.reasonCode } };
   }
@@ -544,11 +594,19 @@ function validateTrialStartedData(data: unknown): ReturnType<DataValidator> {
   if (e) return { ok: false, reason: e };
   const t = validateOpaqueIdField(r.trialId, "trialId");
   if (t) return { ok: false, reason: t };
-  const p = validateStableTokenField(r.planId, "planId");
+  const p = validateStableTokenField(r.planId, "planId", STANDARD_EVENT_LIMITS.planIdMaxLength);
   if (p) return { ok: false, reason: p };
   if (r.durationDays !== undefined) {
-    if (typeof r.durationDays !== "number" || !Number.isInteger(r.durationDays) || r.durationDays < 1 || r.durationDays > 3660) {
-      return { ok: false, reason: "durationDays must be integer 1..3660" };
+    if (
+      typeof r.durationDays !== "number" ||
+      !Number.isInteger(r.durationDays) ||
+      r.durationDays < 1 ||
+      r.durationDays > STANDARD_EVENT_LIMITS.maxTrialDurationDays
+    ) {
+      return {
+        ok: false,
+        reason: `durationDays must be integer 1..${STANDARD_EVENT_LIMITS.maxTrialDurationDays}`,
+      };
     }
     return { ok: true, value: { trialId: r.trialId, planId: r.planId, durationDays: r.durationDays } };
   }
@@ -562,7 +620,7 @@ function validateTrialEndedData(data: unknown): ReturnType<DataValidator> {
   if (e) return { ok: false, reason: e };
   const t = validateOpaqueIdField(r.trialId, "trialId");
   if (t) return { ok: false, reason: t };
-  const p = validateStableTokenField(r.planId, "planId");
+  const p = validateStableTokenField(r.planId, "planId", STANDARD_EVENT_LIMITS.planIdMaxLength);
   if (p) return { ok: false, reason: p };
   if (r.outcome !== "converted" && r.outcome !== "expired" && r.outcome !== "cancelled") {
     return { ok: false, reason: "outcome must be converted|expired|cancelled" };
@@ -577,7 +635,7 @@ function validateSubscriptionStartedData(data: unknown): ReturnType<DataValidato
   if (e) return { ok: false, reason: e };
   const s = validateOpaqueIdField(r.subscriptionId, "subscriptionId");
   if (s) return { ok: false, reason: s };
-  const p = validateStableTokenField(r.planId, "planId");
+  const p = validateStableTokenField(r.planId, "planId", STANDARD_EVENT_LIMITS.planIdMaxLength);
   if (p) return { ok: false, reason: p };
   if (r.billingInterval !== undefined && r.billingInterval !== "month" && r.billingInterval !== "year" && r.billingInterval !== "other") {
     return { ok: false, reason: "billingInterval must be month|year|other" };
@@ -614,10 +672,10 @@ function validateSubscriptionPausedData(data: unknown): ReturnType<DataValidator
   if (e) return { ok: false, reason: e };
   const s = validateOpaqueIdField(r.subscriptionId, "subscriptionId");
   if (s) return { ok: false, reason: s };
-  const p = validateStableTokenField(r.planId, "planId");
+  const p = validateStableTokenField(r.planId, "planId", STANDARD_EVENT_LIMITS.planIdMaxLength);
   if (p) return { ok: false, reason: p };
   if (r.reasonCode !== undefined) {
-    const m = validateStableTokenField(r.reasonCode, "reasonCode");
+    const m = validateStableTokenField(r.reasonCode, "reasonCode", STANDARD_EVENT_LIMITS.reasonCodeMaxLength);
     if (m) return { ok: false, reason: m };
     return { ok: true, value: { subscriptionId: r.subscriptionId, planId: r.planId, reasonCode: r.reasonCode } };
   }
@@ -631,7 +689,7 @@ function validateSubscriptionResumedData(data: unknown): ReturnType<DataValidato
   if (e) return { ok: false, reason: e };
   const s = validateOpaqueIdField(r.subscriptionId, "subscriptionId");
   if (s) return { ok: false, reason: s };
-  const p = validateStableTokenField(r.planId, "planId");
+  const p = validateStableTokenField(r.planId, "planId", STANDARD_EVENT_LIMITS.planIdMaxLength);
   if (p) return { ok: false, reason: p };
   return { ok: true, value: { subscriptionId: r.subscriptionId, planId: r.planId } };
 }
@@ -643,11 +701,11 @@ function validateSubscriptionCancelledData(data: unknown): ReturnType<DataValida
   if (e) return { ok: false, reason: e };
   const s = validateOpaqueIdField(r.subscriptionId, "subscriptionId");
   if (s) return { ok: false, reason: s };
-  const p = validateStableTokenField(r.planId, "planId");
+  const p = validateStableTokenField(r.planId, "planId", STANDARD_EVENT_LIMITS.planIdMaxLength);
   if (p) return { ok: false, reason: p };
   const out: Record<string, unknown> = { subscriptionId: r.subscriptionId, planId: r.planId };
   if (r.reasonCode !== undefined) {
-    const m = validateStableTokenField(r.reasonCode, "reasonCode");
+    const m = validateStableTokenField(r.reasonCode, "reasonCode", STANDARD_EVENT_LIMITS.reasonCodeMaxLength);
     if (m) return { ok: false, reason: m };
     out.reasonCode = r.reasonCode;
   }
@@ -666,11 +724,11 @@ function validateSubscriptionExpiredData(data: unknown): ReturnType<DataValidato
   if (e) return { ok: false, reason: e };
   const s = validateOpaqueIdField(r.subscriptionId, "subscriptionId");
   if (s) return { ok: false, reason: s };
-  const p = validateStableTokenField(r.planId, "planId");
+  const p = validateStableTokenField(r.planId, "planId", STANDARD_EVENT_LIMITS.planIdMaxLength);
   if (p) return { ok: false, reason: p };
   const out: Record<string, unknown> = { subscriptionId: r.subscriptionId, planId: r.planId };
   if (r.reasonCode !== undefined) {
-    const m = validateStableTokenField(r.reasonCode, "reasonCode");
+    const m = validateStableTokenField(r.reasonCode, "reasonCode", STANDARD_EVENT_LIMITS.reasonCodeMaxLength);
     if (m) return { ok: false, reason: m };
     out.reasonCode = r.reasonCode;
   }
@@ -726,7 +784,7 @@ function validatePaymentFailedData(data: unknown): ReturnType<DataValidator> {
     out.provider = r.provider;
   }
   if (r.failureCode !== undefined) {
-    const m = validateStableTokenField(r.failureCode, "failureCode");
+    const m = validateStableTokenField(r.failureCode, "failureCode", STANDARD_EVENT_LIMITS.reasonCodeMaxLength);
     if (m) return { ok: false, reason: m };
     out.failureCode = r.failureCode;
   }
@@ -768,7 +826,7 @@ function validateRefundData(data: unknown): ReturnType<DataValidator> {
   if (c) return { ok: false, reason: c };
   const out: Record<string, unknown> = { refundId: r.refundId, transactionId: r.transactionId, valueMinor: r.valueMinor, currency: r.currency };
   if (r.reasonCode !== undefined) {
-    const m = validateStableTokenField(r.reasonCode, "reasonCode");
+    const m = validateStableTokenField(r.reasonCode, "reasonCode", STANDARD_EVENT_LIMITS.reasonCodeMaxLength);
     if (m) return { ok: false, reason: m };
     out.reasonCode = r.reasonCode;
   }
@@ -822,8 +880,16 @@ function validateFeedbackSubmittedData(data: unknown): ReturnType<DataValidator>
     out.kind = r.kind;
   }
   if (r.rating !== undefined) {
-    if (typeof r.rating !== "number" || !Number.isInteger(r.rating) || r.rating < 1 || r.rating > 5) {
-      return { ok: false, reason: "rating must be integer 1..5" };
+    if (
+      typeof r.rating !== "number" ||
+      !Number.isInteger(r.rating) ||
+      r.rating < STANDARD_EVENT_LIMITS.minRating ||
+      r.rating > STANDARD_EVENT_LIMITS.maxRating
+    ) {
+      return {
+        ok: false,
+        reason: `rating must be integer ${STANDARD_EVENT_LIMITS.minRating}..${STANDARD_EVENT_LIMITS.maxRating}`,
+      };
     }
     out.rating = r.rating;
   }
@@ -873,7 +939,7 @@ export function validateStandardEventProperties(
   name: string,
   properties: unknown,
 ): StandardEventValidationResult {
-  const def = STANDARD_EVENT_BY_PROTECTED_NAME.get(name);
+  const def = byProtectedName.get(name);
   if (!def) {
     return fail(`unknown Standard Event name "${name}"`);
   }
@@ -930,22 +996,19 @@ export function validateStandardEventData(
 // ---------------------------------------------------------------------------
 
 export function protectedNameForKey(key: StandardEventKey): `$prism_${string}` {
-  const def = STANDARD_EVENT_BY_KEY.get(key);
+  const def = byKey.get(key);
   if (!def) throw new Error(`unknown Standard Event key "${key}"`);
   return def.protectedName;
 }
 
 export function displayNameForKey(key: StandardEventKey): string {
-  const def = STANDARD_EVENT_BY_KEY.get(key);
-  return def?.displayName ?? key;
+  return byKey.get(key)?.displayName ?? key;
 }
 
 export function categoryForKey(key: StandardEventKey): StandardEventCategory | null {
-  const def = STANDARD_EVENT_BY_KEY.get(key);
-  return def?.category ?? null;
+  return byKey.get(key)?.category ?? null;
 }
 
 export function requiresUserForKey(key: StandardEventKey): boolean {
-  const def = STANDARD_EVENT_BY_KEY.get(key);
-  return def?.requiresUser ?? false;
+  return byKey.get(key)?.requiresUser ?? false;
 }

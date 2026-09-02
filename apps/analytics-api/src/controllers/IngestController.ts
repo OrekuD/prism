@@ -15,7 +15,7 @@ import {
 	validateAppLifecycleProperties,
 	validatePageViewProperties,
 	validateScreenViewProperties,
-	STANDARD_EVENT_BY_PROTECTED_NAME,
+	standardEventDefinitionForProtectedName,
 	validateStandardEventProperties,
 } from "@prism-analytics/core";
 import type { SessionResource } from "@prism-analytics/types";
@@ -438,8 +438,9 @@ export class IngestController {
 			)
 				continue;
 			const index = entry.index;
-			const isKnownStandard = STANDARD_EVENT_BY_PROTECTED_NAME.has(entry.event.name);
-			if (!isKnownStandard) {
+			// R1-F4: registry-definition lookup through the immutable facade.
+			const definition = standardEventDefinitionForProtectedName(entry.event.name);
+			if (!definition) {
 				results[index] = {
 					index,
 					id: entry.event.eventId,
@@ -450,6 +451,22 @@ export class IngestController {
 				continue;
 			}
 			if (!STANDARD_ALLOWED_PLATFORMS.has(platform)) {
+				results[index] = {
+					index,
+					id: entry.event.eventId,
+					status: "rejected",
+					reason: "invalid-standard-event",
+				};
+				reservedRejectedEvents.add(entry.event);
+				continue;
+			}
+			// R1-F1: identity-required Standard Events (sign_up / login /
+			// logout) must carry a validated, non-empty event userId. The
+			// ingestion service is the trust boundary — SDK-only enforcement
+			// cannot stop an authenticated direct HTTP client from persisting
+			// anonymous identity events. Rejected coarsely, positionally, and
+			// never persisted; nothing about the actor is echoed.
+			if (definition.requiresUser && !entry.event.userId) {
 				results[index] = {
 					index,
 					id: entry.event.eventId,

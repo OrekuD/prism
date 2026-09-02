@@ -317,4 +317,121 @@ describe("ProjectsController (organization-bound authorization)", () => {
       expect(statusOf(result)).toBe(404);
     });
   });
+
+  describe("Standard Event attribution (task-19 review R1-F3)", () => {
+    const NOW = 1_785_542_400_000;
+    /** A trusted analytics-store row shaped like the events SELECT. */
+    function eventRow(overrides: Record<string, unknown> = {}) {
+      return {
+        id: "evt-row-1",
+        session_id: null,
+        project_id: PROJECT_ID,
+        name: "checkout_completed",
+        type: "track",
+        properties: JSON.stringify({ format: "csv" }),
+        context: null,
+        occurred_at: NOW,
+        received_at: NOW,
+        schema_version: 3,
+        anonymous_id: "anon-1",
+        user_id: null,
+        person_id: "u_person",
+        source_id: null,
+        platform: "web",
+        sdk_name: null,
+        sdk_version: null,
+        ...overrides,
+      };
+    }
+
+    const VALID_STD_PROPS = JSON.stringify({
+      $standard: { schemaVersion: 1, key: "sign_up", data: { method: "email" } },
+    });
+
+    it("derives attribution for a VALID name-and-schema pair (paginated path)", async () => {
+      const neon = makeStore("member");
+      getInstance.mockReturnValue(neon as never);
+      makeTurso([
+        eventRow({
+          id: "evt-valid",
+          name: "$prism_sign_up",
+          properties: VALID_STD_PROPS,
+          user_id: "user-123",
+        }),
+      ]);
+
+      const result = await ProjectsController.getProjectEvents(
+        makeCtx({ slug: SLUG }, {}, { user: { id: USER_ID } }, { limit: "10" }),
+      );
+
+      const body = bodyOf(result) as {
+        events: Array<{ standardEvent: Record<string, unknown> | null; name: string }>;
+      };
+      const event = body.events[0];
+      expect(event?.name).toBe("$prism_sign_up"); // raw name retained
+      expect(event?.standardEvent).toEqual({
+        key: "sign_up",
+        displayName: "Sign up",
+        category: "Identity",
+        schemaVersion: 1,
+      });
+    });
+
+    it("returns null attribution for a MALFORMED legacy row with a recognized protected name", async () => {
+      const neon = makeStore("member");
+      getInstance.mockReturnValue(neon as never);
+      // old/manually inserted row: right name, no valid $standard wrapper
+      makeTurso([
+        eventRow({
+          id: "evt-legacy",
+          name: "$prism_sign_up",
+          properties: JSON.stringify({ method: "email" }),
+        }),
+      ]);
+
+      const result = await ProjectsController.getProjectEvents(
+        makeCtx({ slug: SLUG }, {}, { user: { id: USER_ID } }, { limit: "10" }),
+      );
+
+      const body = bodyOf(result) as {
+        events: Array<{ standardEvent: unknown; name: string; properties: Record<string, unknown> | null }>;
+      };
+      const event = body.events[0];
+      expect(event?.standardEvent).toBeNull();
+      // the raw stored name and properties remain available for diagnosis
+      expect(event?.name).toBe("$prism_sign_up");
+      expect(event?.properties).toEqual({ method: "email" });
+    });
+
+    it("returns null attribution for custom events and automatic page views (legacy path)", async () => {
+      const neon = makeStore("member");
+      getInstance.mockReturnValue(neon as never);
+      makeTurso([
+        eventRow({ id: "evt-custom", name: "checkout_completed" }),
+        eventRow({
+          id: "evt-page",
+          name: "$prism_page_view",
+          properties: JSON.stringify({
+            $page: { host: "acme.com", path: "/", navigation: "initial", sequence: 1 },
+          }),
+        }),
+      ]);
+
+      const result = await ProjectsController.getProjectEvents(
+        ctxFor(USER_ID, { slug: SLUG }),
+      );
+
+      // legacy path returns a plain array
+      const events = bodyOf(result) as unknown as Array<{
+        id: string;
+        standardEvent: unknown;
+        name: string;
+      }>;
+      expect(Array.isArray(events)).toBe(true);
+      expect(events.find((e) => e.id === "evt-custom")?.standardEvent).toBeNull();
+      // automatic protected events never masquerade as Standard Events
+      expect(events.find((e) => e.id === "evt-page")?.standardEvent).toBeNull();
+      expect(events.find((e) => e.id === "evt-page")?.name).toBe("$prism_page_view");
+    });
+  });
 });

@@ -119,15 +119,15 @@ export {
   validateScreenViewProperties,
 } from "./screen-view";
 export {
-  STANDARD_EVENT_BY_KEY,
-  STANDARD_EVENT_BY_PROTECTED_NAME,
-  STANDARD_EVENT_BY_SDK_METHOD,
   STANDARD_EVENT_DEFINITIONS,
   STANDARD_EVENT_LIMITS,
   categoryForKey,
   displayNameForKey,
   protectedNameForKey,
   requiresUserForKey,
+  standardEventDefinitionForKey,
+  standardEventDefinitionForProtectedName,
+  standardEventDefinitionForSdkMethod,
   validateStandardEventData,
   validateStandardEventProperties,
 } from "./standard-events";

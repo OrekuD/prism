@@ -543,7 +543,7 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
       const byId = new Map(sources.map((s) => [s.id, s]));
 
       const hydrated = events.map((event) => {
-        const standardEvent = deriveStandardEvent(event.name);
+        const standardEvent = deriveStandardEvent(event.name, event.properties);
         if (!event.sourceId) return { ...event, source: null, standardEvent };
         const s = byId.get(event.sourceId);
         return {
@@ -588,7 +588,7 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
 
     return ctx.json(
       events.map((event) => {
-        const standardEvent = deriveStandardEvent(event.name);
+        const standardEvent = deriveStandardEvent(event.name, event.properties);
         if (!event.sourceId) return { ...event, source: null, standardEvent };
         const s = byId.get(event.sourceId);
         return {

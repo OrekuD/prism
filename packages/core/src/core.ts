@@ -47,8 +47,9 @@ import {
 	validateScreenViewProperties,
 } from "./screen-view";
 import {
-	STANDARD_EVENT_BY_KEY,
+	standardEventDefinitionForKey,
 	validateStandardEventData,
+	validateStandardEventProperties,
 	type StandardEventActor,
 	type StandardEventKey,
 	type PrismStandardEvents,
@@ -666,15 +667,29 @@ class PrismClientImpl implements PrismClient {
 			actorUserId = u;
 		}
 		const resolvedUserId = actorUserId ?? this.knownUserId ?? null;
-		const def = STANDARD_EVENT_BY_KEY.get(key);
+		const def = standardEventDefinitionForKey(key);
 		if (!def) throw new Error(`unknown Standard Event key "${key}"`);
 		if (def.requiresUser && !resolvedUserId) {
 			throw new Error(
 				`${def.sdkMethod} requires an identified user — call identify(userId) or pass { userId } as the second argument`,
 			);
 		}
-		// 2. Input validation — before any queue mutation
+		// 2. Input validation — before any queue mutation. R1-F2: the shared
+		// strict-JSON policy runs BEFORE any per-event validator reads a
+		// field (accessors, class instances, non-finite numbers, dangerous
+		// keys are all rejected here, exactly like track()).
 		const dataInput = rawInput === undefined ? {} : rawInput;
+		const jsonSafety = validateJsonValue(dataInput, {
+			maxDepth: INGEST_LIMITS.maxPropertyDepth,
+			maxStringLength: INGEST_LIMITS.maxStringLength,
+			maxKeys: INGEST_LIMITS.maxPropertyKeys,
+			maxArrayElements: INGEST_LIMITS.maxArrayElements,
+		});
+		if (!jsonSafety.ok) {
+			throw new Error(
+				`Standard Event input is not JSON-safe (${jsonSafety.reason})`,
+			);
+		}
 		const validation = validateStandardEventData(key, dataInput);
 		if (!validation.ok) {
 			throw new Error(validation.reason);
@@ -686,6 +701,23 @@ class PrismClientImpl implements PrismClient {
 				data: validation.value,
 			},
 		} as unknown as JsonObject;
+		// R1-F2: the normalized $standard object passes through the client's
+		// configured sanitizer (denyList, depth, string limits) like every
+		// other Core event, and the sanitized result is revalidated against
+		// the frozen wire schema BEFORE queue mutation. Redaction must never
+		// widen the schema: if a denyList entry redacts a Standard Event
+		// field, the capture fails locally with an actionable error instead
+		// of queuing the sensitive value or shipping "[REDACTED]".
+		const sanitized = this.validateAndSanitize(wireProps);
+		const revalidation = validateStandardEventProperties(
+			def.protectedName,
+			sanitized,
+		);
+		if (!revalidation.ok) {
+			throw new Error(
+				`Standard Event was invalidated by sanitization (${revalidation.reason}) — remove this field from sanitize.denyList or stop sending it`,
+			);
+		}
 
 		// 3. Consent / shutdown gating (after validation, like track)
 		if (this.closed) return { status: "dropped", reason: "shutdown" };
@@ -696,7 +728,7 @@ class PrismClientImpl implements PrismClient {
 
 		const event = this.buildStandardEvent(
 			def.protectedName,
-			wireProps,
+			revalidation.value as unknown as JsonObject,
 			resolvedUserId,
 		);
 		if (!this.queue.enqueue(event)) {

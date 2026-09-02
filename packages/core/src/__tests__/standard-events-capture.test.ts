@@ -234,4 +234,95 @@ describe("Task 19 slice 2 — Core Standard Event namespace", () => {
     expect(ev.name).toBe("$prism_search");
     await prism.shutdown({ timeoutMs: 50 });
   });
+
+  // ------------------------------------------------------------------
+  // R1-F2 — Standard Events follow the shared strict-JSON and sanitizer
+  // boundaries of every other Core event.
+  // ------------------------------------------------------------------
+
+  it("R1-F2: a conflicting denyList entry fails locally instead of leaking the value", async () => {
+    const bodies: string[] = [];
+    const runtime = fakeRuntime();
+    runtime.transport.post = async (_url, req) => {
+      bodies.push(req.body);
+      return { status: 200, headers: {}, text: async () => "" };
+    };
+    const prism = await ready({ runtime, sanitize: { denyList: ["method"] } });
+    await prism.identify("user_deny");
+    // "method" is on the deny list: redaction would replace it with
+    // [REDACTED], which violates the frozen sign_up schema — the capture
+    // must throw locally, never queue the raw or redacted value.
+    expect(() => prism.events.signUp({ method: "email" })).toThrow(
+      /invalidated by sanitization/,
+    );
+    // No queue mutation: nothing from the helper was queued.
+    await prism.flush();
+    for (const body of bodies) {
+      expect(body).not.toContain('"$prism_sign_up"');
+      expect(body).not.toContain('"method":"email"');
+      expect(body).not.toContain('"method":"[REDACTED]"');
+    }
+    await prism.shutdown({ timeoutMs: 50 });
+  });
+
+  it("R1-F2: the same denyList does not affect regular track() redaction", async () => {
+    const bodies: string[] = [];
+    const runtime = fakeRuntime();
+    runtime.transport.post = async (_url, req) => {
+      bodies.push(req.body);
+      return { status: 200, headers: {}, text: async () => "" };
+    };
+    const prism = await ready({ runtime, sanitize: { denyList: ["method"] } });
+    prism.track("custom_event", { method: "email" });
+    await prism.flush();
+    const ev = deliveredEvents(bodies[0])[0] as { properties: Record<string, unknown> };
+    // track() redacts as configured — the frozen Standard Event schema is
+    // the only thing that refuses redacted values.
+    expect(ev.properties.method).toBe("[REDACTED]");
+    await prism.shutdown({ timeoutMs: 50 });
+  });
+
+  it("R1-F2: accessor properties and non-plain objects are rejected before validation", async () => {
+    const prism = await ready();
+    await prism.identify("user_json");
+    // Accessor property — strict JSON policy rejects accessors.
+    const accessor: Record<string, unknown> = {};
+    Object.defineProperty(accessor, "method", {
+      get: () => "email",
+      enumerable: true,
+    });
+    expect(() => prism.events.signUp(accessor as never)).toThrow(
+      /not JSON-safe \(accessor\)/,
+    );
+    // Non-plain object (Date) — rejected before any field is read.
+    expect(() => prism.events.signUp(new Date() as never)).toThrow(
+      /not JSON-safe \(non-plain-object\)/,
+    );
+    // Nested undefined — rejected by the shared strict JSON validator.
+    expect(() =>
+      prism.events.logout({ reasonCode: undefined } as never),
+    ).toThrow(/not JSON-safe \(invalid-value\)/);
+    await prism.shutdown({ timeoutMs: 50 });
+  });
+
+  it("R1-F2: a failed capture never mutates the queue (rejection before enqueue)", async () => {
+    const bodies: string[] = [];
+    const runtime = fakeRuntime();
+    runtime.transport.post = async (_url, req) => {
+      bodies.push(req.body);
+      return { status: 200, headers: {}, text: async () => "" };
+    };
+    const prism = await ready({ runtime });
+    // One valid event queued as the baseline.
+    expect(prism.events.search({ category: "docs" }).status).toBe("queued");
+    await prism.flush();
+    bodies.length = 0;
+    // Every failing capture leaves the queue exactly where it was.
+    expect(() => prism.events.signUp({ method: "BAD" })).toThrow();
+    expect(() => prism.events.purchase({ transactionId: "txn_01", valueMinor: -1, currency: "USD" } as never)).toThrow();
+    expect(() => prism.events.signUp({ method: "email", extra: true } as never)).toThrow();
+    await prism.flush();
+    expect(bodies).toEqual([]);
+    await prism.shutdown({ timeoutMs: 50 });
+  });
 });

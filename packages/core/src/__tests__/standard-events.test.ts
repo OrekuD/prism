@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  STANDARD_EVENT_BY_KEY,
-  STANDARD_EVENT_BY_PROTECTED_NAME,
-  STANDARD_EVENT_BY_SDK_METHOD,
   STANDARD_EVENT_DEFINITIONS,
   STANDARD_EVENT_LIMITS,
+  standardEventDefinitionForKey,
+  standardEventDefinitionForProtectedName,
+  standardEventDefinitionForSdkMethod,
   validateStandardEventData,
   validateStandardEventProperties,
 } from "../standard-events";
@@ -96,15 +96,15 @@ describe("Task 19 slice 1 — registry, types, schemas", () => {
       if (["sign_up", "login", "logout"].includes(def.key)) expect(def.requiresUser).toBe(true);
       else expect(def.requiresUser).toBe(false);
     }
-    // Maps agree with array
-    expect(STANDARD_EVENT_BY_KEY.size).toBe(25);
-    expect(STANDARD_EVENT_BY_PROTECTED_NAME.size).toBe(25);
-    expect(STANDARD_EVENT_BY_SDK_METHOD.size).toBe(25);
+    // Lookup functions agree with the array (R1-F4: maps are private)
     for (const def of STANDARD_EVENT_DEFINITIONS) {
-      expect(STANDARD_EVENT_BY_KEY.get(def.key as never)).toEqual(def);
-      expect(STANDARD_EVENT_BY_PROTECTED_NAME.get(def.protectedName)).toEqual(def);
-      expect(STANDARD_EVENT_BY_SDK_METHOD.get(def.sdkMethod)).toEqual(def);
+      expect(standardEventDefinitionForKey(def.key)).toEqual(def);
+      expect(standardEventDefinitionForProtectedName(def.protectedName)).toEqual(def);
+      expect(standardEventDefinitionForSdkMethod(def.sdkMethod)).toEqual(def);
     }
+    expect(standardEventDefinitionForKey("not_a_key" as never)).toBeNull();
+    expect(standardEventDefinitionForProtectedName("$prism_not_there")).toBeNull();
+    expect(standardEventDefinitionForSdkMethod("notAMethod")).toBeNull();
     // Every validator keyed — validateStandardEventData covers all
     for (const def of STANDARD_EVENT_DEFINITIONS) {
       const fixture = VALID_FIXTURES[def.key];
@@ -270,5 +270,38 @@ describe("Task 19 slice 1 — registry, types, schemas", () => {
         $standard: { schemaVersion: 1, key: "subscription_cancelled", data: { subscriptionId: "sub_01", planId: "pro_monthly", effectiveAtMs: Number.MAX_SAFE_INTEGER + 1 } },
       }).ok,
     ).toBe(false);
+  });
+
+  it("R1-F4: the registry is immutable at runtime, not just at type level", () => {
+    // The exported surface is frozen: array, definitions, and limits.
+    expect(Object.isFrozen(STANDARD_EVENT_DEFINITIONS)).toBe(true);
+    expect(Object.isFrozen(STANDARD_EVENT_LIMITS)).toBe(true);
+    for (const def of STANDARD_EVENT_DEFINITIONS) {
+      expect(Object.isFrozen(def)).toBe(true);
+    }
+    // Attempted mutation of a definition throws (strict mode) ...
+    const def = standardEventDefinitionForProtectedName("$prism_sign_up");
+    expect(def).not.toBeNull();
+    expect(() => {
+      (def as { protectedName: string }).protectedName = "$prism_evil";
+    }).toThrow();
+    expect(() => {
+      (STANDARD_EVENT_LIMITS as { schemaVersion: number }).schemaVersion = 2;
+    }).toThrow();
+    expect(() => {
+      (STANDARD_EVENT_DEFINITIONS as unknown as unknown[]).push({});
+    }).toThrow();
+    // ... and helper behavior is unchanged after every attempt.
+    expect(def?.protectedName).toBe("$prism_sign_up");
+    expect(STANDARD_EVENT_LIMITS.schemaVersion).toBe(1);
+    expect(STANDARD_EVENT_DEFINITIONS).toHaveLength(25);
+    expect(
+      validateStandardEventProperties("$prism_sign_up", {
+        $standard: { schemaVersion: 1, key: "sign_up", data: { method: "email" } },
+      }).ok,
+    ).toBe(true);
+    // Lookup functions hand out the same frozen objects — no mutable Maps
+    // are exported, so there is no set/delete/clear surface at all.
+    expect(standardEventDefinitionForKey("sign_up")).toBe(def);
   });
 });
