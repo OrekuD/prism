@@ -191,107 +191,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 				</Link>
 			</div>
 
-			<div className="px-3 pb-3">
-				<DropdownMenu>
-					<DropdownMenuTrigger asChild>
-						<button
-							type="button"
-							aria-haspopup="menu"
-							title="Switch workspace"
-							className="flex h-[34px] w-full items-center gap-2 rounded-[2px] border border-border bg-surface px-2.5 text-[13px] font-medium transition-colors hover:bg-surface-hover"
-						>
-							<span className="flex-1 truncate text-left">
-								{workspacesPending ? (
-									<span
-										className="inline-block h-[13px] w-28 animate-pulse rounded-[2px] bg-surface-raised"
-										aria-hidden="true"
-									/>
-								) : (
-									(workspaceName ?? "Select a workspace")
-								)}
-							</span>
-							<I.IconChevronDown />
-						</button>
-					</DropdownMenuTrigger>
-					<DropdownMenuContent
-						align="start"
-						side="bottom"
-						sideOffset={8}
-						className="w-(--radix-dropdown-menu-trigger-width)"
-					>
-						<DropdownMenuLabel>Workspaces</DropdownMenuLabel>
-						{allWorkspaces.length === 0 ? (
-							<div className="px-2 py-1.5 text-[13px] text-text-subtle">
-								No workspaces yet.
-							</div>
-						) : (
-							allWorkspaces.map((ws) => (
-								<DropdownMenuItem
-									key={ws.id}
-									className="gap-2"
-									onClick={() => {
-										if (ws.slug !== wrkSlug) {
-											setSelectedWorkspaceSlug(ws.slug);
-											navigate(`/workspace/${ws.slug}/overview`);
-										}
-									}}
-								>
-									<span className="flex-1 truncate">{ws.name}</span>
-									{(
-										selectedId
-											? selectedId === ws.id
-											: activeWorkspaceId === ws.id
-									) ? (
-										<Check className="size-3.5 text-accent" />
-									) : null}
-								</DropdownMenuItem>
-							))
-						)}
-						<DropdownMenuSeparator />
-						<DropdownMenuItem
-							className="gap-2"
-							onClick={() => setNewWorkspaceOpen(true)}
-						>
-							<Plus className="size-4" />
-							<span className="flex-1">New workspace</span>
-						</DropdownMenuItem>
-					</DropdownMenuContent>
-				</DropdownMenu>
-				<CreateWorkspaceDialog
-					open={newWorkspaceOpen}
-					onOpenChange={setNewWorkspaceOpen}
-				/>
-			</div>
-
 			<nav className="flex flex-1 flex-col gap-3 overflow-y-auto px-3 pb-4">
-				<div className="flex flex-col gap-0.5">
-					<div className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
-						Workspace
-					</div>
-					<Active
-						to={`/workspace/${wrkSlug}/overview`}
-						label="Workspace overview"
-						icon={<I.IconGrid />}
-						end
-					/>
-					<Active
-						to={`/workspace/${wrkSlug}/projects`}
-						end
-						label="Projects"
-						icon={<I.IconFolder />}
-					/>
-					<Active
-						to={`/workspace/${wrkSlug}/members`}
-						label="Members"
-						icon={<I.IconUsers />}
-					/>
-					<Active
-						to={`/workspace/${wrkSlug}/settings`}
-						label="Settings"
-						icon={<I.IconSettings />}
-					/>
-				</div>
-
 				<div className="flex flex-col gap-0.5">
 					<div className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
 						Project
@@ -457,6 +357,103 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 						/>
 					</div>
 				) : null}
+
+				<div className="flex flex-col gap-0.5 border-t border-border pt-2.5">
+					<div className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
+						Workspace
+					</div>
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<button
+								type="button"
+								aria-haspopup="menu"
+								title="Switch workspace"
+								className="mb-2 flex h-[34px] w-full items-center gap-2 rounded-[2px] border border-border bg-surface px-2.5 text-[13px] font-medium transition-colors hover:bg-surface-hover"
+							>
+								<span className="flex-1 truncate text-left">
+									{workspacesPending ? (
+										<span
+											className="inline-block h-[13px] w-28 animate-pulse rounded-[2px] bg-surface-raised"
+											aria-hidden="true"
+										/>
+									) : (
+										(workspaceName ?? "Select a workspace")
+									)}
+								</span>
+								<I.IconChevronDown />
+							</button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent
+							align="start"
+							side="bottom"
+							sideOffset={8}
+							className="w-(--radix-dropdown-menu-trigger-width)"
+						>
+							<DropdownMenuLabel>Workspaces</DropdownMenuLabel>
+							{allWorkspaces.length === 0 ? (
+								<div className="px-2 py-1.5 text-[13px] text-text-subtle">
+									No workspaces yet.
+								</div>
+							) : (
+								allWorkspaces.map((ws) => (
+									<DropdownMenuItem
+										key={ws.id}
+										className="gap-2"
+										onClick={() => {
+											if (ws.slug !== wrkSlug) {
+												setSelectedWorkspaceSlug(ws.slug);
+												navigate(`/workspace/${ws.slug}/overview`);
+											}
+										}}
+									>
+										<span className="flex-1 truncate">{ws.name}</span>
+										{(
+											selectedId
+												? selectedId === ws.id
+												: activeWorkspaceId === ws.id
+										) ? (
+											<Check className="size-3.5 text-accent" />
+										) : null}
+									</DropdownMenuItem>
+								))
+							)}
+							<DropdownMenuSeparator />
+							<DropdownMenuItem
+								className="gap-2"
+								onClick={() => setNewWorkspaceOpen(true)}
+							>
+								<Plus className="size-4" />
+								<span className="flex-1">New workspace</span>
+							</DropdownMenuItem>
+						</DropdownMenuContent>
+					</DropdownMenu>
+					<CreateWorkspaceDialog
+						open={newWorkspaceOpen}
+						onOpenChange={setNewWorkspaceOpen}
+					/>
+					<Active
+						to={`/workspace/${wrkSlug}/overview`}
+						label="Workspace overview"
+						icon={<I.IconGrid />}
+						end
+					/>
+					<Active
+						to={`/workspace/${wrkSlug}/projects`}
+						end
+						label="Projects"
+						icon={<I.IconFolder />}
+					/>
+					<Active
+						to={`/workspace/${wrkSlug}/members`}
+						label="Members"
+						icon={<I.IconUsers />}
+					/>
+					<Active
+						to={`/workspace/${wrkSlug}/settings`}
+						label="Settings"
+						icon={<I.IconSettings />}
+					/>
+				</div>
 			</nav>
 
 			<div className="flex flex-col gap-0.5 border-t border-border px-3 pb-3.5 pt-2.5">
