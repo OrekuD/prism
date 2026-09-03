@@ -73,8 +73,10 @@ export function ProjectSummary() {
             id: "events",
             label: "Events",
             icon: "events",
-            value: eventsFact?.value ?? 0,
-            unit: "logged · 7d",
+            // Failed reads render unavailable, never a synthesized zero
+            // (R3-F6). A server-returned zero still renders as zero.
+            value: metricsQuery.isError ? null : (eventsFact?.value ?? null),
+            unit: metricsQuery.isError ? "unavailable" : "logged · 7d",
           },
           ...(showErrorCells
             ? [

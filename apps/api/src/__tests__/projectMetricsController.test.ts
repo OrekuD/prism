@@ -187,4 +187,115 @@ describe("GET /projects/:slug/metrics", () => {
     };
     expect(result.__status).toBe(503);
   });
+
+  it("never widens an unknown-only source filter to all data (R3-F1)", async () => {
+    type Body = {
+      queryContextToken: string;
+      queryContext: { sourceIds: string[] };
+      facts: Array<{ metricId: string; value: number | null }>;
+    };
+    const call = async (query: Record<string, string>) =>
+      (
+        (await ProjectsController.getMetrics(ctxFor(USER_ID, query))) as {
+          __json?: Body;
+          __status?: number;
+        }
+      ).__json;
+    // Unknown-only: successful zeros over the empty scope, with a token
+    // bound to that same empty scope (indistinguishable from nothing —
+    // because the scope really is nothing).
+    const narrowed = await call({
+      ids: "project.accepted_events",
+      range: "7d",
+      sourceId: "src_unknown",
+    });
+    expect(
+      narrowed?.facts.find(
+        (fact) => fact.metricId === "project.accepted_events",
+      )?.value,
+    ).toBe(0);
+    expect(narrowed?.queryContext.sourceIds).toEqual([]);
+    const verified = await verifyQueryContextToken(
+      narrowed?.queryContextToken ?? "",
+      {
+        keys: { k1: SIGNING_KEY },
+        projectId: PROJECT_ID,
+        organizationId: ORG_ID,
+        allowedSourceIds: [],
+      },
+    );
+    expect(verified.ok).toBe(true);
+    // Known-plus-unknown narrows to the known source.
+    const mixed = await call({
+      ids: "project.accepted_events",
+      range: "7d",
+      sourceId: "src_web_1",
+    });
+    expect(
+      mixed?.facts.find((fact) => fact.metricId === "project.accepted_events")
+        ?.value,
+    ).toBe(1);
+  });
+
+  it("rejects unbounded source requests (R3-F1)", async () => {
+    const oversized = ctxFor(USER_ID, {
+      ids: "project.accepted_events",
+      range: "7d",
+      sourceId: "x".repeat(129),
+    });
+    expect(
+      (
+        (await ProjectsController.getMetrics(oversized)) as {
+          __status?: number;
+        }
+      ).__status,
+    ).toBe(400);
+    // 65 repeat sourceId params exceed the 64-source contract maximum.
+    const crowded = ctxFor(USER_ID, {
+      ids: "project.accepted_events",
+      range: "7d",
+    });
+    const queries = (crowded as unknown as { req: { queries: unknown } }).req
+      .queries as unknown as ReturnType<typeof vi.fn>;
+    queries.mockImplementation((key: string) =>
+      key === "sourceId" ? new Array(65).fill("s") : [],
+    );
+    expect(
+      ((await ProjectsController.getMetrics(crowded)) as { __status?: number })
+        .__status,
+    ).toBe(400);
+  });
+
+  it("scopes error configuration to this project's sources (R3-F2)", async () => {
+    type Body = {
+      facts: Array<{ metricId: string; value: number | null }>;
+    };
+    const errorValue = async () =>
+      (
+        (await ProjectsController.getMetrics(
+          ctxFor(USER_ID, { ids: "errors.unresolved_issues", range: "7d" }),
+        )) as { __json?: Body }
+      ).__json?.facts.find(
+        (fact) => fact.metricId === "errors.unresolved_issues",
+      )?.value;
+    const settings = (sourceId: string, mode: string) =>
+      analytics.execute({
+        sql: `INSERT INTO source_error_settings
+              (source_id, mode, capture_global_errors, breadcrumbs_enabled, sampling_rate, release, updated_at)
+              VALUES (?, ?, 0, 0, 100, NULL, ?)`,
+        args: [sourceId, mode, Date.now()],
+      });
+    // A foreign project's opt-in never configures this project.
+    await settings("src_foreign", "all");
+    expect(await errorValue()).toBeNull();
+    // An explicit off on the project's own source also leaves it unconfigured.
+    await settings("src_web_1", "off");
+    expect(await errorValue()).toBeNull();
+    // Enabling the project's own source flips to supported zeros.
+    await analytics.execute({
+      sql: `UPDATE source_error_settings SET mode = 'manual' WHERE source_id = 'src_web_1'`,
+      args: [],
+    });
+    expect(await errorValue()).toBe(0);
+  });
 });

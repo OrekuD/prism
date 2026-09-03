@@ -1203,6 +1203,14 @@ const ArtifactBaseSchema = z.strictObject({
 });
 
 /** Bound every list/series before it can enter model context or the UI. */
+/**
+ * Maximum currency rows for one Standard Event value read (R3-F4). Currency
+ * cardinality is tiny in practice; the bound keeps a multi-currency metric
+ * from overflowing the 27-fact resource maximum. Overflow is deterministic
+ * (currency ASC) with a coverage warning — never silent truncation.
+ */
+export const MAX_CURRENCY_ROWS = 10;
+
 export const ARTIFACT_LIMITS = deepFreeze({
   maxSeries: 3,
   maxSeriesPoints: 93,

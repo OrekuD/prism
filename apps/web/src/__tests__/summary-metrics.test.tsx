@@ -161,4 +161,51 @@ describe("ProjectSummary canonical metrics", () => {
     // no zero-valued error cells beside the setup note
     expect(screen.queryByText("Unresolved")).toBeNull();
   });
+
+  it("renders unavailable cells, never zeros, when the request fails", async () => {
+    getMock.mockImplementation(async (url: string) => {
+      if (String(url).includes("/metrics")) {
+        throw new Error("network failure");
+      }
+      return { data: projectDetail, status: 200 };
+    });
+    renderSummary();
+    await screen.findByText(/could not load canonical metrics/i);
+    // the Events cell is explicitly unavailable — not a synthesized zero
+    expect(await screen.findByLabelText("Events unavailable")).toBeDefined();
+  });
+
+  it("renders a server-returned zero as zero", async () => {
+    getMock.mockImplementation(async (url: string) => {
+      if (String(url).includes("/metrics")) {
+        return {
+          data: {
+            queryContext: {
+              from: 1,
+              to: 2,
+              compareFrom: 0,
+              compareTo: 1,
+              asOf: 2,
+              timezone: "UTC",
+              sourceIds: [],
+              definitionVersion: 1,
+            },
+            queryContextToken: "opaque-token",
+            facts: [
+              metricFact("project.accepted_events", 0),
+              metricFact("errors.unresolved_issues", 0),
+              metricFact("errors.occurrences", 0),
+            ],
+          },
+        };
+      }
+      return { data: projectDetail, status: 200 };
+    });
+    renderSummary();
+    // successful zeros render; the unavailable marker stays absent
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Events unavailable")).toBeNull();
+    });
+    expect(screen.queryByText("Unresolved")).toBeDefined();
+  });
 });

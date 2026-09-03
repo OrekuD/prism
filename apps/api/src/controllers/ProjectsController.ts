@@ -48,6 +48,7 @@ import {
 import { issueQueryContextToken } from "../utils/queryContextToken";
 import {
 	METRIC_REGISTRY,
+	ProjectMetricsResourceSchema,
 	StandardEventKeySchema,
 	type MetricFact,
 } from "@prism-analytics/types";
@@ -696,10 +697,20 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
 
     // Bounded shared filters; per-metric support is enforced by the
     // service against the registry (unsupported = 400, never silent).
+    // Overlong values are rejected, never truncated into a different
+    // filter (R3-F1).
     const filters: MetricFilters = {};
-    const sourceIdParams = (ctx.req.queries("sourceId") ?? []).map((v) =>
-      v.slice(0, 128),
-    );
+    const sourceIdParams = ctx.req.queries("sourceId") ?? [];
+    for (const id of sourceIdParams) {
+      if (id.length === 0 || id.length > 128) {
+        return ctx.json(new ErrorResponse("invalid_filter").toJSON(), 400);
+      }
+    }
+    // The 64-source contract maximum applies to the raw request size —
+    // before dedupe — so unbounded requests fail deterministically.
+    if (sourceIdParams.length > 64) {
+      return ctx.json(new ErrorResponse("invalid_filter").toJSON(), 400);
+    }
     const standardEventKey = ctx.req.query("standardEventKey");
     if (standardEventKey !== undefined) {
       if (!StandardEventKeySchema.safeParse(standardEventKey).success) {
@@ -722,11 +733,26 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
       filters.os = os;
     }
     const release = ctx.req.query("release");
-    if (release !== undefined) filters.release = release.slice(0, 64);
+    if (release !== undefined) {
+      if (release.length === 0 || release.length > 64) {
+        return ctx.json(new ErrorResponse("invalid_filter").toJSON(), 400);
+      }
+      filters.release = release;
+    }
     const host = ctx.req.query("host");
-    if (host !== undefined && host.length > 0) filters.host = host.slice(0, 253);
+    if (host !== undefined && host.length > 0) {
+      if (host.length > 253) {
+        return ctx.json(new ErrorResponse("invalid_filter").toJSON(), 400);
+      }
+      filters.host = host;
+    }
     const path = ctx.req.query("path");
-    if (path !== undefined && path.length > 0) filters.path = path.slice(0, 2048);
+    if (path !== undefined && path.length > 0) {
+      if (path.length > 2048) {
+        return ctx.json(new ErrorResponse("invalid_filter").toJSON(), 400);
+      }
+      filters.path = path;
+    }
     const platform = ctx.req.query("platform");
     if (platform !== undefined) {
       if (
@@ -741,7 +767,12 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
       filters.platform = platform;
     }
     const environment = ctx.req.query("environment");
-    if (environment !== undefined) filters.environment = environment.slice(0, 64);
+    if (environment !== undefined) {
+      if (environment.length === 0 || environment.length > 64) {
+        return ctx.json(new ErrorResponse("invalid_filter").toJSON(), 400);
+      }
+      filters.environment = environment;
+    }
     const currency = ctx.req.query("currency");
     if (currency !== undefined) {
       if (!/^[A-Z]{3}$/.test(currency)) {
@@ -793,11 +824,21 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
         },
       ]),
     );
-    const errorSettings = await analytics.execute({
-      sql: `SELECT 1 AS n FROM source_error_settings
-            WHERE mode != 'off' LIMIT 1`,
-      args: [],
-    });
+    // Error-collection intent scoped to THIS project's sources (R3-F2):
+    // the settings table is keyed by source_id with no project column, so
+    // an unscoped read would let any project's opt-in configure every
+    // project. No sources means no configuration (never an `IN ()`).
+    const projectSourceIds = sourceRows.map((row) => String(row.id));
+    const errorSettings =
+      projectSourceIds.length === 0
+        ? { rows: [] as Array<Record<string, unknown>> }
+        : await analytics.execute({
+            sql: `SELECT 1 AS n FROM source_error_settings
+                  WHERE mode != 'off'
+                    AND source_id IN (${projectSourceIds.map(() => "?").join(",")})
+                  LIMIT 1`,
+            args: projectSourceIds,
+          });
     const errorObserved = await analytics.execute({
       sql: "SELECT 1 AS n FROM error_occurrences WHERE project_id = ? LIMIT 1",
       args: [projectId],
@@ -879,20 +920,22 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
       { kid, secret: signingKey },
       window.asOf,
     );
-    return ctx.json({
-      queryContext: {
-        from: window.from,
-        to: window.to,
-        compareFrom: window.compareFrom,
-        compareTo: window.compareTo,
-        asOf: window.asOf,
-        timezone: "UTC",
-        sourceIds,
-        definitionVersion: 1,
-      },
-      queryContextToken,
-      facts,
-    });
+    return ctx.json(
+      ProjectMetricsResourceSchema.parse({
+        queryContext: {
+          from: window.from,
+          to: window.to,
+          compareFrom: window.compareFrom,
+          compareTo: window.compareTo,
+          asOf: window.asOf,
+          timezone: "UTC",
+          sourceIds,
+          definitionVersion: 1,
+        },
+        queryContextToken,
+        facts,
+      }),
+    );
   }
 
   public static async getProjectBySlug(ctx: Context<HonoConfig>) {

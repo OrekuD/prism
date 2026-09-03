@@ -1,7 +1,9 @@
+import { z } from "zod";
 import {
   areQueryContextsEqual,
   compareValues,
   DEFINITION_VERSION,
+  MAX_CURRENCY_ROWS,
   METRIC_IDS,
   METRIC_REGISTRY,
   queryContextFingerprint,
@@ -131,6 +133,68 @@ const FILTER_KEYS = [
   "currency",
 ] as const;
 
+/**
+ * Strict metric-query schema at the service boundary (R3-F1). Every value
+ * is bounded and validated even when the caller is an internal agent tool:
+ * source IDs are capped at the public/token contract limit of 64 with no
+ * duplicates, enums are exact, and unknown keys are rejected (strict
+ * object) rather than silently ignored by structural typing.
+ */
+const MetricFiltersSchema = z.strictObject({
+  sourceIds: z
+    .array(z.string().min(1).max(128))
+    .max(64)
+    .refine((ids) => new Set(ids).size === ids.length, {
+      message: "sourceIds must not contain duplicates",
+    })
+    .optional(),
+  standardEventKey: StandardEventKeySchema.optional(),
+  traffic: z.enum(["human", "all"]).optional(),
+  os: z.enum(["ios", "android"]).optional(),
+  release: z.string().min(1).max(64).optional(),
+  host: z.string().min(1).max(253).optional(),
+  path: z.string().min(1).max(2048).optional(),
+  platform: z
+    .enum(["web", "ios", "android", "react-native", "server"])
+    .optional(),
+  environment: z.string().min(1).max(64).optional(),
+  currency: z
+    .string()
+    .regex(/^[A-Z]{3}$/, "Currency must be an ISO 4217 code")
+    .optional(),
+});
+
+export const MetricRequestSchema = z.strictObject({
+  metricId: z.enum(METRIC_IDS),
+  filters: MetricFiltersSchema.optional(),
+});
+
+/** Parse an untrusted metric request (HTTP or future agent tool). */
+export function parseMetricRequest(raw: unknown): {
+  metricId: MetricId;
+  filters: MetricFilters;
+} {
+  const parsed = MetricRequestSchema.safeParse(raw ?? {});
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    if (issue && issue.path.join(".") === "metricId") {
+      throw new MetricQueryError(
+        "unknown-metric",
+        `Unknown metric: ${String((raw as { metricId?: unknown })?.metricId)}`,
+      );
+    }
+    const detail = parsed.error.issues
+      .map((entry) => `${entry.path.join(".") || "request"}: ${entry.message}`)
+      .join("; ")
+      .slice(0, 280);
+    throw new MetricQueryError(
+      "invalid-filter",
+      `Invalid metric query: ${detail}`,
+    );
+  }
+  return { metricId: parsed.data.metricId, filters: parsed.data.filters ?? {} };
+}
+
 /** Registry filter kinds each request key satisfies. */
 const FILTER_KIND: Record<(typeof FILTER_KEYS)[number], string> = {
   sourceIds: "source_ids",
@@ -154,22 +218,11 @@ export function validateMetricRequest(request: MetricRequest): {
   metricId: MetricId;
   filters: MetricFilters;
 } {
-  if (!(METRIC_IDS as readonly string[]).includes(request.metricId)) {
-    throw new MetricQueryError(
-      "unknown-metric",
-      `Unknown metric: ${request.metricId}`,
-    );
-  }
-  const metricId = request.metricId as MetricId;
+  // Strict value validation first (bounds, enums, duplicates, unknown
+  // keys), then registry support checks per metric.
+  const { metricId, filters } = parseMetricRequest(request);
   const definition = METRIC_REGISTRY[metricId];
-  const filters = request.filters ?? {};
   for (const key of Object.keys(filters) as Array<keyof MetricFilters>) {
-    if (!FILTER_KEYS.includes(key)) {
-      throw new MetricQueryError(
-        "invalid-filter",
-        `Unknown filter: ${String(key)}`,
-      );
-    }
     const value = filters[key];
     if (value === undefined) continue;
     if (!definition.supportedFilters.includes(FILTER_KIND[key] as never)) {
@@ -189,39 +242,6 @@ export function validateMetricRequest(request: MetricRequest): {
         `Metric ${metricId} requires filter ${definition.requiresFilter}`,
       );
     }
-  }
-  const standardEventKey = filters.standardEventKey;
-  if (standardEventKey !== undefined) {
-    const parsed = StandardEventKeySchema.safeParse(standardEventKey);
-    if (!parsed.success) {
-      throw new MetricQueryError(
-        "invalid-filter",
-        "Unknown Standard Event key",
-      );
-    }
-  }
-  if (filters.currency !== undefined && !/^[A-Z]{3}$/.test(filters.currency)) {
-    throw new MetricQueryError(
-      "invalid-filter",
-      "Currency must be an ISO 4217 code",
-    );
-  }
-  if (
-    filters.traffic !== undefined &&
-    filters.traffic !== "human" &&
-    filters.traffic !== "all"
-  ) {
-    throw new MetricQueryError(
-      "invalid-filter",
-      "Traffic must be human or all",
-    );
-  }
-  if (
-    filters.os !== undefined &&
-    filters.os !== "ios" &&
-    filters.os !== "android"
-  ) {
-    throw new MetricQueryError("invalid-filter", "OS must be ios or android");
   }
   return { metricId, filters };
 }
@@ -389,6 +409,13 @@ export function capabilityShortfall(
 const SNAPSHOT_CACHE_TTL_MS = 60_000;
 const SNAPSHOT_CACHE_MAX_ENTRIES = 500;
 
+/**
+ * Freshness boundary for current-only facts (R3-F5): snapshots at least
+ * this far behind measurement time are historical, and status-derived
+ * facts carry an explicit caveat instead of posing as frozen history.
+ */
+export const HISTORICAL_SNAPSHOT_SKEW_MS = 60_000;
+
 type CacheEntry = { expiresAt: number; facts: MetricFact[] };
 const snapshotCache = new Map<string, CacheEntry>();
 
@@ -401,12 +428,25 @@ function cacheKey(
   queryContext: PublicQueryContext,
   metricId: MetricId,
   filters: MetricFilters,
+  capabilities: ProjectCapabilities,
 ): string {
+  // Capabilities join the key (R3-F2): configuring error collection (or any
+  // collection) must never serve a stale unsupported fact for 60 seconds.
+  const caps = [
+    capabilities.web ? 1 : 0,
+    capabilities.mobile ? 1 : 0,
+    capabilities.server ? 1 : 0,
+    capabilities.errorCollection.configured ? 1 : 0,
+    capabilities.errorCollection.observed ? 1 : 0,
+    capabilities.sources.active,
+    capabilities.standardEventsObserved.length,
+  ].join(",");
   return [
     projectId,
     queryContextFingerprint(queryContext),
     metricId,
     JSON.stringify(filters),
+    caps,
   ].join("|");
 }
 
@@ -462,7 +502,12 @@ async function countEvents(
   from: number,
   to: number,
   asOf: number,
-  extra: { sourceIds?: string[]; name?: string; standardKey?: string } = {},
+  extra: {
+    sourceIds?: string[];
+    name?: string;
+    standardKey?: string;
+    currency?: string;
+  } = {},
 ): Promise<number> {
   const { clauses, args } = eventScope(
     projectId,
@@ -485,6 +530,14 @@ async function countEvents(
       `json_extract(events.properties, '$."$standard".schemaVersion') = 1`,
     );
   }
+  if (extra.currency) {
+    // Currency scopes occurrences exactly like values (R3-F4): a
+    // USD-filtered occurrence fact never counts EUR rows.
+    clauses.push(
+      `json_extract(events.properties, '$."$standard".data.currency') = ?`,
+    );
+    args.push(extra.currency);
+  }
   const { rows } = await client.execute({
     sql: `SELECT COUNT(*) AS n FROM events WHERE ${clauses.join(" AND ")}`,
     args,
@@ -492,7 +545,7 @@ async function countEvents(
   return Number(rows[0]?.n ?? 0);
 }
 
-async function countDistinctPeople(
+async function countIdentifiedPeople(
   client: CanonicalClient,
   projectId: string,
   from: number,
@@ -500,12 +553,17 @@ async function countDistinctPeople(
   asOf: number,
   sourceIds?: string[],
 ): Promise<number> {
-  // Identified = holds a developer-supplied external identity. Anonymous-only
-  // subjects (person row without external identity) never count here.
+  // Identified AT THE SNAPSHOT (R3-F3): the event's person holds a
+  // developer-supplied external identity linked at or before `asOf`. A
+  // later identify cannot reclassify this historical fact, and ordinary
+  // anonymous traffic (deterministic `a_*` person IDs, never null) is
+  // excluded by the link check rather than by nullability.
   const { clauses, args } = eventScope(projectId, from, to, asOf, sourceIds);
   clauses.push("events.person_id IS NOT NULL");
   clauses.push(`EXISTS (SELECT 1 FROM external_identities x
-    WHERE x.project_id = events.project_id AND x.person_id = events.person_id)`);
+    WHERE x.project_id = events.project_id AND x.person_id = events.person_id
+      AND x.linked_at <= ?)`);
+  args.push(asOf);
   const { rows } = await client.execute({
     sql: `SELECT COUNT(DISTINCT events.person_id) AS n FROM events WHERE ${clauses.join(" AND ")}`,
     args,
@@ -521,11 +579,18 @@ async function countAnonymousSubjects(
   asOf: number,
   sourceIds?: string[],
 ): Promise<number> {
+  // Anonymous-only subjects AT THE SNAPSHOT: active person IDs with no
+  // external identity linked at or before `asOf`. These are subjects, not
+  // proven unique humans. Events without any person attribution carry no
+  // subject and are excluded (documented, never conflated).
   const { clauses, args } = eventScope(projectId, from, to, asOf, sourceIds);
-  clauses.push("events.person_id IS NULL");
-  clauses.push("events.anonymous_id IS NOT NULL");
+  clauses.push("events.person_id IS NOT NULL");
+  clauses.push(`NOT EXISTS (SELECT 1 FROM external_identities x
+    WHERE x.project_id = events.project_id AND x.person_id = events.person_id
+      AND x.linked_at <= ?)`);
+  args.push(asOf);
   const { rows } = await client.execute({
-    sql: `SELECT COUNT(DISTINCT events.anonymous_id) AS n FROM events WHERE ${clauses.join(" AND ")}`,
+    sql: `SELECT COUNT(DISTINCT events.person_id) AS n FROM events WHERE ${clauses.join(" AND ")}`,
     args,
   });
   return Number(rows[0]?.n ?? 0);
@@ -605,7 +670,9 @@ async function standardPeople(
   args.push(key);
   clauses.push("events.person_id IS NOT NULL");
   clauses.push(`EXISTS (SELECT 1 FROM external_identities x
-    WHERE x.project_id = events.project_id AND x.person_id = events.person_id)`);
+    WHERE x.project_id = events.project_id AND x.person_id = events.person_id
+      AND x.linked_at <= ?)`);
+  args.push(asOf);
   const { rows } = await client.execute({
     sql: `SELECT COUNT(DISTINCT events.person_id) AS n FROM events WHERE ${clauses.join(" AND ")}`,
     args,
@@ -710,7 +777,7 @@ async function errorAffectedIdentities(
   from: number,
   to: number,
   asOf: number,
-  filters: { sourceIds?: string[]; platform?: string } = {},
+  filters: { sourceIds?: string[]; platform?: string; release?: string } = {},
 ): Promise<number> {
   // Exact Task 15 identity definition: distinct anonymous ids in window.
   const clauses = [
@@ -730,6 +797,10 @@ async function errorAffectedIdentities(
   if (filters.platform) {
     clauses.push("platform = ?");
     args.push(filters.platform);
+  }
+  if (filters.release) {
+    clauses.push("release = ?");
+    args.push(filters.release);
   }
   const { rows } = await client.execute({
     sql: `SELECT COUNT(DISTINCT anonymous_id) AS n FROM error_occurrences WHERE ${clauses.join(" AND ")}`,
@@ -771,32 +842,41 @@ export async function errorIssueStateCounts(
   const { rows } = await client.execute({
     sql: `SELECT
             i.status AS status,
-            i.first_seen_at AS first_seen_at,
             i.first_release AS first_release,
             i.last_release AS last_release,
             SUM(CASE WHEN o.occurred_at >= ? AND o.occurred_at < ? AND o.received_at <= ? THEN 1 ELSE 0 END) AS current_n,
-            SUM(CASE WHEN o.occurred_at >= ? AND o.occurred_at < ? AND o.received_at <= ? THEN 1 ELSE 0 END) AS previous_n
+            SUM(CASE WHEN o.occurred_at >= ? AND o.occurred_at < ? AND o.received_at <= ? THEN 1 ELSE 0 END) AS previous_n,
+            MIN(CASE WHEN o.received_at <= ? THEN o.occurred_at END) AS snapshot_first_seen
           FROM error_issues i
           LEFT JOIN error_occurrences o
             ON o.issue_id = i.id AND o.project_id = i.project_id
           WHERE ${issueClauses.join(" AND ")}
-          GROUP BY i.id, i.status, i.first_seen_at, i.first_release, i.last_release`,
-    args: [from, to, asOf, compareFrom, compareTo, asOf, ...scopeArgs],
+          GROUP BY i.id, i.status, i.first_release, i.last_release`,
+    args: [from, to, asOf, compareFrom, compareTo, asOf, asOf, ...scopeArgs],
   });
   let unresolved = 0;
   let fresh = 0;
   let regressing = 0;
   for (const row of rows) {
     const status = String(row.status ?? "");
-    const firstSeen = Number(row.first_seen_at ?? 0);
     const current = Number(row.current_n ?? 0);
     const previous = Number(row.previous_n ?? 0);
-    const isNew = firstSeen >= from && firstSeen < to;
+    // First observed AT THE SNAPSHOT (R3-F5): derived from cutoff-visible
+    // occurrences, never from the projection row that later arrivals keep
+    // updating. An issue with no occurrence visible at `asOf` (late first
+    // receipt, purged history) affects no new/regressing count.
+    const snapshotFirst =
+      row.snapshot_first_seen === null || row.snapshot_first_seen === undefined
+        ? null
+        : Number(row.snapshot_first_seen);
+    const isNew =
+      snapshotFirst !== null && snapshotFirst >= from && snapshotFirst < to;
     if (filter.release) {
       if (isNew && row.first_release !== filter.release) continue;
       if (!isNew && row.last_release !== filter.release) continue;
     }
     if (status === "unresolved") unresolved += 1;
+    if (snapshotFirst === null) continue;
     if (isNew) {
       fresh += 1;
     } else if (previous > 0 && current > previous) {
@@ -1031,6 +1111,44 @@ async function measureOne(
       ),
     ];
   }
+  // Explicit empty source intersection (R3-F1): the caller asked for named
+  // sources and none belong to this project. This is a successful read over
+  // an empty scope — honest zeros, never a widened all-source query. Absent
+  // sourceIds still means all sources. Capability shortfalls win above.
+  if (filters.sourceIds !== undefined && filters.sourceIds.length === 0) {
+    if (metricId === "standard_event.value_by_currency") {
+      // No currency rows exist over an empty scope — except an explicit
+      // currency request, which always yields its one (real zero) fact.
+      if (!filters.currency) return [];
+      return [
+        makeFact({
+          metricId,
+          idSuffix: filters.currency,
+          value: 0,
+          comparison: compareValues(0, 0),
+          queryContext,
+          coverage,
+          coverageNote: "No requested sources belong to this project",
+          drilldown,
+          currency: filters.currency,
+          labelSuffix: filters.currency,
+          requestFilters: filters,
+        }),
+      ];
+    }
+    return [
+      makeFact({
+        metricId,
+        value: 0,
+        comparison: compareValues(0, 0),
+        queryContext,
+        coverage,
+        coverageNote: "No requested sources belong to this project",
+        drilldown,
+        requestFilters: filters,
+      }),
+    ];
+  }
   const sourceIds = filters.sourceIds;
   const w = window;
 
@@ -1096,7 +1214,7 @@ async function measureOne(
       ];
     }
     case "project.active_people": {
-      const current = await countDistinctPeople(
+      const current = await countIdentifiedPeople(
         client,
         projectId,
         w.from,
@@ -1104,7 +1222,7 @@ async function measureOne(
         w.asOf,
         sourceIds,
       );
-      const previous = await countDistinctPeople(
+      const previous = await countIdentifiedPeople(
         client,
         projectId,
         w.compareFrom,
@@ -1182,13 +1300,19 @@ async function measureOne(
       const key = filters.standardEventKey as string;
       const name = protectedNameFor(key);
       if (metricId === "standard_event.occurrences") {
+        const extra = {
+          sourceIds,
+          name,
+          standardKey: key,
+          currency: filters.currency,
+        };
         const current = await countEvents(
           client,
           projectId,
           w.from,
           w.to,
           w.asOf,
-          { sourceIds, name, standardKey: key },
+          extra,
         );
         const previous = await countEvents(
           client,
@@ -1196,7 +1320,7 @@ async function measureOne(
           w.compareFrom,
           w.compareTo,
           w.asOf,
-          { sourceIds, name, standardKey: key },
+          extra,
         );
         return [
           makeFact({
@@ -1256,7 +1380,6 @@ async function measureOne(
         sourceIds,
         filters.currency,
       );
-      if (rows.length === 0) return [];
       const previousRows = await standardValues(
         client,
         projectId,
@@ -1271,24 +1394,47 @@ async function measureOne(
       const previousByCurrency = new Map(
         previousRows.map((row) => [row.currency, row.totalMinor]),
       );
-      return rows.map((row) =>
-        makeFact({
-          metricId,
-          idSuffix: row.currency,
-          value: row.totalMinor,
-          comparison: compareValues(
-            row.totalMinor,
-            previousByCurrency.get(row.currency) ?? 0,
-          ),
-          queryContext,
-          coverage,
-          coverageNote: `${key} value in ${row.currency}; never converted`,
-          drilldown,
-          currency: /^[A-Z]{3}$/.test(row.currency) ? row.currency : undefined,
-          labelSuffix: row.currency,
-          requestFilters: filters,
-        }),
+      // Deterministic union of both windows' currencies (R3-F4): a missing
+      // side reads as zero, so new currencies and complete drops are both
+      // represented. An explicit currency request always yields exactly one
+      // fact after a successful read — including a real zero.
+      const currencies = new Set<string>();
+      if (filters.currency) {
+        currencies.add(filters.currency);
+      } else {
+        for (const row of rows) currencies.add(row.currency);
+        for (const row of previousRows) currencies.add(row.currency);
+      }
+      const ordered = [...currencies].sort();
+      const currentByCurrency = new Map(
+        rows.map((row) => [row.currency, row.totalMinor]),
       );
+      const truncated = ordered.length > MAX_CURRENCY_ROWS;
+      const kept = ordered.slice(0, MAX_CURRENCY_ROWS);
+      return kept.map((currency) => {
+        const total = currentByCurrency.get(currency) ?? 0;
+        const previous = previousByCurrency.get(currency) ?? 0;
+        const warnings =
+          truncated && currency === kept[kept.length - 1]
+            ? [
+                ...coverage.warnings,
+                `Currency rows capped at ${MAX_CURRENCY_ROWS}; remaining currencies omitted`,
+              ]
+            : coverage.warnings;
+        return makeFact({
+          metricId,
+          idSuffix: currency,
+          value: total,
+          comparison: compareValues(total, previous),
+          queryContext,
+          coverage: { ...coverage, warnings: warnings.slice(0, 8) },
+          coverageNote: `${key} value in ${currency}; never converted`,
+          drilldown,
+          currency: /^[A-Z]{3}$/.test(currency) ? currency : undefined,
+          labelSuffix: currency,
+          requestFilters: filters,
+        });
+      });
     }
     case "web.page_views":
     case "web.visitors":
@@ -1623,14 +1769,33 @@ async function measureOne(
           : metricId === "errors.new_issues"
             ? states.fresh
             : states.regressing;
+      // "Currently unresolved" cannot replay history in v1: no timestamped
+      // status transitions exist, so a resolve/reopen after `asOf` moves
+      // this allegedly frozen fact. Fresh snapshots (≈ now) need no caveat;
+      // historical ones carry it as a coverage warning (R3-F5).
+      const now = deps.now ?? Date.now();
+      const staleStatus =
+        metricId === "errors.unresolved_issues" &&
+        w.asOf < now - HISTORICAL_SNAPSHOT_SKEW_MS;
+      const stateCoverage = staleStatus
+        ? {
+            ...coverage,
+            warnings: [
+              ...coverage.warnings,
+              "Reflects current issue status, not the status at the snapshot",
+            ].slice(0, 8),
+          }
+        : coverage;
       return [
         makeFact({
           metricId,
           value,
           comparison: null,
           queryContext,
-          coverage,
-          coverageNote: "Issue state aggregate",
+          coverage: stateCoverage,
+          coverageNote: staleStatus
+            ? "Current issue state; not a historical snapshot"
+            : "Issue state aggregate",
           drilldown,
           requestFilters: filters,
         }),
@@ -1663,7 +1828,13 @@ export async function measureMetrics(
   const facts: MetricFact[] = [];
   for (const request of requests) {
     const { metricId, filters } = validateMetricRequest(request);
-    const key = cacheKey(projectId, queryContext, metricId, filters);
+    const key = cacheKey(
+      projectId,
+      queryContext,
+      metricId,
+      filters,
+      deps.capabilities,
+    );
     const cached = cachedFacts(key, now);
     const cacheHit =
       cached?.every((fact) =>
@@ -1685,5 +1856,39 @@ export async function measureMetrics(
     storeFacts(key, measured, now);
     facts.push(...measured);
   }
-  return facts;
+  return capResponseFacts(facts);
+}
+
+/**
+ * Response-level fact bound (R3-F4): the frozen resource caps at 27 facts
+ * while one value metric can emit up to MAX_CURRENCY_ROWS. Only currency
+ * rows are ever truncated — request order otherwise — deterministically by
+ * currency ASC with the overflow recorded on the kept rows' coverage.
+ */
+export function capResponseFacts(facts: MetricFact[]): MetricFact[] {
+  if (facts.length <= 27) return facts;
+  // Only one metric (per-currency values) emits multi-row facts, and
+  // single-row metrics are bounded by the 27 request IDs — so truncation
+  // only ever touches currency rows. Deterministic by request order, with
+  // the overflow recorded on the kept rows' coverage.
+  const singles = facts.filter((fact) => !fact.id.includes(":"));
+  const multis = facts.filter((fact) => fact.id.includes(":"));
+  const room = Math.max(0, 27 - singles.length);
+  const kept = [...singles, ...multis.slice(0, room)];
+  const dropped = multis
+    .slice(room)
+    .map((fact) => fact.id.split(":").slice(1).join(":"));
+  if (dropped.length === 0) return kept;
+  const note = `Currency rows capped for the 27-fact response bound; omitted ${dropped.sort().join(", ")}`;
+  return kept.map((fact) =>
+    fact.metricId === "standard_event.value_by_currency"
+      ? {
+          ...fact,
+          coverage: {
+            ...fact.coverage,
+            warnings: [...fact.coverage.warnings, note].slice(0, 8),
+          },
+        }
+      : fact,
+  );
 }

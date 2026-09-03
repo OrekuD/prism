@@ -2121,3 +2121,253 @@ facts use the frozen `compareValues` helper.
 - Found and fixed a silent `?`-binding-order bug (placeholders bind
   textually; projectId-first args matched zero rows) — regression test
   included.
+
+## Review feedback - round 3 (Slice 2, 2026-09-03)
+
+Review scope: focused static review of `38d2023` against Task 21's canonical
+metric, snapshot, source-authorization, and dashboard-parity contracts. The
+review followed the production controller into the real identity and error
+schemas and inspected only the new focused tests. The already reported broad
+suite results were not rerun.
+
+Slice 3 should wait until the findings below are resolved. They affect the
+facts that deterministic insights would rank and display, so building insights
+on top of the current values would freeze known accuracy bugs into the next
+contract.
+
+### R3-F1 - An explicit unknown source filter widens to all project data
+
+**Severity:** High
+**Status:** Closed
+
+`ProjectsController.getMetrics()` intersects requested `sourceId` values with
+the project's known sources and correctly produces `filters.sourceIds = []`
+when none match. However, `eventScope()`, the session/error helpers, and the
+Web/Mobile loaders add a source predicate only when `sourceIds.length > 0`.
+Consequently, `?sourceId=unknown` is executed as an unfiltered query and
+returns totals for the whole project. The response token also contains an
+empty source list, making the widened result indistinguishable from an
+intentional all-source request. This contradicts the controller comment that
+an explicit filter resolving to nothing produces empty facts.
+
+The same boundary is not yet fully bounded for future agent callers:
+`validateMetricRequest()` validates only a subset of runtime values, while
+`sourceIds`, `platform`, `release`, `environment`, `host`, and `path` rely
+mostly on TypeScript or controller truncation. The controller also does not
+enforce the public/token contract's 64-source maximum, and token issuance does
+not parse the constructed payload through `TokenPayloadSchema`; a project with
+more than 64 selected sources can therefore receive a token that its verifier
+later rejects as malformed.
+
+**How to address:**
+
+1. [x] Represent **all sources** and **an explicit empty intersection** as
+       different states. Short-circuit an explicit empty intersection to
+       zero/empty facts, or emit a safe `1 = 0` predicate in every owning read
+       model. Never interpret it as no filter.
+2. [x] Add one strict Zod metric-query schema at the service boundary. Bound
+       the source count and each value, reject truncation-based normalization,
+       reject duplicates, and validate every enum/string even when the caller
+       is an internal agent tool.
+3. [x] Parse the token payload at issuance as well as verification and keep its
+       source limit identical to the metric-query and public-context limits.
+4. [x] Add controller plus real-store cases for no source filter, one known
+       source, unknown-only, known-plus-unknown, an empty project, duplicate
+       IDs, oversized IDs, and 65 source IDs. Assert unknown-only returns no
+       project data and the issued token always verifies.
+
+### R3-F2 - Error-collection capability is read across every project
+
+**Severity:** High
+**Status:** Closed
+
+The capability query is currently:
+
+```sql
+SELECT 1 FROM source_error_settings WHERE mode != 'off' LIMIT 1
+```
+
+`source_error_settings` is keyed by `source_id`, but this query is not
+restricted to the current project's source IDs. Enabling error capture for any
+source therefore marks error collection as configured for every project. A
+project with no error setup can then receive supported zero-valued error facts
+instead of the required setup state. This is both cross-project state
+contamination and a dashboard accuracy bug.
+
+**How to address:**
+
+1. [x] Restrict the settings read to the source IDs loaded for the authorized
+       project. Handle a project with no sources without generating an empty
+       `IN ()` clause.
+2. [x] Keep `configured` and `observed` project-scoped independently. Historical
+       error rows may make `observed=true`; another project's configuration
+       must never do so.
+3. [x] Add a two-project regression: project A has an enabled setting, project
+       B has none and no occurrences. B must receive null unsupported error
+       facts and the Sources setup state. Add the inverse and an explicitly
+       `off` target-source case.
+
+### R3-F3 - People metrics do not match Prism's persisted identity model
+
+**Severity:** High
+**Status:** Closed
+
+`countAnonymousSubjects()` requires `events.person_id IS NULL`. Production
+ingestion does not store ordinary anonymous traffic that way:
+`resolveEventPerson()` assigns each anonymous ID a deterministic `a_*` person
+ID. The new test fixtures seed `person_id = NULL`, so they prove a storage shape
+that normal ingestion does not create. On real traffic,
+`project.active_anonymous` will commonly report zero even while the People
+store reports active anonymous-only people.
+
+`countDistinctPeople()` and `standardPeople()` also classify events using any
+external identity that exists now, without considering `linked_at` relative to
+the fact's `asOf`. A later identify can therefore reclassify a historical
+snapshot after the fact.
+
+**How to address:**
+
+1. [x] Derive active anonymous subjects from the same identity rule as Task 20:
+       active person IDs with no external identity at the relevant snapshot.
+       Preserve the product wording that these are subjects, not proven unique
+       humans.
+2. [x] Make identified/anonymous classification explicitly snapshot-aware with
+       `linked_at <= asOf`. Account for ingestion's reassignment of anonymous
+       event history when defining historical behavior; do not assume nullable
+       `person_id` is the anonymous marker.
+3. [x] Replace the synthetic null-person fixture with events produced through
+       the real identity resolver, covering anonymous-only traffic, later
+       identification, two anonymous IDs, cross-source activity, and an
+       external link created after `asOf`.
+4. [x] Assert the canonical People facts and Task 20 summary agree for the same
+       current range and identity state.
+
+### R3-F4 - Standard Event currency facts can return the wrong set and value
+
+**Severity:** High
+**Status:** Closed
+
+The registry allows `currency` on `standard_event.occurrences`, and the fact
+and drill-down retain that filter, but the occurrence SQL never applies it. A
+USD-filtered occurrence fact therefore counts EUR and every other currency as
+well.
+
+`standard_event.value_by_currency` has a second asymmetry: it returns early
+when the current window has no currency rows, and otherwise emits only the
+currencies present in the current window. It drops a prior-only currency
+instead of returning current `0` with a 100% decrease. With an explicit
+currency filter, a user asking for USD can receive no fact at all even when the
+previous period had USD value. Finally, the SQL has no currency-row bound while
+`ProjectMetricsResourceSchema` caps the entire response at 27 facts; one
+multi-currency metric can make the endpoint return a resource that violates
+its frozen schema.
+
+**How to address:**
+
+1. [x] Apply the exact currency predicate to Standard Event occurrence SQL, or
+       remove currency from that metric's supported filters and drill-down
+       contract. The implementation, registry, and Events destination must
+       agree.
+2. [x] Query both periods and emit the deterministic union of their currencies.
+       Use zero for a missing side so new and complete-drop comparisons are
+       both represented. An explicit currency request must always return one
+       fact after a successful read, including a real zero.
+3. [x] Freeze a maximum number of currency rows and a deterministic overflow
+       behavior. Reconcile that bound with the resource-level fact maximum and
+       validate the final response through `ProjectMetricsResourceSchema`
+       before returning it.
+4. [x] Add current-only, previous-only, empty-both with explicit currency,
+       mixed-currency occurrence, overflow, and schema-parse regressions.
+
+### R3-F5 - Error aggregates advertise filters and snapshots they do not honor
+
+**Severity:** High
+**Status:** Closed
+
+Two separate paths currently produce misleading error facts:
+
+- `errors.affected_identities` advertises and records a `release` filter, but
+  `errorAffectedIdentities()` accepts only source IDs and platform. A
+  release-filtered answer therefore counts identities from every release while
+  presenting itself as release-scoped.
+- `errorIssueStateCounts()` reads all current issue rows. It increments
+  unresolved solely from the present `error_issues.status`, and increments new
+  from `first_seen_at`, even when every occurrence for that issue has
+  `received_at > asOf` and both cutoff-aware occurrence sums are zero. A late
+  issue can therefore appear inside an earlier snapshot. Resolving or reopening
+  an issue after `asOf` can also change an allegedly frozen historical fact
+  because no status history is consulted.
+
+**How to address:**
+
+1. [x] Apply every registry-supported filter inside each aggregate, including
+       release for affected identities. Prefer metric-specific validated
+       filter objects so excess properties cannot be silently ignored by
+       structural typing.
+2. [x] Require an issue to have an occurrence visible at `asOf` before it can
+       affect new/regressing counts, and derive first-observed-at-snapshot from
+       cutoff-visible occurrences rather than a projection already updated by
+       later arrivals.
+3. [x] Freeze the semantics of "currently unresolved." If it must replay at a
+       historical `asOf`, persist/query timestamped status transitions. If v1
+       cannot reconstruct that state, mark the fact current-only and do not
+       present it as an immutable historical snapshot.
+4. [x] Add release-separated affected identities, late-received first
+       occurrence, resolve-after-snapshot, reopen-after-snapshot, and zero
+       cutoff-visible occurrence regressions.
+
+### R3-F6 - A failed canonical metric request is rendered as a real zero
+
+**Severity:** Medium
+**Status:** Closed
+
+`summary.tsx` uses `eventsFact?.value ?? 0` (and the same fallback for error
+cells). Loading is masked by the frame skeleton, but after a metrics request
+fails `isLoading` is false and the Events cell renders `0` while the page says
+the canonical metrics are unavailable. That violates the explicit rule that
+errors and unknown values must never masquerade as successful zeros.
+
+**How to address:**
+
+1. [x] Give metric cells an explicit loading/value/unavailable state rather
+       than requiring a numeric fallback.
+2. [x] On query failure, retain the last verified cached fact with a visible
+       stale warning or render an unavailable cell. Never synthesize zero.
+3. [x] Add a rejected-request component test and assert no canonical metric
+       cell renders `0`; retain the existing successful-empty test proving a
+       server-returned zero still renders as zero.
+
+### 2026-09-04 — Slice 2 follow-up: R3 review closed (5 high + 1 medium)
+
+All six R3 findings are implemented and regression-tested; the five
+high-severity items gate Slice 3 per the review.
+
+- R3-F1: explicit empty source intersections short-circuit to honest
+  zeros at the service (absent filter still means all sources); strict
+  `MetricRequestSchema` bounds every value (64 sources max, no
+  duplicates, exact enums, no unknown keys) for HTTP and future agent
+  callers; issuance parses through `TokenPayloadSchema`; controller
+  rejects overlong values (never truncates) and >64 raw source params.
+- R3-F2: error-settings read scoped to the authorized project's source
+  IDs (no sources = unconfigured, never `IN ()`). Bonus catch: the
+  snapshot cache key now includes capabilities, after a test proved a
+  stale unsupported fact survived configuration changes.
+- R3-F3: identified/anonymous classification by external links at `asOf`
+  (`linked_at <= asOf`), matching ingestion's `a_*` person model; seeds
+  use the real resolver hashes; canonical People facts agree with the
+  Task-20 summary for the same identity state.
+- R3-F4: currency predicates on occurrences; current+previous currency
+  union with zero-filled missing sides (explicit currency always yields
+  one fact); `MAX_CURRENCY_ROWS` (10) plus response-level 27-fact cap
+  with deterministic overflow warnings; controller validates the final
+  resource against the frozen schema.
+- R3-F5: release filter on affected identities; snapshot-derived
+  first-observed (late receipts excluded from earlier snapshots);
+  unresolved marked current-only with an explicit warning on historical
+  snapshots.
+- R3-F6: nullable metric cells render an unavailable em dash; failed
+  reads never synthesize zero; server zeros still render as zero.
+
+Evidence: api suite 257 passed, web green except pre-existing gallery
+failure, api/web/core typechecks + api lint clean, types rebuilt, diff
+minimal per-file-convention (no bulk reformats).

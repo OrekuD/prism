@@ -26,7 +26,8 @@ export const QUERY_CONTEXT_TOKEN_CLOCK_SKEW_MS = 60_000;
 /** Maximum accepted window length: catches garbage without capping v1 ranges. */
 export const QUERY_CONTEXT_TOKEN_MAX_WINDOW_MS = 366 * 86_400_000;
 
-const TokenPayloadSchema = z.strictObject({
+/** Exported for issuance-time parsing: what we sign must verify. */
+export const TokenPayloadSchema = z.strictObject({
   v: z.literal(QUERY_CONTEXT_TOKEN_VERSION),
   kid: z.string().min(1).max(64),
   projectId: z.string().min(1).max(128),
@@ -279,6 +280,13 @@ export async function issueQueryContextToken(
     sourceIds: [...input.sourceIds],
     definitionVersion: 1,
   };
+  // Parse what we sign (R3-F1): issuance and verification share the exact
+  // schema and limits, so a project with >64 sources can never receive a
+  // token its own verifier rejects as malformed.
+  const checked = TokenPayloadSchema.safeParse(payload);
+  if (!checked.success) {
+    throw new TypeError("Refusing to issue a token that fails its own schema");
+  }
   const segment = base64UrlEncodeBytes(
     textEncoder.encode(JSON.stringify(payload)),
   );

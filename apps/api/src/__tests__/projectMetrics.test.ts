@@ -5,6 +5,11 @@ import {
   readMigrationFiles,
 } from "../../../analytics-api/src/database/migrations";
 import {
+  personIdForAnonymous,
+  personIdForUser,
+} from "../../../analytics-api/src/utils/identityResolution";
+import { peopleList } from "../utils/peopleStore";
+import {
   MetricFactSchema,
   type MetricFact,
   type ProjectCapabilities,
@@ -96,6 +101,17 @@ const WINDOW: MetricWindow = {
   asOf: NOW,
 };
 
+// Resolver-shaped identities (R3-F3): anonymous traffic carries
+// deterministic `a_*` person IDs exactly as ingestion stores them —
+// `person_id IS NULL` never marks anonymous subjects.
+const P1 = personIdForUser(P, "u1");
+const P2 = personIdForUser(P, "u2");
+const P_NEW = personIdForUser(P, "u_new");
+const A1 = personIdForAnonymous(P, "anon1");
+const AM = personIdForAnonymous(P, "m_anon1");
+const A_LATE = personIdForAnonymous(P, "late");
+const A2 = personIdForAnonymous(P, "anon2");
+
 const CAPABILITIES: ProjectCapabilities = {
   web: true,
   mobile: true,
@@ -140,24 +156,24 @@ beforeAll(async () => {
     id: "e1",
     occurred: FROM,
     session: "s1",
-    person: "p1",
+    person: P1,
     anon: "au1",
   });
-  await seedEvent({ id: "e2", occurred: NOW - 1, session: "s1", person: "p1" });
-  await seedEvent({ id: "e3", occurred: NOW, session: "s1", person: "p1" }); // excluded: to boundary
+  await seedEvent({ id: "e2", occurred: NOW - 1, session: "s1", person: P1 });
+  await seedEvent({ id: "e3", occurred: NOW, session: "s1", person: P1 }); // excluded: to boundary
   await seedEvent({
     id: "e4",
     occurred: FROM + 1000,
     received: NOW + 5000,
-    person: "p1",
+    person: P1,
   }); // excluded: late arrival
-  await seedEvent({ id: "e5", occurred: CFROM, session: "s0", person: "p1" }); // previous window
-  await seedEvent({ id: "e6", project: PX, occurred: FROM + 10, person: "p1" }); // other project
+  await seedEvent({ id: "e5", occurred: CFROM, session: "s0", person: P1 }); // previous window
+  await seedEvent({ id: "e6", project: PX, occurred: FROM + 10, person: P1 }); // other project
   await seedEvent({
     id: "e7",
     occurred: FROM + 2000,
     session: "s2",
-    person: "p1",
+    person: P1,
     source: S,
     platform: "server",
   });
@@ -165,9 +181,28 @@ beforeAll(async () => {
     id: "e8",
     occurred: FROM + 3000,
     session: "s3",
+    person: A1,
     anon: "anon1",
   });
-  await seedEvent({ id: "e9", occurred: CFROM + 100, anon: "anon1" });
+  await seedEvent({
+    id: "e9",
+    occurred: CFROM + 100,
+    person: A1,
+    anon: "anon1",
+  });
+  // Later identification: link lands after the snapshot (see below).
+  await seedEvent({ id: "e10", occurred: FROM + 13000, person: A_LATE });
+  // Second anonymous subject on another source.
+  await seedEvent({
+    id: "e11",
+    occurred: FROM + 14000,
+    person: A2,
+    anon: "anon2",
+    source: S,
+    platform: "server",
+  });
+  // Identified newcomer with real activity (keeps parity honest).
+  await seedEvent({ id: "e12", occurred: FROM + 15000, person: P_NEW });
 
   // --- standard events ---
   const signUp = (
@@ -184,14 +219,14 @@ beforeAll(async () => {
       properties: stdProps("sign_up"),
       ...extra,
     });
-  await signUp("su1", FROM + 4000, "p1");
-  await signUp("su2", FROM + 5000, "p2");
-  await signUp("su3", CFROM + 200, "p1");
+  await signUp("su1", FROM + 4000, P1);
+  await signUp("su2", FROM + 5000, P2);
+  await signUp("su3", CFROM + 200, P1);
   await seedEvent({
     id: "bad1",
     name: "$prism_sign_up",
     occurred: FROM + 9000,
-    person: "p1",
+    person: P1,
     properties: "{}",
   }); // malformed legacy: counts as event, never as sign_up
   const purchase = (
@@ -199,7 +234,7 @@ beforeAll(async () => {
     occurred: number,
     valueMinor: number,
     currency: string,
-    person = "p1",
+    person = P1,
   ) =>
     seedEvent({
       id,
@@ -213,13 +248,14 @@ beforeAll(async () => {
       }),
     });
   await purchase("pu1", FROM + 6000, 1000, "USD");
-  await purchase("pu2", FROM + 7000, 2000, "EUR", "p2");
+  await purchase("pu2", FROM + 7000, 2000, "EUR", P2);
   await purchase("pu3", CFROM + 300, 400, "USD");
+  await purchase("pu4", CFROM + 350, 700, "GBP");
   await seedEvent({
     id: "rf1",
     name: "$prism_refund",
     occurred: FROM + 8000,
-    person: "p1",
+    person: P1,
     properties: stdProps("refund", {
       valueMinor: 500,
       currency: "USD",
@@ -228,24 +264,42 @@ beforeAll(async () => {
     }),
   });
 
-  // --- identity links (no people rows needed: canonical counts are event/link based) ---
+  // --- identity links: resolver-shaped persons, one link after the snapshot ---
   await exec(
-    "INSERT INTO external_identities (project_id, user_id, person_id, linked_at) VALUES (?, ?, ?, ?), (?, ?, ?, ?), (?, ?, ?, ?)",
+    "INSERT INTO external_identities (project_id, user_id, person_id, linked_at) VALUES (?, ?, ?, ?), (?, ?, ?, ?), (?, ?, ?, ?), (?, ?, ?, ?)",
     [
       P,
       "u1",
-      "p1",
+      P1,
       CFROM - 1000,
       P,
       "u2",
-      "p2",
+      P2,
       FROM + 4500,
       P,
       "u_new",
-      "p_new",
+      P_NEW,
       FROM + 5000,
+      P,
+      "u_late",
+      A_LATE,
+      NOW + 5000,
     ],
   );
+
+  // --- people rows for the Task-20 parity check (last_seen mirrors activity) ---
+  const personRow = (personId: string, firstSeen: number, lastSeen: number) =>
+    exec(
+      "INSERT INTO people (person_id, project_id, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?)",
+      [personId, P, firstSeen, lastSeen],
+    );
+  await personRow(P1, CFROM - 1000, NOW - 1);
+  await personRow(P2, FROM + 4500, NOW - 2);
+  await personRow(P_NEW, FROM + 5000, FROM + 15000);
+  await personRow(A1, CFROM + 100, FROM + 3000);
+  await personRow(AM, FROM + 11100, FROM + 12100);
+  await personRow(A_LATE, FROM + 13000, FROM + 13000);
+  await personRow(A2, FROM + 14000, FROM + 14000);
 
   // --- sessions_v2 ---
   const session = (
@@ -282,10 +336,10 @@ beforeAll(async () => {
       person,
       session,
     });
-  await pageView("w1", FROM + 10000, "example.com", "/a", 0, "p1", "s1");
-  await pageView("w2", FROM + 11000, "example.com", "/b", 0, "p1", "s4");
-  await pageView("w3", FROM + 12000, "example.com", "/a", 1, "p2", "s5");
-  await pageView("w0", CFROM + 400, "example.com", "/a", 0, "p1", "s0");
+  await pageView("w1", FROM + 10000, "example.com", "/a", 0, P1, "s1");
+  await pageView("w2", FROM + 11000, "example.com", "/b", 0, P1, "s4");
+  await pageView("w3", FROM + 12000, "example.com", "/a", 1, P2, "s5");
+  await pageView("w0", CFROM + 400, "example.com", "/a", 0, P1, "s0");
   const pv = (
     eventId: string,
     occurred: number,
@@ -335,6 +389,7 @@ beforeAll(async () => {
     name: "$prism_screen_view",
     occurred: FROM + 11100,
     session: "m1",
+    person: AM,
     anon: "m_anon1",
     source: M,
     platform: "react-native",
@@ -344,6 +399,7 @@ beforeAll(async () => {
     name: "$prism_screen_view",
     occurred: FROM + 11200,
     session: "m1",
+    person: AM,
     anon: "m_anon1",
     source: M,
     platform: "react-native",
@@ -353,6 +409,7 @@ beforeAll(async () => {
     name: "$prism_screen_view",
     occurred: FROM + 12100,
     session: "m2",
+    person: AM,
     anon: "m_anon1",
     source: M,
     platform: "react-native",
@@ -494,14 +551,16 @@ beforeAll(async () => {
 describe("canonical event and session aggregates", () => {
   it("counts accepted events with half-open boundaries and snapshot cutoff", async () => {
     const facts = await measure([{ metricId: "project.accepted_events" }]);
-    // e1 e2 e7 e8 su1 su2 pu1 pu2 rf1 bad1 (10) + w1 w2 w3 (3) + se1 se2 se3 (3) = 16.
-    // e3 (to boundary), e4 (late arrival), e5/e9/su3/pu3/w0 (previous), e6 (other project) excluded.
+    // e1 e2 e7 e8 e10 e11 e12 su1 su2 pu1 pu2 rf1 bad1 (13)
+    // + w1 w2 w3 (3) + se1 se2 se3 (3) = 19.
+    // e3 (to boundary), e4 (late arrival), e5/e9/su3/pu3/pu4/w0 (previous),
+    // e6 (other project) excluded.
     const fact = factById(facts, "project.accepted_events");
-    expect(fact.value).toBe(16);
+    expect(fact.value).toBe(19);
     expect(fact.comparison).toMatchObject({
       kind: "percent",
       direction: "up",
-      percent: 220,
+      percent: 216.7,
     });
   });
 
@@ -510,8 +569,8 @@ describe("canonical event and session aggregates", () => {
       { metricId: "project.accepted_events", filters: { sourceIds: [W] } },
     ]);
     const fact = factById(facts, "project.accepted_events");
-    // excludes e7 (server) and se1..se3 (mobile): 16 - 1 - 3 = 12.
-    expect(fact.value).toBe(12);
+    // excludes e7/e11 (server) and se1..se3 (mobile): 19 - 2 - 3 = 14.
+    expect(fact.value).toBe(14);
     expect(fact.filters).toEqual({ sourceId: W });
   });
 
@@ -539,11 +598,11 @@ describe("canonical people aggregates", () => {
   it("counts identified people once across sources", async () => {
     const facts = await measure([{ metricId: "project.active_people" }]);
     const fact = factById(facts, "project.active_people");
-    expect(fact.value).toBe(2); // p1 (web+server), p2 — never double-counted
+    expect(fact.value).toBe(3); // P1 (web+server), P2, P_NEW — never double-counted
     expect(fact.comparison).toMatchObject({
       kind: "percent",
       direction: "up",
-      percent: 100,
+      percent: 200,
     });
   });
 
@@ -557,11 +616,11 @@ describe("canonical people aggregates", () => {
   it("keeps anonymous subjects separate from identified people", async () => {
     const facts = await measure([{ metricId: "project.active_anonymous" }]);
     const fact = factById(facts, "project.active_anonymous");
-    expect(fact.value).toBe(2); // anon1, m_anon1
+    expect(fact.value).toBe(4); // A1, AM, A_LATE, A2 — subjects, not proven humans
     expect(fact.comparison).toMatchObject({
       kind: "percent",
       direction: "up",
-      percent: 100,
+      percent: 300,
     });
   });
 });
@@ -593,6 +652,7 @@ describe("canonical standard event aggregates", () => {
     ]);
     expect(facts.map((fact) => fact.id).sort()).toEqual([
       "standard_event.value_by_currency:EUR",
+      "standard_event.value_by_currency:GBP",
       "standard_event.value_by_currency:USD",
     ]);
     expect(factById(facts, "standard_event.value_by_currency:USD").value).toBe(
@@ -616,6 +676,13 @@ describe("canonical standard event aggregates", () => {
       kind: "percent",
       percent: 150,
     });
+    // Previous-only currency: current zero with a complete drop, not silence.
+    expect(factById(facts, "standard_event.value_by_currency:GBP").value).toBe(
+      0,
+    );
+    expect(
+      factById(facts, "standard_event.value_by_currency:GBP").comparison,
+    ).toMatchObject({ kind: "percent", direction: "down", percent: -100 });
   });
 
   it("narrows value rows by exact currency", async () => {
@@ -813,7 +880,7 @@ describe("parity, caching, and execution discipline", () => {
       now: NOW + 1000,
     });
     expect(executions).toBe(0);
-    expect(replay[0]?.value).toBe(16);
+    expect(replay[0]?.value).toBe(19);
     // A different snapshot re-queries.
     executions = 0;
     await measureMetrics(
@@ -920,7 +987,7 @@ describe("request validation and capability gating", () => {
         metricId: "standard_event.occurrences",
         filters: { standardEventKey: "$prism_sign_up" },
       }),
-    ).toThrowError(/Unknown Standard Event key/);
+    ).toThrowError(/Invalid metric query/);
     expect(() =>
       validateMetricRequest({
         metricId: "standard_event.value_by_currency",
@@ -932,7 +999,41 @@ describe("request validation and capability gating", () => {
         metricId: "web.page_views",
         filters: { bogus: "x" } as never,
       }),
-    ).toThrowError(/Unknown filter/);
+    ).toThrowError(/Unrecognized key/);
+  });
+
+  it("rejects duplicates, oversized IDs, and unbounded requests", () => {
+    expect(() =>
+      validateMetricRequest({
+        metricId: "project.accepted_events",
+        filters: { sourceIds: ["a", "a"] },
+      }),
+    ).toThrowError(/duplicates/);
+    expect(() =>
+      validateMetricRequest({
+        metricId: "project.accepted_events",
+        filters: { sourceIds: new Array(65).fill("s") },
+      }),
+    ).toThrowError(MetricQueryError);
+    expect(() =>
+      validateMetricRequest({
+        metricId: "project.accepted_events",
+        filters: { sourceIds: ["x".repeat(129)] },
+      }),
+    ).toThrowError(MetricQueryError);
+    expect(() =>
+      validateMetricRequest({
+        metricId: "errors.occurrences",
+        filters: { release: "x".repeat(65) },
+      }),
+    ).toThrowError(MetricQueryError);
+    // 64 unique IDs are the documented maximum and validate cleanly.
+    expect(() =>
+      validateMetricRequest({
+        metricId: "project.accepted_events",
+        filters: { sourceIds: new Array(64).fill(0).map((_, i) => `s${i}`) },
+      }),
+    ).not.toThrow();
   });
 
   it("returns explicit unsupported facts when capabilities are missing", async () => {
@@ -958,7 +1059,7 @@ describe("request validation and capability gating", () => {
       WINDOW,
       empty,
     );
-    expect(events[0]?.value).toBe(16);
+    expect(events[0]?.value).toBe(19);
   });
 
   it("resolves capabilities from configured sources", () => {
@@ -1074,5 +1175,362 @@ describe("pure helpers", () => {
       direction: "flat",
       percent: 0,
     });
+  });
+});
+
+describe("explicit empty source scope (R3-F1)", () => {
+  it("returns honest zeros instead of widening to all sources", async () => {
+    const facts = await measure([
+      { metricId: "errors.occurrences", filters: { sourceIds: [] } },
+    ]);
+    const fact = factById(facts, "errors.occurrences");
+    expect(fact.value).toBe(0);
+    expect(fact.comparison).toEqual({
+      kind: "percent",
+      direction: "flat",
+      percent: 0,
+    });
+    expect(fact.coverageNote).toMatch(/No requested sources/);
+  });
+
+  it("keeps explicit-currency value reads single-fact over empty scope", async () => {
+    const one = await measure([
+      {
+        metricId: "standard_event.value_by_currency",
+        filters: {
+          standardEventKey: "purchase",
+          currency: "USD",
+          sourceIds: [],
+        },
+      },
+    ]);
+    expect(one).toHaveLength(1);
+    expect(one[0]?.value).toBe(0);
+    const none = await measure([
+      {
+        metricId: "standard_event.value_by_currency",
+        filters: { standardEventKey: "purchase", sourceIds: [] },
+      },
+    ]);
+    expect(none).toEqual([]);
+  });
+});
+
+describe("snapshot-aware identity (R3-F3)", () => {
+  it("classifies by links at asOf: late identification stays anonymous", async () => {
+    // At NOW the u_late link (NOW+5000) hasn't happened: A_LATE counts
+    // anonymous and is excluded from identified people.
+    const active = await measure([{ metricId: "project.active_people" }]);
+    expect(factById(active, "project.active_people").value).toBe(3);
+    // After the link lands, the same events read as identified.
+    const later = await measure([{ metricId: "project.active_people" }], {
+      ...WINDOW,
+      asOf: NOW + 10000,
+    });
+    expect(factById(later, "project.active_people").value).toBe(4);
+    const anonLater = await measure(
+      [{ metricId: "project.active_anonymous" }],
+      { ...WINDOW, asOf: NOW + 10000 },
+    );
+    expect(factById(anonLater, "project.active_anonymous").value).toBe(3);
+  });
+
+  it("agrees with the Task-20 People summary for the same identity state", async () => {
+    const window = { ...WINDOW, asOf: NOW + 10000 };
+    // Sequential: one analytics client, one flight at a time.
+    const activeFacts = await measure(
+      [{ metricId: "project.active_people" }],
+      window,
+    );
+    const newFacts = await measure(
+      [{ metricId: "project.new_people" }],
+      window,
+    );
+    const anonFacts = await measure(
+      [{ metricId: "project.active_anonymous" }],
+      window,
+    );
+    const active = factById(activeFacts, "project.active_people").value;
+    const fresh = factById(newFacts, "project.new_people").value;
+    const anon = factById(anonFacts, "project.active_anonymous").value;
+    const list = await peopleList(client as never, P, {
+      from: FROM,
+      to: NOW,
+      range: "7d",
+    });
+    expect(active).toBe(list.summary.activePeople);
+    expect(fresh).toBe(list.summary.newPeople);
+    expect(anon).toBe(list.summary.anonymousPeople);
+  });
+});
+
+describe("standard event currency accuracy (R3-F4)", () => {
+  it("scopes occurrences by exact currency", async () => {
+    const usd = await measure([
+      {
+        metricId: "standard_event.occurrences",
+        filters: { standardEventKey: "purchase", currency: "USD" },
+      },
+    ]);
+    expect(factById(usd, "standard_event.occurrences").value).toBe(1); // pu1 only
+    const eur = await measure([
+      {
+        metricId: "standard_event.occurrences",
+        filters: { standardEventKey: "purchase", currency: "EUR" },
+      },
+    ]);
+    expect(factById(eur, "standard_event.occurrences").value).toBe(1);
+    // Sign-up rows carry no currency: a currency filter matches nothing.
+    const none = await measure([
+      {
+        metricId: "standard_event.occurrences",
+        filters: { standardEventKey: "sign_up", currency: "USD" },
+      },
+    ]);
+    expect(factById(none, "standard_event.occurrences").value).toBe(0);
+  });
+
+  it("always returns one fact for an explicit currency, even empty", async () => {
+    const facts = await measure([
+      {
+        metricId: "standard_event.value_by_currency",
+        filters: { standardEventKey: "purchase", currency: "JPY" },
+      },
+    ]);
+    expect(facts).toHaveLength(1);
+    expect(facts[0]?.value).toBe(0);
+    expect(facts[0]?.comparison).toEqual({
+      kind: "percent",
+      direction: "flat",
+      percent: 0,
+    });
+  });
+});
+
+describe("currency overflow and response bounds (R3-F4)", () => {
+  it("caps currency rows deterministically with a warning", async () => {
+    const FX = "proj_fx";
+    const codes = [
+      "USD",
+      "EUR",
+      "GBP",
+      "JPY",
+      "CHF",
+      "CAD",
+      "AUD",
+      "NZD",
+      "SEK",
+      "NOK",
+      "MXN",
+    ];
+    for (const [index, currency] of codes.entries()) {
+      await exec(
+        `INSERT INTO events (id, project_id, type, name, schema_version, occurred_at,
+          received_at, session_id, anonymous_id, user_id, person_id, properties,
+          context, sdk_name, sdk_version, source_id, platform)
+         VALUES (?, ?, 'track', '$prism_refund', 1, ?, ?, NULL, NULL, NULL, NULL, ?, NULL, NULL, NULL, 's', 'server')`,
+        [
+          `fx${index}`,
+          FX,
+          FROM + index,
+          FROM + index,
+          JSON.stringify({
+            $standard: {
+              schemaVersion: 1,
+              key: "refund",
+              data: {
+                valueMinor: 100,
+                currency,
+                refundId: `r${index}`,
+                transactionId: `t${index}`,
+              },
+            },
+          }),
+        ],
+      );
+    }
+    const facts = await measureMetrics(
+      client as unknown as CanonicalClient,
+      FX,
+      WINDOW,
+      [],
+      [
+        {
+          metricId: "standard_event.value_by_currency",
+          filters: { standardEventKey: "refund" },
+        },
+      ],
+      { capabilities: CAPABILITIES, now: NOW },
+    );
+    expect(facts).toHaveLength(10);
+    expect(facts.map((fact) => fact.id.split(":")[1]).sort()).toEqual(
+      [...codes].sort().slice(0, 10),
+    );
+    expect(
+      facts.some((fact) =>
+        fact.coverage.warnings.some((warning) =>
+          warning.includes("capped at 10"),
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("holds the 27-fact resource bound across metrics", async () => {
+    const { capResponseFacts } = await import("../utils/projectMetrics");
+    const base = {
+      metricId: "project.accepted_events",
+      definitionVersion: 1,
+      label: "Accepted events",
+      value: 1,
+      formattedValue: "1",
+      unit: null,
+      comparison: null,
+      queryContext: {
+        from: FROM,
+        to: NOW,
+        compareFrom: CFROM,
+        compareTo: FROM,
+        asOf: NOW,
+        timezone: "UTC",
+        sourceIds: [],
+        definitionVersion: 1,
+      },
+      coverage: {
+        sourcesConfigured: 1,
+        sourcesActive: 1,
+        enrichments: [],
+        warnings: [],
+      },
+      coverageNote: "",
+      filters: {},
+      drilldown: { destination: "events", label: "Open Events" },
+    } as const;
+    const singles = new Array(26)
+      .fill(0)
+      .map((_, index) => ({ ...base, id: `m${index}` }));
+    const multis = ["EUR", "GBP", "USD"].map((currency) => ({
+      ...base,
+      id: `standard_event.value_by_currency:${currency}`,
+      metricId: "standard_event.value_by_currency",
+    }));
+    const capped = capResponseFacts([...singles, ...multis] as never);
+    expect(capped).toHaveLength(27);
+    expect(capped.map((fact) => fact.id)).toContain(
+      "standard_event.value_by_currency:EUR",
+    );
+    expect(capped.map((fact) => fact.id)).not.toContain(
+      "standard_event.value_by_currency:USD",
+    );
+    expect(
+      capped.some((fact) =>
+        fact.coverage.warnings.some((warning) => warning.includes("27-fact")),
+      ),
+    ).toBe(true);
+    // Deterministic: same input, same output.
+    expect(capResponseFacts([...singles, ...multis] as never)).toEqual(capped);
+  });
+});
+
+describe("error snapshot semantics (R3-F5)", () => {
+  const PXE = "proj_err_snap";
+
+  async function seedSnapErrors() {
+    const issue = (
+      id: string,
+      status: string,
+      firstSeen: number,
+      firstRelease: string | null,
+      lastRelease: string | null,
+    ) =>
+      exec(
+        `INSERT INTO error_issues (id, project_id, platform, fingerprint_version, fingerprint, level, status, title, first_seen_at, last_seen_at, occurrence_count, users_affected, first_release, last_release)
+         VALUES (?, ?, 'web', 1, ?, 'error', ?, ?, ?, ?, 0, 0, ?, ?)`,
+        [
+          id,
+          PXE,
+          `fp-${id}`,
+          status,
+          `Title ${id}`,
+          firstSeen,
+          NOW,
+          firstRelease,
+          lastRelease,
+        ],
+      );
+    const occ = (
+      id: string,
+      issueId: string,
+      occurred: number,
+      received: number,
+    ) =>
+      exec(
+        `INSERT INTO error_occurrences (id, client_event_id, issue_id, project_id, source_id, platform, level, handled, occurred_at, received_at, release, environment, anonymous_id, payload)
+         VALUES (?, ?, ?, ?, 's', 'web', 'error', 0, ?, ?, '2.4.1', 'production', 'snap', '{}')`,
+        [id, `c-${id}`, issueId, PXE, occurred, received],
+      );
+    // Late first receipt: occurred in window, received after NOW.
+    await issue("iss_late", "unresolved", FROM + 20000, "2.4.1", "2.4.1");
+    await occ("ol1", "iss_late", FROM + 20000, NOW + 9000);
+    // Ordinary historical issue.
+    await issue("iss_hist", "unresolved", FROM - 100, "2.4.0", "2.4.0");
+    await occ("oh1", "iss_hist", FROM - 100, FROM - 100);
+    // Resolved after activity: current-only status. The previous-window
+    // occurrence keeps it out of fresh/regressing at any snapshot.
+    await issue("iss_rx", "resolved", FROM - 200, "2.4.0", "2.4.0");
+    await occ("or1", "iss_rx", FROM + 600, FROM + 600);
+    await occ("or2", "iss_rx", CFROM + 100, CFROM + 100);
+  }
+
+  it("excludes late-received first occurrences from earlier snapshots", async () => {
+    await seedSnapErrors();
+    const snap = { ...WINDOW, asOf: FROM + 1000 };
+    const scoped = (metricId: string): Promise<MetricFact[]> =>
+      measureMetrics(
+        client as unknown as CanonicalClient,
+        PXE,
+        snap,
+        [],
+        [{ metricId }],
+        { capabilities: CAPABILITIES, now: NOW },
+      ).then((facts) => facts as MetricFact[]);
+    // iss_late has no cutoff-visible occurrence: fresh and regressing
+    // stay zero; iss_hist predates the window.
+    expect(
+      (await scoped("errors.new_issues")).map((fact) => fact.value),
+    ).toEqual([0]);
+    expect(
+      (await scoped("errors.regressing_issues")).map((fact) => fact.value),
+    ).toEqual([0]);
+    // Unresolved reflects CURRENT status (iss_late + iss_hist) with an
+    // explicit historical-snapshot warning — never silent history.
+    const unresolved = await scoped("errors.unresolved_issues");
+    expect(unresolved.map((fact) => fact.value)).toEqual([2]);
+    expect(
+      unresolved[0]?.coverage.warnings.some((warning) =>
+        warning.includes("current issue status"),
+      ),
+    ).toBe(true);
+    expect(unresolved[0]?.coverageNote).toMatch(/not a historical snapshot/);
+  });
+
+  it("counts the late issue once its receipt is inside the snapshot", async () => {
+    const facts = await measureMetrics(
+      client as unknown as CanonicalClient,
+      PXE,
+      { ...WINDOW, asOf: NOW + 10000 },
+      [],
+      [{ metricId: "errors.new_issues" }],
+      { capabilities: CAPABILITIES, now: NOW + 10000 },
+    );
+    expect((facts as MetricFact[]).map((fact) => fact.value)).toEqual([1]);
+  });
+
+  it("separates affected identities by release", async () => {
+    const scoped = (release: string) =>
+      measure([
+        { metricId: "errors.affected_identities", filters: { release } },
+      ]).then((facts) => factById(facts, "errors.affected_identities").value);
+    expect(await scoped("2.4.1")).toBe(2); // e_a1, e_a2
+    expect(await scoped("2.3.0")).toBe(1); // e_a4
   });
 });
