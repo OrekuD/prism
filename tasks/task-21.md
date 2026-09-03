@@ -1163,28 +1163,28 @@ semantics must stay explicit.
 This slice establishes the public and internal language before storage or UI
 implementation.
 
-- [ ] Add immutable metric definitions, dimensions, filters, formats, and
+- [x] Add immutable metric definitions, dimensions, filters, formats, and
       drill-down contracts.
-- [ ] Freeze `ProjectQueryContext`, public query context, snapshot-token, fact,
+- [x] Freeze `ProjectQueryContext`, public query context, snapshot-token, fact,
       comparison, coverage, and data-quality types.
-- [ ] Freeze `ProjectCapabilities`, `ProjectOverviewResource`, adaptive slot,
+- [x] Freeze `ProjectCapabilities`, `ProjectOverviewResource`, adaptive slot,
       and deterministic insight types.
-- [ ] Freeze every `AssistantArtifact` variant and accessible summary field.
-- [ ] Freeze activity-step states and internal/user-facing tool presentation
+- [x] Freeze every `AssistantArtifact` variant and accessible summary field.
+- [x] Freeze activity-step states and internal/user-facing tool presentation
       metadata.
-- [ ] Freeze persisted UI-message, structured-answer, conversation, run, memory,
+- [x] Freeze persisted UI-message, structured-answer, conversation, run, memory,
       and proposal schemas.
-- [ ] Freeze multi-chat list items, deterministic-title, creation seed,
+- [x] Freeze multi-chat list items, deterministic-title, creation seed,
       pagination, deletion, and active-run constraint schemas.
-- [ ] Decide owner/admin versus member confirmation permission and test the
+- [x] Decide owner/admin versus member confirmation permission and test the
       matrix.
-- [ ] Add deterministic fixtures for Web-only, Mobile-only, server-only,
+- [x] Add deterministic fixtures for Web-only, Mobile-only, server-only,
       Web+Mobile+server, errors configured with zero occurrences, low coverage,
       empty, and partial-failure projects.
-- [ ] Add future-native fixtures proving Swift/Kotlin source platforms feed the
+- [x] Add future-native fixtures proving Swift/Kotlin source platforms feed the
       Mobile capability without changing the overview contract.
-- [ ] Add realistic assistant questions and expected tool/fact/artifact plans.
-- [ ] Prove all discriminated unions reject unknown variants and fields.
+- [x] Add realistic assistant questions and expected tool/fact/artifact plans.
+- [x] Prove all discriminated unions reject unknown variants and fields.
 
 ## Slice 2: Canonical metric service
 
