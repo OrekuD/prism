@@ -25,6 +25,7 @@ import {
 	useWorkspaces,
 } from "@/lib/workspace";
 import { useProjectsQuery } from "@/network/queries/useProjectsQuery";
+import { useSourcesQuery } from "@/network/queries/useSourcesQuery";
 import { getInitials } from "@/utils/getInitials";
 import {
 	Check,
@@ -75,21 +76,6 @@ function Active({
 	);
 }
 
-function SoonLink({ label }: { label: string }) {
-	return (
-		<span
-			className={cn(
-				LINK_BASE,
-				"cursor-default text-text-subtle hover:bg-transparent hover:text-text-subtle",
-			)}
-			title={`${label} — coming soon`}
-		>
-			{SOON_ICONS[label]}
-			{label}
-		</span>
-	);
-}
-
 export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 	const { pathname } = useLocation();
 	const navigate = useNavigate();
@@ -126,10 +112,12 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 			setSelectedProjectSlug(wrkSlug, urlProjectSlug);
 		}
 	}, [wrkSlug, urlProjectSlug]);
-	const effectiveSlug = urlProjectSlug ?? persistedSlug;
+	const selectedProjectSlug = urlProjectSlug ?? persistedSlug;
 	const project = projectsQuery.data?.find(
-		(entry) => entry.slug === effectiveSlug,
+		(entry) => entry.slug === selectedProjectSlug,
 	);
+	const effectiveSlug = project?.slug;
+	const sourcesQuery = useSourcesQuery(effectiveSlug);
 	const workspaceName = effectiveWorkspace?.name;
 	const allWorkspaces = (workspaces ?? []) as Array<{
 		id: string;
@@ -145,6 +133,12 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 		name: string;
 		slug: string;
 	}>;
+	const hasWebSource = sourcesQuery.data?.some(
+		(source) => source.platform === "web",
+	);
+	const hasMobileSource = sourcesQuery.data?.some((source) =>
+		["ios", "android", "react-native"].includes(source.platform),
+	);
 
 	const themeOptions = [
 		{ value: "light" as const, label: "Light", Icon: Sun },
@@ -183,7 +177,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 		>
 			<div className="flex items-center px-3 pb-2.5 pt-3.5">
 				<Link
-					to={`/workspace/${wrkSlug}/overview`}
+					to={`/workspace/${wrkSlug}`}
 					aria-label="Prism home"
 					className="inline-flex items-center gap-2.5 rounded-[2px] transition-opacity hover:opacity-90"
 				>
@@ -201,13 +195,14 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 							<button
 								type="button"
 								aria-haspopup="menu"
+								title="Switch project"
 								className="mb-2 flex h-[34px] w-full items-center gap-2 rounded-[2px] border border-border bg-surface px-2.5 text-[13px] font-medium transition-colors hover:bg-surface-hover"
 							>
 								<I.IconFolder />
 								<span className="flex-1 truncate text-left">
 									{projectsQuery.isLoading
 										? (project?.name ??
-											effectiveSlug ?? (
+											selectedProjectSlug ?? (
 												<span
 													className="inline-block h-[13px] w-20 animate-pulse rounded-[2px] bg-surface-raised"
 													aria-hidden="true"
@@ -275,20 +270,24 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 						<div className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
 							Data
 						</div>
+						{hasWebSource ? (
+							<Active
+								to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/web-analytics`}
+								label="Web Analytics"
+								icon={<MonitorCloud className="size-4 shrink-0" />}
+							/>
+						) : null}
+						{hasMobileSource ? (
+							<Active
+								to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/mobile-analytics`}
+								label="Mobile Analytics"
+								icon={<Smartphone className="size-4 shrink-0" />}
+							/>
+						) : null}
 						<Active
 							to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/events`}
 							label="Events"
 							icon={<I.IconBolt />}
-						/>
-						<Active
-							to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/web-analytics`}
-							label="Web Analytics"
-							icon={<MonitorCloud className="size-4 shrink-0" />}
-						/>
-<Active
-							to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/mobile-analytics`}
-							label="Mobile Analytics"
-							icon={<Smartphone className="size-4 shrink-0" />}
 						/>
 						<Active
 							to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/people`}
@@ -313,32 +312,8 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 							label="Errors"
 							icon={<I.IconAlert />}
 						/>
-						<SoonLink label="Performance" />
-						<SoonLink label="Replays" />
-						<SoonLink label="Logs" />
 					</div>
 				) : null}
-
-				{/* Analyze/Ship groups are commented out until their
-            features exist. */}
-				{/* <div className="flex flex-col gap-0.5">
-          <div className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
-            Analyze <span className="ml-auto rounded-[2px] border border-border px-[5px] py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-text-subtle">soon</span>
-          </div>
-          {SOON_ANALYZE.map((item) => <SoonLink key={item} label={item} />)}
-        </div>
-        <div className="flex flex-col gap-0.5">
-          <div className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
-            Diagnose <span className="ml-auto rounded-[2px] border border-border px-[5px] py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-text-subtle">soon</span>
-          </div>
-          {SOON_DIAGNOSE.map((item) => <SoonLink key={item} label={item} />)}
-        </div>
-        <div className="flex flex-col gap-0.5">
-          <div className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
-            Ship <span className="ml-auto rounded-[2px] border border-border px-[5px] py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-text-subtle">soon</span>
-          </div>
-          {SOON_SHIP.map((item) => <SoonLink key={item} label={item} />)}
-        </div> */}
 
 				{effectiveSlug ? (
 					<div className="flex flex-col gap-0.5">
@@ -352,7 +327,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 						/>
 						<Active
 							to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/settings`}
-							label="Settings"
+							label="Project settings"
 							icon={<I.IconSettings />}
 						/>
 					</div>
@@ -402,7 +377,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 										onClick={() => {
 											if (ws.slug !== wrkSlug) {
 												setSelectedWorkspaceSlug(ws.slug);
-												navigate(`/workspace/${ws.slug}/overview`);
+												navigate(`/workspace/${ws.slug}`);
 											}
 										}}
 									>
@@ -432,12 +407,6 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 						onOpenChange={setNewWorkspaceOpen}
 					/>
 					<Active
-						to={`/workspace/${wrkSlug}/overview`}
-						label="Workspace overview"
-						icon={<I.IconGrid />}
-						end
-					/>
-					<Active
 						to={`/workspace/${wrkSlug}/projects`}
 						end
 						label="Projects"
@@ -450,7 +419,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 					/>
 					<Active
 						to={`/workspace/${wrkSlug}/settings`}
-						label="Settings"
+						label="Workspace settings"
 						icon={<I.IconSettings />}
 					/>
 				</div>
@@ -582,22 +551,3 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 		</aside>
 	);
 }
-
-const SOON_ANALYZE = ["Trends", "Funnels", "Retention", "Paths", "Cohorts"];
-const SOON_DIAGNOSE = ["Errors", "Performance", "Replays", "Logs"];
-const SOON_SHIP = ["Feature flags", "Experiments", "Surveys"];
-
-const SOON_ICONS: Record<string, React.ReactNode> = {
-	Trends: <I.IconTrend />,
-	Funnels: <I.IconFunnel />,
-	Retention: <I.IconRetention />,
-	Paths: <I.IconPaths />,
-	Cohorts: <I.IconCohort />,
-	Errors: <I.IconAlert />,
-	Performance: <I.IconGauge />,
-	Replays: <I.IconReplay />,
-	Logs: <I.IconLog />,
-	"Feature flags": <I.IconFlag />,
-	Experiments: <I.IconFlask />,
-	Surveys: <I.IconSurvey />,
-};
