@@ -1,5 +1,9 @@
-import type { EventResource, PersonDetailResource } from "@prism-analytics/types";
-import { ArrowLeft, Download } from "lucide-react";
+import type {
+	EventResource,
+	PeopleListResource,
+	PersonDetailResource,
+} from "@prism-analytics/types";
+import { Download } from "lucide-react";
 import React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -9,6 +13,12 @@ import { MetricCard } from "@/components/public/metric-card";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
+import {
+	Sheet,
+	SheetContent,
+	SheetHeader,
+	SheetTitle,
+} from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { axiosInstance } from "@/utils/axiosInstance";
 import { platformDotClass, platformLabel } from "@/lib/events";
@@ -167,6 +177,33 @@ function ActivityRow({ event, basePath }: { event: EventResource; basePath: stri
 	);
 }
 
+/**
+ * Route-backed Sheet frame (events pattern): the People list stays mounted
+ * behind via <Outlet />; Escape/backdrop/close navigates deterministically
+ * to the list base — never history -1.
+ */
+function PersonSheet({
+	listBase,
+	children,
+}: {
+	listBase: string;
+	children: React.ReactNode;
+}) {
+	const navigate = useNavigate();
+	return (
+		<Sheet
+			open
+			onOpenChange={(next) => {
+				if (!next) navigate(listBase);
+			}}
+		>
+			<SheetContent className="w-full gap-0 p-0 sm:max-w-[684px]">
+				{children}
+			</SheetContent>
+		</Sheet>
+	);
+}
+
 export function PersonDetail() {
 	const { slug, personId, wrkSlug } = useParams<{
 		slug: string;
@@ -187,6 +224,7 @@ export function PersonDetail() {
 	const [exportError, setExportError] = React.useState<string | null>(null);
 
 	const basePath = `/workspace/${wrkSlug ?? ""}/projects/${slug ?? ""}`;
+	const listBase = `${basePath}/people`;
 
 	const handleExport = async () => {
 		if (!slug || !personId || exporting) return;
@@ -221,18 +259,41 @@ export function PersonDetail() {
 				`/projects/${slug}/people/${encodeURIComponent(personId)}?confirm=true`,
 			);
 			// R2-F1: a successful deletion must never leave the deleted person
-			// in a cached list page. The People route is unmounted at this
-			// moment, so its queries are inactive — invalidation would only
-			// mark the cached page stale and it would still render the
-			// deleted row synchronously on navigation while the refetch
-			// runs. Removal forces a fresh fetch (loading state, then
-			// current data). The profile/activity caches are dead too.
+			// in a cached list page. The list stays mounted behind this
+			// sheet and usePeopleQuery reuses the previous page as
+			// placeholderData during a refetch — removing the queries alone
+			// lets the deleted row flash back while the fresh fetch runs.
+			// So first remove the row from every cached page (identified
+			// drops honestly by one; the range-bound counts refresh on the
+			// refetch below), then remove the queries so nothing stale
+			// survives. The profile/activity caches are dead too.
+			queryClient.setQueriesData<PeopleListResource>(
+				{ queryKey: ["people", slug] },
+				(previous) => {
+					if (!previous) return previous;
+					const people = previous.people.filter(
+						(row) => row.personId !== personId,
+					);
+					if (people.length === previous.people.length) return previous;
+					return {
+						...previous,
+						people,
+						summary: {
+							...previous.summary,
+							identifiedPeople: Math.max(
+								0,
+								previous.summary.identifiedPeople - 1,
+							),
+						},
+					};
+				},
+			);
 			queryClient.removeQueries({ queryKey: ["person", slug, personId] });
 			queryClient.removeQueries({
 				queryKey: ["person-activity", slug, personId],
 			});
 			queryClient.removeQueries({ queryKey: ["people", slug] });
-			navigate(`${basePath}/people`);
+			navigate(listBase);
 		} catch {
 			setDeleteError("Deletion failed. Try again.");
 			setDeleting(false);
@@ -241,19 +302,25 @@ export function PersonDetail() {
 
 	if (isLoading) {
 		return (
-			<div className="grid gap-4" aria-busy="true" aria-label="Loading person">
-				<Skeleton className="h-24 w-full" />
-				<Skeleton className="h-40 w-full" />
-			</div>
+			<PersonSheet listBase={listBase}>
+				<div className="grid gap-4 p-6" aria-busy="true" aria-label="Loading person">
+					<Skeleton className="h-24 w-full" />
+					<Skeleton className="h-40 w-full" />
+				</div>
+			</PersonSheet>
 		);
 	}
 	if (isError || !data) {
 		return (
-			<ErrorState
-				title="Could not load person"
-				description="Prism could not reach the people store. Check your connection and try again."
-				onRetry={() => refetch()}
-			/>
+			<PersonSheet listBase={listBase}>
+				<div className="p-6">
+					<ErrorState
+						title="Could not load person"
+						description="Prism could not reach the people store. Check your connection and try again."
+						onRetry={() => refetch()}
+					/>
+				</div>
+			</PersonSheet>
 		);
 	}
 
@@ -269,31 +336,23 @@ export function PersonDetail() {
 	const linkedIdsCount = data.externalIds.length + data.anonymousIds.length;
 
 	return (
-		<div className="flex flex-1 flex-col">
-			<div className="flex items-start justify-between gap-4">
-				<div className="min-w-0">
-					<Link
-						to={`${basePath}/people`}
-						className="inline-flex items-center gap-1.5 rounded-[2px] font-mono text-[11px] text-text-subtle transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
+		<PersonSheet listBase={listBase}>
+			<SheetHeader className="gap-3 border-b border-border px-6 pb-4 pt-6">
+				<SheetTitle className="break-words pr-2 text-left font-sans text-[17px] font-semibold leading-[1.25] tracking-[-0.02em] text-text">
+					{displayName}
+				</SheetTitle>
+				{showPrimaryId && data.primaryExternalId ? (
+					<p
+						className="truncate font-mono text-[12.5px] leading-none text-text-subtle"
+						title={data.primaryExternalId}
 					>
-						<ArrowLeft className="size-3" aria-hidden="true" />
-						Back to People
-					</Link>
-					<h1 className="mt-2 truncate font-mono text-[26px] font-[650] leading-[1.18] tracking-[-0.025em] text-text">
-						{displayName}
-					</h1>
-					{showPrimaryId && data.primaryExternalId ? (
-						<p
-							className="mt-1 truncate font-mono text-[12.5px] leading-none text-text-subtle"
-							title={data.primaryExternalId}
-						>
-							{data.primaryExternalId}
-						</p>
-					) : null}
-				</div>
-			</div>
+						{data.primaryExternalId}
+					</p>
+				) : null}
+			</SheetHeader>
 
-			<div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+			<div className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto p-6">
+				<div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
 				<MetricCard label="Sessions" caption="distinct project sessions">
 					<span className="font-mono text-[23px] leading-none tracking-[-0.06em] text-text tabular-nums">
 						{data.sessionCount.toLocaleString("en-US")}
@@ -314,7 +373,7 @@ export function PersonDetail() {
 				</MetricCard>
 			</div>
 
-			<div className="mt-7 grid grid-cols-1 gap-7 lg:grid-cols-2">
+			<div className="grid grid-cols-1 gap-7 lg:grid-cols-2">
 				<section>
 					<SectionLabel>Identity</SectionLabel>
 					<div className="mt-3 grid grid-cols-1 gap-3">
@@ -420,7 +479,7 @@ export function PersonDetail() {
 				</section>
 			</div>
 
-			<section className="mt-7">
+			<section>
 				<div className="flex items-center justify-between gap-2">
 					<SectionLabel className="leading-none">Activity</SectionLabel>
 					<span className="font-mono text-[10px] text-text-subtle">newest first</span>
@@ -467,7 +526,7 @@ export function PersonDetail() {
 			</section>
 
 			{canManage ? (
-				<section className="mt-7 mb-8" aria-label="Data controls">
+				<section aria-label="Data controls">
 					<SectionLabel>Data controls</SectionLabel>
 					<div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
 						<Frame inset className="px-3 py-3">
@@ -543,6 +602,7 @@ export function PersonDetail() {
 					</div>
 				</section>
 			) : null}
-		</div>
+			</div>
+		</PersonSheet>
 	);
 }

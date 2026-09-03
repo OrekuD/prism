@@ -1,7 +1,7 @@
 import type { PeopleRange, PeopleResource } from "@prism-analytics/types";
 import { ChevronLeft, ChevronRight, Search, SearchX, X } from "lucide-react";
 import React from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, Outlet, useParams, useSearchParams } from "react-router-dom";
 
 import { MetricCard } from "@/components/public/metric-card";
 import { PageHeader } from "@/components/public/page-header";
@@ -469,6 +469,7 @@ export function ProjectPeople() {
 					/>
 				)}
 			</div>
+			<Outlet />
 		</div>
 	);
 }

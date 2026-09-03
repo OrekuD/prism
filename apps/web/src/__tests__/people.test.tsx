@@ -79,9 +79,11 @@ function renderPerson() {
 			>
 				<Routes>
 					<Route
-						path="/workspace/:wrkSlug/projects/:slug/people/:personId"
-						element={<PersonDetail />}
-					/>
+						path="/workspace/:wrkSlug/projects/:slug/people"
+						element={<ProjectPeople />}
+					>
+						<Route path=":personId" element={<PersonDetail />} />
+					</Route>
 				</Routes>
 			</MemoryRouter>
 		</QueryClientProvider>,
@@ -423,7 +425,8 @@ describe("PersonDetail", () => {
 			return pendingList;
 		});
 
-		// seed the caches as if the user visited People, then opened the profile
+		// seed the list cache as if the user visited People, then opened the
+		// profile sheet (the list stays mounted behind the sheet)
 		const listKey = ["people", "alpha", "30d", undefined, undefined, 10];
 		queryClient.setQueryData(listKey, {
 			...emptyPeople,
@@ -458,29 +461,36 @@ describe("PersonDetail", () => {
 						<Route
 							path="/workspace/:wrkSlug/projects/:slug/people"
 							element={<ProjectPeople />}
-						/>
-						<Route
-							path="/workspace/:wrkSlug/projects/:slug/people/:personId"
-							element={<PersonDetail />}
-						/>
+						>
+							<Route path=":personId" element={<PersonDetail />} />
+						</Route>
 					</Routes>
 				</MemoryRouter>
 			</QueryClientProvider>,
 		);
 
+		// the sheet is open over the seeded list row (correct pre-deletion)
 		const confirm = await screen.findByLabelText(/type delete to confirm/i);
+		expect(screen.getAllByText("Ama Mensah").length).toBeGreaterThanOrEqual(1);
 		fireEvent.change(confirm, { target: { value: "delete" } });
 		fireEvent.click(screen.getByRole("button", { name: /delete person/i }));
 
 		await waitFor(() => expect(deleteMock).toHaveBeenCalled());
 
-		// navigation mounted the People route, which must fetch fresh: while
-		// that request is pending the loading state shows, never the old row
+		// deletion closed the sheet. The list stays mounted and
+		// usePeopleQuery reuses the previous page as placeholderData during
+		// a refetch — so there is no loading skeleton here by design. What
+		// matters: the previous page was surgically cleared first, so the
+		// old row never renders while the fresh fetch runs.
 		await waitFor(() =>
-			expect(
-				document.querySelector('[aria-label="Loading people"]'),
-			).not.toBeNull(),
+			expect(document.querySelector('[role="dialog"]')).toBeNull(),
 		);
+		await waitFor(() => {
+			const freshFetch = getMock.mock.calls.some(([url]) =>
+				String(url).startsWith("/projects/alpha/people?"),
+			);
+			expect(freshFetch).toBe(true);
+		});
 		expect(screen.queryByText("Ama Mensah")).toBeNull();
 		// the seeded list page is REMOVED from the cache, not merely stale
 		expect(queryClient.getQueryData(listKey)).toBeUndefined();
@@ -531,7 +541,7 @@ describe("PersonDetail", () => {
 				: person,
 		}));
 
-		const { container } = renderPerson();
+		renderPerson();
 
 		await screen.findByRole("heading", { name: "Ama Mensah" });
 		// section structure: Identity, Linked identities, Technical details,
@@ -546,7 +556,11 @@ describe("PersonDetail", () => {
 			expect(screen.getByText(section)).toBeDefined();
 		}
 		await waitFor(async () => {
-			const results = await axe.run(container);
+			// the profile sheet renders in a portal and Radix marks the
+			// background inert — audit the dialog itself, not the document
+			const dialog = document.querySelector('[role="dialog"]');
+			expect(dialog).not.toBeNull();
+			const results = await axe.run(dialog as Element);
 			expect(results.violations).toHaveLength(0);
 		});
 	});
