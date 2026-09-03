@@ -23,8 +23,13 @@ const PROJECT_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 const SLUG = "alpha";
 const PERSON_ID = "u_1234567890abcdef";
 
-function ctxFor(userId: string | null, params: Record<string, string>, body?: unknown) {
-  return makeCtx(params, body ?? {}, userId ? { user: { id: userId } } : {});
+function ctxFor(
+  userId: string | null,
+  params: Record<string, string>,
+  body?: unknown,
+  query: Record<string, string> = {},
+) {
+  return makeCtx(params, body ?? {}, userId ? { user: { id: userId } } : {}, query);
 }
 
 type MockResult = { __json?: unknown; __status?: number };
@@ -153,21 +158,15 @@ describe("PeopleController authorization (task-20)", () => {
     expect(statusOf(exportResult)).toBe(403);
 
     const removeResult = await PeopleController.remove(
-      ctxFor(USER_ID, { slug: SLUG, personId: PERSON_ID }, { confirm: "true" }),
-    );
-    // the route passes ?confirm=true as a query param — a member is still 403
-    const removeResultWithConfirm = await PeopleController.remove(
       ctxFor(USER_ID, { slug: SLUG, personId: PERSON_ID }),
     );
-    void removeResultWithConfirm;
     expect(statusOf(removeResult)).toBe(403);
   });
 
-  it("an owner can export, and delete requires ?confirm=true", async () => {
+  it("an owner can export; delete requires ?confirm=true and reports the store result", async () => {
     getInstance.mockReturnValue(makeStore("owner") as never);
-    const exportCalls: string[] = [];
-    makeTurso((sql) => {
-      exportCalls.push(sql);
+    const execute = vi.fn(async (opts: { sql: string }) => {
+      const sql = String(opts.sql);
       if (sql.includes("FROM people WHERE") && sql.includes("person_id = ?")) {
         return {
           rows: [{ person_id: PERSON_ID, first_seen_at: 1, last_seen_at: 2 }],
@@ -175,18 +174,45 @@ describe("PeopleController authorization (task-20)", () => {
       }
       return { rows: [] };
     });
+    const batch = vi.fn(async (statements: Array<{ sql: string }>) =>
+      statements.map((statement) => ({
+        rows: [],
+        rowsAffected: statement.sql.includes("DELETE FROM people") ? 1 : 0,
+      })),
+    );
+    getTursoInstance.mockReturnValue({ execute, batch } as never);
 
     const exportResult = await PeopleController.export(
       ctxFor(USER_ID, { slug: SLUG, personId: PERSON_ID }),
     );
     expect(statusOf(exportResult) ?? 200).toBe(200);
-    expect(exportCalls.some((sql) => sql.includes("FROM people WHERE"))).toBe(true);
+    expect(
+      execute.mock.calls.some(([opts]) =>
+        String((opts as { sql: string }).sql).includes("FROM people WHERE"),
+      ),
+    ).toBe(true);
 
     const unconfirmed = await PeopleController.remove(
       ctxFor(USER_ID, { slug: SLUG, personId: PERSON_ID }),
     );
     expect(statusOf(unconfirmed)).toBe(400);
     expect(errorOf(unconfirmed)).toEqual(["confirmation_required"]);
+    expect(batch).not.toHaveBeenCalled();
+
+    // confirmed owner deletion: the batch ran, and the response carries the
+    // store's `deleted` result for THIS person id
+    const confirmed = await PeopleController.remove(
+      ctxFor(USER_ID, { slug: SLUG, personId: PERSON_ID }, {}, { confirm: "true" }),
+    );
+    expect(statusOf(confirmed) ?? 200).toBe(200);
+    expect(bodyOf(confirmed)).toMatchObject({ deleted: true, personId: PERSON_ID });
+    expect(batch).toHaveBeenCalledTimes(1);
+    const batchStatements = batch.mock.calls[0]?.[0] as Array<{ sql: string }>;
+    expect(
+      batchStatements.some((statement) =>
+        statement.sql.includes("DELETE FROM people"),
+      ),
+    ).toBe(true);
   });
 });
 
@@ -310,44 +336,108 @@ describe("PeopleController range handling (task-20)", () => {
     ["7d", 7],
     ["30d", 30],
     ["90d", 90],
-  ])("accepts the supported range %s and applies its window", async (range, days) => {
+  ])("applies the exact %s window to both list and summary queries", async (range, days) => {
     getInstance.mockReturnValue(makeStore("member") as never);
-    const now = Date.now();
+    const now = 1_785_542_400_000;
     vi.spyOn(Date, "now").mockReturnValue(now);
+    const from = now - days * 86_400_000;
+    const to = now;
     const execute = makeTurso(() => ({ rows: [] }));
 
-    await PeopleController.list(ctxFor(USER_ID, { slug: SLUG, range }));
+    await PeopleController.list(ctxFor(USER_ID, { slug: SLUG }, {}, { range }));
 
-    const listCall = execute.mock.calls.find(([opts]) =>
-      String((opts as { sql: string }).sql).includes("FROM people p"),
+    // the summary query carries the exact [from, to] window
+    const summaryCall = execute.mock.calls.find(([opts]) =>
+      String((opts as { sql: string }).sql).includes("anonymous_people"),
     );
-    const args = (listCall?.[0] as { args?: unknown[] }).args ?? [];
-    // from/to ride the summary query; the list itself receives them through
-    // peopleList's range clause
-    expect(execute).toHaveBeenCalled();
-    void args;
+    expect(summaryCall).toBeDefined();
+    const summaryArgs = (summaryCall?.[0] as { args?: unknown[] }).args ?? [];
+    const numbers = summaryArgs.filter(
+      (arg) => typeof arg === "number",
+    ) as number[];
+    expect(numbers).toContain(from);
+    expect(numbers).toContain(to);
+
+    // the list query receives the same range for its last_seen_at clause
+    const listCall = execute.mock.calls.find(
+      ([opts]) =>
+        String((opts as { sql: string }).sql).includes("FROM people p") &&
+        !String((opts as { sql: string }).sql).includes("identified_people"),
+    );
+    expect(listCall).toBeDefined();
+    const listSql = String((listCall?.[0] as { sql: string }).sql);
+    expect(listSql).toContain("p.last_seen_at >= ?");
+    const listArgs = (listCall?.[0] as { args?: unknown[] }).args ?? [];
+    expect(listArgs).toContain(from);
     vi.restoreAllMocks();
   });
 
   it("defaults an unknown range to 30d", async () => {
     getInstance.mockReturnValue(makeStore("member") as never);
-    const now = Date.now();
+    const now = 1_785_542_400_000;
     vi.spyOn(Date, "now").mockReturnValue(now);
     const execute = makeTurso(() => ({ rows: [] }));
 
     await PeopleController.list(
-      ctxFor(USER_ID, { slug: SLUG, range: "bogus" }),
+      ctxFor(USER_ID, { slug: SLUG }, {}, { range: "bogus" }),
     );
 
     const summaryCall = execute.mock.calls.find(([opts]) =>
       String((opts as { sql: string }).sql).includes("anonymous_people"),
     );
-    const args = (summaryCall?.[0] as { args?: unknown[] }).args ?? [];
-    const from = Number(args.find((arg) => typeof arg === "number"));
-    expect(from).toBeGreaterThan(0);
-    expect(from).toBeLessThanOrEqual(now);
-    // 30 days: from is within 31 days of now and beyond 7 days ago
-    expect(from).toBeLessThan(now - 7 * 86_400_000);
+    const summaryArgs = (summaryCall?.[0] as { args?: unknown[] }).args ?? [];
+    expect(summaryArgs).toContain(now - 30 * 86_400_000);
+    expect(summaryArgs).toContain(now);
     vi.restoreAllMocks();
+  });
+});
+
+describe("PeopleController pagination inputs (review R1-F5)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("clamps fractional, NaN, and oversized limits to a bounded integer", async () => {
+    getInstance.mockReturnValue(makeStore("member") as never);
+    const execute = makeTurso(() => ({ rows: [] }));
+
+    for (const [raw, expected] of [
+      ["2.5", 50],
+      ["abc", 50],
+      ["999", 50],
+      ["0", 50],
+      ["-4", 50],
+      ["25", 25],
+    ] as Array<[string, number]>) {
+      execute.mockClear();
+      await PeopleController.list(ctxFor(USER_ID, { slug: SLUG }, {}, { limit: raw }));
+      const listCall = execute.mock.calls.find(([opts]) =>
+        String((opts as { sql: string }).sql).includes("LIMIT ?"),
+      );
+      const args = (listCall?.[0] as { args?: unknown[] }).args ?? [];
+      expect(args[args.length - 1], `limit=${raw}`).toBe(expected + 1);
+    }
+  });
+
+  it("rejects malformed cursors with a structured 400 and accepts round trips", async () => {
+    getInstance.mockReturnValue(makeStore("member") as never);
+    makeTurso(() => ({ rows: [] }));
+
+    for (const bad of ["abc", "a:b:c", "not-even-base64!!"]) {
+      const result = await PeopleController.list(
+        ctxFor(USER_ID, { slug: SLUG }, {}, { cursor: bad }),
+      );
+      expect(statusOf(result), `cursor=${bad}`).toBe(400);
+      expect(errorOf(result)).toEqual(["invalid_cursor"]);
+    }
+
+    // a valid opaque cursor passes the boundary and reaches the store
+    const valid = Buffer.from(
+      JSON.stringify([1_785_542_400_000, "u_abc"]),
+    ).toString("base64url");
+    const ok = await PeopleController.list(
+      ctxFor(USER_ID, { slug: SLUG }, {}, { cursor: valid }),
+    );
+    expect(statusOf(ok) ?? 200).toBe(200);
   });
 });

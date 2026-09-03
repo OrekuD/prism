@@ -2,6 +2,7 @@ import type { EventResource, PersonDetailResource } from "@prism-analytics/types
 import { ArrowLeft, Download } from "lucide-react";
 import React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { Frame, SectionLabel } from "@/components/public/frame";
 import { MetricCard } from "@/components/public/metric-card";
@@ -24,7 +25,60 @@ import { cn } from "@/lib/utils";
  * enforced independently by the API.
  */
 
-const PROFILE_KEYS = ["name", "username", "email", "avatarUrl"] as const;
+const PROFILE_KEYS = ["name", "username", "email"] as const;
+
+/**
+ * Bounded, TEXT-ONLY JSON rendering for custom traits (R1-F4): depth,
+ * item-count, and string-length limits with explicit truncation markers.
+ * Values reach the DOM as React text nodes — never HTML, never a fetched
+ * URL — so hostile-looking trait values cannot inject anything.
+ */
+const TRAIT_MAX_DEPTH = 3;
+const TRAIT_MAX_ITEMS = 8;
+const TRAIT_MAX_STRING = 120;
+
+function boundedTraitText(value: unknown, depth = 0): string {
+  if (value === null) return "null";
+  if (typeof value === "string") {
+    return value.length > TRAIT_MAX_STRING
+      ? `${value.slice(0, TRAIT_MAX_STRING - 1)}…`
+      : value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (depth >= TRAIT_MAX_DEPTH) return "…";
+  if (Array.isArray(value)) {
+    const items = value
+      .slice(0, TRAIT_MAX_ITEMS)
+      .map((item) => boundedTraitText(item, depth + 1));
+    const extra = value.length > TRAIT_MAX_ITEMS ? `, …+${value.length - TRAIT_MAX_ITEMS}` : "";
+    return `[${items.join(", ")}${extra}]`;
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).slice(
+      0,
+      TRAIT_MAX_ITEMS,
+    );
+    const extra =
+      Object.keys(value as Record<string, unknown>).length > TRAIT_MAX_ITEMS
+        ? ", …"
+        : "";
+    const rendered = entries
+      .map(
+        ([key, entry]) =>
+          `${key.length > TRAIT_MAX_STRING ? `${key.slice(0, TRAIT_MAX_STRING - 1)}…` : key}: ${boundedTraitText(entry, depth + 1)}`,
+      )
+      .join(", ");
+    return `{ ${rendered}${extra} }`;
+  }
+  return "Unsupported value";
+}
+
+function formatTraitValue(value: unknown): string | null {
+  if (value === undefined) return null;
+  return boundedTraitText(value);
+}
 
 function traitString(person: PersonDetailResource, key: string): string | null {
 	const value = person.traits[key];
@@ -49,14 +103,6 @@ function fullTimestamp(timestamp: number): string {
 		hour: "2-digit",
 		minute: "2-digit",
 	});
-}
-
-function formatTraitValue(value: unknown): string | null {
-	if (typeof value === "string") return value;
-	if (typeof value === "number" || typeof value === "boolean") {
-		return String(value);
-	}
-	return null;
 }
 
 function IdentityRow({ id, kind }: { id: string; kind: "external" | "anonymous" }) {
@@ -128,6 +174,7 @@ export function PersonDetail() {
 		wrkSlug: string;
 	}>();
 	const navigate = useNavigate();
+	const queryClient = useQueryClient();
 	const activeMember = useActiveMember();
 	const canManage =
 		activeMember?.data?.role === "owner" || activeMember?.data?.role === "admin";
@@ -173,6 +220,14 @@ export function PersonDetail() {
 			await axiosInstance.delete(
 				`/projects/${slug}/people/${encodeURIComponent(personId)}?confirm=true`,
 			);
+			// R1-F6: a successful deletion must never leave the deleted person
+			// in a cached list page (30s staleTime would otherwise render the
+			// stale row) and the profile/activity caches are dead.
+			queryClient.removeQueries({ queryKey: ["person", slug, personId] });
+			queryClient.removeQueries({
+				queryKey: ["person-activity", slug, personId],
+			});
+			await queryClient.invalidateQueries({ queryKey: ["people", slug] });
 			navigate(`${basePath}/people`);
 		} catch {
 			setDeleteError("Deletion failed. Try again.");

@@ -589,6 +589,180 @@ RESOLUTION NOTES (2026-09-02):
 - The rewritten web tests and UI now run together (10/10), and formatting,
   lint, typechecks, and the build are green (see progress log).
 
+## Review feedback - round 1 (2026-09-02)
+
+Review scope: focused static review of `8f0bbae`, `28f64eb`, and `3dca0fe`,
+including the changed People contracts, store/controller boundaries, list and
+profile routes, focused tests, docs, and the existing certification consumer.
+No broad test, lint, typecheck, build, or hosted run was repeated during this
+review.
+
+### R1-F1 - Release certification still consumes the removed contract
+
+**Severity:** High  
+**Status:** Resolved (2026-09-03)
+
+`scripts/certify-v2-ingest.mjs` still requires
+`personRow.identityCount >= 2`. Task 20 removed `identityCount` from
+`PeopleResource` in favor of `externalIdentityCount` and
+`anonymousIdentityCount`, so the identity/dashboard certification will fail
+even when the new API is correct. The focused TypeScript checks do not cover
+this JavaScript certification script.
+
+**How to address:**
+
+1. [x] Update the certification assertion to check the two new counts explicitly,
+   including the expected external and anonymous link semantics.
+2. [x] Keep the existing event-count and project-authorized read assertions.
+3. [x] `node --check scripts/certify-v2-ingest.mjs` passes; the hosted
+   certification run itself remains part of the outstanding Slice 6 proof.
+
+### R1-F2 - `deletePerson()` reads the wrong batch result
+
+**Severity:** High  
+**Status:** Resolved (2026-09-03)
+
+`apps/api/src/utils/peopleStore.ts` calculates `peopleDeleteIndex` as
+`credentialTombstones.length + sessionStatements.length + 4`. With the current
+statement order, offset `+4` is the `DELETE FROM events` result; the actual
+`DELETE FROM people` statement is at offset `+7`. Consequently, a person with
+events can report `deleted: true` by coincidence, while a real person with no
+events can be deleted and still report `deleted: false`. The existing test
+contains an event, so it masks the indexing bug.
+
+**How to address:**
+
+1. [x] Stop encoding the result position as a magic offset. Build the statement
+   array first, capture `const peopleDeleteIndex = statements.length`
+   immediately before appending `DELETE FROM people`, then read that index from
+   the batch result.
+2. [x] Add a real-store regression for deleting an existing person with zero
+   events and assert that the first call returns `true`, the row is gone, and
+   the retry returns `false`.
+3. [x] Retain a case where event rows are deleted too (the pre-existing
+   atomic-deletion test keeps its event fixture).
+   Verified failing-first: with the pre-fix store, 3 review tests fail
+   (including the zero-events deletion); 21/21 pass after the fix.
+
+### R1-F3 - `newPeople` counts later aliases as newly identified people
+
+**Severity:** High  
+**Status:** Resolved (2026-09-03)
+
+The summary query counts any person with an `external_identities.linked_at`
+inside the selected range. That is not the frozen meaning of `newPeople`, which
+is a person's **first** external link inside the range. If an already known
+person receives a second external ID today, the current query counts that
+person as new again. The docs repeat the stronger first-identified claim.
+
+**How to address:**
+
+1. [x] Count people whose project-scoped minimum external `linked_at` falls within
+   `[from, to]`, using a grouped subquery/CTE or an equivalent indexed query.
+2. [x] Add a store fixture with one external link before the range and a second
+   link inside it; that person must not increment `newPeople`.
+3. [x] Add a positive boundary case for a person's first link at `from` or `to` to
+   preserve the documented inclusive behavior.
+
+### R1-F4 - The person profile silently drops valid custom traits
+
+**Severity:** Medium  
+**Status:** Resolved (2026-09-03)
+
+`person.tsx` renders only string, number, and boolean trait values.
+Objects, arrays, and `null` are excluded by `formatTraitValue`, even though the
+SDK contract continues to support custom JSON traits and the task requires the
+profile to show all supplied traits with bounded safe rendering. `avatarUrl` is
+also removed from the generic list but is not presented anywhere else. This
+can make stored profile data appear missing.
+
+The list presentation is also unstable: its bulk trait query has no
+`ORDER BY`, while `visibleTraits()` displays the first two object entries.
+Different database row order can therefore change which traits appear.
+
+**How to address:**
+
+1. [x] Introduce a bounded, text-only JSON trait renderer for the detail page with
+   depth (3), item-count (8), and string-length (120) limits. Do not render trait HTML or
+   fetch remote avatar URLs implicitly.
+2. [x] Keep `avatarUrl` in the supplied-traits section with the same bounded treatment.
+3. [x] Make list trait selection deterministic: order the bulk query by
+   `person_id, key`.
+4. [x] Add profile tests for an object, array, `null`, oversized value, and
+   `avatarUrl`, plus a stable list-trait ordering test.
+
+### R1-F5 - People pagination inputs are not actually validated
+
+**Severity:** Medium  
+**Status:** Resolved (2026-09-03)
+
+The task says range, limit, and cursor inputs are validated, but list `limit`
+accepts any finite number and `peopleList()` preserves fractional values.
+Passing a fractional SQL `LIMIT` can produce a database error. The cursor is a
+raw colon-delimited string; `Number(lastSeen)` is bound without checking that
+it is finite/safe, and extra or malformed components are not rejected. A
+crafted query can therefore reach the store as invalid SQL parameters instead
+of receiving a controlled client error.
+
+**How to address:**
+
+1. [x] Require an integer limit and clamp/default it through one shared parser
+   (`parsePeopleLimit` in the controller; `clampPeopleLimit` guards the store).
+2. [x] Add People cursor encode/decode helpers matching the canonical opaque
+   Events cursor pattern. Validate tuple shape, finite non-negative timestamp,
+   and bounded non-empty person ID before querying.
+3. [x] Define one consistent invalid-cursor behavior: a structured `400
+   invalid_cursor`.
+4. [x] Add controller/store cases for fractional limits, `NaN`, malformed cursors,
+   extra cursor components, and the normal round trip.
+
+### R1-F6 - Successful deletion can leave a deleted row in the cached list
+
+**Severity:** Medium  
+**Status:** Resolved (2026-09-03)
+
+After deletion, `person.tsx` navigates directly to People without invalidating
+or updating any React Query data. People list queries have a 30-second
+`staleTime`; returning to a previously cached page can therefore show the
+deleted person until that cache becomes stale. Selecting the stale row then
+opens a profile that correctly returns 404.
+
+**How to address:**
+
+1. [x] Use `useQueryClient()` in the delete success path.
+2. [x] Remove the deleted person's detail/activity queries and invalidate the
+   `['people', slug]` list queries before navigation.
+3. [x] Add a web regression that seeds a People cache, completes deletion, and
+   proves the list queries are invalidated while the profile/activity caches
+   are removed.
+
+### R1-F7 - Several recorded regression claims are not proved by the tests
+
+**Severity:** Medium  
+**Status:** Resolved (2026-09-03)
+
+The controller test named `accepts the supported range ... and applies its
+window` finds the list call but makes no assertion about its arguments or the
+requested number of days. The owner test proves export and the unconfirmed
+delete response, but never sends `confirm=true` through `makeCtx`'s fourth
+query argument and never proves a successful controller deletion. Finally,
+the only axe test calls `renderPeople()`; the new person profile is not audited
+despite the progress log describing profile coverage and accessibility as
+green.
+
+**How to address:**
+
+1. [x] Make the table-driven range test assert the exact `from` and `to` values in
+   both the list and summary store calls for 7d, 30d, and 90d.
+2. [x] Call `makeCtx(..., query: { confirm: 'true' })` for an owner/admin delete and assert
+   the store deletion plus response shape. The unused duplicate member
+   delete call is removed.
+3. [x] Add an axe pass for `renderPerson()` with activity and management controls,
+   and assert the profile's section structure rather than relying only on the
+   list audit.
+4. [x] Update the progress log only after these focused proofs pass; the hosted
+   proof and design-width QA remain explicitly outstanding.
+
 ## Definition of done
 
 - [ ] A normal People row is recognizable from an application-owned external
@@ -672,3 +846,62 @@ Commands and actual results:
 Outstanding (Slice 6 closure): design-system QA captures at the required
 widths in both themes, and the hosted-traffic proof (anonymous activity →
 identify → traits → logout/reset → second user → export → deletion).
+
+### 2026-09-03 - review round 1 (R1-F1 … R1-F7) resolved
+
+All seven findings closed with code changes and focused regression coverage:
+
+- **R1-F2** `deletePerson()`: the batch is now built as a statement array and
+  the `DELETE FROM people` index is captured immediately before it is
+  appended — the old `+4` offset pointed at the events DELETE. New
+  real-store regression: a person with zero events deletes, reports
+  `deleted: true`, the row is gone, and the retry reports `false`
+  (verified failing-first: 3 review tests fail against the pre-fix store).
+- **R1-F3** `newPeople` now counts people whose project-scoped
+  `MIN(external_identities.linked_at)` falls inside `[from, to]` (grouped
+  subquery) — a second alias link no longer re-identifies an existing
+  person. Store fixtures: alias person (old link + in-range link) is not
+  new; first links exactly at `from` and `to` are counted (inclusive).
+- **R1-F4** Person profile: custom JSON traits render through a bounded,
+  text-only serializer (depth 3, 8 items, 120-char strings, explicit
+  truncation markers) — objects, arrays, and `null` are shown, oversized
+  values are truncated, and `avatarUrl` joins the supplied-traits section
+  as text (never fetched). List bulk trait query now orders by
+  `person_id, key` so visible traits are deterministic.
+- **R1-F5** Pagination inputs: `parsePeopleLimit` (controller) +
+  `clampPeopleLimit` (store) accept only integers in 1..100 (default 50);
+  opaque base64url People cursors with strict tuple validation
+  (`encodePeopleCursor`/`decodePeopleCursor`); malformed cursors return a
+  structured `400 invalid_cursor` instead of binding NaN into SQL.
+- **R1-F6** Deletion success path now removes the person detail/activity
+  caches and invalidates all `['people', slug]` list queries before
+  navigating back, so a deleted person cannot linger in a 30s-stale cache.
+- **R1-F7** Regression proofs strengthened: range tests assert the exact
+  `from`/`to` in BOTH list and summary store calls for 7d/30d/90d; the
+  owner delete test sends `confirm=true` through the query map, asserts the
+  batch ran with the people DELETE and the response shape
+  (`{ deleted: true, personId }`), and the unused duplicate member call is
+  removed; a profile axe pass runs with activity rows and management
+  controls present and asserts the section structure.
+- **R1-F1** `scripts/certify-v2-ingest.mjs` now asserts
+  `externalIdentityCount >= 1` + `anonymousIdentityCount >= 1` +
+  `primaryExternalId` present instead of the removed `identityCount`; the
+  event-count and project-authorization assertions are unchanged.
+
+Commands and actual results:
+
+- `yarn workspace prism-api run test src/__tests__/peopleStore.test.ts` →
+  21/21 (16 original + 5 review regressions; failing-first proof: 3 failed
+  against the pre-fix store)
+- `yarn workspace prism-api run test src/__tests__/people.test.ts` → 12/12
+- `yarn workspace prism-web run test -- src/__tests__/people.test.tsx` →
+  13/13 (was 10; +trait rendering, +profile axe/structure, +cache
+  invalidation)
+- `yarn workspace prism-api run test` (full) → 17 files | 2 skipped, 195
+  passed | 19 skipped
+- `yarn workspace prism-api run lint` (biome) → 95 files, clean;
+  typecheck → clean
+- `yarn workspace prism-web run typecheck` → clean; `build` → success;
+  full web suite → only the pre-existing `gallery.test.tsx` calendar failure
+- `node --check scripts/certify-v2-ingest.mjs` → OK (the hosted
+  certification run remains part of the outstanding Slice 6 proof)

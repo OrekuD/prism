@@ -286,6 +286,41 @@ describe("PersonDetail", () => {
 		expect(screen.getByText("u_1234567890abcdef")).toBeDefined();
 	});
 
+	it("renders custom JSON traits with bounded, text-only output (R1-F4)", async () => {
+		const oversized = "x".repeat(400);
+		getMock.mockImplementation(async (url: string) => ({
+			data: String(url).includes("/activity")
+				? []
+				: {
+						...person,
+						traits: {
+							name: "Ama Mensah",
+							avatarUrl: "https://cdn.example.com/ama.png",
+							settings: { theme: "dark", flags: [1, 2, 3] },
+							tags: ["beta", "vip"],
+							legacy: null,
+							bio: oversized,
+						},
+					},
+		}));
+
+		renderPerson();
+
+		// avatarUrl joins the supplied-traits section (bounded text, never fetched)
+		expect(await screen.findByText("https://cdn.example.com/ama.png")).toBeDefined();
+		// objects render as bounded key/value text
+		expect(screen.getByText(/theme: dark/)).toBeDefined();
+		// arrays render as bounded lists
+		expect(screen.getByText(/beta, vip/)).toBeDefined();
+		// null renders as an explicit value, not dropped
+		expect(screen.getByText("null")).toBeDefined();
+		// oversized strings are truncated with an ellipsis, never fully emitted
+		expect(screen.getAllByText(/x{60,}…/).length).toBeGreaterThanOrEqual(1);
+		expect(screen.queryByText(oversized)).toBeNull();
+		// nothing was injected as HTML
+		expect(document.querySelector("img[src*='cdn.example']")).toBeNull();
+	});
+
 	it("requires typing delete exactly before the destructive action enables", async () => {
 		getMock.mockImplementation(async (url: string) => ({
 			data: String(url).includes("/activity") ? [] : person,
@@ -373,6 +408,108 @@ describe("PersonDetail", () => {
 			await screen.findByRole("button", { name: /export person data/i }),
 		).toBeDefined();
 		expect(screen.getByLabelText(/type delete to confirm/i)).toBeDefined();
+	});
+
+	it("invalidates People caches after a successful deletion (R1-F6)", async () => {
+		getMock.mockImplementation(async (url: string) => ({
+			data: String(url).includes("/activity") ? [] : person,
+		}));
+
+		// seed the caches the deletion must clear: a list page and the profile
+		queryClient.setQueryData(["people", "alpha", "30d", undefined, undefined, 10], {
+			people: [person],
+			summary: {
+				range: "30d",
+				from: 1,
+				to: 2,
+				identifiedPeople: 1,
+				activePeople: 1,
+				newPeople: 0,
+				anonymousPeople: 0,
+			},
+			nextCursor: null,
+		});
+		queryClient.setQueryData(["person", "alpha", "u_1234567890abcdef"], person);
+		queryClient.setQueryData(
+			["person-activity", "alpha", "u_1234567890abcdef"],
+			[],
+		);
+
+		renderPerson();
+		const confirm = await screen.findByLabelText(/type delete to confirm/i);
+		fireEvent.change(confirm, { target: { value: "delete" } });
+		fireEvent.click(screen.getByRole("button", { name: /delete person/i }));
+
+		await waitFor(() => expect(deleteMock).toHaveBeenCalled());
+		await waitFor(() => {
+			const states = queryClient
+				.getQueryCache()
+				.findAll({ queryKey: ["people", "alpha"] });
+			expect(states.length).toBeGreaterThan(0);
+			for (const state of states) {
+				expect(state.state.isInvalidated).toBe(true);
+			}
+		});
+		// the profile and activity caches are REMOVED, not just stale
+		expect(
+			queryClient.getQueryData(["person", "alpha", "u_1234567890abcdef"]),
+		).toBeUndefined();
+		expect(
+			queryClient.getQueryData(["person-activity", "alpha", "u_1234567890abcdef"]),
+		).toBeUndefined();
+	});
+
+	it("has no axe violations on the person profile with activity and controls (R1-F7)", async () => {
+		getMock.mockImplementation(async (url: string) => ({
+			data: String(url).includes("/activity")
+				? [
+						{
+							id: "evt-1",
+							sessionId: "sess-9",
+							projectId: "proj_1",
+							name: "$prism_sign_up",
+							type: "track",
+							occurredAt: 1_785_542_400_000,
+							receivedAt: 1_785_542_400_000,
+							personId: "u_1234567890abcdef",
+							sourceId: "src_web_1",
+							platform: "web",
+							source: {
+								id: "src_web_1",
+								name: "Acme Web",
+								platform: "web",
+								status: "active",
+							},
+							standardEvent: {
+								key: "sign_up",
+								displayName: "Sign up",
+								category: "Identity",
+								schemaVersion: 1,
+							},
+							properties: null,
+						},
+					]
+				: person,
+		}));
+
+		const { container } = renderPerson();
+
+		await screen.findByRole("heading", { name: "Ama Mensah" });
+		// section structure: Identity, Linked identities, Technical details,
+		// Activity, Data controls
+		for (const section of [
+			"Identity",
+			"Linked identities",
+			"Technical details",
+			"Activity",
+			"Data controls",
+		]) {
+			expect(screen.getByText(section)).toBeDefined();
+		}
+		await waitFor(async () => {
+			const results = await axe.run(container);
+			expect(results.violations).toHaveLength(0);
+		});
 	});
 
 	it("has no axe violations on the people list", async () => {

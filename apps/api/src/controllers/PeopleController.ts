@@ -19,12 +19,24 @@ import { ErrorResponse } from "../network/responses/ErrorResponse";
 import { deriveStandardEvent } from "../utils/standardEvent";
 import { getWorkspaceRole, isAdminRole, type WorkspaceRole } from "../utils/workspaceAuth";
 import type { PeopleRange, SourcePlatform } from "@prism-analytics/types";
+import { decodePeopleCursor } from "../utils/peopleStore";
 
 const PEOPLE_RANGE_DAYS: Record<PeopleRange, number> = {
   "7d": 7,
   "30d": 30,
   "90d": 90,
 };
+
+/**
+ * Shared page-size parser: only an INTEGER within 1..100 is accepted.
+ * Fractions, NaN, and out-of-range values fall back to the documented
+ * default instead of reaching SQL as a fractional LIMIT.
+ */
+function parsePeopleLimit(raw: string | undefined): number {
+  const value = Number(raw ?? "50");
+  if (!Number.isInteger(value) || value < 1 || value > 100) return 50;
+  return value;
+}
 
 function resolvePeopleRange(raw: string | undefined, now: number): {
   range: PeopleRange;
@@ -80,7 +92,11 @@ export class PeopleController {
       return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
     }
     const cursor = ctx.req.query("cursor");
-    const limit = Number(ctx.req.query("limit") ?? "50");
+    // R1-F5: a malformed cursor is a structured 400, never a NaN parameter
+    // bound into the store query.
+    if (cursor !== undefined && decodePeopleCursor(cursor) === null) {
+      return ctx.json(new ErrorResponse("invalid_cursor").toJSON(), 400);
+    }
     const searchUserId = ctx.req.query("q");
     const traitKey = ctx.req.query("traitKey");
     const traitValue = ctx.req.query("traitValue");
@@ -88,7 +104,7 @@ export class PeopleController {
     const range = resolvePeopleRange(ctx.req.query("range"), Date.now());
     const result = await peopleList(PeopleController.store(ctx), access.project.id, {
       cursor,
-      limit: Number.isFinite(limit) ? limit : 50,
+      limit: parsePeopleLimit(ctx.req.query("limit")),
       ...range,
       ...(searchUserId ? { searchUserId } : {}),
       ...(traitKey && traitValue ? { searchTrait: { key: traitKey, value: traitValue } } : {}),

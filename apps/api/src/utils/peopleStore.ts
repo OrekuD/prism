@@ -64,6 +64,69 @@ export interface PeopleListParams {
 }
 
 /**
+ * Opaque People cursor on (last_seen_at DESC, person_id DESC). Encoded as
+ * base64url JSON like the canonical Events cursor: the dashboard never
+ * parses it, and the store validates the tuple shape, a finite non-negative
+ * timestamp, and a bounded non-empty person ID before querying.
+ */
+export type PeopleCursor = { lastSeenAt: number; personId: string };
+
+const MAX_PERSON_ID_LENGTH = 128;
+
+export function encodePeopleCursor(cursor: PeopleCursor): string {
+  const json = JSON.stringify([cursor.lastSeenAt, cursor.personId]);
+  if (typeof Buffer !== "undefined") {
+    return (
+      Buffer as unknown as { from(s: string): { toString(e: string): string } }
+    )
+      .from(json)
+      .toString("base64url");
+  }
+  const b64 = btoa(json);
+  return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+export function decodePeopleCursor(cursor: string): PeopleCursor | null {
+  try {
+    let json: string;
+    if (typeof Buffer !== "undefined") {
+      json = (
+        Buffer as unknown as {
+          from(s: string, e: string): { toString(e: string): string };
+        }
+      )
+        .from(cursor, "base64url")
+        .toString("utf8");
+    } else {
+      let b64 = cursor.replace(/-/g, "+").replace(/_/g, "/");
+      while (b64.length % 4) b64 += "=";
+      json = atob(b64);
+    }
+    const parsed = JSON.parse(json) as unknown;
+    if (!Array.isArray(parsed) || parsed.length !== 2) return null;
+    const [lastSeenAt, personId] = parsed as [unknown, unknown];
+    if (typeof lastSeenAt !== "number" || !Number.isSafeInteger(lastSeenAt)) {
+      return null;
+    }
+    if (lastSeenAt < 0) return null;
+    if (typeof personId !== "string") return null;
+    if (personId.length === 0 || personId.length > MAX_PERSON_ID_LENGTH) {
+      return null;
+    }
+    return { lastSeenAt, personId };
+  } catch {
+    return null;
+  }
+}
+
+/** Shared integer clamp for page size — fractions/NaN never reach SQL. */
+export function clampPeopleLimit(raw: number | undefined): number {
+  const value = typeof raw === "number" && Number.isInteger(raw) ? raw : Number.NaN;
+  if (!Number.isFinite(value)) return PAGE_SIZE;
+  return Math.min(Math.max(value, 1), 100);
+}
+
+/**
  * Bounded people list, keyset-paginated on (last_seen_at DESC,
  * person_id) — a stable order for cursor pagination. Counts are
  * correlated subqueries over the (project_id, person_id, received_at)
@@ -74,7 +137,7 @@ export async function peopleList(
   projectId: string,
   params: PeopleListParams = {},
 ): Promise<PeopleListResource> {
-  const limit = Math.min(Math.max(params.limit ?? PAGE_SIZE, 1), 100);
+  const limit = clampPeopleLimit(params.limit);
   const clauses: string[] = ["p.project_id = ?"];
   const args: Array<string | number | null> = [projectId];
 
@@ -107,10 +170,14 @@ export async function peopleList(
     args.push(projectId, params.searchTrait.key, JSON.stringify(params.searchTrait.value));
   }
   if (params.cursor) {
-    const [lastSeen, personId] = params.cursor.split(":");
-    if (lastSeen && personId) {
-      clauses.push("(p.last_seen_at < ? OR (p.last_seen_at = ? AND p.person_id < ?))");
-      args.push(Number(lastSeen), Number(lastSeen), personId);
+    // Strict opaque-cursor decode: a malformed tuple never reaches SQL as a
+    // NaN/extra-component parameter (the controller rejects it with 400).
+    const decoded = decodePeopleCursor(params.cursor);
+    if (decoded) {
+      clauses.push(
+        "(p.last_seen_at < ? OR (p.last_seen_at = ? AND p.person_id < ?))",
+      );
+      args.push(decoded.lastSeenAt, decoded.lastSeenAt, decoded.personId);
     }
   }
 
@@ -144,15 +211,21 @@ export async function peopleList(
   const last = page[page.length - 1];
   const nextCursor =
     hasMore && last
-      ? `${String(last.last_seen_at)}:${String(last.person_id)}`
+      ? encodePeopleCursor({
+          lastSeenAt: Number(last.last_seen_at),
+          personId: String(last.person_id),
+        })
       : null;
 
   const pageIds = page.map((row) => String(row.person_id));
   const traitsByPerson = new Map<string, Record<string, unknown>>();
   if (pageIds.length > 0) {
+    // Deterministic trait order (person, key) so "first two visible traits"
+    // cannot change with database row order.
     const traitRows = await client.execute({
       sql: `SELECT person_id, key, value FROM person_traits
-            WHERE project_id = ? AND person_id IN (${pageIds.map(() => "?").join(",")})`,
+            WHERE project_id = ? AND person_id IN (${pageIds.map(() => "?").join(",")})
+            ORDER BY person_id ASC, key ASC`,
       args: [projectId, ...pageIds],
     });
     for (const row of traitRows.rows) {
@@ -209,8 +282,12 @@ async function peopleSummary(
               WHERE p.project_id = ? AND p.last_seen_at >= ? AND p.last_seen_at <= ?
                 AND EXISTS (SELECT 1 FROM external_identities x
                   WHERE x.project_id = p.project_id AND x.person_id = p.person_id)) AS active_people,
-            (SELECT COUNT(DISTINCT x.person_id) FROM external_identities x
-              WHERE x.project_id = ? AND x.linked_at >= ? AND x.linked_at <= ?) AS new_people,
+            (SELECT COUNT(*) FROM (
+              SELECT x.person_id FROM external_identities x
+                WHERE x.project_id = ?
+                GROUP BY x.person_id
+                HAVING MIN(x.linked_at) >= ? AND MIN(x.linked_at) <= ?
+            ) AS first_links) AS new_people,
             (SELECT COUNT(*) FROM people p
               WHERE p.project_id = ? AND p.last_seen_at >= ? AND p.last_seen_at <= ?
                 AND NOT EXISTS (SELECT 1 FROM external_identities x
@@ -771,39 +848,40 @@ export async function deletePerson(
         }))
       : []),
   ];
-  const results = await client.batch?.(
-    [
-      ...credentialTombstones,
-      ...sessionStatements,
-      { sql: "DELETE FROM external_identities WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
-      { sql: "DELETE FROM anonymous_identities WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
-      { sql: "DELETE FROM person_traits WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
-      // Task 17 slice 4: page projections die WITH their linked events -
-      // no orphan rows may survive person deletion (privacy contract).
-      { sql: "DELETE FROM web_page_views WHERE project_id = ? AND event_id IN (SELECT id FROM events WHERE project_id = ? AND person_id = ?)", args: [projectId, projectId, personId] },
-      { sql: "DELETE FROM events WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
-      // Task 18 (R3-F7): person deletion immediately reconciles mobile
-      // aggregates - screens cascade with their events; sessions and
-      // installations with NO surviving telemetry are removed right here.
-      { sql: `DELETE FROM mobile_app_sessions WHERE project_id = ? AND NOT EXISTS (
-        SELECT 1 FROM events e
-        WHERE e.project_id = mobile_app_sessions.project_id
-        AND e.session_id = mobile_app_sessions.session_id
-      )`, args: [projectId] },
-      { sql: `DELETE FROM mobile_installations WHERE project_id = ? AND installation_digest NOT IN (
-        SELECT DISTINCT installation_digest FROM mobile_app_sessions
-        WHERE project_id = ? AND installation_digest IS NOT NULL
-      )`, args: [projectId, projectId] },
-      { sql: "DELETE FROM people WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
-      { sql: "INSERT INTO deleted_people (project_id, person_id, deleted_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING", args: [projectId, personId, Date.now()] },
-      ...errorPurgeStatements,
-    ],
-    "write",
-  );
+  // R1-F2: build the batch first and CAPTURE the people-DELETE index
+  // immediately before appending it — a positional magic offset silently
+  // drifted to the events DELETE (a person with events reported deleted by
+  // coincidence; an eventless person reported not-deleted).
+  const statements: Array<{ sql: string; args: Array<string | number | null> }> = [
+    ...credentialTombstones,
+    ...sessionStatements,
+    { sql: "DELETE FROM external_identities WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
+    { sql: "DELETE FROM anonymous_identities WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
+    { sql: "DELETE FROM person_traits WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
+    // Task 17 slice 4: page projections die WITH their linked events -
+    // no orphan rows may survive person deletion (privacy contract).
+    { sql: "DELETE FROM web_page_views WHERE project_id = ? AND event_id IN (SELECT id FROM events WHERE project_id = ? AND person_id = ?)", args: [projectId, projectId, personId] },
+    { sql: "DELETE FROM events WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
+    // Task 18 (R3-F7): person deletion immediately reconciles mobile
+    // aggregates - screens cascade with their events; sessions and
+    // installations with NO surviving telemetry are removed right here.
+    { sql: `DELETE FROM mobile_app_sessions WHERE project_id = ? AND NOT EXISTS (
+      SELECT 1 FROM events e
+      WHERE e.project_id = mobile_app_sessions.project_id
+      AND e.session_id = mobile_app_sessions.session_id
+    )`, args: [projectId] },
+    { sql: `DELETE FROM mobile_installations WHERE project_id = ? AND installation_digest NOT IN (
+      SELECT DISTINCT installation_digest FROM mobile_app_sessions
+      WHERE project_id = ? AND installation_digest IS NOT NULL
+    )`, args: [projectId, projectId] },
+  ];
+  const peopleDeleteIndex = statements.length;
+  statements.push({ sql: "DELETE FROM people WHERE project_id = ? AND person_id = ?", args: [projectId, personId] });
+  statements.push({ sql: "INSERT INTO deleted_people (project_id, person_id, deleted_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING", args: [projectId, personId, Date.now()] });
+  statements.push(...errorPurgeStatements);
+  const results = await client.batch?.(statements, "write");
   // the `deleted` flag reflects the PERSON row removal — the tombstone
   // insert is not evidence that the person existed.
-  const peopleDeleteIndex =
-    credentialTombstones.length + sessionStatements.length + 4;
   const peopleDelete = results?.[peopleDeleteIndex];
   return { deleted: (peopleDelete?.rowsAffected ?? 0) > 0 };
 }
