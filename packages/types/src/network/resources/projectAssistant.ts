@@ -79,6 +79,109 @@ export const OVERVIEW_RANGE_MS: Record<OverviewRange, number> = deepFreeze({
 // ---------------------------------------------------------------------------
 
 /**
+ * Stored source platforms. `ios`/`android` cover future Swift/Kotlin SDKs;
+ * they feed the same Mobile metric definitions as `react-native` without
+ * changing this contract.
+ */
+export const SOURCE_PLATFORMS = deepFreeze([
+  "web",
+  "ios",
+  "android",
+  "react-native",
+  "server",
+] as const);
+export type AssistantSourcePlatform = (typeof SOURCE_PLATFORMS)[number];
+export const AssistantSourcePlatformSchema = z.enum(SOURCE_PLATFORMS);
+
+/** React Native is the SDK/source platform; `os` is the runtime dimension. */
+export function platformFamilyOf(
+  platform: AssistantSourcePlatform,
+): PlatformFamily {
+  if (platform === "web") return "web";
+  if (platform === "server") return "server";
+  return "mobile";
+}
+
+/**
+ * Canonical Task 19 Standard Event keys. Package boundaries forbid importing
+ * `@prism-analytics/core` here (core depends on types), so this enum mirrors
+ * `STANDARD_EVENT_DEFINITIONS`; `standard-event-key-drift.test.ts` in core
+ * fails closed on any drift. Memory payloads and observed-event lists must
+ * reference these exact keys - never free-form strings, `$prism_*`
+ * protected names, or case/whitespace variants.
+ */
+export const STANDARD_EVENT_KEYS = deepFreeze([
+  "sign_up",
+  "login",
+  "logout",
+  "onboarding_started",
+  "onboarding_step_completed",
+  "onboarding_completed",
+  "lead_generated",
+  "invite_sent",
+  "invite_accepted",
+  "trial_started",
+  "trial_ended",
+  "subscription_started",
+  "subscription_renewed",
+  "subscription_changed",
+  "subscription_paused",
+  "subscription_resumed",
+  "subscription_cancelled",
+  "subscription_expired",
+  "payment_succeeded",
+  "payment_failed",
+  "purchase",
+  "refund",
+  "search",
+  "share",
+  "feedback_submitted",
+] as const);
+export type StandardEventKeyCode = (typeof STANDARD_EVENT_KEYS)[number];
+export const StandardEventKeySchema = z.enum(STANDARD_EVENT_KEYS);
+
+/**
+ * Typed drill-down filter intent (R2-F4). Facts and artifacts carry the
+ * resolved values that define them; the route builder encodes the same
+ * values so a drill-down opens the filtered view behind the number — never
+ * an unfiltered destination showing a different value. Keys are
+ * destination-specific (see `DRILLDOWN_FILTER_ALLOWLIST`); arbitrary model
+ * query records are never accepted.
+ */
+export const DrilldownFiltersSchema = z.strictObject({
+  standardEventKey: StandardEventKeySchema.optional(),
+  currency: z
+    .string()
+    .regex(/^[A-Z]{3}$/, "currency must be an ISO 4217 code")
+    .optional(),
+  path: z.string().min(1).max(200).optional(),
+  host: z.string().min(1).max(253).optional(),
+  traffic: z.enum(["human", "all"]).optional(),
+  os: z.enum(["ios", "android"]).optional(),
+  release: z.string().min(1).max(64).optional(),
+  platform: z.enum(SOURCE_PLATFORMS).optional(),
+  environment: z.string().min(1).max(64).optional(),
+  sourceId: z.string().min(1).max(128).optional(),
+});
+export type DrilldownFilters = z.infer<typeof DrilldownFiltersSchema>;
+
+type DrilldownFilterKey = keyof DrilldownFilters;
+
+const DRILLDOWN_FILTER_ALLOWLIST: Record<
+  DrilldownDestinationId,
+  readonly DrilldownFilterKey[]
+> = deepFreeze({
+  overview: [],
+  events: ["standardEventKey", "currency", "sourceId"],
+  people: [],
+  "web-analytics": ["path", "host", "traffic"],
+  "mobile-analytics": ["os", "release"],
+  errors: ["platform", "environment", "release", "sourceId"],
+  "errors-issue": [],
+  sources: [],
+});
+
+/**
  * Typed drill-down destinations. The registry stores a destination ID plus
  * filter intent — never a context-free pathname. Final URLs resolve through
  * `buildDrilldownUrl` with the current workspace/project slugs and the
@@ -107,6 +210,8 @@ export const DrilldownDestinationSchema = z
     label: z.string().min(1).max(80),
     /** Required exactly when destination is `errors-issue`. */
     issueId: z.string().min(1).max(128).optional(),
+    /** Resolved filter values defining the source fact/artifact. */
+    filters: DrilldownFiltersSchema.optional(),
   })
   .superRefine((value, context) => {
     if (value.destination === "errors-issue" && !value.issueId) {
@@ -120,6 +225,17 @@ export const DrilldownDestinationSchema = z
         code: "custom",
         message: "issueId is only valid for an errors-issue drill-down",
       });
+    }
+    if (value.filters) {
+      const allowed = DRILLDOWN_FILTER_ALLOWLIST[value.destination];
+      for (const key of Object.keys(value.filters) as DrilldownFilterKey[]) {
+        if (value.filters[key] !== undefined && !allowed.includes(key)) {
+          context.addIssue({
+            code: "custom",
+            message: `filter ${key} is not valid for ${value.destination}`,
+          });
+        }
+      }
     }
   });
 export type DrilldownDestination = z.infer<typeof DrilldownDestinationSchema>;
@@ -160,8 +276,10 @@ export function buildProjectPath(
 /**
  * Snapshot-aware drill-down URL. The token is opaque here; the server
  * verifies it (HMAC, scope, expiry, source membership) before serving the
- * snapshot. The link first shows the snapshot that supported the answer; a
- * **Refresh to latest** action is a UI concern in later slices.
+ * snapshot. Resolved filter values travel as bounded query params so the
+ * destination opens the filtered view behind the number. The link first
+ * shows the snapshot that supported the answer; a **Refresh to latest**
+ * action is a UI concern in later slices.
  */
 export function buildDrilldownUrl(
   wrkSlug: string,
@@ -170,8 +288,30 @@ export function buildDrilldownUrl(
   queryContextToken?: string,
 ): string {
   const path = buildProjectPath(wrkSlug, projectSlug, drilldown);
-  if (!queryContextToken) return path;
-  return `${path}?ctx=${encodeURIComponent(queryContextToken)}`;
+  const params: string[] = [];
+  if (queryContextToken) {
+    params.push(`ctx=${encodeURIComponent(queryContextToken)}`);
+  }
+  const filters = drilldown.filters ?? {};
+  const entries: [DrilldownFilterKey, string][] = [
+    ["standardEventKey", "event"],
+    ["currency", "currency"],
+    ["path", "path"],
+    ["host", "host"],
+    ["traffic", "traffic"],
+    ["os", "os"],
+    ["release", "release"],
+    ["platform", "platform"],
+    ["environment", "environment"],
+    ["sourceId", "source"],
+  ];
+  for (const [key, param] of entries) {
+    const value = filters[key];
+    if (value !== undefined) {
+      params.push(`${param}=${encodeURIComponent(value)}`);
+    }
+  }
+  return params.length > 0 ? `${path}?${params.join("&")}` : path;
 }
 
 // ---------------------------------------------------------------------------
@@ -607,7 +747,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
       "environment",
       "handled",
     ],
-    supportedFilters: ["source_ids", "platform", "environment"],
+    supportedFilters: ["source_ids", "platform", "environment", "release"],
     sourceRequirements: ["error_collection"],
     comparison: "supported",
     drilldown: { destination: "errors", label: "Open Errors" },
@@ -620,7 +760,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     valueKind: "count",
     domain: "errors",
     supportedDimensions: ["platform", "release"],
-    supportedFilters: ["platform"],
+    supportedFilters: ["platform", "release"],
     sourceRequirements: ["error_collection"],
     comparison: "not-supported",
     drilldown: { destination: "errors", label: "Open Errors" },
@@ -633,7 +773,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     valueKind: "count",
     domain: "errors",
     supportedDimensions: ["platform", "release"],
-    supportedFilters: ["platform"],
+    supportedFilters: ["platform", "release"],
     sourceRequirements: ["error_collection"],
     comparison: "not-supported",
     drilldown: { destination: "errors", label: "Open Errors" },
@@ -646,7 +786,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     valueKind: "count",
     domain: "errors",
     supportedDimensions: ["platform", "release"],
-    supportedFilters: ["platform"],
+    supportedFilters: ["platform", "release"],
     sourceRequirements: ["error_collection"],
     comparison: "not-supported",
     drilldown: { destination: "errors", label: "Open Errors" },
@@ -660,7 +800,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     valueKind: "count",
     domain: "errors",
     supportedDimensions: ["platform", "release"],
-    supportedFilters: ["source_ids", "platform"],
+    supportedFilters: ["source_ids", "platform", "release"],
     sourceRequirements: ["error_collection"],
     comparison: "supported",
     drilldown: { destination: "errors", label: "Open Errors" },
@@ -673,7 +813,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     valueKind: "count",
     domain: "errors",
     supportedDimensions: ["platform", "release"],
-    supportedFilters: ["source_ids", "platform"],
+    supportedFilters: ["source_ids", "platform", "release"],
     sourceRequirements: ["error_collection"],
     comparison: "supported",
     drilldown: { destination: "errors", label: "Open Errors" },
@@ -686,7 +826,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     valueKind: "count",
     domain: "errors",
     supportedDimensions: ["platform", "release"],
-    supportedFilters: ["source_ids", "platform"],
+    supportedFilters: ["source_ids", "platform", "release"],
     sourceRequirements: ["error_collection"],
     comparison: "supported",
     drilldown: { destination: "errors", label: "Open Errors" },
@@ -696,30 +836,6 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
 // ---------------------------------------------------------------------------
 // Source platform family (future-native proof lives here)
 // ---------------------------------------------------------------------------
-
-/**
- * Stored source platforms. `ios`/`android` cover future Swift/Kotlin SDKs;
- * they feed the same Mobile metric definitions as `react-native` without
- * changing this contract.
- */
-export const SOURCE_PLATFORMS = deepFreeze([
-  "web",
-  "ios",
-  "android",
-  "react-native",
-  "server",
-] as const);
-export type AssistantSourcePlatform = (typeof SOURCE_PLATFORMS)[number];
-export const AssistantSourcePlatformSchema = z.enum(SOURCE_PLATFORMS);
-
-/** React Native is the SDK/source platform; `os` is the runtime dimension. */
-export function platformFamilyOf(
-  platform: AssistantSourcePlatform,
-): PlatformFamily {
-  if (platform === "web") return "web";
-  if (platform === "server") return "server";
-  return "mobile";
-}
 
 // ---------------------------------------------------------------------------
 // Canonical query context + opaque snapshot token (R1-F1)
@@ -743,16 +859,25 @@ export type ProjectQueryContext = {
 };
 
 /** The browser/model-safe projection: ranges, snapshot, filters, version. */
-export const PublicQueryContextSchema = z.strictObject({
-  from: z.number().int().nonnegative(),
-  to: z.number().int().nonnegative(),
-  compareFrom: z.number().int().nonnegative(),
-  compareTo: z.number().int().nonnegative(),
-  asOf: z.number().int().nonnegative(),
-  timezone: z.literal("UTC"),
-  sourceIds: z.array(z.string().min(1).max(128)).max(64).readonly(),
-  definitionVersion: z.literal(DEFINITION_VERSION),
-});
+export const PublicQueryContextSchema = z
+  .strictObject({
+    from: z.number().int().nonnegative(),
+    to: z.number().int().nonnegative(),
+    compareFrom: z.number().int().nonnegative(),
+    compareTo: z.number().int().nonnegative(),
+    asOf: z.number().int().nonnegative(),
+    timezone: z.literal("UTC"),
+    sourceIds: z.array(z.string().min(1).max(128)).max(64).readonly(),
+    definitionVersion: z.literal(DEFINITION_VERSION),
+  })
+  .superRefine((value, context) => {
+    if (hasDuplicateStrings(value.sourceIds)) {
+      context.addIssue({
+        code: "custom",
+        message: "sourceIds must not contain duplicates",
+      });
+    }
+  });
 export type PublicQueryContext = z.infer<typeof PublicQueryContextSchema>;
 
 /**
@@ -772,6 +897,38 @@ export function isInQueryRange(
   to: number,
 ): boolean {
   return timestamp >= from && timestamp < to;
+}
+
+/** Duplicate IDs would let reordered/duplicated sets alias one snapshot. */
+export function hasDuplicateStrings(values: readonly string[]): boolean {
+  return new Set(values).size !== values.length;
+}
+
+/**
+ * Canonical context fingerprint (R2-F3): deterministic source-ID order so
+ * the same scope always hashes identically regardless of input order.
+ * Duplicate source IDs are a contract violation, not a distinct snapshot.
+ */
+export function queryContextFingerprint(context: PublicQueryContext): string {
+  const sources = [...context.sourceIds].sort().join(",");
+  return [
+    context.from,
+    context.to,
+    context.compareFrom,
+    context.compareTo,
+    context.asOf,
+    context.timezone,
+    context.definitionVersion,
+    sources,
+  ].join("|");
+}
+
+/** Snapshot equality for overview/artifact consistency refinements. */
+export function areQueryContextsEqual(
+  a: PublicQueryContext,
+  b: PublicQueryContext,
+): boolean {
+  return queryContextFingerprint(a) === queryContextFingerprint(b);
 }
 
 // ---------------------------------------------------------------------------
@@ -843,6 +1000,8 @@ export const MetricFactSchema = z.strictObject({
   coverage: CoverageSummarySchema,
   /** Short display sentence derived from `coverage`, not the truth. */
   coverageNote: z.string().max(200),
+  /** Resolved filter values defining this fact (registry declares support). */
+  filters: DrilldownFiltersSchema,
   drilldown: DrilldownDestinationSchema,
 });
 export type MetricFact = z.infer<typeof MetricFactSchema>;
@@ -867,7 +1026,7 @@ export const ProjectCapabilitiesSchema = z.strictObject({
     configured: z.boolean(),
     observed: z.boolean(),
   }),
-  standardEventsObserved: z.array(z.string().min(1).max(64)).max(25),
+  standardEventsObserved: z.array(StandardEventKeySchema).max(25),
   sources: z.strictObject({
     total: z.number().int().nonnegative(),
     active: z.number().int().nonnegative(),
@@ -960,6 +1119,36 @@ export function isRateChangeEligible(
 /** New/regressing issue eligibility. */
 export function isIssueSignalEligible(occurrences: number): boolean {
   return occurrences >= INSIGHT_THRESHOLDS.issueMinOccurrences;
+}
+
+/**
+ * Non-causal wording contract (R2-F4). Correlation is reported with
+ * association language only; "caused" requires a future causal contract.
+ * The deterministic reading of "did errors rise after release X" is equal
+ * windows around the first observation of that release, reported as
+ * co-occurrence — never as the release causing the change.
+ */
+export const NON_CAUSAL_PHRASES = deepFreeze([
+  "associated with",
+  "coincided with",
+] as const);
+export const RELEASE_AFTER_WORDING = "associated with";
+
+const CAUSAL_CLAIM_PHRASES = [
+  "caused",
+  "causes",
+  "causing",
+  "led to",
+  "triggered",
+  "resulted in",
+  "drove the",
+];
+
+/** Grounded-answer validation: reject causal claims from correlation. */
+export function containsCausalClaim(text: string): boolean {
+  return new RegExp(`\\b(${CAUSAL_CLAIM_PHRASES.join("|")})\\b`, "i").test(
+    text,
+  );
 }
 
 const SEVERITY_RANK: Record<InsightSeverity, number> = deepFreeze({
@@ -1136,20 +1325,57 @@ export const UnavailableArtifactSchema = ArtifactBaseSchema.extend({
   nextAction: z.string().min(1).max(280),
 });
 
-export const AssistantArtifactSchema = z.discriminatedUnion("kind", [
-  MetricArtifactSchema,
-  ComparisonArtifactSchema,
-  TimeseriesArtifactSchema,
-  BreakdownArtifactSchema,
-  RankedListArtifactSchema,
-  TableArtifactSchema,
-  IssueListArtifactSchema,
-  CoverageArtifactSchema,
-  DefinitionArtifactSchema,
-  EmptyArtifactSchema,
-  UnavailableArtifactSchema,
-]);
+export const AssistantArtifactSchema = z
+  .discriminatedUnion("kind", [
+    MetricArtifactSchema,
+    ComparisonArtifactSchema,
+    TimeseriesArtifactSchema,
+    BreakdownArtifactSchema,
+    RankedListArtifactSchema,
+    TableArtifactSchema,
+    IssueListArtifactSchema,
+    CoverageArtifactSchema,
+    DefinitionArtifactSchema,
+    EmptyArtifactSchema,
+    UnavailableArtifactSchema,
+  ])
+  .superRefine(checkArtifactConsistency);
 export type AssistantArtifact = z.infer<typeof AssistantArtifactSchema>;
+
+/**
+ * One snapshot per artifact (R2-F3): embedded facts must share the
+ * artifact's query context, and every embedded fact ID must appear exactly
+ * once in `factIds` alongside unique references. A total from one
+ * range/source subset can never sit beside a chart from another.
+ */
+function checkArtifactConsistency(
+  artifact: AssistantArtifact,
+  context: z.RefinementCtx,
+): void {
+  if (new Set(artifact.factIds).size !== artifact.factIds.length) {
+    context.addIssue({ code: "custom", message: "factIds must be unique" });
+  }
+  const embedded: MetricFact[] = [];
+  if (artifact.kind === "metric") embedded.push(artifact.fact);
+  if (artifact.kind === "comparison") {
+    embedded.push(artifact.current, artifact.previous);
+  }
+  for (const fact of embedded) {
+    if (!areQueryContextsEqual(fact.queryContext, artifact.queryContext)) {
+      context.addIssue({
+        code: "custom",
+        message: "embedded facts must share the artifact query context",
+      });
+    }
+    const occurrences = artifact.factIds.filter((id) => id === fact.id).length;
+    if (occurrences !== 1) {
+      context.addIssue({
+        code: "custom",
+        message: `fact ${fact.id} must appear exactly once in factIds`,
+      });
+    }
+  }
+}
 
 /** Release panels reuse ranked-list with `entity: "release"` (R1-F2). */
 export const SecondaryArtifactSchema = z.union([
@@ -1181,23 +1407,79 @@ export const InsightCandidateSchema = z.strictObject({
 });
 export type InsightCandidate = z.infer<typeof InsightCandidateSchema>;
 
-export const ProjectOverviewResourceSchema = z.strictObject({
-  queryContext: PublicQueryContextSchema,
-  /** Opaque server-issued token; drill-downs reuse this exact snapshot. */
-  queryContextToken: QueryContextTokenSchema,
-  capabilities: ProjectCapabilitiesSchema,
-  insights: z.array(InsightCandidateSchema).max(INSIGHT_THRESHOLDS.maxInsights),
-  /** Exactly three adaptive pulse metrics in v1. */
-  pulse: z.array(MetricFactSchema).length(3),
-  /** The complete primary trend payload (never a kind pointer). */
-  activity: ActivityArtifactSchema,
-  /** The complete secondary panel payload (ranking, release, or issues). */
-  secondary: SecondaryArtifactSchema,
-  dataQuality: DataQualitySummarySchema,
-});
+export const ProjectOverviewResourceSchema = z
+  .strictObject({
+    queryContext: PublicQueryContextSchema,
+    /** Opaque server-issued token; drill-downs reuse this exact snapshot. */
+    queryContextToken: QueryContextTokenSchema,
+    capabilities: ProjectCapabilitiesSchema,
+    insights: z
+      .array(InsightCandidateSchema)
+      .max(INSIGHT_THRESHOLDS.maxInsights),
+    /** Exactly three adaptive pulse metrics in v1. */
+    pulse: z.array(MetricFactSchema).length(3),
+    /** The complete primary trend payload (never a kind pointer). */
+    activity: ActivityArtifactSchema,
+    /** The complete secondary panel payload (ranking, release, or issues). */
+    secondary: SecondaryArtifactSchema,
+    dataQuality: DataQualitySummarySchema,
+  })
+  .superRefine(checkOverviewConsistency);
 export type ProjectOverviewResource = z.infer<
   typeof ProjectOverviewResourceSchema
 >;
+
+/**
+ * One snapshot per response (R2-F3): every nested fact and artifact context
+ * must equal the top-level context behind `queryContextToken`. The server
+ * binds the token to that same context at issuance (HMAC + scope checks),
+ * so equality here plus token verification there closes the mixed-snapshot
+ * hole end to end.
+ */
+function checkOverviewConsistency(
+  resource: {
+    queryContext: PublicQueryContext;
+    pulse: readonly MetricFact[];
+    activity: ActivityArtifact;
+    secondary: SecondaryArtifact;
+    insights: readonly InsightCandidate[];
+  },
+  context: z.RefinementCtx,
+): void {
+  const top = resource.queryContext;
+  const nested: { where: string; context: PublicQueryContext }[] = [];
+  for (const fact of resource.pulse) {
+    nested.push({ where: "pulse fact", context: fact.queryContext });
+  }
+  for (const artifact of [
+    resource.activity,
+    resource.secondary,
+    ...resource.insights.map((insight) => insight.artifact),
+  ]) {
+    nested.push({ where: "artifact", context: artifact.queryContext });
+    if (artifact.kind === "metric") {
+      nested.push({
+        where: "embedded fact",
+        context: artifact.fact.queryContext,
+      });
+    }
+    if (artifact.kind === "comparison") {
+      nested.push(
+        { where: "embedded fact", context: artifact.current.queryContext },
+        { where: "embedded fact", context: artifact.previous.queryContext },
+      );
+    }
+  }
+  for (const { where, context: nestedContext } of nested) {
+    if (!areQueryContextsEqual(nestedContext, top)) {
+      context.addIssue({
+        code: "custom",
+        message: `${where} must share the overview query context`,
+      });
+      return;
+    }
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Compact model summaries: the only data channel into model context (R1-F3)
@@ -1218,44 +1500,88 @@ export const ModelSummarySchema = z.strictObject({
 });
 export type ModelSummary = z.infer<typeof ModelSummarySchema>;
 
-export type ModelSummaryItem = {
-  id: string;
-  label: string;
-  conclusion: string;
+/**
+ * Strict summary-item boundary (R2-F2): `label` is a trusted canonical
+ * metric label (single line, server-resolved); `value` is untrusted
+ * observed data serialized as an explicit JSON-quoted envelope, so hostile
+ * telemetry can never read as instructions. Newlines, prompt-injection
+ * probes, and control characters stay inside the quoted string.
+ */
+export const ModelSummaryItemSchema = z.strictObject({
+  id: z.string().min(1).max(128),
+  label: z
+    .string()
+    .min(1)
+    .max(160)
+    .regex(/^[^\r\n]*$/, "label must be a single line"),
+  value: z.string().min(1).max(200),
+});
+export type ModelSummaryItem = z.infer<typeof ModelSummaryItemSchema>;
+
+const clampPositiveInt = (value: number, fallback: number, max: number) => {
+  if (!Number.isFinite(value)) return fallback;
+  const floored = Math.floor(value);
+  if (floored < 1) return fallback;
+  return Math.min(floored, max);
 };
 
 /**
  * Deterministic rank-and-truncate: keep input order (already relevance
  * ranked), cap at 12 facts, then drop trailing whole lines past 4,000
- * chars. The model is always told additional rows exist.
+ * chars. Overrides are clamped to `AGENT_LIMITS` so callers cannot bypass
+ * the model-data ceiling, and the result is parsed through
+ * `ModelSummarySchema` before it can enter a provider message. The model
+ * is always told additional rows exist.
  */
 export function buildModelSummary(
-  items: readonly ModelSummaryItem[],
-  maxFacts = 12,
-  maxChars = 4000,
+  items: readonly unknown[],
+  maxFacts = AGENT_LIMITS.maxModelSummaryFacts,
+  maxChars = AGENT_LIMITS.maxModelSummaryChars,
 ): ModelSummary {
-  const selected = items.slice(0, maxFacts);
+  const safeMaxFacts = clampPositiveInt(
+    maxFacts,
+    AGENT_LIMITS.maxModelSummaryFacts,
+    AGENT_LIMITS.maxModelSummaryFacts,
+  );
+  const safeMaxChars = clampPositiveInt(
+    maxChars,
+    AGENT_LIMITS.maxModelSummaryChars,
+    AGENT_LIMITS.maxModelSummaryChars,
+  );
+  const parsed = items.map((item, index) => {
+    const result = ModelSummaryItemSchema.safeParse(item);
+    if (!result.success) {
+      throw new TypeError(`Invalid model summary item at index ${index}`);
+    }
+    return result.data;
+  });
+  const selected = parsed.slice(0, safeMaxFacts);
   const lines: string[] = [];
   const factIds: string[] = [];
+  const NEWLINE = "\n";
   for (const item of selected) {
-    const line = `${item.label}: ${item.conclusion}`;
+    const line = `${item.label}: ${JSON.stringify(item.value)}`;
     if (
       lines.length > 0 &&
-      lines.join("\n").length + 1 + line.length > maxChars
+      lines.join(NEWLINE).length + 1 + line.length > safeMaxChars
     ) {
       break;
     }
-    if (line.length > maxChars) break;
+    if (line.length > safeMaxChars) break;
     lines.push(line);
     factIds.push(item.id);
   }
-  const omittedFacts = items.length - factIds.length;
-  return {
+  const omittedFacts = parsed.length - factIds.length;
+  const validated = ModelSummarySchema.safeParse({
     factIds,
-    text: lines.join("\n"),
+    text: lines.join(NEWLINE),
     truncated: omittedFacts > 0,
     omittedFacts,
-  };
+  });
+  if (!validated.success) {
+    throw new TypeError("Model summary exceeded its schema bounds");
+  }
+  return validated.data;
 }
 
 // ---------------------------------------------------------------------------
@@ -1425,6 +1751,75 @@ export const AGENT_LIMITS = deepFreeze({
   maxModelSummaryChars: 4000,
 } as const);
 
+/**
+ * Run-scoped activity-step identity (R2-F5). The six-step loop may call one
+ * tool several times, so every step carries a server-generated opaque
+ * `stepId` plus a zero-based `sequence`. The client keys rows by `stepId`;
+ * replay restores the exact streamed trace without relying on label text.
+ * The model never provides either field.
+ */
+export const ActivityStepSchema = z.strictObject({
+  stepId: z.string().min(1).max(128),
+  sequence: z
+    .number()
+    .int()
+    .min(0)
+    .max(AGENT_LIMITS.maxSteps - 1),
+  toolId: ToolIdSchema,
+  state: z.enum(ACTIVITY_STEP_STATES),
+  /** Friendly label only — never internal names, inputs, or JSON. */
+  label: z.string().min(1).max(160),
+});
+export type ActivityStep = z.infer<typeof ActivityStepSchema>;
+
+const TERMINAL_STEP_STATES: readonly ActivityStepState[] = [
+  "complete",
+  "failed",
+];
+
+/**
+ * Transition guard for one `stepId`: same tool and sequence, forward-only
+ * motion, and no resurrection from terminal states. Returns false (never
+ * throws) so stream reducers can translate it into a safe error part.
+ */
+export function isValidActivityTransition(
+  previous: Pick<ActivityStep, "toolId" | "sequence" | "state">,
+  next: Pick<ActivityStep, "toolId" | "sequence" | "state">,
+): boolean {
+  if (previous.toolId !== next.toolId) return false;
+  if (previous.sequence !== next.sequence) return false;
+  if (previous.state === next.state) return false;
+  if ((TERMINAL_STEP_STATES as readonly string[]).includes(previous.state)) {
+    return false;
+  }
+  if (previous.state === "pending") return true;
+  return next.state === "complete" || next.state === "failed";
+}
+
+/**
+ * Stream/replay reducer keyed by `stepId`. New IDs append a row (which must
+ * start as pending or running); known IDs advance in place through the
+ * transition guard. Throws a TypeError on protocol violations so bugs in
+ * the runtime surface loudly instead of corrupting the trace.
+ */
+export function applyActivityStep(
+  steps: readonly ActivityStep[],
+  event: ActivityStep,
+): ActivityStep[] {
+  const index = steps.findIndex((step) => step.stepId === event.stepId);
+  if (index === -1) {
+    if (event.state !== "pending" && event.state !== "running") {
+      throw new TypeError("New activity steps must start pending or running");
+    }
+    return [...steps, event];
+  }
+  const previous = steps[index];
+  if (previous === undefined || !isValidActivityTransition(previous, event)) {
+    throw new TypeError(`Invalid activity transition for ${event.stepId}`);
+  }
+  return steps.map((step, position) => (position === index ? event : step));
+}
+
 export const ANSWER_LIMITS = deepFreeze({
   maxObservations: 3,
   maxFollowUps: 3,
@@ -1489,6 +1884,12 @@ export const AssistantStreamPartSchema = z.discriminatedUnion("kind", [
   }),
   z.strictObject({
     kind: z.literal("data-activity-step"),
+    stepId: z.string().min(1).max(128),
+    sequence: z
+      .number()
+      .int()
+      .min(0)
+      .max(AGENT_LIMITS.maxSteps - 1),
     toolId: ToolIdSchema,
     state: z.enum(ACTIVITY_STEP_STATES),
     /** Friendly label only — never internal names, inputs, or JSON. */
@@ -1679,6 +2080,87 @@ export function deriveChatTitle(message: string): string {
  * before starting another. Enforced by a database-backed constraint in
  * slice 4, never only a browser flag.
  */
+/**
+ * Run-scoped authorization cache shape (task §Authorization cache). The
+ * cache itself lives server-side for one request/run; this freezes its
+ * key, contents, and scope checks. The model never receives or controls
+ * the key, so prompt injection cannot alter authorization.
+ *
+ * Rules encoded here: key by immutable `(userId, organizationId,
+ * projectId)` — never slugs, conversation IDs, or model values; 10s
+ * positive-entry TTL, destroyed with the run; denials never cached across
+ * requests; every repository query still binds the cached project ID and
+ * restricts sources to `allowedSourceIds`; memory confirm/reject, chat
+ * deletion, and future project writes take a fresh transactional check
+ * (never the cache).
+ */
+export const AUTHORIZATION_CACHE_TTL_MS = 10_000;
+
+export const AuthorizedProjectContextSchema = z.strictObject({
+  userId: z.string().min(1).max(128),
+  organizationId: z.string().min(1).max(128),
+  projectId: z.string().min(1).max(128),
+  role: z.enum(["owner", "admin", "member"]),
+  allowedSourceIds: z.array(z.string().min(1).max(128)).max(256).readonly(),
+  permissions: z.strictObject({
+    canConfirmMemory: z.boolean(),
+    canManageProject: z.boolean(),
+  }),
+  cachedAt: z.number().int().nonnegative(),
+});
+export type AuthorizedProjectContext = z.infer<
+  typeof AuthorizedProjectContextSchema
+>;
+
+export type AuthorizedContextKey = {
+  userId: string;
+  organizationId: string;
+  projectId: string;
+};
+
+/** Cache key from server-verified IDs only — never slugs or model values. */
+export function keyForAuthorizedContext(key: AuthorizedContextKey): string {
+  return [key.userId, key.organizationId, key.projectId]
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+}
+
+/**
+ * Scope gate for tool requests: any model-supplied project, organization,
+ * user, or source scope outside the cached context is rejected before any
+ * analytics query runs.
+ */
+export function isToolScopeAllowed(
+  cache: Pick<
+    AuthorizedProjectContext,
+    "userId" | "organizationId" | "projectId" | "allowedSourceIds"
+  >,
+  scope: {
+    userId?: string;
+    organizationId?: string;
+    projectId?: string;
+    sourceIds?: readonly string[];
+  },
+): boolean {
+  if (scope.userId !== undefined && scope.userId !== cache.userId) {
+    return false;
+  }
+  if (
+    scope.organizationId !== undefined &&
+    scope.organizationId !== cache.organizationId
+  ) {
+    return false;
+  }
+  if (scope.projectId !== undefined && scope.projectId !== cache.projectId) {
+    return false;
+  }
+  if (scope.sourceIds !== undefined) {
+    const allowed = new Set(cache.allowedSourceIds);
+    if (!scope.sourceIds.every((id) => allowed.has(id))) return false;
+  }
+  return true;
+}
+
 export const RunConflictSchema = z.strictObject({
   code: z.literal("active-run-exists"),
   projectId: z.string().min(1).max(128),
@@ -1703,15 +2185,7 @@ const ArtifactPartSchema = z.strictObject({
 });
 const TracePartSchema = z.strictObject({
   type: z.literal("trace"),
-  steps: z
-    .array(
-      z.strictObject({
-        toolId: ToolIdSchema,
-        state: z.enum(ACTIVITY_STEP_STATES),
-        label: z.string().min(1).max(160),
-      }),
-    )
-    .max(AGENT_LIMITS.maxSteps),
+  steps: z.array(ActivityStepSchema).max(AGENT_LIMITS.maxSteps),
 });
 
 /**
@@ -1879,7 +2353,7 @@ const MEMBER_MEMORY_KEYS = ["preferred-comparison-range"] as const;
 const DefinitionPayloadSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("standard-event"),
-    eventKey: z.string().min(1).max(64),
+    eventKey: StandardEventKeySchema,
   }),
   z.strictObject({
     kind: z.literal("custom-event"),

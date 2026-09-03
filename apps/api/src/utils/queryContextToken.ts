@@ -1,16 +1,17 @@
 /**
- * Server-only snapshot query-context tokens (Task 21, R1-F1).
+ * Server-only snapshot query-context tokens (Task 21, R1-F1, revised R2-F1).
  *
  * The shared types package freezes only the OPAQUE token string shape.
  * Issuance and verification live here so signing keys never enter the
  * browser bundle: the token is `base64url(payload).base64url(HMAC-SHA256)`
  * over the payload segment with a server-held key.
  *
- * Verification binds the token to project, organization, immutable range,
- * comparison range, snapshot cutoff, allowed source IDs, definition
- * version, and expiry. Callers must additionally re-check membership and
- * confirm every source belongs to the project (slice 6 wires this to the
- * controller boundary).
+ * Verification binds the token to project, organization, canonical
+ * comparison semantics (`compareTo === from`, equal lengths), snapshot
+ * chronology, the project's current source set (always required), the
+ * definition version, and expiry. Callers additionally re-check membership
+ * (slice 6 wires `allowedSourceIds` from the frozen run-scoped
+ * `AuthorizedProjectContext`, including an empty set when appropriate).
  */
 import { z } from "zod";
 
@@ -18,6 +19,12 @@ export const QUERY_CONTEXT_TOKEN_VERSION = 1;
 
 /** Seven-day token lifetime: snapshots stay refreshable, never immortal. */
 export const QUERY_CONTEXT_TOKEN_TTL_MS = 7 * 86_400_000;
+
+/** Documented clock-skew allowance for issuedAt/asOf comparisons. */
+export const QUERY_CONTEXT_TOKEN_CLOCK_SKEW_MS = 60_000;
+
+/** Maximum accepted window length: catches garbage without capping v1 ranges. */
+export const QUERY_CONTEXT_TOKEN_MAX_WINDOW_MS = 366 * 86_400_000;
 
 const TokenPayloadSchema = z.strictObject({
   v: z.literal(QUERY_CONTEXT_TOKEN_VERSION),
@@ -52,17 +59,99 @@ export type VerifiedQueryContext = {
 
 export type TokenVerifyFailure =
   | "malformed"
+  | "version-mismatch"
   | "unknown-key"
   | "bad-signature"
   | "expired"
   | "scope-mismatch"
   | "range-invalid"
-  | "source-not-allowed"
-  | "version-mismatch";
+  | "invalid-timestamps"
+  | "duplicate-sources"
+  | "source-not-allowed";
 
 export type TokenVerifyResult =
   | { ok: true; context: VerifiedQueryContext }
   | { ok: false; reason: TokenVerifyFailure };
+
+export type ContextSemantics = {
+  from: number;
+  to: number;
+  compareFrom: number;
+  compareTo: number;
+  asOf: number;
+  issuedAt: number;
+  now: number;
+  sourceIds: readonly string[];
+  ttlMs: number;
+  clockSkewMs: number;
+};
+
+export type SemanticsFailure =
+  "range-invalid" | "invalid-timestamps" | "duplicate-sources";
+
+/**
+ * One server-only semantic validator used at BOTH issuance and
+ * verification, so no caller can accept what issuance would refuse:
+ * positive bounded windows, the canonical immediately-preceding
+ * comparison (`compareTo === from`, equal lengths), `asOf >= to` with a
+ * sane `asOf <= issuedAt <= now` chronology (plus explicit skew), and
+ * duplicate-free source IDs.
+ */
+export function validateQueryContextSemantics(
+  semantics: ContextSemantics,
+): { ok: true } | { ok: false; reason: SemanticsFailure } {
+  const window = semantics.to - semantics.from;
+  const compareWindow = semantics.compareTo - semantics.compareFrom;
+  if (
+    !Number.isInteger(semantics.from) ||
+    window <= 0 ||
+    window > QUERY_CONTEXT_TOKEN_MAX_WINDOW_MS ||
+    compareWindow <= 0 ||
+    compareWindow > QUERY_CONTEXT_TOKEN_MAX_WINDOW_MS
+  ) {
+    return { ok: false, reason: "range-invalid" };
+  }
+  if (semantics.compareTo !== semantics.from || window !== compareWindow) {
+    return { ok: false, reason: "range-invalid" };
+  }
+  if (semantics.asOf < semantics.to) {
+    return { ok: false, reason: "invalid-timestamps" };
+  }
+  if (
+    semantics.asOf > semantics.issuedAt + semantics.clockSkewMs ||
+    semantics.issuedAt > semantics.now + semantics.clockSkewMs ||
+    semantics.asOf > semantics.now + semantics.clockSkewMs
+  ) {
+    return { ok: false, reason: "invalid-timestamps" };
+  }
+  if (new Set(semantics.sourceIds).size !== semantics.sourceIds.length) {
+    return { ok: false, reason: "duplicate-sources" };
+  }
+  return { ok: true };
+}
+
+/**
+ * Configuration-time key validation: non-empty set, non-blank IDs and
+ * secrets of sane length. Fails fast at startup instead of issuing
+ * unverifiable (or trivially forgeable) tokens.
+ */
+export function validateTokenKeys(keys: Record<string, string>): void {
+  const kids = Object.keys(keys);
+  if (kids.length === 0) {
+    throw new TypeError("At least one query-context signing key is required");
+  }
+  for (const kid of kids) {
+    const secret = (keys as Record<string, string | undefined>)[kid];
+    if (!kid || kid.length > 64) {
+      throw new TypeError("Token signing key IDs must be 1-64 characters");
+    }
+    if (!secret || secret.length < 16) {
+      throw new TypeError(
+        `Token signing secret for kid "${kid}" must be at least 16 characters`,
+      );
+    }
+  }
+}
 
 const textEncoder = new TextEncoder();
 
@@ -127,7 +216,17 @@ async function signSegment(segment: string, secret: string): Promise<string> {
   return base64UrlEncodeBytes(new Uint8Array(signature));
 }
 
-/** Issue a signed token. `issuedAt` defaults to now; tests inject time. */
+export type IssueTokenOptions = {
+  issuedAt?: number;
+  ttlMs?: number;
+};
+
+/**
+ * Issue a signed token. Runs the shared semantic validator first, so
+ * invalid contexts throw instead of producing accepted tokens. `ttlMs`
+ * exists for rotation/deployment configuration; verification checks the
+ * embedded lifetime against the expected TTL.
+ */
 export async function issueQueryContextToken(
   input: {
     projectId: string;
@@ -141,7 +240,30 @@ export async function issueQueryContextToken(
   },
   key: { kid: string; secret: string },
   issuedAt: number = Date.now(),
+  options: IssueTokenOptions = {},
 ): Promise<string> {
+  if (!key.kid || !key.secret) {
+    throw new TypeError("A key ID and secret are required to issue tokens");
+  }
+  const ttlMs = options.ttlMs ?? QUERY_CONTEXT_TOKEN_TTL_MS;
+  const at = options.issuedAt ?? issuedAt;
+  const semantics = validateQueryContextSemantics({
+    from: input.from,
+    to: input.to,
+    compareFrom: input.compareFrom,
+    compareTo: input.compareTo,
+    asOf: input.asOf,
+    issuedAt: at,
+    now: at,
+    sourceIds: input.sourceIds,
+    ttlMs,
+    clockSkewMs: QUERY_CONTEXT_TOKEN_CLOCK_SKEW_MS,
+  });
+  if (!semantics.ok) {
+    throw new TypeError(
+      `Refusing to issue a token with invalid context: ${semantics.reason}`,
+    );
+  }
   const payload: QueryContextTokenPayload = {
     v: QUERY_CONTEXT_TOKEN_VERSION,
     kid: key.kid,
@@ -152,8 +274,8 @@ export async function issueQueryContextToken(
     compareFrom: input.compareFrom,
     compareTo: input.compareTo,
     asOf: input.asOf,
-    issuedAt,
-    exp: issuedAt + QUERY_CONTEXT_TOKEN_TTL_MS,
+    issuedAt: at,
+    exp: at + ttlMs,
     sourceIds: [...input.sourceIds],
     definitionVersion: 1,
   };
@@ -170,28 +292,30 @@ export type TokenVerifyOptions = {
   now?: number;
   projectId: string;
   organizationId: string;
-  /** Project's current source IDs; token sources must be a subset. */
-  allowedSourceIds?: readonly string[];
-};
-
-const timingSafeEqual = (a: Uint8Array, b: Uint8Array): boolean => {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let index = 0; index < a.length; index += 1) {
-    diff |= (a[index] ?? 0) ^ (b[index] ?? 0);
-  }
-  return diff === 0;
+  /**
+   * The project's current source set — REQUIRED, never optional. Pass the
+   * frozen run-scoped `AuthorizedProjectContext.allowedSourceIds`,
+   * including an empty set when the project has no sources.
+   */
+  allowedSourceIds: readonly string[];
+  /** Expected token lifetime; embedded `exp - issuedAt` must match. */
+  ttlMs?: number;
+  clockSkewMs?: number;
 };
 
 /**
- * Verify a token against the key set, scope, ranges, sources, and expiry.
- * Never throws for untrusted input — every failure is a typed reason.
+ * Verify a token against the key set, scope, canonical semantics, sources,
+ * and expiry. Never throws for untrusted input — every failure is a typed
+ * reason. Unknown token versions report `version-mismatch` (not
+ * `malformed`) so future rotations are observable.
  */
 export async function verifyQueryContextToken(
   token: string,
   options: TokenVerifyOptions,
 ): Promise<TokenVerifyResult> {
   const now = options.now ?? Date.now();
+  const ttlMs = options.ttlMs ?? QUERY_CONTEXT_TOKEN_TTL_MS;
+  const clockSkewMs = options.clockSkewMs ?? QUERY_CONTEXT_TOKEN_CLOCK_SKEW_MS;
   if (!token || token.length > 4096) return { ok: false, reason: "malformed" };
   const dot = token.indexOf(".");
   if (
@@ -220,35 +344,44 @@ export async function verifyQueryContextToken(
   } catch {
     return { ok: false, reason: "malformed" };
   }
+  if (!parsed || typeof parsed !== "object") {
+    return { ok: false, reason: "malformed" };
+  }
+  const version = (parsed as { v?: unknown }).v;
+  if (typeof version !== "number" || !Number.isInteger(version)) {
+    return { ok: false, reason: "malformed" };
+  }
+  if (version !== QUERY_CONTEXT_TOKEN_VERSION) {
+    return { ok: false, reason: "version-mismatch" };
+  }
   const payloadResult = TokenPayloadSchema.safeParse(parsed);
   if (!payloadResult.success) return { ok: false, reason: "malformed" };
   const payload = payloadResult.data;
-  if (payload.v !== QUERY_CONTEXT_TOKEN_VERSION) {
-    return { ok: false, reason: "version-mismatch" };
-  }
-  const secret = options.keys[payload.kid];
+  // Own-property lookup: a `__proto__` kid must not resolve a prototype.
+  const secret = Object.prototype.hasOwnProperty.call(options.keys, payload.kid)
+    ? options.keys[payload.kid]
+    : undefined;
   if (!secret) return { ok: false, reason: "unknown-key" };
   const key = await importKey(secret);
+  // Owned copy: subtle.verify needs a BufferSource backed by ArrayBuffer.
+  const signatureCopy = new Uint8Array(signatureBytes);
   let valid = false;
   try {
     valid =
-      signatureBytes.length === 32 &&
+      signatureCopy.length === 32 &&
       (await globalThis.crypto.subtle.verify(
         "HMAC",
         key,
-        signatureBytes as unknown as ArrayBuffer,
+        signatureCopy.buffer,
         textEncoder.encode(segment),
       ));
   } catch {
     valid = false;
   }
-  // Fall back to a manual comparison only when subtle.verify is
-  // unavailable; both paths reject forged payloads.
-  if (!valid) {
-    const expected = base64UrlDecodeBytes(await signSegment(segment, secret));
-    valid = !!expected && timingSafeEqual(signatureBytes, expected);
-  }
   if (!valid) return { ok: false, reason: "bad-signature" };
+  if (payload.exp - payload.issuedAt !== ttlMs) {
+    return { ok: false, reason: "invalid-timestamps" };
+  }
   if (now >= payload.exp) return { ok: false, reason: "expired" };
   if (
     payload.projectId !== options.projectId ||
@@ -256,18 +389,24 @@ export async function verifyQueryContextToken(
   ) {
     return { ok: false, reason: "scope-mismatch" };
   }
-  if (
-    payload.from >= payload.to ||
-    payload.compareFrom >= payload.compareTo ||
-    payload.to - payload.from !== payload.compareTo - payload.compareFrom
-  ) {
-    return { ok: false, reason: "range-invalid" };
+  const semantics = validateQueryContextSemantics({
+    from: payload.from,
+    to: payload.to,
+    compareFrom: payload.compareFrom,
+    compareTo: payload.compareTo,
+    asOf: payload.asOf,
+    issuedAt: payload.issuedAt,
+    now,
+    sourceIds: payload.sourceIds,
+    ttlMs,
+    clockSkewMs,
+  });
+  if (!semantics.ok) {
+    return { ok: false, reason: semantics.reason };
   }
-  if (options.allowedSourceIds) {
-    const allowed = new Set(options.allowedSourceIds);
-    if (!payload.sourceIds.every((id) => allowed.has(id))) {
-      return { ok: false, reason: "source-not-allowed" };
-    }
+  const allowed = new Set(options.allowedSourceIds);
+  if (!payload.sourceIds.every((id) => allowed.has(id))) {
+    return { ok: false, reason: "source-not-allowed" };
   }
   return {
     ok: true,

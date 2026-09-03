@@ -11,6 +11,7 @@ import type {
   AssistantConversation,
   AssistantSourcePlatform,
   ProjectCapabilities,
+  StandardEventKeyCode,
   ToolId,
 } from "./projectAssistant";
 import { capabilitiesFromPlatforms } from "./projectAssistant";
@@ -22,7 +23,7 @@ export type CapabilityFixture = {
   platforms: readonly AssistantSourcePlatform[];
   errorsConfigured: boolean;
   errorsObserved: boolean;
-  standardEventsObserved: string[];
+  standardEventsObserved: StandardEventKeyCode[];
   lowCoverage: boolean;
   partialFailure: boolean;
   capabilities: ProjectCapabilities;

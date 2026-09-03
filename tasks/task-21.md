@@ -806,6 +806,9 @@ Tool rules:
 
 - Inject project ID, workspace ID, user ID, membership, query context, and
   permissions on the server. These are not model arguments.
+- Resolve that authorization through the run-scoped cache below. Every tool
+  still verifies that its requested resources match the cached immutable
+  context before it reads data.
 - Validate all model arguments with exact Zod schemas and reject unknown keys.
 - Accept only registry metric IDs, dimensions, filters, Standard Event keys,
   issue IDs, and bounded ranges.
@@ -990,6 +993,42 @@ Authorization rules:
   the existing non-disclosing project response policy.
 - Re-check membership when a stream begins and before any memory write. Do not
   authorize only from a browser-supplied conversation ID.
+
+### Authorization cache
+
+Do not query membership separately for every model-selected tool. Build one
+server-owned authorization cache for the request/agent run while keeping the
+authorization boundary outside the model.
+
+- Derive `userId` from the authenticated session. Never accept it from a chat
+  message, model argument, URL parameter, or client body.
+- Key the cache by immutable `(userId, organizationId, projectId)`. Never key it
+  only by a slug, conversation ID, source ID, prompt, or model-produced value.
+- Cache a frozen `AuthorizedProjectContext` containing the verified membership
+  role, project/workspace IDs, allowed source IDs, and relevant permissions.
+- Memoize the in-flight membership lookup as well as its result so concurrent
+  tool preparation cannot create duplicate authorization reads.
+- Keep the v1 cache local to one request/run. A positive entry expires after 10
+  seconds; the next tool after expiry performs one fresh membership read and
+  replaces the entry. Destroy the cache when the run finishes, fails, times
+  out, or is cancelled.
+- Do not reuse a positive authorization entry across requests or Worker
+  isolates in v1. A future shared cache requires a monotonic membership version
+  in its key plus reliable invalidation on membership, role, workspace,
+  project, account, and session changes.
+- Do not cache a denial across requests. A denial may be memoized only for the
+  current request and must preserve the existing non-disclosing response.
+- Treat the cache as an optimization, not authorization evidence supplied to
+  SQL. Every repository query still binds the cached immutable project ID, and
+  source-specific queries restrict IDs to `allowedSourceIds`.
+- Bypass the cached decision and perform a fresh transactional authorization
+  check before confirming/rejecting shared memory, deleting a chat, or making
+  any future write to project state.
+
+Prompt injection cannot alter this cache because the model never receives or
+controls its key. A tool request that contains project, organization, user, or
+source scope outside the cached context is rejected before any analytics query
+runs.
 
 The conversation-creation route and `POST .../:conversationId/messages` return
 an AI SDK UI message stream with validated custom data parts. The initial
@@ -1237,6 +1276,9 @@ contracts.
 - [ ] Implement the required tool registry with exact Zod schemas and friendly
       activity labels.
 - [ ] Inject authorization and query context outside model-controlled input.
+- [ ] Implement the run-scoped authorization cache with immutable identity
+      keys, in-flight lookup memoization, bounded expiry, and source-subset
+      enforcement.
 - [ ] Return compact `modelSummary` facts and full UI artifacts through separate
       typed channels; prove full artifacts never enter model messages.
 - [ ] Implement run-level memoization, sequential analytics execution,
@@ -1260,6 +1302,8 @@ This slice connects the runtime to an authenticated, resumable product API.
       confirm, and reject endpoints.
 - [ ] Validate the member, project, conversation owner, query-context token,
       and memory permission at the controller boundary.
+- [ ] Reuse the run-scoped authorized project context across tool calls; bypass
+      it for shared-memory, deletion, and future project-state writes.
 - [ ] Stream validated activity, facts, artifacts, answer parts, finish, and
       safe error states through the AI SDK UI protocol.
 - [ ] Persist user messages before the run and mark assistant messages complete
@@ -1376,6 +1420,10 @@ Before marking the task complete:
 - [ ] Dashboard-versus-agent parity tests pass with zero mismatches.
 - [ ] Product API authorization, conversation, memory, stream, and rate-limit
       tests pass.
+- [ ] Authorization-cache tests prove one membership read within its validity
+      window, refresh after expiry, no cross-user/project/request reuse,
+      source-subset enforcement, fresh checks for writes, and safe denial
+      behavior.
 - [ ] Multi-chat ownership, list pagination, isolation, switching, deletion,
       URL restoration, and active-run constraint tests pass.
 - [ ] Web component, interaction, accessibility, and build gates pass.
@@ -1797,3 +1845,240 @@ query; it never resolves the destination through the real router.
        encoding.
 4. [ ] Prove every overview and assistant drill-down opens the same project and
        verified snapshot represented by its facts.
+
+## Review feedback - round 2 (2026-09-03)
+
+Review scope: focused static re-review of `92e4f04` against R1-F1 through
+R1-F8, the multi-chat/OpenRouter amendment, and the authorization-cache
+contract added after the commit. The original eight findings are materially
+addressed, and the run-scoped cache design is suitable for the later runtime
+slices. No test, lint, typecheck, build, or hosted command was repeated.
+
+The contract revision still has six gaps that should be closed in a small
+follow-up before Slice 2 builds on these types. R2-F1, R2-F3, and R2-F4 affect
+the canonical query/fact boundary directly; R2-F2 and R2-F5 would otherwise
+become security or UI-runtime debt in later slices; R2-F6 would let invalid
+project knowledge become authoritative.
+
+### R2-F1 - Snapshot verification does not enforce the canonical context or source check
+
+**Severity:** High
+**Status:** Closed
+
+`verifyQueryContextToken()` verifies the signature, scope, expiry, equal window
+lengths, and a source subset only when `allowedSourceIds` is supplied. That
+option is optional, so a caller can accidentally accept a signed token without
+checking that its sources still belong to the project. The range check also
+accepts any equal-length comparison window instead of requiring the task's
+immediately preceding period (`compareTo === from`). `asOf`, `issuedAt`, and
+`exp` are parsed but their chronology and exact TTL relationship are not
+validated. Finally, `TokenPayloadSchema` uses a version literal, so an unknown
+version currently returns `malformed`; the advertised `version-mismatch`
+result is unreachable.
+
+This is not an HMAC forgery, but it leaves the security- and accuracy-critical
+API easy to call incorrectly when Slice 2 and Slice 6 wire it into real reads.
+
+**How to address:**
+
+1. [ ] Make the current authorized source set required during verification.
+       Slice 6 should pass it from the frozen run-scoped
+       `AuthorizedProjectContext`, including an empty set when appropriate.
+2. [ ] Use one server-only semantic validator at both issuance and verification.
+       Require positive bounded windows, `compareTo === from`, equal lengths,
+       `asOf >= to`, and a sane `asOf <= issuedAt <= now` relationship with only
+       an explicitly documented clock-skew allowance.
+3. [ ] Validate `exp - issuedAt` against the configured TTL, validate signing
+       key IDs/secrets at configuration time, and use an own-property lookup or
+       `Map` for `kid` resolution.
+4. [ ] Decide whether unknown token versions are `version-mismatch` or
+       `malformed`, then make the type, implementation, and tests agree.
+5. [ ] Add cases for an omitted/current-empty source set, a same-length but
+       non-adjacent comparison, future `asOf`/`issuedAt`, invalid TTL, duplicate
+       source IDs, and unknown versions.
+
+### R2-F2 - The only model-summary builder still admits prompt injection and bypasses its hard limits
+
+**Severity:** High
+**Status:** Closed
+
+`buildModelSummary()` accepts unchecked `label` and `conclusion` strings and
+concatenates them verbatim as `${label}: ${conclusion}`. Newlines and hostile
+telemetry can therefore become instruction-looking model text even though the
+task requires event names, paths, releases, issue titles, and memory values to
+remain inert quoted data. The prompt-injection fixtures currently exercise
+only chat-title derivation, not this actual model-context boundary.
+
+The helper also accepts caller-provided `maxFacts` and `maxChars` without
+clamping them to `AGENT_LIMITS`. Passing larger values can return an object that
+fails `ModelSummarySchema` and exceed the declared model-data ceiling.
+
+**How to address:**
+
+1. [ ] Replace the free-form summary-item type with a strict bounded schema and
+       distinguish trusted canonical labels from untrusted observed values.
+2. [ ] Serialize untrusted values as an explicit data envelope, for example a
+       bounded JSON object or another unambiguous quoted representation. Keep
+       instructions outside that data envelope; do not rely on removing a few
+       suspicious phrases.
+3. [ ] Clamp all overrides to `AGENT_LIMITS.maxModelSummaryFacts` and
+       `AGENT_LIMITS.maxModelSummaryChars`, reject invalid/non-positive values,
+       and parse the helper's result through `ModelSummarySchema` before it can
+       enter a provider message.
+4. [ ] Feed every `PROMPT_INJECTION_FIXTURE` through the real summary/context
+       builder and assert it stays a quoted value. Add oversized override,
+       embedded-newline, and empty-result cases.
+
+### R2-F3 - Overview and artifact schemas permit facts from different snapshots
+
+**Severity:** High
+**Status:** Closed
+
+`ProjectOverviewResourceSchema` validates each nested object independently but
+does not require the pulse facts, activity artifact, secondary artifact, or
+insight artifacts to use the resource's top-level `queryContext`. Artifact
+schemas likewise do not require embedded metric facts to match the artifact
+context or require their IDs to appear in `factIds`. A structurally valid
+response can therefore display a total from one range/source subset beside a
+chart from another while carrying one top-level snapshot token. That violates
+the dashboard-versus-agent accuracy contract before Slice 2 has a chance to
+make it canonical.
+
+**How to address:**
+
+1. [ ] Define one canonical query-context equality/fingerprint helper with a
+       deterministic source-ID order. Reject duplicate source IDs rather than
+       allowing order or duplication to change an otherwise identical context.
+2. [ ] Add artifact-level refinements so embedded facts use the artifact
+       context and every embedded fact ID is present exactly once in the
+       artifact's `factIds`.
+3. [ ] Add an overview-level refinement or a single validated response builder
+       requiring every nested fact/artifact context to equal the top-level
+       context represented by `queryContextToken`.
+4. [ ] Add negative fixtures that change only a nested range, `asOf`, source
+       subset, definition version, or fact reference and prove the response is
+       rejected.
+
+### R2-F4 - Drill-downs still discard the filters that define a fact
+
+**Severity:** Medium
+**Status:** Closed
+
+The route segments now match the Web router, but `DrilldownDestinationSchema`
+contains only destination, label, and optional issue ID. `buildDrilldownUrl()`
+adds only the snapshot token. A fact measured for `sign_up`, USD purchase
+value, one page path, one mobile release, or one error release therefore opens
+an unfiltered destination that can show a different value. The original
+R1-F8 resolution says filter intent is typed, but no filter-intent/value
+contract exists yet.
+
+This also exposes a registry inconsistency before Slice 2: the required
+evaluation question “Did errors rise after release X?” selects
+`errors.occurrences`, but that metric does not list `release` among its
+supported filters.
+
+**How to address:**
+
+1. [ ] Add a strict typed drill-down filter union for the existing route
+       filters. Keep allowed keys destination-specific and bound every value;
+       never accept an arbitrary query record from the model.
+2. [ ] Put resolved filter values on produced facts/artifacts, while the metric
+       registry continues to declare which filter kinds a metric supports.
+3. [ ] Teach the route builder to encode those filters together with `ctx` and
+       test Standard Event/currency, Web path/traffic, Mobile OS/release, and
+       Errors source/platform/release cases.
+4. [ ] Reconcile every Errors metric's supported filters with the real
+       aggregate contract. For “after release,” freeze a non-causal,
+       deterministic interpretation or return an explicit unavailable result;
+       do not imply that a release caused a change.
+
+### R2-F5 - Activity updates cannot identify repeated calls to the same tool
+
+**Severity:** Medium
+**Status:** Closed
+
+`data-activity-step` and persisted trace entries contain `toolId`, state, and
+label, but no stable step ID or sequence. The six-step loop may call the same
+tool more than once, such as measuring several metrics or retrying a validated
+call. The client cannot reliably know which running row a completion/failure
+updates, and a replay cannot preserve the exact streamed trace without relying
+on label text as identity.
+
+**How to address:**
+
+1. [ ] Add a run-scoped opaque `stepId` and zero-based integer `sequence` to
+       streamed and persisted activity steps. Generate both on the server; the
+       model cannot provide them.
+2. [ ] Require state transitions for one `stepId` to keep the same tool and
+       sequence, and prevent transitions from terminal states back to running.
+3. [ ] Add a stream/replay fixture with two calls to the same tool, interleaved
+       running/completed events, and prove the UI updates the correct two rows.
+
+### R2-F6 - Confirmed Standard Event memory accepts nonexistent event keys
+
+**Severity:** Medium
+**Status:** Closed
+
+The `standard-event` memory payload validates `eventKey` as any non-empty
+64-character string. A proposal such as `eventKey: "not_a_prism_event"` can
+therefore become a schema-valid confirmed signup or activation definition and
+survive reload, despite the tool rules requiring one of Task 19's exact 25
+Standard Event keys. `ProjectCapabilitiesSchema.standardEventsObserved` has
+the same overly broad string shape.
+
+**How to address:**
+
+1. [ ] Validate both fields against the canonical Task 19 key set, not a string
+       length. Keep one source of truth or add an explicit drift test if package
+       boundaries require a mirrored Zod enum.
+2. [ ] Re-resolve a Standard Event key through the Core registry before writing
+       or using confirmed memory. Treat an old/unknown persisted key as invalid
+       data, never as model context.
+3. [ ] Add rejection cases for unknown, protected-name (`$prism_*`), wrong-case,
+       and whitespace-padded keys, plus one acceptance case for every catalog
+       key or a one-to-one registry invariant.
+
+### 2026-09-03 — Slice 1 follow-up: R2 review closed, auth-cache frozen
+
+Small contract follow-up before Slice 2. Metric, dimension, comparison,
+insight-threshold, and accuracy contracts remain unchanged.
+
+- R2-F1: `allowedSourceIds` is now required at verification (sourced from
+  the run-scoped `AuthorizedProjectContext` in Slice 6). One shared
+  `validateQueryContextSemantics` runs at issuance (throws) and
+  verification: positive bounded windows, canonical `compareTo === from`
+  with equal lengths, `asOf >= to`, `asOf <= issuedAt <= now` with an
+  explicit 60s skew allowance, duplicate-free sources. Embedded lifetime
+  must equal the configured TTL; `kid` resolves via own-property lookup;
+  keys validate at configuration time; unknown versions report
+  `version-mismatch`. New cases: empty source set, non-adjacent windows,
+  future `asOf`/`issuedAt`, TTL mismatch, duplicates, `__proto__` kid,
+  v2/unversioned tokens.
+- R2-F2: `ModelSummaryItemSchema` separates trusted single-line labels
+  from untrusted values serialized as JSON-quoted envelopes; overrides
+  clamp to `AGENT_LIMITS`; results re-validate through
+  `ModelSummarySchema`. Every prompt-injection fixture now runs through
+  the real builder and stays one quoted line.
+- R2-F3: `queryContextFingerprint` (sorted sources) +
+  `areQueryContextsEqual`; duplicate source IDs rejected at the schema
+  boundary; artifact refinements require embedded facts to share context
+  with IDs present exactly once; overview refinement requires every
+  nested context to equal the top-level snapshot. Negative fixtures per
+  dimension.
+- R2-F4: strict destination-specific `DrilldownFiltersSchema`, resolved
+  values on facts and destinations, builder encodes filters with `ctx`,
+  all seven Errors metrics accept `release`, and the non-causal wording
+  contract (`containsCausalClaim`) freezes the "after release X"
+  co-occurrence reading.
+- R2-F5: server-generated `stepId` + `sequence` on streamed and persisted
+  steps, forward-only transition guard, `applyActivityStep` reducer with
+  a two-call same-tool replay proof.
+- R2-F6: mirrored `STANDARD_EVENT_KEYS` enum used by memory payloads and
+  observed-event lists, with a core drift test failing closed on any
+  catalog divergence; unknown/`$prism_*`/case/padded keys rejected.
+- Authorization cache: frozen `AuthorizedProjectContext`,
+  `AUTHORIZATION_CACHE_TTL_MS` (10s), ID-based key builder, and
+  `isToolScopeAllowed` rejecting out-of-context tool scope.
+
+Evidence: types 85/85, api token suite 13/13, core drift 1/1, tsup+DTS
+build clean, api/web/core typechecks clean, Prettier + diff-check clean.

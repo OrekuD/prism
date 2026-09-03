@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   AGENT_LIMITS,
+  applyActivityStep,
+  areQueryContextsEqual,
+  AUTHORIZATION_CACHE_TTL_MS,
+  AuthorizedProjectContextSchema,
   ARTIFACT_LIMITS,
   ASSISTANT_ARTIFACT_KINDS,
   AssistantArtifactSchema,
@@ -21,6 +25,7 @@ import {
   compareConversationOrder,
   compareInsightRank,
   compareValues,
+  containsCausalClaim,
   ConversationCreateSchema,
   ConversationListItemSchema,
   ConversationSchema,
@@ -31,18 +36,23 @@ import {
   DrilldownDestinationSchema,
   encodeConversationCursor,
   extractModelText,
+  hasDuplicateStrings,
   INSIGHT_THRESHOLDS,
   isCountChangeEligible,
   isInQueryRange,
   isIssueSignalEligible,
   isRateChangeEligible,
+  isToolScopeAllowed,
+  isValidActivityTransition,
   InsightCandidateSchema,
+  keyForAuthorizedContext,
   MEMORY_STATUSES,
   METRIC_IDS,
   METRIC_REGISTRY,
   MetricFactSchema,
   MemoryRecordSchema,
   ModelSummarySchema,
+  NON_CAUSAL_PHRASES,
   OpenRouterRoutingPolicySchema,
   OVERVIEW_RANGES,
   platformFamilyOf,
@@ -50,10 +60,13 @@ import {
   ProjectCapabilitiesSchema,
   ProjectOverviewResourceSchema,
   PublicQueryContextSchema,
+  queryContextFingerprint,
   QuotaOutcomeSchema,
   QueryContextTokenSchema,
+  RELEASE_AFTER_WORDING,
   RunConflictSchema,
   RunUsageSchema,
+  STANDARD_EVENT_KEYS,
   STREAM_PART_NAMES,
   TOOL_IDS,
   TOOL_REGISTRY,
@@ -107,6 +120,7 @@ const fact = (overrides: Partial<MetricFact> = {}): MetricFact => ({
   queryContext: publicContext(),
   coverage,
   coverageNote: "2 active sources",
+  filters: {},
   drilldown: drilldown(),
   ...overrides,
 });
@@ -589,12 +603,51 @@ describe("artifact union (R1-F2, R1-F3)", () => {
   });
 });
 
-describe("compact model summaries (R1-F3)", () => {
+describe("compact model summaries (R1-F3, R2-F2)", () => {
   const items = Array.from({ length: 13 }, (_, index) => ({
     id: `fact_${index}`,
     label: `Metric ${index}`,
-    conclusion: "rose 5%",
+    value: "rose 5%",
   }));
+
+  it("quotes values so observed data never reads as instructions", () => {
+    expect(buildModelSummary(items.slice(0, 1)).text).toBe(
+      'Metric 0: "rose 5%"',
+    );
+  });
+
+  it("keeps every injection fixture inside the quoted envelope", async () => {
+    const { PROMPT_INJECTION_FIXTURES } =
+      await import("../network/resources/projectAssistantFixtures");
+    for (const hostile of PROMPT_INJECTION_FIXTURES) {
+      const summary = buildModelSummary([
+        { id: "fact_x", label: "Top page", value: hostile },
+      ]);
+      expect(summary.text).toBe(`Top page: ${JSON.stringify(hostile)}`);
+      expect(summary.text.split("\n")).toHaveLength(1);
+    }
+  });
+
+  it("rejects invalid items and clamps overrides to the hard ceilings", () => {
+    expect(() =>
+      buildModelSummary([{ id: "a", label: "Bad\nlabel", value: "v" }]),
+    ).toThrow();
+    expect(() =>
+      buildModelSummary([{ id: "a", label: "A", value: "x".repeat(201) }]),
+    ).toThrow();
+    const clamped = buildModelSummary(items, 100, 1_000_000_000);
+    expect(clamped.factIds).toHaveLength(AGENT_LIMITS.maxModelSummaryFacts);
+    expect(clamped.text.length).toBeLessThanOrEqual(
+      AGENT_LIMITS.maxModelSummaryChars,
+    );
+    expect(buildModelSummary(items.slice(0, 2), 0, -5)).toEqual(
+      buildModelSummary(items.slice(0, 2)),
+    );
+    const empty = buildModelSummary([]);
+    expect(empty.truncated).toBe(false);
+    expect(empty.omittedFacts).toBe(0);
+    expect(ModelSummarySchema.safeParse(empty).success).toBe(true);
+  });
 
   it("caps facts at twelve and flags truncation deterministically", () => {
     const summary = buildModelSummary(items);
@@ -608,13 +661,11 @@ describe("compact model summaries (R1-F3)", () => {
 
   it("drops trailing whole lines past the character budget", () => {
     const long = [
-      { id: "a", label: "A", conclusion: "x".repeat(3990) },
-      { id: "b", label: "B", conclusion: "short" },
+      { id: "a", label: "A", value: "x".repeat(80) },
+      { id: "b", label: "B", value: "short" },
     ];
-    const summary = buildModelSummary(long);
-    expect(summary.text.length).toBeLessThanOrEqual(
-      AGENT_LIMITS.maxModelSummaryChars,
-    );
+    const summary = buildModelSummary(long, 12, 90);
+    expect(summary.text.length).toBeLessThanOrEqual(90);
     expect(summary.factIds).toEqual(["a"]);
     expect(summary.truncated).toBe(true);
     expect(summary.omittedFacts).toBe(1);
@@ -624,7 +675,7 @@ describe("compact model summaries (R1-F3)", () => {
     const summary = buildModelSummary(items.slice(0, 2));
     expect(summary.truncated).toBe(false);
     expect(summary.omittedFacts).toBe(0);
-    expect(summary.text).toContain("Metric 0: rose 5%");
+    expect(summary.text).toContain('Metric 0: "rose 5%"');
   });
 });
 
@@ -638,6 +689,8 @@ describe("persisted message parts (R1-F3)", () => {
     type: "trace" as const,
     steps: [
       {
+        stepId: "step_1",
+        sequence: 0,
         toolId: "measure_metric" as const,
         state: "complete" as const,
         label: "Measured Accepted events",
@@ -677,6 +730,8 @@ describe("stream parts (R1-F3)", () => {
       { kind: "data-run-start", runId: "run_1", conversationId: "conv_1" },
       {
         kind: "data-activity-step",
+        stepId: "step_1",
+        sequence: 0,
         toolId: "measure_metric",
         state: "running",
         label: "Measuring Accepted events",
@@ -712,6 +767,8 @@ describe("stream parts (R1-F3)", () => {
     expect(
       AssistantStreamPartSchema.safeParse({
         kind: "data-activity-step",
+        stepId: "step_1",
+        sequence: 0,
         toolId: "get_metric",
         state: "running",
         label: "x",
@@ -1515,5 +1572,524 @@ describe("frozen protocol names (R1-F6)", () => {
     expect(AGENT_LIMITS.maxOutputTokens).toBe(600);
     expect(AGENT_LIMITS.defaultRecentMessages).toBe(8);
     expect(AGENT_LIMITS.maxRecentMessages).toBe(12);
+  });
+});
+
+describe("query context fingerprints (R2-F3)", () => {
+  it("treats source order as identical but duplicates as a violation", () => {
+    const base = publicContext();
+    const reordered = { ...base, sourceIds: ["b", "a"] };
+    const ordered = { ...base, sourceIds: ["a", "b"] };
+    expect(areQueryContextsEqual(reordered, ordered)).toBe(true);
+    expect(queryContextFingerprint(reordered)).toBe(
+      queryContextFingerprint(ordered),
+    );
+    expect(hasDuplicateStrings(["a", "b"])).toBe(false);
+    expect(hasDuplicateStrings(["a", "a"])).toBe(true);
+    expect(
+      PublicQueryContextSchema.safeParse({ ...base, sourceIds: ["a", "a"] })
+        .success,
+    ).toBe(false);
+    expect(
+      PublicQueryContextSchema.safeParse({ ...base, sourceIds: ["a", "b"] })
+        .success,
+    ).toBe(true);
+  });
+
+  it("distinguishes every snapshot dimension", () => {
+    const base = publicContext();
+    for (const variant of [
+      { ...base, from: base.from + 1 },
+      { ...base, asOf: base.asOf + 1 },
+      { ...base, sourceIds: ["src_1"] },
+      { ...base, definitionVersion: 2 },
+    ]) {
+      expect(areQueryContextsEqual(base, variant as typeof base)).toBe(false);
+    }
+  });
+});
+
+describe("artifact snapshot consistency (R2-F3)", () => {
+  it("rejects embedded facts from another snapshot or missing references", () => {
+    const base = artifactBase;
+    const otherRange = {
+      ...publicContext(),
+      from: publicContext().from - 86_400_000,
+      to: publicContext().to - 86_400_000,
+      compareFrom: publicContext().compareFrom - 86_400_000,
+      compareTo: publicContext().compareTo - 86_400_000,
+    };
+    expect(
+      AssistantArtifactSchema.safeParse({
+        ...base,
+        kind: "metric",
+        fact: fact({ queryContext: otherRange }),
+      }).success,
+    ).toBe(false);
+    expect(
+      AssistantArtifactSchema.safeParse({
+        ...base,
+        kind: "metric",
+        fact: fact({ queryContext: { ...publicContext(), asOf: 1 } }),
+      }).success,
+    ).toBe(false);
+    expect(
+      AssistantArtifactSchema.safeParse({
+        ...base,
+        kind: "metric",
+        fact: fact({ id: "fact_2" }),
+      }).success,
+    ).toBe(false);
+    expect(
+      AssistantArtifactSchema.safeParse({
+        ...base,
+        kind: "metric",
+        fact: fact(),
+        factIds: ["fact_1", "fact_1"],
+      }).success,
+    ).toBe(false);
+    expect(
+      AssistantArtifactSchema.safeParse({
+        ...base,
+        kind: "comparison",
+        current: fact({ id: "c" }),
+        previous: fact({ id: "p" }),
+        factIds: ["c", "p"],
+      }).success,
+    ).toBe(true);
+  });
+});
+
+describe("overview snapshot consistency (R2-F3)", () => {
+  const overviewResource = () => ({
+    queryContext: publicContext(),
+    queryContextToken: "opaque-server-issued-token",
+    capabilities: {
+      web: true,
+      mobile: false,
+      server: false,
+      errorCollection: { configured: false, observed: false },
+      standardEventsObserved: [],
+      sources: { total: 1, active: 1, lastReceivedAt: 1 },
+      trafficPolicy: "human" as const,
+    },
+    insights: [],
+    pulse: [fact({ id: "a" }), fact({ id: "b" }), fact({ id: "c" })],
+    activity: {
+      ...artifactBase,
+      id: "art_activity",
+      kind: "timeseries" as const,
+      bucket: "daily" as const,
+      series: [{ name: "Events", points: [{ t: 1, value: 5 }] }],
+    },
+    secondary: {
+      ...artifactBase,
+      id: "art_secondary",
+      kind: "ranked-list" as const,
+      entity: "release" as const,
+      rows: [{ key: "2.4.1", label: "2.4.1", value: 40, sharePercent: 80 }],
+    },
+    dataQuality: {
+      hasAcceptedData: true,
+      definitionState: "missing" as const,
+      definitionLabel: null,
+      warnings: [],
+    },
+  });
+
+  it("rejects a nested range, asOf, source, version, or reference change", () => {
+    const stale = { ...publicContext(), asOf: 1 };
+    const cases: [string, () => object][] = [
+      [
+        "pulse range",
+        () => ({
+          ...overviewResource(),
+          pulse: [
+            fact({ id: "a", queryContext: { ...publicContext(), from: 1 } }),
+            fact({ id: "b" }),
+            fact({ id: "c" }),
+          ],
+        }),
+      ],
+      [
+        "activity asOf",
+        () => ({
+          ...overviewResource(),
+          activity: {
+            ...overviewResource().activity,
+            queryContext: stale,
+            series: [{ name: "Events", points: [{ t: 1, value: 5 }] }],
+          },
+        }),
+      ],
+      [
+        "secondary sources",
+        () => ({
+          ...overviewResource(),
+          secondary: {
+            ...overviewResource().secondary,
+            queryContext: { ...publicContext(), sourceIds: ["src_9"] },
+          },
+        }),
+      ],
+      [
+        "insight artifact version",
+        () => ({
+          ...overviewResource(),
+          insights: [
+            {
+              id: "i",
+              kind: "change",
+              severity: "info",
+              title: "t",
+              summary: "s",
+              factIds: [],
+              artifact: {
+                ...artifactBase,
+                id: "art_ins",
+                kind: "empty",
+                reason: "None.",
+                queryContext: {
+                  ...publicContext(),
+                  definitionVersion: 2,
+                },
+              },
+              drilldown: drilldown(),
+              askPrompt: "Tell me more.",
+              observedAt: 1,
+            },
+          ],
+        }),
+      ],
+    ];
+    for (const [name, build] of cases) {
+      expect(
+        ProjectOverviewResourceSchema.safeParse(build()).success,
+        name,
+      ).toBe(false);
+    }
+    expect(
+      ProjectOverviewResourceSchema.safeParse(overviewResource()).success,
+    ).toBe(true);
+  });
+});
+
+describe("drill-down filters (R2-F4)", () => {
+  it("keeps filter keys destination-specific", () => {
+    expect(
+      DrilldownDestinationSchema.safeParse({
+        destination: "events",
+        label: "Signups",
+        filters: { standardEventKey: "sign_up", currency: "USD" },
+      }).success,
+    ).toBe(true);
+    // release is not an Events filter
+    expect(
+      DrilldownDestinationSchema.safeParse({
+        destination: "events",
+        label: "Signups",
+        filters: { release: "2.4.1" },
+      }).success,
+    ).toBe(false);
+    // os is not a Web filter
+    expect(
+      DrilldownDestinationSchema.safeParse({
+        destination: "web-analytics",
+        label: "Pages",
+        filters: { os: "ios" },
+      }).success,
+    ).toBe(false);
+    // path is not a Mobile filter
+    expect(
+      DrilldownDestinationSchema.safeParse({
+        destination: "mobile-analytics",
+        label: "Screens",
+        filters: { path: "/" },
+      }).success,
+    ).toBe(false);
+    // currency must be an ISO code
+    expect(
+      DrilldownDestinationSchema.safeParse({
+        destination: "events",
+        label: "Value",
+        filters: { standardEventKey: "purchase", currency: "usd" },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("encodes resolved filters alongside the snapshot token", () => {
+    expect(
+      buildDrilldownUrl("wrk_1", "alpha", {
+        destination: "events",
+        label: "Signups",
+        filters: { standardEventKey: "sign_up" },
+      }),
+    ).toBe("/workspace/wrk_1/projects/alpha/events?event=sign_up");
+    expect(
+      buildDrilldownUrl(
+        "wrk_1",
+        "alpha",
+        {
+          destination: "events",
+          label: "USD value",
+          filters: { standardEventKey: "purchase", currency: "USD" },
+        },
+        "tok",
+      ),
+    ).toBe(
+      "/workspace/wrk_1/projects/alpha/events?ctx=tok&event=purchase&currency=USD",
+    );
+    expect(
+      buildDrilldownUrl("wrk_1", "alpha", {
+        destination: "web-analytics",
+        label: "Pages",
+        filters: { path: "/a b", traffic: "human" },
+      }),
+    ).toBe(
+      "/workspace/wrk_1/projects/alpha/web-analytics?path=%2Fa%20b&traffic=human",
+    );
+    expect(
+      buildDrilldownUrl("wrk_1", "alpha", {
+        destination: "mobile-analytics",
+        label: "Screens",
+        filters: { os: "android", release: "2.4.1" },
+      }),
+    ).toBe(
+      "/workspace/wrk_1/projects/alpha/mobile-analytics?os=android&release=2.4.1",
+    );
+    expect(
+      buildDrilldownUrl("wrk_1", "alpha", {
+        destination: "errors",
+        label: "Errors",
+        filters: { platform: "web", release: "2.4.1" },
+      }),
+    ).toBe("/workspace/wrk_1/projects/alpha/errors?release=2.4.1&platform=web");
+  });
+
+  it("lets every Errors metric filter by release for after-release reads", () => {
+    for (const id of METRIC_IDS.filter((metric) =>
+      metric.startsWith("errors."),
+    )) {
+      expect(METRIC_REGISTRY[id].supportedFilters).toContain("release");
+    }
+  });
+
+  it("holds the non-causal wording contract for release reads", () => {
+    expect(containsCausalClaim("Errors rose after 2.4.1.")).toBe(false);
+    expect(
+      containsCausalClaim(
+        `The rise is ${RELEASE_AFTER_WORDING} release 2.4.1.`,
+      ),
+    ).toBe(false);
+    expect(containsCausalClaim("Release 2.4.1 caused the regression.")).toBe(
+      true,
+    );
+    expect(containsCausalClaim("This release led to more errors.")).toBe(true);
+    expect([...NON_CAUSAL_PHRASES]).toEqual([
+      "associated with",
+      "coincided with",
+    ]);
+  });
+});
+
+describe("activity trace identity (R2-F5)", () => {
+  const step = (
+    overrides: Partial<{
+      stepId: string;
+      sequence: number;
+      toolId: "measure_metric";
+      state: "pending" | "running" | "complete" | "failed";
+      label: string;
+    }> = {},
+  ) => ({
+    stepId: "step_1",
+    sequence: 0,
+    toolId: "measure_metric" as const,
+    state: "pending" as const,
+    label: "Measuring",
+    ...overrides,
+  });
+
+  it("updates the correct row when one tool runs twice", () => {
+    const events = [
+      { ...step({ stepId: "s1", state: "running" as const }) },
+      { ...step({ stepId: "s2", sequence: 1, state: "running" as const }) },
+      { ...step({ stepId: "s1", state: "complete" as const }) },
+      { ...step({ stepId: "s2", sequence: 1, state: "complete" as const }) },
+    ];
+    const rows = events.reduce(applyActivityStep, []);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ stepId: "s1", state: "complete" });
+    expect(rows[1]).toMatchObject({
+      stepId: "s2",
+      sequence: 1,
+      state: "complete",
+    });
+  });
+
+  it("guards transitions and new-row states", () => {
+    expect(
+      isValidActivityTransition(
+        step({ state: "pending" }),
+        step({ state: "running" }),
+      ),
+    ).toBe(true);
+    expect(
+      isValidActivityTransition(
+        step({ state: "running" }),
+        step({ state: "complete" }),
+      ),
+    ).toBe(true);
+    expect(
+      isValidActivityTransition(
+        step({ state: "complete" }),
+        step({ state: "running" }),
+      ),
+    ).toBe(false);
+    expect(
+      isValidActivityTransition(
+        step({ state: "failed" }),
+        step({ state: "pending" }),
+      ),
+    ).toBe(false);
+    expect(
+      isValidActivityTransition(
+        step({ state: "running" }),
+        step({ state: "pending" }),
+      ),
+    ).toBe(false);
+    expect(
+      isValidActivityTransition(
+        step({ state: "running" }),
+        step({ state: "running" }),
+      ),
+    ).toBe(false);
+    expect(() => applyActivityStep([], step({ state: "complete" }))).toThrow();
+    expect(() =>
+      applyActivityStep(
+        [step({ state: "complete" })],
+        step({ state: "running" }),
+      ),
+    ).toThrow();
+  });
+});
+
+describe("standard event keys (R2-F6)", () => {
+  it("freezes the 25-key catalog", () => {
+    expect(STANDARD_EVENT_KEYS).toHaveLength(25);
+    expect(Object.isFrozen(STANDARD_EVENT_KEYS)).toBe(true);
+  });
+
+  it("rejects unknown, protected-name, wrong-case, and padded keys in memory", () => {
+    const base = {
+      id: "mem_1",
+      organizationId: "org_1",
+      scope: "project",
+      key: "signup-definition",
+      projectId: "proj_1",
+      subjectUserId: null,
+      status: "proposed",
+      value: {
+        version: 1,
+        label: "Signup",
+        description: "Signup definition.",
+        payload: { kind: "standard-event", eventKey: "sign_up" },
+      },
+      proposerId: "user_1",
+      confirmerId: null,
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    expect(MemoryRecordSchema.safeParse(base).success).toBe(true);
+    for (const eventKey of [
+      "not_a_prism_event",
+      "$prism_sign_up",
+      "Sign_Up",
+      " sign_up",
+      "sign_up ",
+      "",
+    ]) {
+      expect(
+        MemoryRecordSchema.safeParse({
+          ...base,
+          value: {
+            ...base.value,
+            payload: { kind: "standard-event", eventKey },
+          },
+        }).success,
+        eventKey || "(empty)",
+      ).toBe(false);
+    }
+  });
+
+  it("restricts observed-event lists to catalog keys", () => {
+    expect(
+      ProjectCapabilitiesSchema.safeParse({
+        web: true,
+        mobile: false,
+        server: false,
+        errorCollection: { configured: false, observed: false },
+        standardEventsObserved: ["sign_up"],
+        sources: { total: 1, active: 1, lastReceivedAt: 1 },
+        trafficPolicy: "human",
+      }).success,
+    ).toBe(true);
+    expect(
+      ProjectCapabilitiesSchema.safeParse({
+        web: true,
+        mobile: false,
+        server: false,
+        errorCollection: { configured: false, observed: false },
+        standardEventsObserved: ["$prism_sign_up"],
+        sources: { total: 1, active: 1, lastReceivedAt: 1 },
+        trafficPolicy: "human",
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("run-scoped authorization context", () => {
+  const cache = {
+    userId: "user_1",
+    organizationId: "org_1",
+    projectId: "proj_1",
+    role: "admin" as const,
+    allowedSourceIds: ["src_1", "src_2"],
+    permissions: { canConfirmMemory: true, canManageProject: true },
+    cachedAt: 1_785_628_800_000,
+  };
+
+  it("freezes the shape, key, and 10s TTL", () => {
+    expect(AuthorizedProjectContextSchema.safeParse(cache).success).toBe(true);
+    expect(
+      AuthorizedProjectContextSchema.safeParse({ ...cache, role: "super" })
+        .success,
+    ).toBe(false);
+    expect(keyForAuthorizedContext(cache)).toBe("user_1/org_1/proj_1");
+    expect(
+      keyForAuthorizedContext({
+        userId: "a/b",
+        organizationId: "org_1",
+        projectId: "proj_1",
+      }),
+    ).toBe("a%2Fb/org_1/proj_1");
+    expect(AUTHORIZATION_CACHE_TTL_MS).toBe(10_000);
+  });
+
+  it("rejects tool scope outside the cached context", () => {
+    expect(isToolScopeAllowed(cache, {})).toBe(true);
+    expect(
+      isToolScopeAllowed(cache, {
+        userId: "user_1",
+        organizationId: "org_1",
+        projectId: "proj_1",
+        sourceIds: ["src_1"],
+      }),
+    ).toBe(true);
+    expect(isToolScopeAllowed(cache, { userId: "user_2" })).toBe(false);
+    expect(isToolScopeAllowed(cache, { projectId: "proj_2" })).toBe(false);
+    expect(isToolScopeAllowed(cache, { organizationId: "org_2" })).toBe(false);
+    expect(isToolScopeAllowed(cache, { sourceIds: ["src_evil"] })).toBe(false);
+    expect(isToolScopeAllowed(cache, { sourceIds: [] })).toBe(true);
   });
 });

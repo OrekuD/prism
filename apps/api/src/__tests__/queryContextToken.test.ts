@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
   issueQueryContextToken,
+  QUERY_CONTEXT_TOKEN_CLOCK_SKEW_MS,
   QUERY_CONTEXT_TOKEN_TTL_MS,
+  validateQueryContextSemantics,
+  validateTokenKeys,
   verifyQueryContextToken,
 } from "../utils/queryContextToken";
 
 /**
- * Task 21 R1-F1 — server-only snapshot tokens. The shared types package
- * exposes only the opaque string shape; issuance and verification live here
- * with a server-held HMAC key. Every case below forges, tampers, or replays
- * a token the way a browser could, and verification must reject it.
+ * Task 21 R1-F1/R2-F1 — server-only snapshot tokens. The shared types
+ * package exposes only the opaque string shape; issuance and verification
+ * live here with a server-held HMAC key. Every case below forges, tampers,
+ * misconfigures, or replays a token the way a browser could, and
+ * verification must reject it with the documented reason.
  */
 
 const NOW = 1_785_628_800_000;
@@ -44,6 +48,28 @@ const reencodePayload = (payload: Record<string, unknown>): string => {
   return Buffer.from(JSON.stringify(payload)).toString("base64url");
 };
 
+/** Manual HMAC for crafting defense-in-depth cases issuance would refuse. */
+const manualSign = async (
+  payload: Record<string, unknown>,
+  secret: string,
+): Promise<string> => {
+  const segment = reencodePayload(payload);
+  const key = await globalThis.crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await globalThis.crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(segment),
+  );
+  const bytes = new Uint8Array(signature);
+  return `${segment}.${Buffer.from(bytes).toString("base64url")}`;
+};
+
 describe("query context tokens", () => {
   it("round-trips a valid token with the bound context", async () => {
     const token = await issueQueryContextToken(CONTEXT, KEY, NOW);
@@ -57,6 +83,15 @@ describe("query context tokens", () => {
         definitionVersion: 1,
       });
     }
+  });
+
+  it("validates signing keys at configuration time", () => {
+    expect(() => validateTokenKeys({})).toThrow();
+    expect(() => validateTokenKeys({ k1: "short" })).toThrow();
+    expect(() =>
+      validateTokenKeys({ ["__proto__"]: "x".repeat(32) }),
+    ).not.toThrow();
+    expect(() => validateTokenKeys(KEYS)).not.toThrow();
   });
 
   it("rejects a well-formed forged range (R1-F1 regression)", async () => {
@@ -112,7 +147,7 @@ describe("query context tokens", () => {
     expect(tampered).toEqual({ ok: false, reason: "bad-signature" });
     const wrongKey = await verifyQueryContextToken(token, {
       ...OPTIONS,
-      keys: { k1: "different-secret" },
+      keys: { k1: "different-secret-xyz" },
     });
     expect(wrongKey).toEqual({ ok: false, reason: "bad-signature" });
     expect(await verifyQueryContextToken("", OPTIONS)).toEqual({
@@ -129,8 +164,21 @@ describe("query context tokens", () => {
     });
   });
 
+  it("never resolves a __proto__ kid through the prototype chain", async () => {
+    const token = await issueQueryContextToken(CONTEXT, KEY, NOW);
+    const forged = decodePayload(token);
+    forged.kid = "__proto__";
+    const [, signature] = token.split(".");
+    const result = await verifyQueryContextToken(
+      `${reencodePayload(forged)}.${signature}`,
+      OPTIONS,
+    );
+    // own-property lookup misses; even a matching signature must not help
+    expect(result).toEqual({ ok: false, reason: "unknown-key" });
+  });
+
   it("supports key rotation via kid, then drops retired keys", async () => {
-    const oldKey = { kid: "k0", secret: "retiring-secret" };
+    const oldKey = { kid: "k0", secret: "retiring-secret-000000" };
     const token = await issueQueryContextToken(CONTEXT, oldKey, NOW);
     const rotated = await verifyQueryContextToken(token, {
       ...OPTIONS,
@@ -141,7 +189,27 @@ describe("query context tokens", () => {
     expect(retired).toEqual({ ok: false, reason: "unknown-key" });
   });
 
-  it("expires tokens after the TTL", async () => {
+  it("reports unknown token versions as version-mismatch, not malformed", async () => {
+    const v2 = {
+      ...decodePayload(await issueQueryContextToken(CONTEXT, KEY, NOW)),
+      v: 2,
+    };
+    const token = await manualSign(v2, KEYS.k1);
+    expect(await verifyQueryContextToken(token, OPTIONS)).toEqual({
+      ok: false,
+      reason: "version-mismatch",
+    });
+    const unversioned = { ...decodePayload(token) };
+    delete unversioned.v;
+    expect(
+      await verifyQueryContextToken(
+        await manualSign(unversioned, KEYS.k1),
+        OPTIONS,
+      ),
+    ).toEqual({ ok: false, reason: "malformed" });
+  });
+
+  it("expires tokens after the TTL and validates the embedded lifetime", async () => {
     const token = await issueQueryContextToken(CONTEXT, KEY, NOW);
     const justBefore = await verifyQueryContextToken(token, {
       ...OPTIONS,
@@ -153,6 +221,14 @@ describe("query context tokens", () => {
       now: NOW + QUERY_CONTEXT_TOKEN_TTL_MS,
     });
     expect(expired).toEqual({ ok: false, reason: "expired" });
+    // lifetime mismatch against the configured TTL
+    const shortLived = await issueQueryContextToken(CONTEXT, KEY, NOW, {
+      ttlMs: 1_000,
+    });
+    expect(await verifyQueryContextToken(shortLived, OPTIONS)).toEqual({
+      ok: false,
+      reason: "invalid-timestamps",
+    });
   });
 
   it("rejects cross-project and cross-organization replay", async () => {
@@ -168,39 +244,115 @@ describe("query context tokens", () => {
     ).toEqual({ ok: false, reason: "scope-mismatch" });
   });
 
-  it("rejects sources outside the project's current source set", async () => {
-    const token = await issueQueryContextToken(
-      { ...CONTEXT, sourceIds: ["src_1", "src_archived"] },
+  it("requires the current source set: empty set allows sourceless tokens only", async () => {
+    const token = await verifyQueryContextToken(
+      await issueQueryContextToken(CONTEXT, KEY, NOW),
+      { ...OPTIONS, allowedSourceIds: [] },
+    );
+    expect(token).toEqual({ ok: false, reason: "source-not-allowed" });
+    const sourceless = await issueQueryContextToken(
+      { ...CONTEXT, sourceIds: [] },
       KEY,
       NOW,
     );
-    const result = await verifyQueryContextToken(token, {
-      ...OPTIONS,
-      allowedSourceIds: ["src_1", "src_2"],
+    expect(
+      await verifyQueryContextToken(sourceless, {
+        ...OPTIONS,
+        allowedSourceIds: [],
+      }),
+    ).toEqual({
+      ok: true,
+      context: expect.objectContaining({ sourceIds: [] }),
     });
-    expect(result).toEqual({ ok: false, reason: "source-not-allowed" });
+    const stale = await verifyQueryContextToken(
+      await issueQueryContextToken(CONTEXT, KEY, NOW),
+      { ...OPTIONS, allowedSourceIds: ["src_1", "src_2"] },
+    );
+    expect(stale.ok).toBe(true);
+    const archived = await verifyQueryContextToken(
+      await issueQueryContextToken(CONTEXT, KEY, NOW),
+      { ...OPTIONS, allowedSourceIds: ["src_1"] },
+    );
+    expect(archived).toEqual({ ok: false, reason: "source-not-allowed" });
   });
 
-  it("rejects even validly-signed nonsense ranges (defense in depth)", async () => {
-    // A signer bug (or leaked key used blindly) must not produce an
-    // accepted inverted or unequal-length window.
-    const inverted = await issueQueryContextToken(
-      { ...CONTEXT, from: CONTEXT.to, to: CONTEXT.from },
-      KEY,
-      NOW,
+  it("refuses to issue nonsense ranges and rejects them on verify", async () => {
+    await expect(
+      issueQueryContextToken(
+        { ...CONTEXT, from: CONTEXT.to, to: CONTEXT.from },
+        KEY,
+        NOW,
+      ),
+    ).rejects.toThrow(/range-invalid/);
+    await expect(
+      issueQueryContextToken(
+        { ...CONTEXT, compareTo: CONTEXT.compareTo + 1 },
+        KEY,
+        NOW,
+      ),
+    ).rejects.toThrow(/range-invalid/);
+    // same-length but non-adjacent comparison window
+    const shifted = await manualSign(
+      {
+        ...decodePayload(await issueQueryContextToken(CONTEXT, KEY, NOW)),
+        compareFrom: CONTEXT.compareFrom - 1_000,
+        compareTo: CONTEXT.compareTo - 1_000,
+      },
+      KEYS.k1,
     );
-    expect(await verifyQueryContextToken(inverted, OPTIONS)).toEqual({
+    expect(await verifyQueryContextToken(shifted, OPTIONS)).toEqual({
       ok: false,
       reason: "range-invalid",
     });
-    const unequal = await issueQueryContextToken(
-      { ...CONTEXT, compareTo: CONTEXT.compareTo + 1 },
-      KEY,
-      NOW,
+  });
+
+  it("rejects future asOf/issuedAt and duplicate source IDs", async () => {
+    const semantics = {
+      from: CONTEXT.from,
+      to: CONTEXT.to,
+      compareFrom: CONTEXT.compareFrom,
+      compareTo: CONTEXT.compareTo,
+      asOf: CONTEXT.asOf,
+      issuedAt: NOW,
+      now: NOW,
+      sourceIds: CONTEXT.sourceIds,
+      ttlMs: QUERY_CONTEXT_TOKEN_TTL_MS,
+      clockSkewMs: QUERY_CONTEXT_TOKEN_CLOCK_SKEW_MS,
+    };
+    expect(validateQueryContextSemantics(semantics)).toEqual({ ok: true });
+    expect(
+      validateQueryContextSemantics({ ...semantics, asOf: NOW + 3_600_000 }),
+    ).toEqual({ ok: false, reason: "invalid-timestamps" });
+    expect(
+      validateQueryContextSemantics({
+        ...semantics,
+        issuedAt: NOW + 3_600_000,
+      }),
+    ).toEqual({ ok: false, reason: "invalid-timestamps" });
+    expect(
+      validateQueryContextSemantics({
+        ...semantics,
+        sourceIds: ["src_1", "src_1"],
+      }),
+    ).toEqual({ ok: false, reason: "duplicate-sources" });
+    await expect(
+      issueQueryContextToken(
+        { ...CONTEXT, sourceIds: ["src_1", "src_1"] },
+        KEY,
+        NOW,
+      ),
+    ).rejects.toThrow(/duplicate-sources/);
+    // a duplicate smuggled past issuance still fails verification
+    const duped = await manualSign(
+      {
+        ...decodePayload(await issueQueryContextToken(CONTEXT, KEY, NOW)),
+        sourceIds: ["src_1", "src_1"],
+      },
+      KEYS.k1,
     );
-    expect(await verifyQueryContextToken(unequal, OPTIONS)).toEqual({
+    expect(await verifyQueryContextToken(duped, OPTIONS)).toEqual({
       ok: false,
-      reason: "range-invalid",
+      reason: "duplicate-sources",
     });
   });
 });
