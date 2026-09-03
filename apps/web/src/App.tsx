@@ -18,6 +18,7 @@ import {
 	RedirectToProjectWs,
 	RedirectToWs,
 	WorkspaceHome,
+	WorkspaceLanding,
 	WorkspaceScope,
 } from "./components/workspace/workspace-scope";
 import { clearPersistedCache, client, getPersistKey } from "./lib/queryClient";
@@ -155,9 +156,6 @@ const AccountLayout = lazy(() =>
 const Onboarding = lazy(() =>
 	import("./routes/onboarding").then((m) => ({ default: m.Onboarding })),
 );
-const Overview = lazy(() =>
-	import("./routes/workspace/overview").then((m) => ({ default: m.Overview })),
-);
 const MembersPage = lazy(() =>
 	import("./routes/workspace/members").then((m) => ({
 		default: m.MembersPage,
@@ -233,7 +231,10 @@ const router = createBrowserRouter(
 
 				{/* Workspace-scoped product routes. */}
 				<Route path="workspace/:wrkSlug" element={<WorkspaceScope />}>
-					<Route path="overview" element={<Overview />} />
+					<Route index element={<WorkspaceLanding />} />
+					{/* Legacy workspace dashboard URL. Workspace-level analytics no
+					    longer has a dedicated page. */}
+					<Route path="overview" element={<WorkspaceLanding />} />
 					<Route path="members" element={<MembersPage />} />
 					<Route path="settings" element={<WorkspaceSettingsLayout />}>
 						<Route path="" element={<Navigate to="general" replace />} />
