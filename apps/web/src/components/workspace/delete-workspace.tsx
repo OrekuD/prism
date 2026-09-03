@@ -61,9 +61,9 @@ export function DeleteWorkspace(props: {
       <DialogTrigger asChild>{props.children}</DialogTrigger>
       <DialogContent className="m-4 flex max-h-[85vh] w-[90vw] max-w-[480px] flex-col gap-0 overflow-hidden p-0 md:m-0 md:w-full">
         <div className="flex flex-col items-center gap-3 px-6 pb-4 pt-6 text-center">
-          <AlertTriangle className="size-5 text-danger" aria-hidden="true" />
+          <AlertTriangle className="size-4 text-danger" aria-hidden="true" />
           <DialogHeader className="w-full gap-2 text-center sm:text-center">
-            <DialogTitle className="text-center text-[17px] font-semibold leading-tight tracking-[-0.02em] text-danger">
+            <DialogTitle className="text-center text-[15px] font-semibold leading-tight tracking-[-0.02em] text-danger">
               Delete {name || "workspace"}?
             </DialogTitle>
             <DialogDescription className="text-center text-[14px] leading-[1.5] text-text-muted">
