@@ -1,13 +1,13 @@
 # Task 21: Build the adaptive Project overview and grounded AI assistant
 
-**Status:** Planned  
+**Status:** In progress
 **Created:** September 3, 2026  
 **Depends on:** Task 13 project/source authorization, Task 15 error tracking,
 Task 16 source-aware Events, Task 17 Web analytics, Task 18 Mobile analytics,
 Task 19 Standard Events, and Task 20 People  
 **Scope:** Hosted Prism's canonical project metrics, adaptive Project overview,
 deterministic insight detection, AI tool layer, project/workspace memory,
-single-project conversation, streamed activity trace, typed answer widgets,
+multiple private project chats, streamed activity trace, typed answer widgets,
 authorization, privacy, evaluation, and hosted proof
 
 ## Goal
@@ -35,7 +35,7 @@ against invented fixtures and backfill the data contracts later.
 1. Freeze metric, query-context, fact, insight, artifact, and stream contracts.
 2. Build the canonical project metric service and snapshot-aware drill-downs.
 3. Build deterministic insight detection and the adaptive overview resource.
-4. Add tenant-scoped conversation and memory persistence.
+4. Add tenant-scoped multi-chat and memory persistence.
 5. Add the Vercel AI SDK runtime and bounded Prism tools.
 6. Add the authorized streaming assistant API.
 7. Replace the current Project overview and build the interactive chat UI.
@@ -49,27 +49,42 @@ slice starts.
 
 These decisions are part of the implementation contract.
 
-### One project conversation per member
+### Multiple private chats per project member
 
-Each member sees one conversation for each project. Prism does not expose a
-conversation picker, named threads, tabs, or parallel chats in this version.
+Following Linear's useful separation between topics, each member may create and
+return to multiple chats inside a project.
 
-- The conversation belongs to `(user, project)`, not only to the project. A
-  member's questions and transcript are private to that member.
-- **Start fresh** is an overflow action. It starts a new internal conversation
-  epoch, but it does not create a user-visible thread to switch back to.
-- Prism retains the prior epoch according to the conversation retention policy
-  for audit and deletion purposes. It does not feed that entire transcript back
-  into later runs.
-- Starting fresh clears conversational context. It does not delete confirmed
-  project or workspace knowledge.
-- The model receives only bounded recent turns, confirmed relevant memory, the
-  current query context, and tool results. It never receives the unbounded chat
-  history.
+- A chat belongs to `(user, project)`, not only to the project. Chat titles,
+  questions, answers, and artifacts are private to that member in v1.
+- A member can create a chat, switch among their existing project chats, and
+  delete a chat. Shared/team chats, mentions, and transcript sharing remain out
+  of scope.
+- Submitting from **Overview** creates a new chat. **Investigate with Prism**
+  also creates a new chat seeded with the selected deterministic insight and
+  its query context. It must not silently append to an unrelated prior topic.
+- Submitting inside `ConversationView` continues the selected chat. **New chat**
+  replaces the old **Start fresh** behavior and does not erase earlier chats.
+- A new chat starts with an empty transcript context but still receives
+  confirmed project/workspace knowledge and the member's applicable
+  preferences.
+- Show one chat at a time. Multiple persisted chats do not imply simultaneous
+  agent runs: v1 permits one active run per `(user, project)` and makes the
+  member stop or finish it before starting another.
+- The model receives only the selected chat's bounded recent turns, confirmed
+  relevant memory, the current query context, and compact tool facts. It never
+  receives other chats or unbounded chat history.
 
-This differs deliberately from Linear's multi-chat model. Prism questions stay
-inside one stable telemetry scope, so visible chat management would add more
-interface than value in the first release.
+Chat discovery must not consume the main data canvas. In conversation mode,
+the header contains **Chats** and **New chat** controls. **Chats** opens a
+compact history panel on desktop and a full-height sheet on mobile, ordered by
+`lastMessageAt` and grouped by recency. The selected chat has
+`aria-current="page"`. Keep answer widgets full width; do not add a permanently
+open nested chat sidebar.
+
+Derive the initial chat title deterministically from the normalized first user
+message, truncate it safely, and fall back to `New chat`. Do not spend a second
+model request on chat naming. User-managed renaming, pinning, folders, and
+cross-project chat search can be evaluated later.
 
 ### Memory has explicit scopes
 
@@ -77,7 +92,7 @@ Conversation history and durable knowledge are different products.
 
 | Scope               | Visibility                     | Examples                                    |
 | ------------------- | ------------------------------ | ------------------------------------------- |
-| Conversation        | Current member and project     | Recent questions and answers                |
+| Conversation        | One chat, member, and project  | Recent questions and answers                |
 | Member preference   | Current member                 | Preferred comparison wording                |
 | Project knowledge   | All authorized project members | Signup event, activation event, key outcome |
 | Workspace knowledge | Authorized workspace members   | Shared business terminology                 |
@@ -147,19 +162,25 @@ For example, an internal `compareMetric` operation may display **Comparing time
 periods** while it runs and **Compared time periods** when it completes. A
 metric-specific operation may display **Measured new signups**.
 
-### Use Vercel AI SDK as the application layer
+### Use Vercel AI SDK with OpenRouter as the model gateway
 
 Use the current stable AI SDK 6 APIs at implementation time:
 
 - `ai` for `ToolLoopAgent`, typed tools, step limits, and UI message streams;
 - `@ai-sdk/react` for the existing React/Vite dashboard's `useChat` client;
-- one server-only provider adapter, initially `@ai-sdk/openai` for hosted Prism;
+- `@openrouter/ai-sdk-provider` as the only hosted server model adapter;
 - Zod 4 for every tool input, tool output, persisted message, and stream part.
 
 Do not combine Vercel AI SDK with LangChain, Mastra, or OpenAI Agents SDK in the
-first implementation. One orchestration layer is enough. Keep provider choice
-behind one small application adapter so changing a hosted model does not change
-Prism's metric, tool, memory, or UI contracts.
+first implementation. One orchestration layer is enough. Hosted inference goes
+through OpenRouter, while one small application adapter prevents gateway or
+model changes from changing Prism's metric, tool, memory, or UI contracts.
+
+Use one pinned, small, fast tool-capable model selected by evaluation. The exact
+`provider/model` ID is deployment configuration, not client input and not a
+hard-coded product contract. Prefer the cheapest candidate that consistently
+passes tool selection, structured-answer, grounding, latency, and privacy
+gates. Do not automatically escalate to a more expensive fallback model in v1.
 
 The product API owns the assistant. The ingestion API remains focused on
 telemetry ingestion, projections, retention, and realtime delivery.
@@ -181,7 +202,7 @@ This task does not add:
 - autonomous writes to project data, issue state, sources, or settings;
 - unrestricted SQL, a text-to-SQL tool, or arbitrary analytics queries;
 - multi-agent delegation;
-- user-visible multiple chats or shared team transcripts;
+- shared team transcripts, chat mentions, folders, or cross-project chat search;
 - a vector database or embeddings over raw telemetry;
 - raw event payloads, arbitrary person traits, or complete stack traces in
   normal model context;
@@ -636,17 +657,22 @@ The dock remains visible at the bottom in overview and conversation modes.
 - Suggestions fill the input; they do not submit without the member's action.
 - Suggestions are derived from available capabilities. Do not suggest asking
   about Mobile retention when the project has no such data.
-- Disable submission while the same conversation has an active run. Provide a
-  visible **Stop** action that aborts provider streaming and pending tools.
+- Disable submission while this member already has an active run in the
+  project, even if it belongs to another chat. Provide a visible **Stop** action
+  that aborts provider streaming and pending tools.
 - Preserve an unsent draft during overview/chat transitions and normal route
-  rerenders. A project change gets a separate draft.
+  rerenders. Scope drafts by project and chat; the overview's new-chat draft is
+  separate from every existing chat draft.
 
 ### Conversation mode
 
-Submitting from overview replaces the widget view with the conversation view.
-The page does not open a second full-screen modal or add a conversation sidebar.
+Submitting from overview creates a chat and replaces the widget view with the
+conversation view. The page does not open a second full-screen modal or add a
+permanently visible conversation sidebar.
 
 - The conversation fades in with a short opacity/translate transition.
+- Its header contains **Back to overview**, the deterministic chat title,
+  **Chats**, and **New chat**. Put destructive chat actions in an overflow menu.
 - Keep the user's message compact and right aligned.
 - Let assistant answers use the available content width. A chart or table must
   not be constrained to a narrow speech bubble.
@@ -655,14 +681,22 @@ The page does not open a second full-screen modal or add a conversation sidebar.
 - Provide **Back to overview** without destroying the conversation or composer.
 - Browser Back follows normal route/search-state behavior and must not trap the
   member inside a JavaScript-only mode.
-- Reload restores the current conversation epoch and opens the mode represented
-  by the URL.
-- **Start fresh** requires a lightweight confirmation when it would clear a
-  non-empty visible transcript.
+- Reload restores the selected chat and opens the mode represented by the URL.
+- **Chats** lists the member's chats for this project only, with title, last
+  activity, and a running state when relevant. History is cursor-paginated and
+  fully keyboard navigable.
+- **New chat** creates a clean topic without deleting or hiding old chats. An
+  empty chat is created lazily with the first submitted message, so opening and
+  abandoning the composer does not create history clutter.
+- Deleting a chat requires confirmation, aborts its active run if present,
+  removes it from history, and returns focus to the next logical chat or the
+  overview. It does not delete shared project/workspace knowledge.
 
 Represent mode in the URL without creating a second application-wide route
-hierarchy. A query value such as `?view=assistant` is acceptable if it preserves
-the existing project route and filters.
+hierarchy. Use an opaque chat identifier, for example
+`?view=assistant&chat=<id>`, while preserving the existing project route and
+filters. A missing, deleted, foreign, or cross-project chat ID follows the
+non-disclosing project error policy and offers a safe return to the overview.
 
 ### Answer anatomy
 
@@ -740,8 +774,8 @@ artifact kind from a controlled mapping.
   addition to icons or color.
 - Do not announce every intermediate tool event as an assertive live update.
 - Give charts text summaries and accessible data tables or lists.
-- Restore focus after **Back to overview**, **Start fresh**, stop, error, and
-  successful navigation actions.
+- Restore focus after **Back to overview**, chat switching, **New chat**, chat
+  deletion, stop, error, and successful navigation actions.
 - Keep the composer, stop button, trace disclosure, artifact actions, and
   suggestion controls fully keyboard accessible.
 - Respect reduced motion by removing entry translation and animated progress.
@@ -777,13 +811,27 @@ Tool rules:
   issue IDs, and bounded ranges.
 - Keep tools read-only except **Propose definition**, which creates a pending
   record and cannot confirm or activate it.
-- Return a typed artifact plus a smaller bounded fact summary for the model.
+- Compute totals, rates, comparisons, rankings, anomaly thresholds, direction,
+  significance, coverage, and caveats in Prism code. The small model narrates
+  these results; it never derives them from raw rows or chart points.
+- Expose only the smallest eligible tool set for the project's capabilities and
+  the current run stage. Do not repeatedly send irrelevant tool schemas to the
+  model.
+- Produce two separate outputs for each operation: a compact `modelSummary`
+  containing cited fact IDs and already-computed conclusions, and a validated
+  UI artifact stored/streamed outside model context.
+- Limit one `modelSummary` to 12 facts and 4,000 characters. If a query produces
+  more evidence, rank and truncate it deterministically and tell the model that
+  additional rows exist.
+- Never serialize full timeseries, rankings, issue rows, event rows, or artifact
+  JSON back into the language-model message history. Only the compact summary
+  returns to the agent loop.
 - Never return SQL, secrets, keys, cookies, raw headers, raw prompts from other
   members, or unbounded property values.
 - Use friendly active/completed labels from a controlled registry. Dynamic
   labels interpolate server-resolved metric labels, never arbitrary telemetry.
-- Limit an agent run to eight model steps and one analytics operation at a time
-  for v1.
+- Limit an agent run to five model steps by default, six as the hard maximum,
+  and one analytics operation at a time for v1.
 - Abort outstanding reads when the user stops the run or the request closes.
 
 ## Structured answer contract
@@ -829,24 +877,37 @@ Add focused Drizzle schemas and migrations for:
 
 - opaque ID;
 - organization ID, project ID, and user ID;
-- current epoch;
+- deterministic title and optional seed type;
+- optional seed reference to a deterministic overview insight without copying
+  its full telemetry payload;
 - created, updated, and last-message timestamps;
-- unique `(project_id, user_id)` ownership;
+- an index on `(project_id, user_id, last_message_at)` for private history;
 - deletion/cascade behavior aligned with project, workspace, and user deletion.
+
+There is intentionally no uniqueness constraint on `(project_id, user_id)`.
+That tuple is the ownership scope and may contain many conversations. Chat IDs
+must be opaque and authorization must still bind them to both the current user
+and project.
 
 `assistant_messages` needs:
 
 - opaque ID and conversation ID;
-- epoch, role, status, and ordered sequence;
+- role, status, and ordered sequence;
 - validated UI message content/data parts;
 - provider/run reference without secrets;
 - created and completed timestamps;
 - bounded failure code safe for display;
-- indexes for one conversation epoch in sequence order.
+- an index for one conversation in sequence order.
 
 Persist complete validated UI messages for rendering. Build model context from a
 separate bounded conversion step. Never trust persisted JSON without parsing it
 back through the current schema.
+
+Render history from the full persisted transcript, but build model context from
+at most the latest eight eligible user/assistant messages, with a hard ceiling
+of twelve after tool-continuation bookkeeping. Do not include messages from
+other chats. Older messages remain visible to the member but are omitted from
+the model context; v1 does not make a hidden model call to summarize them.
 
 ### Runs and audit
 
@@ -858,6 +919,9 @@ back through the current schema.
 - start, completion, cancellation, and safe failure status;
 - step count, tool IDs, token usage, and latency;
 - artifact and fact references required to reproduce the visible answer.
+
+Enforce at most one non-terminal run per `(project_id, user_id)` with a
+database-backed constraint or lock, not only a browser flag.
 
 Do not store provider secrets, hidden reasoning, raw SQL, or unrestricted tool
 payloads. Decide and document whether prompts/tool summaries are included in
@@ -896,19 +960,29 @@ Add project-scoped routes under the existing authenticated Projects router:
 
 ```text
 GET  /api/v1/projects/:slug/overview
-GET  /api/v1/projects/:slug/assistant/conversation
-POST /api/v1/projects/:slug/assistant/messages
-POST /api/v1/projects/:slug/assistant/start-fresh
+GET  /api/v1/projects/:slug/assistant/conversations
+POST /api/v1/projects/:slug/assistant/conversations
+GET  /api/v1/projects/:slug/assistant/conversations/:conversationId
+DELETE /api/v1/projects/:slug/assistant/conversations/:conversationId
+POST /api/v1/projects/:slug/assistant/conversations/:conversationId/messages
 GET  /api/v1/projects/:slug/assistant/memory
 POST /api/v1/projects/:slug/assistant/memory/:proposalId/confirm
 POST /api/v1/projects/:slug/assistant/memory/:proposalId/reject
 ```
 
+The list route is cursor-paginated, ordered by
+`(last_message_at DESC, id DESC)`, and bounded to the current member and project.
+Conversation creation accepts a bounded first message, optional deterministic
+insight seed, query-context token, and idempotent client request ID. It creates
+the chat only when the member actually submits, derives the title without a
+model call, persists the first message atomically, and then starts the run.
+
 Authorization rules:
 
 - Every route requires a signed-in, verified project member.
 - Conversation reads and writes additionally require the current user to own
-  that `(user, project)` conversation.
+  that conversation and require the conversation to belong to the route's
+  project.
 - Project/workspace memory reads require membership.
 - Freeze which roles may confirm shared definitions in Slice 1. The recommended
   default is owner/admin confirmation and member proposals.
@@ -917,8 +991,10 @@ Authorization rules:
 - Re-check membership when a stream begins and before any memory write. Do not
   authorize only from a browser-supplied conversation ID.
 
-`POST .../messages` returns an AI SDK UI message stream with validated custom
-data parts:
+The conversation-creation route and `POST .../:conversationId/messages` return
+an AI SDK UI message stream with validated custom data parts. The initial
+stream includes the newly assigned conversation ID so the client can replace
+the URL without remounting the composer.
 
 ```text
 data-run-start
@@ -939,11 +1015,14 @@ Hosted Prism uses server-only configuration:
 
 ```text
 PRISM_AI_ENABLED
-PRISM_AI_PROVIDER
 PRISM_AI_MODEL
-OPENAI_API_KEY
+OPENROUTER_API_KEY
 PRISM_AI_MAX_STEPS
 PRISM_AI_MAX_INPUT_CHARS
+PRISM_AI_MAX_INPUT_TOKENS
+PRISM_AI_MAX_OUTPUT_TOKENS
+PRISM_AI_MAX_PROMPT_PRICE_PER_MILLION
+PRISM_AI_MAX_COMPLETION_PRICE_PER_MILLION
 ```
 
 Exact names may follow the repository's environment convention, but the
@@ -951,8 +1030,23 @@ semantics must stay explicit.
 
 - Validate enabled configuration at startup or first use with a clear operator
   error.
-- Never expose a provider key or raw provider error to the browser.
-- Keep a model allowlist. Do not accept a model name from the client.
+- Never expose the OpenRouter key or raw gateway/upstream-provider error to the
+  browser.
+- Keep an exact OpenRouter `provider/model` allowlist. Do not accept a model or
+  provider name from the client.
+- Select one small, fast, tool-capable production model through a versioned
+  evaluation. Record the chosen model revision and re-run the evaluation before
+  changing it.
+- Send no model-fallback list in v1. OpenRouter may fail over among approved
+  providers of the same pinned model only when the route still satisfies every
+  required parameter, privacy rule, and configured maximum price.
+- Configure OpenRouter routing to require supported tool/structured-output
+  parameters, deny provider data collection, require a zero-data-retention
+  endpoint, prefer the lowest-priced eligible provider, and reject providers
+  above the configured prompt/completion price limits. Verify the exact
+  `providerOptions.openrouter` shape against the installed adapter version.
+- Do not use a `:free` route as the production default. Availability, privacy,
+  and tool behavior must meet the same release gates as paid routes.
 - If AI is disabled, keep the deterministic overview fully functional and hide
   or explain the assistant entry point.
 - Do not enable an outbound hosted provider silently for self-hosted instances.
@@ -961,6 +1055,8 @@ semantics must stay explicit.
 - Document exactly which bounded user message, confirmed memory, and aggregate
   tool facts leave hosted Prism for the provider. Raw events and person traits
   are excluded by default.
+- Record OpenRouter's returned model/provider identity and usage accounting for
+  each completed or failed generation, without logging prompt content.
 
 ## Security and privacy requirements
 
@@ -992,14 +1088,35 @@ semantics must stay explicit.
 - Stream the first safe activity state promptly; do not wait for the full answer
   before the UI responds.
 - Do not call the model when loading overview mode.
-- Default to one tool at a time and no more than eight agent steps.
+- Use the language model as a bounded planner and narrator, not a calculator or
+  data-analysis engine. Prism code performs all measurement and interpretation
+  that can be deterministic.
+- Default to one tool at a time and five agent steps, with six as the hard
+  maximum. Do not retry a complete run with a larger or more expensive model.
 - Reuse run-level metric results and the loaded overview snapshot.
-- Return compact tool summaries to the model while streaming full validated
-  artifacts directly to the UI.
-- Keep model context bounded through recent-turn selection and typed memory.
-- Record provider input/output tokens, cached tokens where supported, tool
-  latency, total latency, cancellation, and failure class.
-- Add workspace/user usage ceilings before enabling the feature broadly.
+- Return only compact fact summaries to the model. Stream/store full validated
+  artifacts directly for the UI and exclude those artifacts when converting
+  persisted UI messages back to model messages.
+- Include at most eight recent eligible messages by default, twelve as a hard
+  maximum, and no messages from another chat. Do not call a model merely to
+  summarize old transcript history in v1.
+- Enforce a 2,000-character user-message limit, an 8,000-token total model-input
+  limit, and a 600-token model-output limit for the first hosted release. Keep
+  tighter deployed values configurable; reject or deterministically trim
+  optional context before exceeding a hard limit.
+- Permit at most one bounded structured-output repair. Count it as another paid
+  generation and skip it when the remaining run or usage quota cannot cover it.
+- Record OpenRouter prompt, completion, reasoning, and cached token counts plus
+  reported cost; also record tool latency, total latency, cancellation, and
+  failure class.
+- Add configurable per-user and per-workspace daily usage quotas and a per-run
+  cost limit before enabling the feature broadly. Check quota before the run
+  and after every model step; stop safely once it is exhausted.
+- Store aggregate usage/cost records for budgets and operations. Do not store
+  raw prompts, tool inputs, or tool outputs in usage telemetry.
+- Cache canonical query results and deterministic overview snapshots. Do not
+  depend on provider response caching because zero-data-retention routing may
+  make it unavailable.
 - Do not promise a response-time target until hosted measurements exist.
 
 ## Slice 1: Freeze contracts and fixtures
@@ -1018,6 +1135,8 @@ implementation.
       metadata.
 - [ ] Freeze persisted UI-message, structured-answer, conversation, run, memory,
       and proposal schemas.
+- [ ] Freeze multi-chat list items, deterministic-title, creation seed,
+      pagination, deletion, and active-run constraint schemas.
 - [ ] Decide owner/admin versus member confirmation permission and test the
       matrix.
 - [ ] Add deterministic fixtures for Web-only, Mobile-only, server-only,
@@ -1078,11 +1197,17 @@ This slice adds the durable control-plane foundation without calling a model.
 
 - [ ] Add Drizzle schemas and migrations for conversations, messages, runs,
       typed memory, proposals, and audit history.
-- [ ] Enforce one conversation record per `(project, user)` with internal
-      epochs.
+- [ ] Support many private conversation records per `(project, user)` and add
+      deterministic cursor ordering for chat history.
+- [ ] Implement lazy chat creation, deterministic first-message titles, insight
+      seed references, and atomic first-message persistence.
 - [ ] Implement atomic message sequencing and idempotent client request IDs.
-- [ ] Implement **Start fresh** without deleting confirmed memory.
-- [ ] Implement bounded recent-turn context selection.
+- [ ] Implement chat deletion without deleting confirmed project/workspace
+      memory.
+- [ ] Implement bounded recent-turn context selection from the selected chat
+      only; do not summarize or import other chat transcripts.
+- [ ] Enforce one active run per `(project, user)` without preventing the member
+      from retaining or browsing multiple chats.
 - [ ] Implement typed project/workspace/member-memory reads and proposal state
       transitions.
 - [ ] Cascade or explicitly purge data on project, workspace, and account
@@ -1090,40 +1215,49 @@ This slice adds the durable control-plane foundation without calling a model.
 - [ ] Add retention configuration and a documented purge job/path.
 - [ ] Add authorization tests proving members cannot read each other's chats or
       cross-project/workspace memory.
-- [ ] Add concurrency tests for duplicate submissions, two active tabs, start
-      fresh during a run, and proposal confirmation races.
+- [ ] Add concurrency tests for duplicate creation/submission, two active tabs,
+      switching or deleting during a run, the one-active-run constraint, and
+      proposal confirmation races.
 
 ## Slice 5: Agent runtime and tools
 
-This slice introduces Vercel AI SDK behind the frozen Prism contracts.
+This slice introduces Vercel AI SDK and OpenRouter behind the frozen Prism
+contracts.
 
-- [ ] Add pinned `ai`, `@ai-sdk/openai`, and Zod-compatible dependencies to the
-      server package. Add `@ai-sdk/react` only to the Web app.
-- [ ] Create one provider adapter that validates hosted configuration and model
-      allowlisting.
-- [ ] Create one `ToolLoopAgent` with a maximum of eight steps and read-only
-      tools by default.
+- [ ] Add pinned `ai`, `@openrouter/ai-sdk-provider`, and Zod-compatible
+      dependencies to the server package. Add `@ai-sdk/react` only to the Web
+      app; do not add `@ai-sdk/openai`.
+- [ ] Create one OpenRouter adapter that validates the server-only key, exact
+      model allowlist, required routing/privacy options, and price limits.
+- [ ] Evaluate small, fast tool-capable candidates and record grounding,
+      structured-output success, p50/p95 latency, input/output usage, and cost.
+      Pin the cheapest candidate that clears every correctness gate.
+- [ ] Create one `ToolLoopAgent` with five default steps, a hard maximum of six,
+      and read-only tools by default.
 - [ ] Implement the required tool registry with exact Zod schemas and friendly
       activity labels.
 - [ ] Inject authorization and query context outside model-controlled input.
-- [ ] Return compact model facts and full UI artifacts through separate typed
-      channels.
+- [ ] Return compact `modelSummary` facts and full UI artifacts through separate
+      typed channels; prove full artifacts never enter model messages.
 - [ ] Implement run-level memoization, sequential analytics execution,
       cancellation, and timeout propagation.
 - [ ] Implement structured grounded answers and one bounded validation/repair
-      pass.
+      pass that respects the remaining usage quota.
 - [ ] Reject unsupported numeric/directional claims and fall back safely.
 - [ ] Add tests for correct tool choice, missing definitions, incompatible
       dimensions, multi-currency questions, empty data, tool failure, and step
       exhaustion.
 - [ ] Add prompt-injection and cross-tenant tool-argument tests.
+- [ ] Add context-budget, output-budget, OpenRouter usage/cost-accounting,
+      privacy-routing, price-limit, and no-expensive-fallback tests.
 
 ## Slice 6: Streaming assistant API
 
 This slice connects the runtime to an authenticated, resumable product API.
 
-- [ ] Implement conversation, message-stream, start-fresh, memory-read, confirm,
-      and reject endpoints.
+- [ ] Implement cursor-paginated conversation-list, create-and-stream,
+      conversation-read, conversation-delete, message-stream, memory-read,
+      confirm, and reject endpoints.
 - [ ] Validate the member, project, conversation owner, query-context token,
       and memory permission at the controller boundary.
 - [ ] Stream validated activity, facts, artifacts, answer parts, finish, and
@@ -1134,10 +1268,13 @@ This slice connects the runtime to an authenticated, resumable product API.
       runs.
 - [ ] Abort provider and tool work when the user stops or disconnects.
 - [ ] Add user/project/workspace rate limits and run ceilings.
+- [ ] Add per-user and per-workspace daily usage quotas plus per-run cost limits
+      using OpenRouter's returned usage and cost accounting.
 - [ ] Record bounded operational metrics without prompts, hidden reasoning, raw
       tool values, or secrets.
 - [ ] Test pre-stream failures, partial-stream failures, cancellation,
-      reconnect, duplicate requests, provider timeout, and disabled AI.
+      reconnect, duplicate requests, chat ownership, cursor tampering, provider
+      timeout, exhausted quota, and disabled AI.
 
 ## Slice 7: Project overview and conversation UI
 
@@ -1151,6 +1288,11 @@ This slice replaces the current summary route with the approved structure.
       timestamps in React Query keys.
 - [ ] Build the growing composer, capability-aware suggestions, keyboard
       behavior, Stop action, draft persistence, and send states.
+- [ ] Build **Chats** history and **New chat** controls, cursor pagination,
+      deterministic titles, selected/running states, desktop history panel,
+      mobile sheet, and confirmed deletion behavior.
+- [ ] Scope the URL and drafts by opaque chat ID. Submitting from Overview or an
+      insight creates a chat; submitting inside a chat continues it.
 - [ ] Integrate `useChat` with the authorized product API and persisted initial
       messages.
 - [ ] Render user messages, streamed assistant answers, wide artifacts,
@@ -1160,8 +1302,8 @@ This slice replaces the current summary route with the approved structure.
       chain-of-thought.
 - [ ] Implement every artifact variant with exact server values and accessible
       summaries.
-- [ ] Implement **Back to overview** and **Start fresh** with correct focus and
-      history behavior.
+- [ ] Implement **Back to overview**, chat switching, **New chat**, and deletion
+      with correct browser history, focus, and missing-chat behavior.
 - [ ] Add loading, empty, disabled, partial-data, provider-error, tool-error,
       offline, cancelled, rate-limited, and retry states.
 - [ ] Add responsive layouts at every design-system QA viewport in both themes.
@@ -1180,7 +1322,11 @@ This slice determines whether the feature is accurate enough to release.
 - [ ] Add adversarial evaluation for prompt injection, missing data, ambiguous
       terms, source mismatch, low volume, currency mixing, and causal language.
 - [ ] Add memory evaluations for project/workspace scope, confirmation,
-      supersession, Start fresh, and cross-user privacy.
+      supersession, new-chat inheritance, chat isolation, and cross-user
+      privacy.
+- [ ] Add multi-chat evaluations for creation, deterministic titles, switching,
+      history pagination, deletion, URL restoration, and one active run per
+      member/project.
 - [ ] Add UI evaluations for artifact choice, exact values, trace labels,
       cancellation, and drill-down query context.
 - [ ] Document the assistant's data use, limitations, memory, retention,
@@ -1230,6 +1376,8 @@ Before marking the task complete:
 - [ ] Dashboard-versus-agent parity tests pass with zero mismatches.
 - [ ] Product API authorization, conversation, memory, stream, and rate-limit
       tests pass.
+- [ ] Multi-chat ownership, list pagination, isolation, switching, deletion,
+      URL restoration, and active-run constraint tests pass.
 - [ ] Web component, interaction, accessibility, and build gates pass.
 - [ ] Provider failures never break the deterministic Project overview.
 - [ ] No model/provider package enters SDK, ingestion, or browser production
@@ -1237,7 +1385,9 @@ Before marking the task complete:
 - [ ] Dependency and license review passes for AI SDK and provider packages.
 - [ ] Security review passes for tenant isolation, prompt injection, secrets,
       PII exclusion, deletion, and outbound data.
-- [ ] Cost ceilings, timeouts, cancellation, and usage telemetry are verified.
+- [ ] OpenRouter privacy routing, exact model selection, price limits, context
+      ceilings, usage quotas, timeouts, cancellation, and cost telemetry are
+      verified.
 - [ ] Hosted evaluation and visual QA evidence are recorded.
 - [ ] Documentation and environment references match the deployed behavior.
 
@@ -1253,8 +1403,9 @@ Task 21 is complete only when a hosted Prism member can:
 4. Receive a direct answer plus the correct typed widget where useful.
 5. Verify every number through a snapshot-aware Prism drill-down using the same
    canonical metric definition.
-6. Continue one private project conversation, start fresh, and retain confirmed
-   project/workspace knowledge appropriately.
+6. Create, recognize by deterministic title, switch among, continue, and delete
+   multiple private project chats while retaining confirmed project/workspace
+   knowledge appropriately.
 7. Stop a run, recover from errors, and use the complete flow with keyboard and
    assistive technology.
 8. Receive an honest unsupported or missing-definition answer instead of a
@@ -1274,7 +1425,9 @@ Before implementation, read the repository `AGENTS.md` and these files:
 - the current Web/Mobile analytics resource types and loaders;
 - the current Events, People, Errors, Sources, Project layout, and summary code;
 - the official current Vercel AI SDK agent, UI message, generative UI,
-  persistence, tool, cancellation, and provider documentation.
+  persistence, tool, and cancellation documentation;
+- the official current OpenRouter AI SDK integration, provider-routing,
+  privacy, and usage-accounting documentation.
 
 Use the repository's `api-design`, `backend-patterns`, `security-review`,
 `frontend-patterns`, `react-performance`, `react-testing`, `e2e-testing`, and
@@ -1299,6 +1452,10 @@ Verify these current official references again when each AI slice begins:
 - [AI SDK `useChat`](https://ai-sdk.dev/docs/reference/ai-sdk-ui/use-chat)
 - [AI SDK message persistence](https://ai-sdk.dev/docs/ai-sdk-ui/chatbot-message-persistence)
 - [Linear Agent conversation model](https://linear.app/docs/linear-agent)
+- [OpenRouter Vercel AI SDK integration](https://openrouter.ai/docs/community/frameworks)
+- [OpenRouter provider routing](https://openrouter.ai/docs/guides/routing/provider-selection)
+- [OpenRouter provider logging and retention](https://openrouter.ai/docs/guides/privacy/provider-logging)
+- [OpenRouter usage accounting](https://openrouter.ai/docs/cookbook/administration/usage-accounting)
 
 ## Progress log
 
@@ -1342,3 +1499,301 @@ unsupported-retention, and prompt-injection → `unavailable`).
   clean against the rebuilt dist.
 - Remaining risk: none for slice 1; slice 2 must implement the canonical
   metric service behind `METRIC_REGISTRY` without copying formulas.
+
+### 2026-09-03 — Product decision amendment: multi-chat and OpenRouter
+
+The product decision changed after Slice 1: Prism now supports multiple private
+chats per project member, and hosted inference must use OpenRouter with a small,
+fast, cost-tested model. The task contract now replaces internal conversation
+epochs and **Start fresh** with visible chat creation, history, switching, and
+deletion. Confirmed project/workspace memory remains shared across a member's
+project chats; transcripts do not.
+
+Before Slice 4, amend the completed Slice 1 contract in
+`projectAssistant.ts` and its fixtures/tests rather than layering storage on the
+superseded single-conversation shape. Replace any direct-provider or
+`OPENAI_API_KEY` environment contract with the OpenRouter configuration in this
+task. Add the multi-chat schemas and cost/context limits listed in Slice 1, then
+re-run the same focused type contract, build, and downstream typecheck proof.
+Do not rewrite the metric, fact, artifact, memory, or accuracy contracts that
+remain valid.
+
+### 2026-09-03 — Slice 1 revision: R1 review closed + multi-chat/OpenRouter amendment
+
+Revised the frozen Slice 1 contracts instead of layering storage on the
+superseded shapes. Metric, dimension, comparison, insight-threshold, and
+accuracy contracts are unchanged; everything below is additive or a
+narrowed correction.
+
+- R1-F1: tokens are opaque in shared code (`QueryContextTokenSchema`
+  only; encoder/decoder deleted). Issuance/verification moved to
+  server-only `apps/api/src/utils/queryContextToken.ts` (HMAC-SHA256,
+  `kid` rotation, 7-day expiry, scope/range/source-subset checks).
+- R1-F2: overview carries its real `activity` (timeseries|empty),
+  `secondary` (ranked-list|table|issue-list; releases via
+  `entity: "release"`), full insight `artifact` payloads, the opaque
+  snapshot token, and structured fact `coverage` + derived `coverageNote`.
+- R1-F3: every artifact has a stable run-scoped `id`; persisted message
+  parts are a text|artifact-snapshot|trace-snapshot union with
+  `extractModelText` proving widgets replay but never re-enter model
+  context; `ModelSummary` + deterministic `buildModelSummary`
+  rank-and-truncate is the only data channel to the model; stream parts
+  are a validated discriminated union with sanitized error codes; runs
+  carry fact/artifact references.
+- R1-F4: memory is a scope-keyed discriminated union — project requires a
+  project ID, workspace forbids one, member requires `subjectUserId`;
+  keys restricted per scope; definition/business-term/range payloads are
+  exact; proposer/confirmer provenance enforced (confirmed shared records
+  need a confirmer); oversized payloads rejected.
+- R1-F5: epochs removed. Conversation detail/list-item/opaque-cursor/
+  lazy-create-with-first-message+insight-seed/delete contracts,
+  unicode-safe deterministic `deriveChatTitle`, `(lastMessageAt, id)`
+  ordering, `canAccessConversation` owner+project binding with
+  own/foreign/cross-project fixtures, and the `active-run-exists`
+  conflict contract.
+- R1-F6: OpenRouter env names (no `OPENAI_API_KEY`/`PRISM_AI_PROVIDER`),
+  5-default/6-max steps (structural), 8000/600 token ceilings, 8/12
+  message window, integer-micro-USD `RunUsage` with gateway/upstream
+  identity, quota outcomes, and a pinned-model/no-fallback/price-capped/
+  zero-retention routing policy.
+- R1-F7: `deepFreeze` applied to registries, ID arrays, thresholds, and
+  limits; strict-mode mutation attempts throw and lookups stay intact.
+- R1-F8: registry stores typed destinations; `buildProjectPath`/
+  `buildDrilldownUrl` resolve through the real
+  `/workspace/:wrkSlug/projects/:slug` segments with slug encoding and
+  the snapshot token.
+
+Evidence: types 67/67 (58 contract + 9 pre-existing), new
+`prism-api` token suite 9/9 (forge/tamper/rotation/expiry/scope/source/
+nonsense-range), tsup+DTS build clean, `prism-api` + `prism-web`
+typechecks clean, Prettier clean.
+
+## Review feedback - round 1 (2026-09-03)
+
+Review scope: focused static review of `ccc765b` against the current Task 21
+contract, including the frozen types, fixtures, and focused tests. The review
+also accounts for the multi-chat and OpenRouter decisions made after this
+commit. No test, lint, typecheck, build, or hosted command was repeated.
+
+### R1-F1 - The query-context token is forgeable
+
+**Severity:** High
+**Status:** Closed
+
+`encodeQueryContextToken()` only base64url-encodes JSON. It does not sign,
+encrypt, or persist the context server-side. Because the encoder is exported
+from the shared types package, a browser can decode the payload, change
+`from`, `to`, `compareFrom`, `compareTo`, `asOf`, or `sourceIds`, and encode a
+new payload that `decodeQueryContextToken()` and `validateTokenScope()` accept.
+The current “tampered” test only appends invalid bytes; it does not test a
+well-formed forged payload. This breaks the snapshot-integrity claim and can
+turn a bounded dashboard query into an attacker-selected range.
+
+**How to address:**
+
+1. [ ] Keep only an opaque token string schema in `@prism-analytics/types`.
+       Move token issuance and verification to server-only code.
+2. [ ] Use either an authenticated, versioned token with a server-held HMAC key
+       or a cryptographically random ID that resolves to a server-side context
+       record. Do not expose a signing helper to the browser bundle.
+3. [ ] Bind the token to project, organization, immutable range, comparison
+       range, snapshot cutoff, allowed source IDs, definition version, and an
+       expiry. Re-check membership and ensure every source belongs to the project
+       after verification.
+4. [ ] Add a failing-first case that decodes a valid token, changes one field,
+       re-encodes valid JSON, and proves verification fails. Cover forged ranges,
+       `asOf`, source IDs, scope, expiry, and signing-key rotation/versioning.
+
+### R1-F2 - The overview resource cannot render the promised page
+
+**Severity:** High
+**Status:** Closed
+
+The task freezes a complete `ProjectOverviewResource`, but the implemented
+schema returns only `activityKind` and `secondaryKind`. It carries neither the
+activity artifact nor the secondary artifact. It also omits the required
+query-context token. `secondaryKind` accepts `release`, although no release
+artifact exists in the 11-variant artifact union. Finally,
+`MetricFactSchema.coverage` is a free-form string while the task requires a
+structured `CoverageSummary`. Slice 2 cannot implement an accurate endpoint,
+and Slice 7 cannot render the page, from this contract without inventing new
+shapes.
+
+**How to address:**
+
+1. [ ] Add the server-issued opaque query-context token to the overview
+       resource without exposing its payload as an authorization mechanism.
+2. [ ] Replace `activityKind` with the actual bounded
+       `TimeseriesArtifact | EmptyArtifact` and replace `secondaryKind` with the
+       actual bounded secondary artifact.
+3. [ ] Either define a real `ReleaseArtifact` and add it consistently to the
+       union, or represent release data through the existing ranked-list/table
+       contract. Do not keep a discriminator with no renderable payload.
+4. [ ] Change metric coverage to the structured coverage contract and keep any
+       short display sentence as a derived presentation field, not the source of
+       truth.
+5. [ ] Add strict schema fixtures proving the overview contains its complete
+       activity and secondary data and rejects kind/payload mismatches.
+
+### R1-F3 - Artifacts and stream parts are not referentially complete
+
+**Severity:** High
+**Status:** Closed
+
+`AssistantAnswerSchema` refers to `primaryArtifactId` and
+`supportingArtifactIds`, but `AssistantArtifactSchema` has no artifact ID.
+`AssistantMessageSchema.parts` accepts only text, so persisted/reloaded chats
+cannot reconstruct answer widgets or the activity trace. `AssistantRunSchema`
+does not contain the fact/artifact references required by the task's audit
+contract. The stream contract freezes only six string names and no payload
+schemas. As a result, later slices would have to invent identifiers and payload
+formats, and a reload could show different content from the original streamed
+answer.
+
+**How to address:**
+
+1. [ ] Give every fact and artifact a stable run-scoped ID, and validate every
+       answer reference against facts/artifacts produced by that run.
+2. [ ] Freeze a strict discriminated union for every stream data part,
+       including run, activity, fact, artifact, finish, and safe-error payloads.
+3. [ ] Freeze persisted UI-message parts for text and bounded typed references
+       or snapshots of artifacts/activity. Define one replay path that recreates
+       the original completed answer after reload.
+4. [ ] Add fact/artifact references to the run audit record, with deletion and
+       retention behavior defined.
+5. [ ] Keep the persisted UI artifact available to the client while explicitly
+       excluding its full rows/series from conversion back into OpenRouter model
+       messages. Add a regression for both behaviors.
+
+### R1-F4 - Member memory is neither member-scoped nor truly typed
+
+**Severity:** High
+**Status:** Closed
+
+`MemoryRecordSchema` has no subject user ID, so a `member` preference cannot be
+owned or read safely for one member. The schema also permits invalid scope/key
+combinations: project memory may have `projectId: null`, workspace/member
+memory may carry an arbitrary project ID, and `preferred-comparison-range` may
+be stored as shared workspace knowledge. Its `payload` is an unbounded generic
+record with arbitrary keys and unbounded strings, despite the task requiring
+typed, bounded memory. Status/provenance invariants are also absent; for
+example, a confirmed shared record can have no confirmer.
+
+**How to address:**
+
+1. [ ] Add an explicit owner/subject user ID for member-scoped memory and index
+       reads by that user. Forbid it on shared records unless it is audit metadata.
+2. [ ] Replace the generic record with a discriminated union keyed by memory
+       type. Define exact payloads for signup, activation, key outcome, business
+       term, and preferred comparison range.
+3. [ ] Enforce scope invariants: project knowledge requires a project ID,
+       workspace knowledge forbids one, and member preferences require their
+       subject user ID. Restrict each memory key to its allowed scope.
+4. [ ] Enforce proposer/confirmer/status invariants and bound every string,
+       collection, and payload field before it can enter model context.
+5. [ ] Add cross-user preference-isolation tests and strict rejection cases for
+       invalid key/scope/status combinations and oversized payloads.
+
+### R1-F5 - The persistence contract still implements the superseded single-chat model
+
+**Severity:** High
+**Status:** Closed
+
+This is expected post-commit drift, but it must be corrected before Slice 4.
+`ConversationSchema` and `AssistantMessageSchema` still use `epoch`, and there
+are no contracts for deterministic titles, insight seeds, history list items,
+cursor pagination, lazy creation, deletion, or URL restoration. Building
+storage from these schemas would preserve the old hidden **Start fresh** model
+instead of the approved multiple-chat experience.
+
+**How to address:**
+
+1. [ ] Remove epochs and freeze separate conversation detail, history-list,
+       cursor, create-with-first-message/insight-seed, and delete contracts.
+2. [ ] Add the deterministic title and `lastMessageAt` ordering fields needed by
+       the history panel, with a stable `(lastMessageAt, id)` opaque cursor.
+3. [ ] Specify that a new chat receives shared confirmed project/workspace
+       memory but no transcript from another chat.
+4. [ ] Add a server-enforceable one-active-run-per-member/project contract and
+       tests for two tabs, switching, cancellation, and deletion during a run.
+5. [ ] Add strict cross-project and cross-user conversation fixture cases before
+       treating the Slice 1 persistence contract as frozen again.
+
+### R1-F6 - The provider and run contracts still assume OpenAI and omit cost controls
+
+**Severity:** High
+**Status:** Closed
+
+This is also expected post-commit drift. `PRISM_AI_ENV_NAMES` still freezes
+`PRISM_AI_PROVIDER` and `OPENAI_API_KEY`; `ANSWER_LIMITS.maxSteps` is still
+eight; and the run schema records only generic input/output tokens. It cannot
+represent the approved OpenRouter gateway, six-step hard limit, prompt/context
+limits, actual reported cost, reasoning/cached tokens, upstream provider, price
+limits, or usage-quota decisions. Leaving this until runtime implementation
+would make the frozen public/storage contracts contradict the cost model.
+
+**How to address:**
+
+1. [ ] Replace the direct-provider environment contract with the current
+       OpenRouter names and limits in this task. Keep the API key server-only and
+       accept no client-selected model/provider.
+2. [ ] Set the structural step maximum to six and freeze the user-message,
+       model-input, model-output, history-message, and compact tool-summary limits.
+3. [ ] Extend run usage with the exact OpenRouter model ID, gateway and upstream
+       provider identity, prompt/completion/reasoning/cached tokens, step-level
+       usage, and reported cost. Store cost as an exact decimal or integer smallest
+       accounting unit, not a binary floating-point dollar value.
+4. [ ] Freeze usage-quota and per-run cost-limit outcomes so the API can explain
+       a blocked or stopped run consistently.
+5. [ ] Add contract tests for the OpenRouter environment names, privacy/price
+       routing policy, no model fallback, six-step rejection, usage accounting, and
+       context-budget exhaustion.
+
+### R1-F7 - The registries are only shallow-frozen
+
+**Severity:** Medium
+**Status:** Closed
+
+`Object.freeze(METRIC_REGISTRY)` and `Object.freeze(TOOL_REGISTRY)` freeze only
+their top-level objects. `def()` returns each mutable definition unchanged, and
+nested arrays, drill-down objects, tool presentations, exported ID arrays, and
+limit/threshold objects remain mutable at runtime. The current immutability test
+checks only `Object.isFrozen()` on the two outer registries, so the reported
+runtime immutability is stronger than the proof.
+
+**How to address:**
+
+1. [ ] Export readonly types and deep-freeze every nested contract value at
+       module initialization, or keep mutable maps private and expose immutable
+       copies/read methods.
+2. [ ] Freeze the exported ID arrays and limit/threshold objects that consumers
+       treat as canonical.
+3. [ ] Add strict-mode mutation attempts for a label, supported-dimension array,
+       drill-down path, tool presentation label, ID array, and threshold. Prove the
+       attempted mutation throws or has no effect and lookup behavior remains
+       unchanged.
+
+### R1-F8 - Frozen drill-down paths do not match the Web app router
+
+**Severity:** Medium
+**Status:** Closed
+
+The registry freezes paths such as `/events`, `/analytics`, and `/mobile`, but
+the Web app routes are project-scoped under
+`/workspace/:wrkSlug/projects/:slug/...`, with `web-analytics` and
+`mobile-analytics` as the actual route segments. These values cannot navigate
+to the current pages as absolute paths and cannot preserve the project scope.
+The existing test proves only that a string starts with `/` and contains no
+query; it never resolves the destination through the real router.
+
+**How to address:**
+
+1. [ ] Store a typed destination ID and optional filter intent in the metric
+       registry rather than a context-free absolute pathname.
+2. [ ] Resolve the final URL through one project-aware Web route builder using
+       the current workspace slug, project slug, and verified snapshot token.
+3. [ ] Add contract-to-router cases for Events, People, Web Analytics, Mobile
+       Analytics, and Errors, including characters that require slug/query
+       encoding.
+4. [ ] Prove every overview and assistant drill-down opens the same project and
+       verified snapshot represented by its facts.

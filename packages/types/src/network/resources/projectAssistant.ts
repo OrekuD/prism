@@ -1,5 +1,6 @@
 /**
- * Project overview + grounded assistant contracts (Task 21 slice 1).
+ * Project overview + grounded assistant contracts (Task 21 slice 1, revised
+ * per the R1 review and the multi-chat / OpenRouter amendment).
  *
  * This module is the frozen product language for the adaptive Project
  * overview and the Prism assistant. Dashboard adapters, insight detectors,
@@ -7,11 +8,44 @@
  * through these contracts — never through duplicated formulas in React or
  * raw storage/column names.
  *
- * Slices 2+ implement the service, storage, runtime, and UI behind these
- * types. Anything marked `v1` is intentionally bounded; extensions bump
- * `DEFINITION_VERSION` rather than widening existing fields.
+ * Deliberate boundaries:
+ *
+ * - Query-context tokens are OPAQUE here. Issuance and verification live in
+ *   server-only code (`apps/api/src/utils/queryContextToken.ts`, HMAC) and
+ *   must never be bundled for the browser. This module only freezes the
+ *   opaque string shape.
+ * - Full artifact snapshots persist for replay, but only compact
+ *   `modelSummary` facts ever enter model context (see `buildModelSummary`
+ *   and `extractModelText`).
+ * - Slices 2+ implement the service, storage, runtime, and UI behind these
+ *   types. Anything marked `v1` is intentionally bounded; extensions bump
+ *   `DEFINITION_VERSION` rather than widening existing fields.
  */
 import { z } from "zod";
+
+// ---------------------------------------------------------------------------
+// Deep immutability (R1-F7)
+// ---------------------------------------------------------------------------
+
+/**
+ * The registries below read as canonical constants. `Object.freeze` alone
+ * only freezes the top level, so every nested definition, array, and limit
+ * object is frozen at module initialization. Consumers must treat lookups
+ * as read-only; strict-mode mutation attempts throw.
+ */
+export function deepFreeze<T>(value: T): T {
+  if (value && typeof value === "object" && !Object.isFrozen(value)) {
+    if (Array.isArray(value)) {
+      for (const item of value) deepFreeze(item);
+    } else {
+      for (const key of Object.keys(value)) {
+        deepFreeze((value as Record<string, unknown>)[key]);
+      }
+    }
+    Object.freeze(value);
+  }
+  return value;
+}
 
 // ---------------------------------------------------------------------------
 // Definition version + overview ranges
@@ -21,25 +55,131 @@ import { z } from "zod";
 export const DEFINITION_VERSION = 1;
 
 /** Supported v1 overview ranges. */
-export const OVERVIEW_RANGES = ["24h", "7d", "14d", "30d", "90d"] as const;
+export const OVERVIEW_RANGES = deepFreeze([
+  "24h",
+  "7d",
+  "14d",
+  "30d",
+  "90d",
+] as const);
 export type OverviewRange = (typeof OVERVIEW_RANGES)[number];
 export const OverviewRangeSchema = z.enum(OVERVIEW_RANGES);
 
 /** Fixed range lengths in ms (UTC calendar math stays in slice 2). */
-export const OVERVIEW_RANGE_MS: Record<OverviewRange, number> = {
+export const OVERVIEW_RANGE_MS: Record<OverviewRange, number> = deepFreeze({
   "24h": 24 * 3_600_000,
   "7d": 7 * 86_400_000,
   "14d": 14 * 86_400_000,
   "30d": 30 * 86_400_000,
   "90d": 90 * 86_400_000,
+});
+
+// ---------------------------------------------------------------------------
+// Drill-down destinations (R1-F8)
+// ---------------------------------------------------------------------------
+
+/**
+ * Typed drill-down destinations. The registry stores a destination ID plus
+ * filter intent — never a context-free pathname. Final URLs resolve through
+ * `buildDrilldownUrl` with the current workspace/project slugs and the
+ * verified snapshot token, so every drill-down opens the same project and
+ * snapshot as its facts.
+ *
+ * Segments mirror the real Web router under
+ * `/workspace/:wrkSlug/projects/:slug` (`events`, `web-analytics`,
+ * `mobile-analytics`, `people`, `errors`, `sources`).
+ */
+export const DRILLDOWN_DESTINATIONS = deepFreeze([
+  "overview",
+  "events",
+  "people",
+  "web-analytics",
+  "mobile-analytics",
+  "errors",
+  "errors-issue",
+  "sources",
+] as const);
+export type DrilldownDestinationId = (typeof DRILLDOWN_DESTINATIONS)[number];
+
+export const DrilldownDestinationSchema = z
+  .strictObject({
+    destination: z.enum(DRILLDOWN_DESTINATIONS),
+    label: z.string().min(1).max(80),
+    /** Required exactly when destination is `errors-issue`. */
+    issueId: z.string().min(1).max(128).optional(),
+  })
+  .superRefine((value, context) => {
+    if (value.destination === "errors-issue" && !value.issueId) {
+      context.addIssue({
+        code: "custom",
+        message: "issueId is required for an errors-issue drill-down",
+      });
+    }
+    if (value.destination !== "errors-issue" && value.issueId !== undefined) {
+      context.addIssue({
+        code: "custom",
+        message: "issueId is only valid for an errors-issue drill-down",
+      });
+    }
+  });
+export type DrilldownDestination = z.infer<typeof DrilldownDestinationSchema>;
+
+const DRILLDOWN_SEGMENTS: Record<DrilldownDestinationId, string> = deepFreeze({
+  overview: "",
+  events: "events",
+  people: "people",
+  "web-analytics": "web-analytics",
+  "mobile-analytics": "mobile-analytics",
+  errors: "errors",
+  "errors-issue": "errors",
+  sources: "sources",
+});
+
+const assertSlug = (name: string, slug: string): void => {
+  if (!slug || slug.length > 128 || /[/?#]/.test(slug)) {
+    throw new TypeError(`Invalid ${name} slug for drill-down URL`);
+  }
 };
+
+/** Project-aware path for a drill-down destination. */
+export function buildProjectPath(
+  wrkSlug: string,
+  projectSlug: string,
+  drilldown: DrilldownDestination,
+): string {
+  assertSlug("workspace", wrkSlug);
+  assertSlug("project", projectSlug);
+  const base = `/workspace/${encodeURIComponent(wrkSlug)}/projects/${encodeURIComponent(projectSlug)}`;
+  const segment = DRILLDOWN_SEGMENTS[drilldown.destination];
+  if (drilldown.destination === "errors-issue") {
+    return `${base}/${segment}/${encodeURIComponent(drilldown.issueId ?? "")}`;
+  }
+  return segment ? `${base}/${segment}` : base;
+}
+
+/**
+ * Snapshot-aware drill-down URL. The token is opaque here; the server
+ * verifies it (HMAC, scope, expiry, source membership) before serving the
+ * snapshot. The link first shows the snapshot that supported the answer; a
+ * **Refresh to latest** action is a UI concern in later slices.
+ */
+export function buildDrilldownUrl(
+  wrkSlug: string,
+  projectSlug: string,
+  drilldown: DrilldownDestination,
+  queryContextToken?: string,
+): string {
+  const path = buildProjectPath(wrkSlug, projectSlug, drilldown);
+  if (!queryContextToken) return path;
+  return `${path}?ctx=${encodeURIComponent(queryContextToken)}`;
+}
 
 // ---------------------------------------------------------------------------
 // Metric registry
 // ---------------------------------------------------------------------------
 
 /** Frozen v1 metric IDs — the only metrics overview/tools may reference. */
-export const METRIC_IDS = [
+export const METRIC_IDS = deepFreeze([
   // Cross-source project metrics
   "project.accepted_events",
   "project.sessions",
@@ -71,11 +211,11 @@ export const METRIC_IDS = [
   "errors.affected_identities",
   "errors.handled",
   "errors.unhandled",
-] as const;
+] as const);
 export type MetricId = (typeof METRIC_IDS)[number];
 export const MetricIdSchema = z.enum(METRIC_IDS);
 
-export const DIMENSION_IDS = [
+export const DIMENSION_IDS = deepFreeze([
   "source",
   "platform_family",
   "platform",
@@ -99,11 +239,11 @@ export const DIMENSION_IDS = [
   "issue_status",
   "environment",
   "handled",
-] as const;
+] as const);
 export type DimensionId = (typeof DIMENSION_IDS)[number];
 export const DimensionIdSchema = z.enum(DIMENSION_IDS);
 
-export const FILTER_IDS = [
+export const FILTER_IDS = deepFreeze([
   "source_ids",
   "host",
   "path",
@@ -115,17 +255,17 @@ export const FILTER_IDS = [
   "platform",
   "environment",
   "currency",
-] as const;
+] as const);
 export type FilterId = (typeof FILTER_IDS)[number];
 export const FilterIdSchema = z.enum(FILTER_IDS);
 
 /** Collection capabilities a metric can require. */
-export const SOURCE_CAPABILITIES = [
+export const SOURCE_CAPABILITIES = deepFreeze([
   "web_collection",
   "mobile_collection",
   "server_collection",
   "error_collection",
-] as const;
+] as const);
 export type SourceCapability = (typeof SOURCE_CAPABILITIES)[number];
 
 /** Product-level source family. Native iOS/Android feed `mobile`. */
@@ -144,397 +284,414 @@ export type MetricDefinition = {
   /** A metric that cannot be computed without this filter (e.g. event key). */
   requiresFilter?: FilterId;
   comparison: "supported" | "not-supported";
-  drilldown: { path: string; label: string };
+  drilldown: DrilldownDestination;
 };
 
-const def = (definition: MetricDefinition): MetricDefinition => definition;
+const def = (definition: MetricDefinition): MetricDefinition =>
+  deepFreeze(definition);
 
-export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> =
-  Object.freeze({
-    "project.accepted_events": def({
-      id: "project.accepted_events",
-      version: 1,
-      label: "Accepted events",
-      description: "Accepted event occurrences in the range and snapshot.",
-      valueKind: "count",
-      domain: "project",
-      supportedDimensions: ["source", "platform_family", "event_name"],
-      supportedFilters: ["source_ids"],
-      sourceRequirements: [],
-      comparison: "supported",
-      drilldown: { path: "/events", label: "Open Events" },
-    }),
-    "project.sessions": def({
-      id: "project.sessions",
-      version: 1,
-      label: "Sessions",
-      description: "Distinct valid project session IDs started in the range.",
-      valueKind: "count",
-      domain: "project",
-      supportedDimensions: ["source", "platform_family"],
-      supportedFilters: ["source_ids"],
-      sourceRequirements: [],
-      comparison: "supported",
-      drilldown: { path: "/events", label: "Open Events" },
-    }),
-    "project.active_people": def({
-      id: "project.active_people",
-      version: 1,
-      label: "Active identified people",
-      description: "Identified people with accepted activity in the range.",
-      valueKind: "count",
-      domain: "people",
-      supportedDimensions: ["source", "platform_family"],
-      supportedFilters: ["source_ids"],
-      sourceRequirements: [],
-      comparison: "supported",
-      drilldown: { path: "/people", label: "Open People" },
-    }),
-    "project.new_people": def({
-      id: "project.new_people",
-      version: 1,
-      label: "New identified people",
-      description:
-        "People whose first external identity link falls in the range. No inferred acquisition dimensions.",
-      valueKind: "count",
-      domain: "people",
-      supportedDimensions: [],
-      supportedFilters: [],
-      sourceRequirements: [],
-      comparison: "supported",
-      drilldown: { path: "/people", label: "Open People" },
-    }),
-    "project.active_anonymous": def({
-      id: "project.active_anonymous",
-      version: 1,
-      label: "Active anonymous subjects",
-      description:
-        "Anonymous-only analytics subjects active in the range. Never presented as unique humans.",
-      valueKind: "count",
-      domain: "people",
-      supportedDimensions: ["source", "platform_family"],
-      supportedFilters: ["source_ids"],
-      sourceRequirements: [],
-      comparison: "supported",
-      drilldown: { path: "/people", label: "Open People" },
-    }),
-    "standard_event.occurrences": def({
-      id: "standard_event.occurrences",
-      version: 1,
-      label: "Standard Event occurrences",
-      description:
-        "Accepted occurrences of one exact Standard Event key. Count across currencies; never convert.",
-      valueKind: "count",
-      domain: "events",
-      supportedDimensions: ["source", "platform_family", "currency"],
-      supportedFilters: ["source_ids", "standard_event_key", "currency"],
-      sourceRequirements: [],
-      requiresFilter: "standard_event_key",
-      comparison: "supported",
-      drilldown: { path: "/events", label: "Open Events" },
-    }),
-    "standard_event.people": def({
-      id: "standard_event.people",
-      version: 1,
-      label: "Standard Event people",
-      description:
-        "Distinct identified people for one exact Standard Event key.",
-      valueKind: "count",
-      domain: "people",
-      supportedDimensions: ["source", "platform_family"],
-      supportedFilters: ["source_ids", "standard_event_key"],
-      sourceRequirements: [],
-      requiresFilter: "standard_event_key",
-      comparison: "supported",
-      drilldown: { path: "/people", label: "Open People" },
-    }),
-    "standard_event.value_by_currency": def({
-      id: "standard_event.value_by_currency",
-      version: 1,
-      label: "Standard Event value",
-      description:
-        "Sum of valueMinor within one exact currency. Returned as separate rows per currency; never converted.",
-      valueKind: "money-minor",
-      domain: "events",
-      supportedDimensions: ["currency", "source", "platform_family"],
-      supportedFilters: ["source_ids", "standard_event_key", "currency"],
-      sourceRequirements: [],
-      requiresFilter: "standard_event_key",
-      comparison: "supported",
-      drilldown: { path: "/events", label: "Open Events" },
-    }),
-    "web.page_views": def({
-      id: "web.page_views",
-      version: 1,
-      label: "Page views",
-      description: "Accepted Web page views in the range (Task 17).",
-      valueKind: "count",
-      domain: "web",
-      supportedDimensions: [
-        "source",
-        "page_host",
-        "page_path",
-        "referrer_host",
-        "campaign_name",
-        "country",
-        "region",
-        "city",
-        "browser",
-        "os",
-        "device",
-        "viewport",
-        "language",
-      ],
-      supportedFilters: ["source_ids", "host", "path", "traffic"],
-      sourceRequirements: ["web_collection"],
-      comparison: "supported",
-      drilldown: { path: "/analytics", label: "Open Web Analytics" },
-    }),
-    "web.visitors": def({
-      id: "web.visitors",
-      version: 1,
-      label: "Web visitors",
-      description: "Observed Web visitors in the range (Task 17).",
-      valueKind: "count",
-      domain: "web",
-      supportedDimensions: ["source", "country", "browser", "os", "device"],
-      supportedFilters: ["source_ids", "host", "path", "traffic"],
-      sourceRequirements: ["web_collection"],
-      comparison: "supported",
-      drilldown: { path: "/analytics", label: "Open Web Analytics" },
-    }),
-    "web.sessions": def({
-      id: "web.sessions",
-      version: 1,
-      label: "Web sessions",
-      description: "Web sessions in the range (Task 17).",
-      valueKind: "count",
-      domain: "web",
-      supportedDimensions: ["source", "referrer_host", "campaign_name"],
-      supportedFilters: ["source_ids", "host", "path", "traffic"],
-      sourceRequirements: ["web_collection"],
-      comparison: "supported",
-      drilldown: { path: "/analytics", label: "Open Web Analytics" },
-    }),
-    "web.views_per_session": def({
-      id: "web.views_per_session",
-      version: 1,
-      label: "Views per session",
-      description: "Mean page views per Web session (Task 17).",
-      valueKind: "decimal",
-      domain: "web",
-      supportedDimensions: ["source"],
-      supportedFilters: ["source_ids", "host", "path", "traffic"],
-      sourceRequirements: ["web_collection"],
-      comparison: "supported",
-      drilldown: { path: "/analytics", label: "Open Web Analytics" },
-    }),
-    "web.bounce_rate": def({
-      id: "web.bounce_rate",
-      version: 1,
-      label: "Bounce rate",
-      description:
-        "Eligible entry-session bounce rate (Task 17). Null when the denominator is insufficient — never zero-filled.",
-      valueKind: "rate",
-      domain: "web",
-      supportedDimensions: ["page_path", "source"],
-      supportedFilters: ["source_ids", "host", "path", "traffic"],
-      sourceRequirements: ["web_collection"],
-      comparison: "supported",
-      drilldown: { path: "/analytics", label: "Open Web Analytics" },
-    }),
-    "web.excluded_bots": def({
-      id: "web.excluded_bots",
-      version: 1,
-      label: "Excluded bots",
-      description: "Bot page views excluded by the traffic policy.",
-      valueKind: "count",
-      domain: "web",
-      supportedDimensions: ["source"],
-      supportedFilters: ["source_ids", "host", "path"],
-      sourceRequirements: ["web_collection"],
-      comparison: "not-supported",
-      drilldown: { path: "/analytics", label: "Open Web Analytics" },
-    }),
-    "mobile.app_opens": def({
-      id: "mobile.app_opens",
-      version: 1,
-      label: "App opens",
-      description: "Accepted Mobile app opens in the range (Task 18).",
-      valueKind: "count",
-      domain: "mobile",
-      supportedDimensions: ["source", "os", "release", "country"],
-      supportedFilters: ["source_ids", "os", "release"],
-      sourceRequirements: ["mobile_collection"],
-      comparison: "supported",
-      drilldown: { path: "/mobile", label: "Open Mobile Analytics" },
-    }),
-    "mobile.visitors": def({
-      id: "mobile.visitors",
-      version: 1,
-      label: "Mobile visitors",
-      description: "Observed Mobile visitors in the range (Task 18).",
-      valueKind: "count",
-      domain: "mobile",
-      supportedDimensions: ["source", "os", "device", "country"],
-      supportedFilters: ["source_ids", "os", "release"],
-      sourceRequirements: ["mobile_collection"],
-      comparison: "supported",
-      drilldown: { path: "/mobile", label: "Open Mobile Analytics" },
-    }),
-    "mobile.sessions": def({
-      id: "mobile.sessions",
-      version: 1,
-      label: "App sessions",
-      description: "Mobile app sessions in the range (Task 18).",
-      valueKind: "count",
-      domain: "mobile",
-      supportedDimensions: ["source", "os", "release"],
-      supportedFilters: ["source_ids", "os", "release"],
-      sourceRequirements: ["mobile_collection"],
-      comparison: "supported",
-      drilldown: { path: "/mobile", label: "Open Mobile Analytics" },
-    }),
-    "mobile.screens_per_session": def({
-      id: "mobile.screens_per_session",
-      version: 1,
-      label: "Screens per session",
-      description: "Mean screens per Mobile session (Task 18).",
-      valueKind: "decimal",
-      domain: "mobile",
-      supportedDimensions: ["source", "os"],
-      supportedFilters: ["source_ids", "os", "release"],
-      sourceRequirements: ["mobile_collection"],
-      comparison: "supported",
-      drilldown: { path: "/mobile", label: "Open Mobile Analytics" },
-    }),
-    "mobile.foreground_duration": def({
-      id: "mobile.foreground_duration",
-      version: 1,
-      label: "Foreground duration",
-      description:
-        "Mean foreground-active duration per Mobile session. Null when insufficient completed sessions.",
-      valueKind: "duration-ms",
-      domain: "mobile",
-      supportedDimensions: ["source", "os"],
-      supportedFilters: ["source_ids", "os", "release"],
-      sourceRequirements: ["mobile_collection"],
-      comparison: "supported",
-      drilldown: { path: "/mobile", label: "Open Mobile Analytics" },
-    }),
-    "mobile.observed_installations": def({
-      id: "mobile.observed_installations",
-      version: 1,
-      label: "Observed installations",
-      description:
-        "Instrumentation count only — not App Store / Play Store attribution.",
-      valueKind: "count",
-      domain: "mobile",
-      supportedDimensions: ["source", "os"],
-      supportedFilters: ["source_ids", "os", "release"],
-      sourceRequirements: ["mobile_collection"],
-      comparison: "supported",
-      drilldown: { path: "/mobile", label: "Open Mobile Analytics" },
-    }),
-    "errors.occurrences": def({
-      id: "errors.occurrences",
-      version: 1,
-      label: "Error occurrences",
-      description: "Error occurrences in the range (Task 15).",
-      valueKind: "count",
-      domain: "errors",
-      supportedDimensions: [
-        "source",
-        "platform",
-        "release",
-        "environment",
-        "handled",
-      ],
-      supportedFilters: ["source_ids", "platform", "environment"],
-      sourceRequirements: ["error_collection"],
-      comparison: "supported",
-      drilldown: { path: "/errors", label: "Open Errors" },
-    }),
-    "errors.unresolved_issues": def({
-      id: "errors.unresolved_issues",
-      version: 1,
-      label: "Unresolved issues",
-      description: "Grouped issues currently unresolved.",
-      valueKind: "count",
-      domain: "errors",
-      supportedDimensions: ["platform", "release"],
-      supportedFilters: ["platform"],
-      sourceRequirements: ["error_collection"],
-      comparison: "not-supported",
-      drilldown: { path: "/errors", label: "Open Errors" },
-    }),
-    "errors.new_issues": def({
-      id: "errors.new_issues",
-      version: 1,
-      label: "New issues",
-      description: "Issues first observed in the range.",
-      valueKind: "count",
-      domain: "errors",
-      supportedDimensions: ["platform", "release"],
-      supportedFilters: ["platform"],
-      sourceRequirements: ["error_collection"],
-      comparison: "not-supported",
-      drilldown: { path: "/errors", label: "Open Errors" },
-    }),
-    "errors.regressing_issues": def({
-      id: "errors.regressing_issues",
-      version: 1,
-      label: "Regressing issues",
-      description: "Issues trending up versus the previous window.",
-      valueKind: "count",
-      domain: "errors",
-      supportedDimensions: ["platform", "release"],
-      supportedFilters: ["platform"],
-      sourceRequirements: ["error_collection"],
-      comparison: "not-supported",
-      drilldown: { path: "/errors", label: "Open Errors" },
-    }),
-    "errors.affected_identities": def({
-      id: "errors.affected_identities",
-      version: 1,
-      label: "Affected identities",
-      description:
-        "Affected identity count under the exact Task 15 error identity definition.",
-      valueKind: "count",
-      domain: "errors",
-      supportedDimensions: ["platform", "release"],
-      supportedFilters: ["source_ids", "platform"],
-      sourceRequirements: ["error_collection"],
-      comparison: "supported",
-      drilldown: { path: "/errors", label: "Open Errors" },
-    }),
-    "errors.handled": def({
-      id: "errors.handled",
-      version: 1,
-      label: "Handled occurrences",
-      description: "Occurrences captured as handled in the range.",
-      valueKind: "count",
-      domain: "errors",
-      supportedDimensions: ["platform", "release"],
-      supportedFilters: ["source_ids", "platform"],
-      sourceRequirements: ["error_collection"],
-      comparison: "supported",
-      drilldown: { path: "/errors", label: "Open Errors" },
-    }),
-    "errors.unhandled": def({
-      id: "errors.unhandled",
-      version: 1,
-      label: "Unhandled occurrences",
-      description: "Occurrences captured as unhandled in the range.",
-      valueKind: "count",
-      domain: "errors",
-      supportedDimensions: ["platform", "release"],
-      supportedFilters: ["source_ids", "platform"],
-      sourceRequirements: ["error_collection"],
-      comparison: "supported",
-      drilldown: { path: "/errors", label: "Open Errors" },
-    }),
-  });
+export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
+  "project.accepted_events": def({
+    id: "project.accepted_events",
+    version: 1,
+    label: "Accepted events",
+    description: "Accepted event occurrences in the range and snapshot.",
+    valueKind: "count",
+    domain: "project",
+    supportedDimensions: ["source", "platform_family", "event_name"],
+    supportedFilters: ["source_ids"],
+    sourceRequirements: [],
+    comparison: "supported",
+    drilldown: { destination: "events", label: "Open Events" },
+  }),
+  "project.sessions": def({
+    id: "project.sessions",
+    version: 1,
+    label: "Sessions",
+    description: "Distinct valid project session IDs started in the range.",
+    valueKind: "count",
+    domain: "project",
+    supportedDimensions: ["source", "platform_family"],
+    supportedFilters: ["source_ids"],
+    sourceRequirements: [],
+    comparison: "supported",
+    drilldown: { destination: "events", label: "Open Events" },
+  }),
+  "project.active_people": def({
+    id: "project.active_people",
+    version: 1,
+    label: "Active identified people",
+    description: "Identified people with accepted activity in the range.",
+    valueKind: "count",
+    domain: "people",
+    supportedDimensions: ["source", "platform_family"],
+    supportedFilters: ["source_ids"],
+    sourceRequirements: [],
+    comparison: "supported",
+    drilldown: { destination: "people", label: "Open People" },
+  }),
+  "project.new_people": def({
+    id: "project.new_people",
+    version: 1,
+    label: "New identified people",
+    description:
+      "People whose first external identity link falls in the range. No inferred acquisition dimensions.",
+    valueKind: "count",
+    domain: "people",
+    supportedDimensions: [],
+    supportedFilters: [],
+    sourceRequirements: [],
+    comparison: "supported",
+    drilldown: { destination: "people", label: "Open People" },
+  }),
+  "project.active_anonymous": def({
+    id: "project.active_anonymous",
+    version: 1,
+    label: "Active anonymous subjects",
+    description:
+      "Anonymous-only analytics subjects active in the range. Never presented as unique humans.",
+    valueKind: "count",
+    domain: "people",
+    supportedDimensions: ["source", "platform_family"],
+    supportedFilters: ["source_ids"],
+    sourceRequirements: [],
+    comparison: "supported",
+    drilldown: { destination: "people", label: "Open People" },
+  }),
+  "standard_event.occurrences": def({
+    id: "standard_event.occurrences",
+    version: 1,
+    label: "Standard Event occurrences",
+    description:
+      "Accepted occurrences of one exact Standard Event key. Count across currencies; never convert.",
+    valueKind: "count",
+    domain: "events",
+    supportedDimensions: ["source", "platform_family", "currency"],
+    supportedFilters: ["source_ids", "standard_event_key", "currency"],
+    sourceRequirements: [],
+    requiresFilter: "standard_event_key",
+    comparison: "supported",
+    drilldown: { destination: "events", label: "Open Events" },
+  }),
+  "standard_event.people": def({
+    id: "standard_event.people",
+    version: 1,
+    label: "Standard Event people",
+    description: "Distinct identified people for one exact Standard Event key.",
+    valueKind: "count",
+    domain: "people",
+    supportedDimensions: ["source", "platform_family"],
+    supportedFilters: ["source_ids", "standard_event_key"],
+    sourceRequirements: [],
+    requiresFilter: "standard_event_key",
+    comparison: "supported",
+    drilldown: { destination: "people", label: "Open People" },
+  }),
+  "standard_event.value_by_currency": def({
+    id: "standard_event.value_by_currency",
+    version: 1,
+    label: "Standard Event value",
+    description:
+      "Sum of valueMinor within one exact currency. Returned as separate rows per currency; never converted.",
+    valueKind: "money-minor",
+    domain: "events",
+    supportedDimensions: ["currency", "source", "platform_family"],
+    supportedFilters: ["source_ids", "standard_event_key", "currency"],
+    sourceRequirements: [],
+    requiresFilter: "standard_event_key",
+    comparison: "supported",
+    drilldown: { destination: "events", label: "Open Events" },
+  }),
+  "web.page_views": def({
+    id: "web.page_views",
+    version: 1,
+    label: "Page views",
+    description: "Accepted Web page views in the range (Task 17).",
+    valueKind: "count",
+    domain: "web",
+    supportedDimensions: [
+      "source",
+      "page_host",
+      "page_path",
+      "referrer_host",
+      "campaign_name",
+      "country",
+      "region",
+      "city",
+      "browser",
+      "os",
+      "device",
+      "viewport",
+      "language",
+    ],
+    supportedFilters: ["source_ids", "host", "path", "traffic"],
+    sourceRequirements: ["web_collection"],
+    comparison: "supported",
+    drilldown: { destination: "web-analytics", label: "Open Web Analytics" },
+  }),
+  "web.visitors": def({
+    id: "web.visitors",
+    version: 1,
+    label: "Web visitors",
+    description: "Observed Web visitors in the range (Task 17).",
+    valueKind: "count",
+    domain: "web",
+    supportedDimensions: ["source", "country", "browser", "os", "device"],
+    supportedFilters: ["source_ids", "host", "path", "traffic"],
+    sourceRequirements: ["web_collection"],
+    comparison: "supported",
+    drilldown: { destination: "web-analytics", label: "Open Web Analytics" },
+  }),
+  "web.sessions": def({
+    id: "web.sessions",
+    version: 1,
+    label: "Web sessions",
+    description: "Web sessions in the range (Task 17).",
+    valueKind: "count",
+    domain: "web",
+    supportedDimensions: ["source", "referrer_host", "campaign_name"],
+    supportedFilters: ["source_ids", "host", "path", "traffic"],
+    sourceRequirements: ["web_collection"],
+    comparison: "supported",
+    drilldown: { destination: "web-analytics", label: "Open Web Analytics" },
+  }),
+  "web.views_per_session": def({
+    id: "web.views_per_session",
+    version: 1,
+    label: "Views per session",
+    description: "Mean page views per Web session (Task 17).",
+    valueKind: "decimal",
+    domain: "web",
+    supportedDimensions: ["source"],
+    supportedFilters: ["source_ids", "host", "path", "traffic"],
+    sourceRequirements: ["web_collection"],
+    comparison: "supported",
+    drilldown: { destination: "web-analytics", label: "Open Web Analytics" },
+  }),
+  "web.bounce_rate": def({
+    id: "web.bounce_rate",
+    version: 1,
+    label: "Bounce rate",
+    description:
+      "Eligible entry-session bounce rate (Task 17). Null when the denominator is insufficient — never zero-filled.",
+    valueKind: "rate",
+    domain: "web",
+    supportedDimensions: ["page_path", "source"],
+    supportedFilters: ["source_ids", "host", "path", "traffic"],
+    sourceRequirements: ["web_collection"],
+    comparison: "supported",
+    drilldown: { destination: "web-analytics", label: "Open Web Analytics" },
+  }),
+  "web.excluded_bots": def({
+    id: "web.excluded_bots",
+    version: 1,
+    label: "Excluded bots",
+    description: "Bot page views excluded by the traffic policy.",
+    valueKind: "count",
+    domain: "web",
+    supportedDimensions: ["source"],
+    supportedFilters: ["source_ids", "host", "path"],
+    sourceRequirements: ["web_collection"],
+    comparison: "not-supported",
+    drilldown: { destination: "web-analytics", label: "Open Web Analytics" },
+  }),
+  "mobile.app_opens": def({
+    id: "mobile.app_opens",
+    version: 1,
+    label: "App opens",
+    description: "Accepted Mobile app opens in the range (Task 18).",
+    valueKind: "count",
+    domain: "mobile",
+    supportedDimensions: ["source", "os", "release", "country"],
+    supportedFilters: ["source_ids", "os", "release"],
+    sourceRequirements: ["mobile_collection"],
+    comparison: "supported",
+    drilldown: {
+      destination: "mobile-analytics",
+      label: "Open Mobile Analytics",
+    },
+  }),
+  "mobile.visitors": def({
+    id: "mobile.visitors",
+    version: 1,
+    label: "Mobile visitors",
+    description: "Observed Mobile visitors in the range (Task 18).",
+    valueKind: "count",
+    domain: "mobile",
+    supportedDimensions: ["source", "os", "device", "country"],
+    supportedFilters: ["source_ids", "os", "release"],
+    sourceRequirements: ["mobile_collection"],
+    comparison: "supported",
+    drilldown: {
+      destination: "mobile-analytics",
+      label: "Open Mobile Analytics",
+    },
+  }),
+  "mobile.sessions": def({
+    id: "mobile.sessions",
+    version: 1,
+    label: "App sessions",
+    description: "Mobile app sessions in the range (Task 18).",
+    valueKind: "count",
+    domain: "mobile",
+    supportedDimensions: ["source", "os", "release"],
+    supportedFilters: ["source_ids", "os", "release"],
+    sourceRequirements: ["mobile_collection"],
+    comparison: "supported",
+    drilldown: {
+      destination: "mobile-analytics",
+      label: "Open Mobile Analytics",
+    },
+  }),
+  "mobile.screens_per_session": def({
+    id: "mobile.screens_per_session",
+    version: 1,
+    label: "Screens per session",
+    description: "Mean screens per Mobile session (Task 18).",
+    valueKind: "decimal",
+    domain: "mobile",
+    supportedDimensions: ["source", "os"],
+    supportedFilters: ["source_ids", "os", "release"],
+    sourceRequirements: ["mobile_collection"],
+    comparison: "supported",
+    drilldown: {
+      destination: "mobile-analytics",
+      label: "Open Mobile Analytics",
+    },
+  }),
+  "mobile.foreground_duration": def({
+    id: "mobile.foreground_duration",
+    version: 1,
+    label: "Foreground duration",
+    description:
+      "Mean foreground-active duration per Mobile session. Null when insufficient completed sessions.",
+    valueKind: "duration-ms",
+    domain: "mobile",
+    supportedDimensions: ["source", "os"],
+    supportedFilters: ["source_ids", "os", "release"],
+    sourceRequirements: ["mobile_collection"],
+    comparison: "supported",
+    drilldown: {
+      destination: "mobile-analytics",
+      label: "Open Mobile Analytics",
+    },
+  }),
+  "mobile.observed_installations": def({
+    id: "mobile.observed_installations",
+    version: 1,
+    label: "Observed installations",
+    description:
+      "Instrumentation count only — not App Store / Play Store attribution.",
+    valueKind: "count",
+    domain: "mobile",
+    supportedDimensions: ["source", "os"],
+    supportedFilters: ["source_ids", "os", "release"],
+    sourceRequirements: ["mobile_collection"],
+    comparison: "supported",
+    drilldown: {
+      destination: "mobile-analytics",
+      label: "Open Mobile Analytics",
+    },
+  }),
+  "errors.occurrences": def({
+    id: "errors.occurrences",
+    version: 1,
+    label: "Error occurrences",
+    description: "Error occurrences in the range (Task 15).",
+    valueKind: "count",
+    domain: "errors",
+    supportedDimensions: [
+      "source",
+      "platform",
+      "release",
+      "environment",
+      "handled",
+    ],
+    supportedFilters: ["source_ids", "platform", "environment"],
+    sourceRequirements: ["error_collection"],
+    comparison: "supported",
+    drilldown: { destination: "errors", label: "Open Errors" },
+  }),
+  "errors.unresolved_issues": def({
+    id: "errors.unresolved_issues",
+    version: 1,
+    label: "Unresolved issues",
+    description: "Grouped issues currently unresolved.",
+    valueKind: "count",
+    domain: "errors",
+    supportedDimensions: ["platform", "release"],
+    supportedFilters: ["platform"],
+    sourceRequirements: ["error_collection"],
+    comparison: "not-supported",
+    drilldown: { destination: "errors", label: "Open Errors" },
+  }),
+  "errors.new_issues": def({
+    id: "errors.new_issues",
+    version: 1,
+    label: "New issues",
+    description: "Issues first observed in the range.",
+    valueKind: "count",
+    domain: "errors",
+    supportedDimensions: ["platform", "release"],
+    supportedFilters: ["platform"],
+    sourceRequirements: ["error_collection"],
+    comparison: "not-supported",
+    drilldown: { destination: "errors", label: "Open Errors" },
+  }),
+  "errors.regressing_issues": def({
+    id: "errors.regressing_issues",
+    version: 1,
+    label: "Regressing issues",
+    description: "Issues trending up versus the previous window.",
+    valueKind: "count",
+    domain: "errors",
+    supportedDimensions: ["platform", "release"],
+    supportedFilters: ["platform"],
+    sourceRequirements: ["error_collection"],
+    comparison: "not-supported",
+    drilldown: { destination: "errors", label: "Open Errors" },
+  }),
+  "errors.affected_identities": def({
+    id: "errors.affected_identities",
+    version: 1,
+    label: "Affected identities",
+    description:
+      "Affected identity count under the exact Task 15 error identity definition.",
+    valueKind: "count",
+    domain: "errors",
+    supportedDimensions: ["platform", "release"],
+    supportedFilters: ["source_ids", "platform"],
+    sourceRequirements: ["error_collection"],
+    comparison: "supported",
+    drilldown: { destination: "errors", label: "Open Errors" },
+  }),
+  "errors.handled": def({
+    id: "errors.handled",
+    version: 1,
+    label: "Handled occurrences",
+    description: "Occurrences captured as handled in the range.",
+    valueKind: "count",
+    domain: "errors",
+    supportedDimensions: ["platform", "release"],
+    supportedFilters: ["source_ids", "platform"],
+    sourceRequirements: ["error_collection"],
+    comparison: "supported",
+    drilldown: { destination: "errors", label: "Open Errors" },
+  }),
+  "errors.unhandled": def({
+    id: "errors.unhandled",
+    version: 1,
+    label: "Unhandled occurrences",
+    description: "Occurrences captured as unhandled in the range.",
+    valueKind: "count",
+    domain: "errors",
+    supportedDimensions: ["platform", "release"],
+    supportedFilters: ["source_ids", "platform"],
+    sourceRequirements: ["error_collection"],
+    comparison: "supported",
+    drilldown: { destination: "errors", label: "Open Errors" },
+  }),
+});
 
 // ---------------------------------------------------------------------------
 // Source platform family (future-native proof lives here)
@@ -545,13 +702,13 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> =
  * they feed the same Mobile metric definitions as `react-native` without
  * changing this contract.
  */
-export const SOURCE_PLATFORMS = [
+export const SOURCE_PLATFORMS = deepFreeze([
   "web",
   "ios",
   "android",
   "react-native",
   "server",
-] as const;
+] as const);
 export type AssistantSourcePlatform = (typeof SOURCE_PLATFORMS)[number];
 export const AssistantSourcePlatformSchema = z.enum(SOURCE_PLATFORMS);
 
@@ -565,7 +722,7 @@ export function platformFamilyOf(
 }
 
 // ---------------------------------------------------------------------------
-// Canonical query context + snapshot token
+// Canonical query context + opaque snapshot token (R1-F1)
 // ---------------------------------------------------------------------------
 
 /**
@@ -598,122 +755,15 @@ export const PublicQueryContextSchema = z.strictObject({
 });
 export type PublicQueryContext = z.infer<typeof PublicQueryContextSchema>;
 
-const QueryContextTokenPayloadSchema = z.strictObject({
-  projectId: z.string().min(1).max(128),
-  organizationId: z.string().min(1).max(128),
-  from: z.number().int().nonnegative(),
-  to: z.number().int().nonnegative(),
-  compareFrom: z.number().int().nonnegative(),
-  compareTo: z.number().int().nonnegative(),
-  asOf: z.number().int().nonnegative(),
-  sourceIds: z.array(z.string().min(1).max(128)).max(64),
-  definitionVersion: z.literal(DEFINITION_VERSION),
-});
-type QueryContextTokenPayload = z.infer<typeof QueryContextTokenPayloadSchema>;
-
-const base64UrlEncode = (json: string): string => {
-  if (typeof Buffer !== "undefined") {
-    return (
-      Buffer as unknown as {
-        from(s: string): { toString(e: string): string };
-      }
-    )
-      .from(json)
-      .toString("base64url");
-  }
-  return btoa(json).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-};
-
-const base64UrlDecode = (token: string): string | null => {
-  try {
-    if (typeof Buffer !== "undefined") {
-      return (
-        Buffer as unknown as {
-          from(s: string, e: string): { toString(e: string): string };
-        }
-      )
-        .from(token, "base64url")
-        .toString("utf8");
-    }
-    let b64 = token.replace(/-/g, "+").replace(/_/g, "/");
-    while (b64.length % 4) b64 += "=";
-    return atob(b64);
-  } catch {
-    return null;
-  }
-};
-
-/** Opaque snapshot token binding ranges + snapshot + scope. */
-export function encodeQueryContextToken(context: ProjectQueryContext): string {
-  const payload: QueryContextTokenPayload = {
-    projectId: context.projectId,
-    organizationId: context.organizationId,
-    from: context.from,
-    to: context.to,
-    compareFrom: context.compareFrom,
-    compareTo: context.compareTo,
-    asOf: context.asOf,
-    sourceIds: [...context.sourceIds],
-    definitionVersion: DEFINITION_VERSION,
-  };
-  return base64UrlEncode(JSON.stringify(payload));
-}
-
-/** Strict decode. Returns null for malformed, tampered, or inverted ranges. */
-export function decodeQueryContextToken(
-  token: string,
-): ProjectQueryContext | null {
-  if (!token || token.length > 4096) return null;
-  const json = base64UrlDecode(token);
-  if (!json) return null;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(json);
-  } catch {
-    return null;
-  }
-  const result = QueryContextTokenPayloadSchema.safeParse(parsed);
-  if (!result.success) return null;
-  const payload = result.data;
-  if (payload.from >= payload.to) return null;
-  if (payload.compareFrom >= payload.compareTo) return null;
-  if (payload.to - payload.from !== payload.compareTo - payload.compareFrom) {
-    return null;
-  }
-  return {
-    projectId: payload.projectId,
-    organizationId: payload.organizationId,
-    from: payload.from,
-    to: payload.to,
-    compareFrom: payload.compareFrom,
-    compareTo: payload.compareTo,
-    asOf: payload.asOf,
-    timezone: "UTC",
-    sourceIds: payload.sourceIds,
-    definitionVersion: payload.definitionVersion,
-  };
-}
-
 /**
- * Scope check for chat follow-ups and drill-down links: the token's bound
- * project/organization must equal the request scope. The browser and model
- * cannot change scope by editing the token — any edit fails the decode.
+ * Opaque snapshot token (R1-F1). The string shape is the entire shared
+ * contract: issuance and verification are server-only (HMAC, key versioning,
+ * expiry, scope + source-membership checks) and must never ship to the
+ * browser. A forged or edited token fails server verification even when it
+ * is well-formed base64.
  */
-export function validateTokenScope(
-  token: string,
-  projectId: string,
-  organizationId: string,
-): ProjectQueryContext | null {
-  const context = decodeQueryContextToken(token);
-  if (!context) return null;
-  if (
-    context.projectId !== projectId ||
-    context.organizationId !== organizationId
-  ) {
-    return null;
-  }
-  return context;
-}
+export const QueryContextTokenSchema = z.string().min(16).max(2048);
+export type QueryContextToken = z.infer<typeof QueryContextTokenSchema>;
 
 /** Half-open range membership: `from <= ts < to`. */
 export function isInQueryRange(
@@ -764,21 +814,6 @@ export function compareValues(
   };
 }
 
-export const MetricFactSchema = z.strictObject({
-  id: z.string().min(1).max(128),
-  metricId: MetricIdSchema,
-  definitionVersion: z.literal(DEFINITION_VERSION),
-  label: z.string().min(1).max(160),
-  value: z.number().nullable(),
-  formattedValue: z.string().min(1).max(64),
-  unit: z.string().max(32).nullable(),
-  comparison: ComparisonValueSchema.nullable(),
-  queryContext: PublicQueryContextSchema,
-  coverage: z.string().max(200),
-  drilldown: z.string().min(1).max(256),
-});
-export type MetricFact = z.infer<typeof MetricFactSchema>;
-
 export const CoverageSummarySchema = z.strictObject({
   sourcesConfigured: z.number().int().nonnegative(),
   sourcesActive: z.number().int().nonnegative(),
@@ -793,6 +828,24 @@ export const CoverageSummarySchema = z.strictObject({
   warnings: z.array(z.string().min(1).max(280)).max(8),
 });
 export type CoverageSummary = z.infer<typeof CoverageSummarySchema>;
+
+export const MetricFactSchema = z.strictObject({
+  id: z.string().min(1).max(128),
+  metricId: MetricIdSchema,
+  definitionVersion: z.literal(DEFINITION_VERSION),
+  label: z.string().min(1).max(160),
+  value: z.number().nullable(),
+  formattedValue: z.string().min(1).max(64),
+  unit: z.string().max(32).nullable(),
+  comparison: ComparisonValueSchema.nullable(),
+  queryContext: PublicQueryContextSchema,
+  /** Structured coverage is the source of truth (R1-F2). */
+  coverage: CoverageSummarySchema,
+  /** Short display sentence derived from `coverage`, not the truth. */
+  coverageNote: z.string().max(200),
+  drilldown: DrilldownDestinationSchema,
+});
+export type MetricFact = z.infer<typeof MetricFactSchema>;
 
 export const DataQualitySummarySchema = z.strictObject({
   hasAcceptedData: z.boolean(),
@@ -857,7 +910,7 @@ export const InsightSeveritySchema = z.enum(["info", "attention", "critical"]);
 export type InsightSeverity = z.infer<typeof InsightSeveritySchema>;
 
 /** Deterministic eligibility thresholds (Task 21 §Deterministic insight detection). */
-export const INSIGHT_THRESHOLDS = {
+export const INSIGHT_THRESHOLDS = deepFreeze({
   /** Minimum combined observations for a count change. */
   countMinCombined: 20,
   /** Minimum absolute count change. */
@@ -872,7 +925,7 @@ export const INSIGHT_THRESHOLDS = {
   issueMinOccurrences: 3,
   /** Maximum headline insights per overview. */
   maxInsights: 3,
-} as const;
+} as const);
 
 /** Count-change eligibility: combined volume, absolute, and ratio guards. */
 export function isCountChangeEligible(
@@ -909,11 +962,11 @@ export function isIssueSignalEligible(occurrences: number): boolean {
   return occurrences >= INSIGHT_THRESHOLDS.issueMinOccurrences;
 }
 
-const SEVERITY_RANK: Record<InsightSeverity, number> = {
+const SEVERITY_RANK: Record<InsightSeverity, number> = deepFreeze({
   critical: 0,
   attention: 1,
   info: 2,
-};
+});
 
 /**
  * Deterministic ranking: severity, then recency (observedAt desc), then
@@ -930,8 +983,11 @@ export function compareInsightRank(
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
-// Artifact kinds are declared here so InsightCandidate can reference them.
-export const ASSISTANT_ARTIFACT_KINDS = [
+// ---------------------------------------------------------------------------
+// Typed answer artifacts (R1-F2, R1-F3)
+// ---------------------------------------------------------------------------
+
+export const ASSISTANT_ARTIFACT_KINDS = deepFreeze([
   "metric",
   "comparison",
   "timeseries",
@@ -943,8 +999,171 @@ export const ASSISTANT_ARTIFACT_KINDS = [
   "definition",
   "empty",
   "unavailable",
-] as const;
+] as const);
 export type AssistantArtifactKind = (typeof ASSISTANT_ARTIFACT_KINDS)[number];
+
+const ArtifactBaseSchema = z.strictObject({
+  /** Stable run-scoped ID: answers, traces, and audit records cite this. */
+  id: z.string().min(1).max(128),
+  title: z.string().min(1).max(140),
+  /** Accessible text summary: what the widget shows, in words. */
+  summary: z.string().min(1).max(500),
+  factIds: z.array(z.string().min(1).max(128)).max(16),
+  queryContext: PublicQueryContextSchema,
+  drilldown: DrilldownDestinationSchema,
+});
+
+/** Bound every list/series before it can enter model context or the UI. */
+export const ARTIFACT_LIMITS = deepFreeze({
+  maxSeries: 3,
+  maxSeriesPoints: 93,
+  maxRankRows: 10,
+  maxTableRows: 10,
+  maxTableColumns: 5,
+  maxBreakdownRows: 9,
+} as const);
+
+const TimeseriesPointSchema = z.strictObject({
+  t: z.number().int().nonnegative(),
+  value: z.number(),
+});
+
+export const MetricArtifactSchema = ArtifactBaseSchema.extend({
+  kind: z.literal("metric"),
+  fact: MetricFactSchema,
+});
+export const ComparisonArtifactSchema = ArtifactBaseSchema.extend({
+  kind: z.literal("comparison"),
+  current: MetricFactSchema,
+  previous: MetricFactSchema,
+});
+export const TimeseriesArtifactSchema = ArtifactBaseSchema.extend({
+  kind: z.literal("timeseries"),
+  bucket: z.enum(["hourly", "daily", "weekly"]),
+  series: z
+    .array(
+      z.strictObject({
+        name: z.string().min(1).max(80),
+        points: z
+          .array(TimeseriesPointSchema)
+          .max(ARTIFACT_LIMITS.maxSeriesPoints),
+      }),
+    )
+    .min(1)
+    .max(ARTIFACT_LIMITS.maxSeries),
+});
+export const BreakdownArtifactSchema = ArtifactBaseSchema.extend({
+  kind: z.literal("breakdown"),
+  metricId: MetricIdSchema,
+  total: z.number(),
+  rows: z
+    .array(
+      z.strictObject({
+        key: z.string().max(160),
+        label: z.string().min(1).max(160),
+        value: z.number(),
+        sharePercent: z.number().min(0).max(100).nullable(),
+      }),
+    )
+    .max(ARTIFACT_LIMITS.maxBreakdownRows),
+});
+export const RankedListArtifactSchema = ArtifactBaseSchema.extend({
+  kind: z.literal("ranked-list"),
+  entity: z.enum(["page", "screen", "event", "source", "release", "location"]),
+  rows: z
+    .array(
+      z.strictObject({
+        key: z.string().max(200),
+        label: z.string().min(1).max(200),
+        value: z.number(),
+        sharePercent: z.number().min(0).max(100).nullable(),
+      }),
+    )
+    .max(ARTIFACT_LIMITS.maxRankRows),
+});
+export const TableArtifactSchema = ArtifactBaseSchema.extend({
+  kind: z.literal("table"),
+  columns: z
+    .array(z.string().min(1).max(80))
+    .min(1)
+    .max(ARTIFACT_LIMITS.maxTableColumns),
+  rows: z
+    .array(
+      z
+        .array(z.union([z.string(), z.number()]).nullable())
+        .max(ARTIFACT_LIMITS.maxTableColumns),
+    )
+    .max(ARTIFACT_LIMITS.maxTableRows),
+});
+export const IssueListArtifactSchema = ArtifactBaseSchema.extend({
+  kind: z.literal("issue-list"),
+  issues: z
+    .array(
+      z.strictObject({
+        id: z.string().min(1).max(128),
+        title: z.string().min(1).max(200),
+        status: z.enum(["unresolved", "resolved", "ignored"]),
+        count: z.number().int().nonnegative(),
+        users: z.number().int().nonnegative(),
+        delta: z.enum(["new", "regressing", "declining"]).nullable(),
+        drilldown: DrilldownDestinationSchema,
+      }),
+    )
+    .max(ARTIFACT_LIMITS.maxRankRows),
+});
+export const CoverageArtifactSchema = ArtifactBaseSchema.extend({
+  kind: z.literal("coverage"),
+  coverage: CoverageSummarySchema,
+});
+export const DefinitionArtifactSchema = ArtifactBaseSchema.extend({
+  kind: z.literal("definition"),
+  proposalId: z.string().min(1).max(128),
+  memoryKey: z.enum([
+    "signup-definition",
+    "activation-definition",
+    "key-outcome-definition",
+  ]),
+  description: z.string().min(1).max(500),
+  status: z.enum(["proposed", "confirmed"]),
+});
+export const EmptyArtifactSchema = ArtifactBaseSchema.extend({
+  kind: z.literal("empty"),
+  reason: z.string().min(1).max(280),
+});
+export const UnavailableArtifactSchema = ArtifactBaseSchema.extend({
+  kind: z.literal("unavailable"),
+  reason: z.string().min(1).max(280),
+  nextAction: z.string().min(1).max(280),
+});
+
+export const AssistantArtifactSchema = z.discriminatedUnion("kind", [
+  MetricArtifactSchema,
+  ComparisonArtifactSchema,
+  TimeseriesArtifactSchema,
+  BreakdownArtifactSchema,
+  RankedListArtifactSchema,
+  TableArtifactSchema,
+  IssueListArtifactSchema,
+  CoverageArtifactSchema,
+  DefinitionArtifactSchema,
+  EmptyArtifactSchema,
+  UnavailableArtifactSchema,
+]);
+export type AssistantArtifact = z.infer<typeof AssistantArtifactSchema>;
+
+/** Release panels reuse ranked-list with `entity: "release"` (R1-F2). */
+export const SecondaryArtifactSchema = z.union([
+  RankedListArtifactSchema,
+  TableArtifactSchema,
+  IssueListArtifactSchema,
+]);
+export type SecondaryArtifact = z.infer<typeof SecondaryArtifactSchema>;
+
+export const ActivityArtifactSchema = z.union([
+  TimeseriesArtifactSchema,
+  EmptyArtifactSchema,
+]);
+export type ActivityArtifact = z.infer<typeof ActivityArtifactSchema>;
 
 export const InsightCandidateSchema = z.strictObject({
   id: z.string().min(1).max(128),
@@ -953,8 +1172,9 @@ export const InsightCandidateSchema = z.strictObject({
   title: z.string().min(1).max(140),
   summary: z.string().min(1).max(500),
   factIds: z.array(z.string().min(1).max(128)).max(8),
-  artifactKind: z.enum(ASSISTANT_ARTIFACT_KINDS),
-  drilldown: z.string().min(1).max(256),
+  /** The renderable evidence artifact — slice 7 renders this directly. */
+  artifact: AssistantArtifactSchema,
+  drilldown: DrilldownDestinationSchema,
   askPrompt: z.string().min(1).max(280),
   /** Observation time driving recency ranking. */
   observedAt: z.number().int().nonnegative(),
@@ -963,13 +1183,16 @@ export type InsightCandidate = z.infer<typeof InsightCandidateSchema>;
 
 export const ProjectOverviewResourceSchema = z.strictObject({
   queryContext: PublicQueryContextSchema,
+  /** Opaque server-issued token; drill-downs reuse this exact snapshot. */
+  queryContextToken: QueryContextTokenSchema,
   capabilities: ProjectCapabilitiesSchema,
   insights: z.array(InsightCandidateSchema).max(INSIGHT_THRESHOLDS.maxInsights),
   /** Exactly three adaptive pulse metrics in v1. */
   pulse: z.array(MetricFactSchema).length(3),
-  activityKind: z.enum(["timeseries", "empty"]),
-  /** v1 secondary panel: a ranking, release, or issue-list artifact kind. */
-  secondaryKind: z.enum(["ranked-list", "release", "issue-list"]),
+  /** The complete primary trend payload (never a kind pointer). */
+  activity: ActivityArtifactSchema,
+  /** The complete secondary panel payload (ranking, release, or issues). */
+  secondary: SecondaryArtifactSchema,
   dataQuality: DataQualitySummarySchema,
 });
 export type ProjectOverviewResource = z.infer<
@@ -977,156 +1200,69 @@ export type ProjectOverviewResource = z.infer<
 >;
 
 // ---------------------------------------------------------------------------
-// Typed answer artifacts
+// Compact model summaries: the only data channel into model context (R1-F3)
 // ---------------------------------------------------------------------------
 
-const ArtifactBaseSchema = z.strictObject({
-  title: z.string().min(1).max(140),
-  /** Accessible text summary: what the widget shows, in words. */
-  summary: z.string().min(1).max(500),
-  factIds: z.array(z.string().min(1).max(128)).max(16),
-  queryContext: PublicQueryContextSchema,
-  drilldown: z.string().min(1).max(256),
+/**
+ * Prism code performs all measurement and interpretation that can be
+ * deterministic. Each tool returns this compact summary to the agent loop;
+ * the full UI artifact travels outside model context (streamed/stored for
+ * the UI). Full timeseries, rankings, issue rows, and artifact JSON are
+ * never serialized back into language-model messages.
+ */
+export const ModelSummarySchema = z.strictObject({
+  factIds: z.array(z.string().min(1).max(128)).max(12),
+  text: z.string().max(4000),
+  truncated: z.boolean(),
+  omittedFacts: z.number().int().nonnegative(),
 });
+export type ModelSummary = z.infer<typeof ModelSummarySchema>;
 
-/** Bound every list/series before it can enter model context or the UI. */
-export const ARTIFACT_LIMITS = {
-  maxSeries: 3,
-  maxSeriesPoints: 93,
-  maxRankRows: 10,
-  maxTableRows: 10,
-  maxTableColumns: 5,
-  maxBreakdownRows: 9,
-} as const;
+export type ModelSummaryItem = {
+  id: string;
+  label: string;
+  conclusion: string;
+};
 
-const TimeseriesPointSchema = z.strictObject({
-  t: z.number().int().nonnegative(),
-  value: z.number(),
-});
-
-export const AssistantArtifactSchema = z.discriminatedUnion("kind", [
-  ArtifactBaseSchema.extend({
-    kind: z.literal("metric"),
-    fact: MetricFactSchema,
-  }),
-  ArtifactBaseSchema.extend({
-    kind: z.literal("comparison"),
-    current: MetricFactSchema,
-    previous: MetricFactSchema,
-  }),
-  ArtifactBaseSchema.extend({
-    kind: z.literal("timeseries"),
-    bucket: z.enum(["hourly", "daily", "weekly"]),
-    series: z
-      .array(
-        z.strictObject({
-          name: z.string().min(1).max(80),
-          points: z
-            .array(TimeseriesPointSchema)
-            .max(ARTIFACT_LIMITS.maxSeriesPoints),
-        }),
-      )
-      .min(1)
-      .max(ARTIFACT_LIMITS.maxSeries),
-  }),
-  ArtifactBaseSchema.extend({
-    kind: z.literal("breakdown"),
-    metricId: MetricIdSchema,
-    total: z.number(),
-    rows: z
-      .array(
-        z.strictObject({
-          key: z.string().max(160),
-          label: z.string().min(1).max(160),
-          value: z.number(),
-          sharePercent: z.number().min(0).max(100).nullable(),
-        }),
-      )
-      .max(ARTIFACT_LIMITS.maxBreakdownRows),
-  }),
-  ArtifactBaseSchema.extend({
-    kind: z.literal("ranked-list"),
-    entity: z.enum([
-      "page",
-      "screen",
-      "event",
-      "source",
-      "release",
-      "location",
-    ]),
-    rows: z
-      .array(
-        z.strictObject({
-          key: z.string().max(200),
-          label: z.string().min(1).max(200),
-          value: z.number(),
-          sharePercent: z.number().min(0).max(100).nullable(),
-        }),
-      )
-      .max(ARTIFACT_LIMITS.maxRankRows),
-  }),
-  ArtifactBaseSchema.extend({
-    kind: z.literal("table"),
-    columns: z
-      .array(z.string().min(1).max(80))
-      .min(1)
-      .max(ARTIFACT_LIMITS.maxTableColumns),
-    rows: z
-      .array(
-        z
-          .array(z.union([z.string(), z.number()]).nullable())
-          .max(ARTIFACT_LIMITS.maxTableColumns),
-      )
-      .max(ARTIFACT_LIMITS.maxTableRows),
-  }),
-  ArtifactBaseSchema.extend({
-    kind: z.literal("issue-list"),
-    issues: z
-      .array(
-        z.strictObject({
-          id: z.string().min(1).max(128),
-          title: z.string().min(1).max(200),
-          status: z.enum(["unresolved", "resolved", "ignored"]),
-          count: z.number().int().nonnegative(),
-          users: z.number().int().nonnegative(),
-          delta: z.enum(["new", "regressing", "declining"]).nullable(),
-          drilldown: z.string().min(1).max(256),
-        }),
-      )
-      .max(ARTIFACT_LIMITS.maxRankRows),
-  }),
-  ArtifactBaseSchema.extend({
-    kind: z.literal("coverage"),
-    coverage: CoverageSummarySchema,
-  }),
-  ArtifactBaseSchema.extend({
-    kind: z.literal("definition"),
-    proposalId: z.string().min(1).max(128),
-    memoryKey: z.enum([
-      "signup-definition",
-      "activation-definition",
-      "key-outcome-definition",
-    ]),
-    description: z.string().min(1).max(500),
-    status: z.enum(["proposed", "confirmed"]),
-  }),
-  ArtifactBaseSchema.extend({
-    kind: z.literal("empty"),
-    reason: z.string().min(1).max(280),
-  }),
-  ArtifactBaseSchema.extend({
-    kind: z.literal("unavailable"),
-    reason: z.string().min(1).max(280),
-    nextAction: z.string().min(1).max(280),
-  }),
-]);
-export type AssistantArtifact = z.infer<typeof AssistantArtifactSchema>;
+/**
+ * Deterministic rank-and-truncate: keep input order (already relevance
+ * ranked), cap at 12 facts, then drop trailing whole lines past 4,000
+ * chars. The model is always told additional rows exist.
+ */
+export function buildModelSummary(
+  items: readonly ModelSummaryItem[],
+  maxFacts = 12,
+  maxChars = 4000,
+): ModelSummary {
+  const selected = items.slice(0, maxFacts);
+  const lines: string[] = [];
+  const factIds: string[] = [];
+  for (const item of selected) {
+    const line = `${item.label}: ${item.conclusion}`;
+    if (
+      lines.length > 0 &&
+      lines.join("\n").length + 1 + line.length > maxChars
+    ) {
+      break;
+    }
+    if (line.length > maxChars) break;
+    lines.push(line);
+    factIds.push(item.id);
+  }
+  const omittedFacts = items.length - factIds.length;
+  return {
+    factIds,
+    text: lines.join("\n"),
+    truncated: omittedFacts > 0,
+    omittedFacts,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Agent tools: internal capability + friendly presentation
 // ---------------------------------------------------------------------------
 
-export const TOOL_IDS = [
+export const TOOL_IDS = deepFreeze([
   "resolve_definition",
   "measure_metric",
   "compare_periods",
@@ -1138,7 +1274,7 @@ export const TOOL_IDS = [
   "check_coverage",
   "read_project_knowledge",
   "propose_definition",
-] as const;
+] as const);
 export type ToolId = (typeof TOOL_IDS)[number];
 export const ToolIdSchema = z.enum(TOOL_IDS);
 
@@ -1158,7 +1294,7 @@ export type ToolDefinition = {
  * `{metric}` interpolates the server-resolved metric label — never raw
  * telemetry or model text.
  */
-export const TOOL_REGISTRY: Record<ToolId, ToolDefinition> = Object.freeze({
+export const TOOL_REGISTRY: Record<ToolId, ToolDefinition> = deepFreeze({
   resolve_definition: {
     id: "resolve_definition",
     description: "Find a Standard Event or confirmed project definition.",
@@ -1262,12 +1398,12 @@ export const TOOL_REGISTRY: Record<ToolId, ToolDefinition> = Object.freeze({
 });
 
 /** Friendly activity-step states shown in the "How I answered" trace. */
-export const ACTIVITY_STEP_STATES = [
+export const ACTIVITY_STEP_STATES = deepFreeze([
   "pending",
   "running",
   "complete",
   "failed",
-] as const;
+] as const);
 export type ActivityStepState = (typeof ACTIVITY_STEP_STATES)[number];
 
 export function formatToolLabel(template: string, metricLabel: string): string {
@@ -1275,17 +1411,27 @@ export function formatToolLabel(template: string, metricLabel: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Structured answer contract
+// Agent budgets (R1-F6): five default steps, six max, hard context ceilings
 // ---------------------------------------------------------------------------
 
-export const ANSWER_LIMITS = {
+export const AGENT_LIMITS = deepFreeze({
+  defaultSteps: 5,
+  maxSteps: 6,
+  maxInputTokens: 8000,
+  maxOutputTokens: 600,
+  defaultRecentMessages: 8,
+  maxRecentMessages: 12,
+  maxModelSummaryFacts: 12,
+  maxModelSummaryChars: 4000,
+} as const);
+
+export const ANSWER_LIMITS = deepFreeze({
   maxObservations: 3,
   maxFollowUps: 3,
   maxAssumptions: 5,
   maxSummaryChars: 2000,
   maxQuestionChars: 2000,
-  maxSteps: 8,
-} as const;
+} as const);
 
 export const AssistantAnswerSchema = z.strictObject({
   summary: z.string().min(1).max(ANSWER_LIMITS.maxSummaryChars),
@@ -1310,40 +1456,359 @@ export const AssistantAnswerSchema = z.strictObject({
 export type AssistantAnswer = z.infer<typeof AssistantAnswerSchema>;
 
 // ---------------------------------------------------------------------------
-// Conversation, run, and memory persistence contracts
+// Stream protocol: validated payloads, not bare names (R1-F3)
 // ---------------------------------------------------------------------------
+
+/** Validated custom data parts for the UI message stream. */
+export const STREAM_PART_NAMES = deepFreeze([
+  "data-run-start",
+  "data-activity-step",
+  "data-fact",
+  "data-artifact",
+  "data-run-finish",
+  "data-run-error",
+] as const);
+export type StreamPartName = (typeof STREAM_PART_NAMES)[number];
+
+export const StreamErrorCodeSchema = z.enum([
+  "provider-error",
+  "tool-error",
+  "quota-exhausted",
+  "cost-exhausted",
+  "cancelled",
+  "validation-failed",
+  "disabled",
+]);
+export type StreamErrorCode = z.infer<typeof StreamErrorCodeSchema>;
+
+export const AssistantStreamPartSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("data-run-start"),
+    runId: z.string().min(1).max(128),
+    conversationId: z.string().min(1).max(128),
+  }),
+  z.strictObject({
+    kind: z.literal("data-activity-step"),
+    toolId: ToolIdSchema,
+    state: z.enum(ACTIVITY_STEP_STATES),
+    /** Friendly label only — never internal names, inputs, or JSON. */
+    label: z.string().min(1).max(160),
+  }),
+  z.strictObject({
+    kind: z.literal("data-fact"),
+    fact: MetricFactSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("data-artifact"),
+    artifact: AssistantArtifactSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("data-run-finish"),
+    answer: AssistantAnswerSchema,
+    factIds: z.array(z.string().min(1).max(128)).max(64),
+    artifactIds: z.array(z.string().min(1).max(128)).max(16),
+  }),
+  z.strictObject({
+    kind: z.literal("data-run-error"),
+    code: StreamErrorCodeSchema,
+    /** Sanitized, display-safe message. Never a raw provider error. */
+    message: z.string().min(1).max(280),
+    retryable: z.boolean(),
+  }),
+]);
+export type AssistantStreamPart = z.infer<typeof AssistantStreamPartSchema>;
+
+// ---------------------------------------------------------------------------
+// Multi-chat conversations (R1-F5)
+// ---------------------------------------------------------------------------
+
+/**
+ * One chat inside `(user, project)`. No epochs: history, switching, and
+ * deletion operate on visible chats. A new chat starts with an empty
+ * transcript but still receives confirmed project/workspace knowledge and
+ * the member's applicable preferences — never another chat's transcript.
+ */
+export const InsightSeedSchema = z.strictObject({
+  type: z.literal("insight"),
+  /** Deterministic insight ID; the server reloads evidence, never the client. */
+  insightId: z.string().min(1).max(128),
+});
+export type InsightSeed = z.infer<typeof InsightSeedSchema>;
 
 export const ConversationSchema = z.strictObject({
   id: z.string().min(1).max(128),
   organizationId: z.string().min(1).max(128),
   projectId: z.string().min(1).max(128),
   userId: z.string().min(1).max(128),
-  epoch: z.number().int().nonnegative(),
+  title: z.string().min(1).max(80),
+  seed: InsightSeedSchema.nullable(),
   createdAt: z.number().int().nonnegative(),
   updatedAt: z.number().int().nonnegative(),
   lastMessageAt: z.number().int().nonnegative().nullable(),
 });
 export type AssistantConversation = z.infer<typeof ConversationSchema>;
 
+export const ConversationListItemSchema = z.strictObject({
+  id: z.string().min(1).max(128),
+  title: z.string().min(1).max(80),
+  lastMessageAt: z.number().int().nonnegative().nullable(),
+  messageCount: z.number().int().nonnegative(),
+  hasActiveRun: z.boolean(),
+});
+export type ConversationListItem = z.infer<typeof ConversationListItemSchema>;
+
+const ConversationCursorPayloadSchema = z.strictObject({
+  lastMessageAt: z.number().int().nonnegative().nullable(),
+  id: z.string().min(1).max(128),
+});
+
+const base64UrlEncode = (json: string): string => {
+  if (typeof Buffer !== "undefined") {
+    return (
+      Buffer as unknown as {
+        from(s: string): { toString(e: string): string };
+      }
+    )
+      .from(json)
+      .toString("base64url");
+  }
+  return btoa(json).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+};
+
+const base64UrlDecode = (token: string): string | null => {
+  try {
+    if (typeof Buffer !== "undefined") {
+      return (
+        Buffer as unknown as {
+          from(s: string, e: string): { toString(e: string): string };
+        }
+      )
+        .from(token, "base64url")
+        .toString("utf8");
+    }
+    let b64 = token.replace(/-/g, "+").replace(/_/g, "/");
+    while (b64.length % 4) b64 += "=";
+    return atob(b64);
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Opaque history cursor for `(lastMessageAt DESC, id DESC)` pagination.
+ * Pagination-only: it carries no authorization — the server still binds
+ * every read to the current user and route project.
+ */
+export function encodeConversationCursor(cursor: {
+  lastMessageAt: number | null;
+  id: string;
+}): string {
+  return base64UrlEncode(JSON.stringify(cursor));
+}
+
+export function decodeConversationCursor(
+  cursor: string,
+): { lastMessageAt: number | null; id: string } | null {
+  if (!cursor || cursor.length > 512) return null;
+  const json = base64UrlDecode(cursor);
+  if (!json) return null;
+  try {
+    const result = ConversationCursorPayloadSchema.safeParse(JSON.parse(json));
+    return result.success ? result.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * History ordering: most recent first, chats without messages last, stable
+ * by ID descending. Mirrors the required list index.
+ */
+export function compareConversationOrder(
+  a: { lastMessageAt: number | null; id: string },
+  b: { lastMessageAt: number | null; id: string },
+): number {
+  const aTime = a.lastMessageAt ?? -1;
+  const bTime = b.lastMessageAt ?? -1;
+  if (aTime !== bTime) return bTime - aTime;
+  return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
+}
+
+/** Ownership check: the chat must belong to the user AND the route project. */
+export function canAccessConversation(
+  conversation: Pick<AssistantConversation, "userId" | "projectId">,
+  userId: string,
+  projectId: string,
+): boolean {
+  return conversation.userId === userId && conversation.projectId === projectId;
+}
+
+/** Lazy creation: a chat exists only once the member actually submits. */
+export const ConversationCreateSchema = z.strictObject({
+  clientRequestId: z.string().min(1).max(128),
+  firstMessage: z.string().min(1).max(ANSWER_LIMITS.maxQuestionChars),
+  seed: InsightSeedSchema.nullable(),
+  queryContextToken: QueryContextTokenSchema,
+});
+export type ConversationCreate = z.infer<typeof ConversationCreateSchema>;
+
+export const DeleteConversationResultSchema = z.strictObject({
+  id: z.string().min(1).max(128),
+  deleted: z.literal(true),
+  /** Deleting a chat aborts its active run when one is running. */
+  abortedRun: z.boolean(),
+});
+export type DeleteConversationResult = z.infer<
+  typeof DeleteConversationResultSchema
+>;
+
+/** Deterministic chat titles: no model call, unicode-safe truncation. */
+export const CHAT_TITLE_MAX_CHARS = 60;
+
+export function deriveChatTitle(message: string): string {
+  const normalized = message.replace(/\s+/g, " ").trim();
+  if (!normalized) return "New chat";
+  const chars = Array.from(normalized);
+  if (chars.length <= CHAT_TITLE_MAX_CHARS) return normalized;
+  return `${chars.slice(0, CHAT_TITLE_MAX_CHARS - 1).join("")}…`;
+}
+
+/**
+ * One active run per `(user, project)` (v1 concurrency + cost control).
+ * The member may keep many chats but must stop or finish the active run
+ * before starting another. Enforced by a database-backed constraint in
+ * slice 4, never only a browser flag.
+ */
+export const RunConflictSchema = z.strictObject({
+  code: z.literal("active-run-exists"),
+  projectId: z.string().min(1).max(128),
+  userId: z.string().min(1).max(128),
+  activeConversationId: z.string().min(1).max(128),
+  activeRunId: z.string().min(1).max(128),
+});
+export type RunConflict = z.infer<typeof RunConflictSchema>;
+
+// ---------------------------------------------------------------------------
+// Persisted messages: replayable widgets, model-blind payloads (R1-F3)
+// ---------------------------------------------------------------------------
+
+const TextPartSchema = z.strictObject({
+  type: z.literal("text"),
+  text: z.string().max(8000),
+});
+const ArtifactPartSchema = z.strictObject({
+  type: z.literal("artifact"),
+  /** Full bounded snapshot: reload recreates the exact widget. */
+  artifact: AssistantArtifactSchema,
+});
+const TracePartSchema = z.strictObject({
+  type: z.literal("trace"),
+  steps: z
+    .array(
+      z.strictObject({
+        toolId: ToolIdSchema,
+        state: z.enum(ACTIVITY_STEP_STATES),
+        label: z.string().min(1).max(160),
+      }),
+    )
+    .max(AGENT_LIMITS.maxSteps),
+});
+
+/**
+ * Persisted UI parts. Text renders and re-enters model context; artifact
+ * and trace parts render on reload but are EXCLUDED from model messages
+ * (see `extractModelText`). Only compact `ModelSummary` facts return to
+ * the agent loop.
+ */
+export const AssistantMessagePartSchema = z.discriminatedUnion("type", [
+  TextPartSchema,
+  ArtifactPartSchema,
+  TracePartSchema,
+]);
+export type AssistantMessagePart = z.infer<typeof AssistantMessagePartSchema>;
+
+/** Model-context conversion: text only — full widgets never re-enter. */
+export function extractModelText(
+  parts: readonly AssistantMessagePart[],
+): string[] {
+  return parts
+    .filter((part) => part.type === "text")
+    .map((part) => (part as { text: string }).text);
+}
+
 export const AssistantMessageSchema = z.strictObject({
   id: z.string().min(1).max(128),
   conversationId: z.string().min(1).max(128),
-  epoch: z.number().int().nonnegative(),
   seq: z.number().int().nonnegative(),
   role: z.enum(["user", "assistant"]),
   status: z.enum(["pending", "streaming", "complete", "cancelled", "failed"]),
   /** Validated UI message parts only — never raw provider payloads. */
-  parts: z
-    .array(
-      z.strictObject({ type: z.literal("text"), text: z.string().max(8000) }),
-    )
-    .max(16),
+  parts: z.array(AssistantMessagePartSchema).max(16),
   failureCode: z.string().max(64).nullable(),
   clientRequestId: z.string().min(1).max(128).nullable(),
   createdAt: z.number().int().nonnegative(),
   completedAt: z.number().int().nonnegative().nullable(),
 });
 export type AssistantMessage = z.infer<typeof AssistantMessageSchema>;
+
+// ---------------------------------------------------------------------------
+// Runs, usage accounting, quotas, routing policy (R1-F6)
+// ---------------------------------------------------------------------------
+
+/**
+ * Exact usage accounting. Cost is an integer count of micro-USD (smallest
+ * accounting unit) — never a binary floating-point dollar value.
+ */
+export const RunUsageSchema = z.strictObject({
+  model: z.string().min(1).max(128),
+  gateway: z.literal("openrouter"),
+  upstreamProvider: z.string().min(1).max(128).nullable(),
+  promptTokens: z.number().int().nonnegative(),
+  completionTokens: z.number().int().nonnegative(),
+  reasoningTokens: z.number().int().nonnegative(),
+  cachedTokens: z.number().int().nonnegative(),
+  costMicroUsd: z.number().int().nonnegative(),
+});
+export type RunUsage = z.infer<typeof RunUsageSchema>;
+
+export const QuotaDecisionSchema = z.enum([
+  "allowed",
+  "denied-quota",
+  "denied-cost",
+  "stopped-exhausted",
+]);
+export type QuotaDecision = z.infer<typeof QuotaDecisionSchema>;
+
+export const QuotaOutcomeSchema = z.strictObject({
+  decision: QuotaDecisionSchema,
+  limitType: z
+    .enum(["daily-user", "daily-workspace", "per-run-cost"])
+    .nullable(),
+  retryAfterMs: z.number().int().nonnegative().nullable(),
+});
+export type QuotaOutcome = z.infer<typeof QuotaOutcomeSchema>;
+
+/**
+ * OpenRouter routing policy (v1): one pinned model, no fallback list, tool
+ * and structured-output support required, provider data collection denied,
+ * zero-data-retention endpoints only, lowest eligible price preferred, hard
+ * per-million-token price caps. Verify the exact provider-options shape
+ * against the installed adapter version in slice 5.
+ */
+export const OpenRouterRoutingPolicySchema = z.strictObject({
+  allowedModels: z.array(z.string().min(1).max(128)).length(1),
+  allowFallbackModels: z.literal(false),
+  requireToolSupport: z.literal(true),
+  requireStructuredOutput: z.literal(true),
+  denyDataCollection: z.literal(true),
+  requireZeroDataRetention: z.literal(true),
+  preferLowestPrice: z.literal(true),
+  maxPromptPricePerMillion: z.number().nonnegative(),
+  maxCompletionPricePerMillion: z.number().nonnegative(),
+});
+export type OpenRouterRoutingPolicy = z.infer<
+  typeof OpenRouterRoutingPolicySchema
+>;
 
 export const AssistantRunSchema = z.strictObject({
   id: z.string().min(1).max(128),
@@ -1354,12 +1819,14 @@ export const AssistantRunSchema = z.strictObject({
   queryContextHash: z.string().min(1).max(128),
   definitionVersion: z.literal(DEFINITION_VERSION),
   model: z.string().min(1).max(128),
-  provider: z.string().min(1).max(64),
+  provider: z.literal("openrouter"),
   status: z.enum(["running", "complete", "cancelled", "failed"]),
-  stepCount: z.number().int().min(0).max(ANSWER_LIMITS.maxSteps),
-  toolIds: z.array(ToolIdSchema).max(ANSWER_LIMITS.maxSteps),
-  inputTokens: z.number().int().nonnegative().nullable(),
-  outputTokens: z.number().int().nonnegative().nullable(),
+  stepCount: z.number().int().min(0).max(AGENT_LIMITS.maxSteps),
+  toolIds: z.array(ToolIdSchema).max(AGENT_LIMITS.maxSteps),
+  usage: RunUsageSchema.nullable(),
+  /** Fact/artifact references required to reproduce the visible answer. */
+  factIds: z.array(z.string().min(1).max(128)).max(64),
+  artifactIds: z.array(z.string().min(1).max(128)).max(16),
   latencyMs: z.number().int().nonnegative().nullable(),
   startedAt: z.number().int().nonnegative(),
   completedAt: z.number().int().nonnegative().nullable(),
@@ -1367,49 +1834,190 @@ export const AssistantRunSchema = z.strictObject({
 });
 export type AssistantRun = z.infer<typeof AssistantRunSchema>;
 
-export const MEMORY_SCOPES = ["project", "workspace", "member"] as const;
+// ---------------------------------------------------------------------------
+// Typed memory: scope-owned, key-typed, invariant-checked (R1-F4)
+// ---------------------------------------------------------------------------
+
+export const MEMORY_SCOPES = deepFreeze([
+  "project",
+  "workspace",
+  "member",
+] as const);
 export type MemoryScope = (typeof MEMORY_SCOPES)[number];
 
-export const MEMORY_KEYS = [
+export const MEMORY_KEYS = deepFreeze([
   "signup-definition",
   "activation-definition",
   "key-outcome-definition",
   "business-term",
   "preferred-comparison-range",
-] as const;
+] as const);
 export type MemoryKey = (typeof MEMORY_KEYS)[number];
 
-export const MEMORY_STATUSES = [
+export const MEMORY_STATUSES = deepFreeze([
   "proposed",
   "confirmed",
   "superseded",
   "rejected",
-] as const;
+] as const);
 export type MemoryStatus = (typeof MEMORY_STATUSES)[number];
 
-export const MemoryRecordSchema = z.strictObject({
+/**
+ * Scope matrix: outcome definitions are project knowledge; business terms
+ * are shared project/workspace knowledge; comparison preference is a
+ * member-scoped preference that never needs confirmation.
+ */
+const PROJECT_MEMORY_KEYS = [
+  "signup-definition",
+  "activation-definition",
+  "key-outcome-definition",
+  "business-term",
+] as const;
+const WORKSPACE_MEMORY_KEYS = ["business-term"] as const;
+const MEMBER_MEMORY_KEYS = ["preferred-comparison-range"] as const;
+
+const DefinitionPayloadSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("standard-event"),
+    eventKey: z.string().min(1).max(64),
+  }),
+  z.strictObject({
+    kind: z.literal("custom-event"),
+    eventName: z.string().min(1).max(120),
+  }),
+]);
+const BusinessTermPayloadSchema = z.strictObject({
+  name: z.string().min(1).max(80),
+  description: z.string().max(280),
+});
+const ComparisonRangePayloadSchema = z.strictObject({
+  range: OverviewRangeSchema,
+});
+const MemoryPayloadSchema = z.union([
+  DefinitionPayloadSchema,
+  BusinessTermPayloadSchema,
+  ComparisonRangePayloadSchema,
+]);
+export type MemoryPayload = z.infer<typeof MemoryPayloadSchema>;
+
+const MemoryBaseSchema = z.strictObject({
   id: z.string().min(1).max(128),
   organizationId: z.string().min(1).max(128),
-  projectId: z.string().min(1).max(128).nullable(),
-  scope: z.enum(MEMORY_SCOPES),
-  key: z.enum(MEMORY_KEYS),
   status: z.enum(MEMORY_STATUSES),
   value: z.strictObject({
     version: z.number().int().nonnegative(),
     label: z.string().min(1).max(160),
     description: z.string().max(500),
-    payload: z
-      .record(
-        z.string(),
-        z.union([z.string(), z.number(), z.boolean()]).nullable(),
-      )
-      .optional(),
+    payload: MemoryPayloadSchema,
   }),
   proposerId: z.string().min(1).max(128).nullable(),
   confirmerId: z.string().min(1).max(128).nullable(),
   createdAt: z.number().int().nonnegative(),
   updatedAt: z.number().int().nonnegative(),
 });
+
+const checkPayloadForKey = (
+  key: MemoryKey,
+  payload: MemoryPayload,
+  context: z.RefinementCtx,
+): void => {
+  if (
+    key === "signup-definition" ||
+    key === "activation-definition" ||
+    key === "key-outcome-definition"
+  ) {
+    if (
+      typeof payload !== "object" ||
+      payload === null ||
+      !("kind" in payload)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: `${key} requires a definition payload`,
+      });
+    }
+    return;
+  }
+  if (key === "business-term") {
+    if (
+      typeof payload !== "object" ||
+      payload === null ||
+      !("name" in payload)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "business-term requires a name and description",
+      });
+    }
+    return;
+  }
+  if (
+    typeof payload !== "object" ||
+    payload === null ||
+    !("range" in payload)
+  ) {
+    context.addIssue({
+      code: "custom",
+      message: "preferred-comparison-range requires a range",
+    });
+  }
+};
+
+const checkProvenance = (
+  record: {
+    status: MemoryStatus;
+    scope: MemoryScope;
+    proposerId: string | null;
+    confirmerId: string | null;
+  },
+  context: z.RefinementCtx,
+): void => {
+  if (record.status === "proposed" && !record.proposerId) {
+    context.addIssue({
+      code: "custom",
+      message: "proposed records require a proposer",
+    });
+  }
+  if (
+    record.status === "confirmed" &&
+    record.scope !== "member" &&
+    !record.confirmerId
+  ) {
+    context.addIssue({
+      code: "custom",
+      message: "confirmed shared records require a confirmer",
+    });
+  }
+};
+
+export const MemoryRecordSchema = z
+  .discriminatedUnion("scope", [
+    MemoryBaseSchema.extend({
+      scope: z.literal("project"),
+      key: z.enum(PROJECT_MEMORY_KEYS),
+      /** Project knowledge always belongs to exactly one project. */
+      projectId: z.string().min(1).max(128),
+      subjectUserId: z.null(),
+    }),
+    MemoryBaseSchema.extend({
+      scope: z.literal("workspace"),
+      key: z.enum(WORKSPACE_MEMORY_KEYS),
+      /** Workspace knowledge never carries a project ID. */
+      projectId: z.null(),
+      subjectUserId: z.null(),
+    }),
+    MemoryBaseSchema.extend({
+      scope: z.literal("member"),
+      key: z.enum(MEMBER_MEMORY_KEYS),
+      projectId: z.string().min(1).max(128).nullable(),
+      /** Member preferences are owned by exactly one member. */
+      subjectUserId: z.string().min(1).max(128),
+    }),
+  ])
+  .superRefine((record, context) => {
+    checkPayloadForKey(record.key, record.value.payload, context);
+    checkProvenance(record, context);
+  });
 export type MemoryRecord = z.infer<typeof MemoryRecordSchema>;
 
 /**
@@ -1445,27 +2053,19 @@ export function transitionProposal(
 }
 
 // ---------------------------------------------------------------------------
-// Stream protocol + provider configuration (names frozen, behavior later)
+// Provider and deployment configuration (R1-F6)
 // ---------------------------------------------------------------------------
 
-/** Validated custom data parts for the UI message stream. */
-export const STREAM_PART_NAMES = [
-  "data-run-start",
-  "data-activity-step",
-  "data-fact",
-  "data-artifact",
-  "data-run-finish",
-  "data-run-error",
-] as const;
-export type StreamPartName = (typeof STREAM_PART_NAMES)[number];
-
-/** Hosted Prism server-only configuration names. */
-export const PRISM_AI_ENV_NAMES = [
+/** Hosted Prism server-only configuration names (OpenRouter gateway). */
+export const PRISM_AI_ENV_NAMES = deepFreeze([
   "PRISM_AI_ENABLED",
-  "PRISM_AI_PROVIDER",
   "PRISM_AI_MODEL",
-  "OPENAI_API_KEY",
+  "OPENROUTER_API_KEY",
   "PRISM_AI_MAX_STEPS",
   "PRISM_AI_MAX_INPUT_CHARS",
-] as const;
+  "PRISM_AI_MAX_INPUT_TOKENS",
+  "PRISM_AI_MAX_OUTPUT_TOKENS",
+  "PRISM_AI_MAX_PROMPT_PRICE_PER_MILLION",
+  "PRISM_AI_MAX_COMPLETION_PRICE_PER_MILLION",
+] as const);
 export type PrismAiEnvName = (typeof PRISM_AI_ENV_NAMES)[number];
