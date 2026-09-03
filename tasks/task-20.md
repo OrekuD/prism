@@ -947,6 +947,27 @@ Outstanding (Slice 6 closure): design-system QA captures at the required
 widths in both themes, and the hosted-traffic proof (anonymous activity →
 identify → traits → logout/reset → second user → export → deletion).
 
+### 2026-09-04 - person sheet redesign (error-sheet grammar + nested activity)
+
+The profile page became a route-backed sheet, then was rebuilt to the
+Errors sheet grammar: Overview Kv grid (replacing page-style MetricCards),
+Identity Kv grid + Supplied-traits subgroup, Linked identities with a
+count meta, dense Activity rows (name + relative time + source/session
+meta), Technical-details dissolved (first/last seen → Overview, person ID
+→ footer), and Export/Delete moved to the SheetFooter with a two-step
+typed confirm (errors-workflow-footer pattern).
+
+Activity rows no longer navigate away to the Events explorer: person
+routes take a `/*` splat parsed by `parsePersonPresentationStack`
+(person layer + `events/:eventId` layers, search-preserving dismiss),
+and event layers reuse the exported `EventDetails` body from the
+person-activity cache (skeleton/missing states included). List rows
+carry focus-return triggers.
+
+- `yarn workspace prism-web run test -- src/__tests__/people.test.tsx` →
+  14/14 (updated sections, footer flow, nested hrefs, stacked-layers test)
+- typecheck clean; full web suite → only the pre-existing gallery failure
+
 ### 2026-09-03 - review round 1 (R1-F1 … R1-F7) resolved
 
 All seven findings closed with code changes and focused regression coverage:

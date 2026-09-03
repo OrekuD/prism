@@ -4,7 +4,7 @@ import axe from "axe-core";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { PersonDetail } from "@/routes/projects/project/person";
+import { PersonPresentationStack } from "@/routes/projects/project/person";
 import { ProjectPeople } from "@/routes/projects/project/people";
 
 vi.mock("@/utils/axiosInstance", () => ({
@@ -82,7 +82,7 @@ function renderPerson() {
 						path="/workspace/:wrkSlug/projects/:slug/people"
 						element={<ProjectPeople />}
 					>
-						<Route path=":personId" element={<PersonDetail />} />
+						<Route path=":personId/*" element={<PersonPresentationStack />} />
 					</Route>
 				</Routes>
 			</MemoryRouter>
@@ -255,7 +255,7 @@ describe("ProjectPeople", () => {
 	});
 });
 
-describe("PersonDetail", () => {
+describe("PersonPresentationStack", () => {
 	const person = {
 		personId: "u_1234567890abcdef",
 		primaryExternalId: "user-1",
@@ -323,19 +323,24 @@ describe("PersonDetail", () => {
 		expect(document.querySelector("img[src*='cdn.example']")).toBeNull();
 	});
 
-	it("requires typing delete exactly before the destructive action enables", async () => {
+	it("requires opening delete mode and typing delete exactly before confirm enables", async () => {
 		getMock.mockImplementation(async (url: string) => ({
 			data: String(url).includes("/activity") ? [] : person,
 		}));
 
 		renderPerson();
 
+		// the footer offers Delete person; the typed confirmation lives one
+		// step deeper (errors-workflow-footer pattern)
+		fireEvent.click(
+			await screen.findByRole("button", { name: /delete person/i }),
+		);
 		const confirm = await screen.findByLabelText(/type delete to confirm/i);
-		const deleteButton = screen.getByRole("button", { name: /delete person/i });
-		expect(deleteButton).toBeDisabled();
+		const confirmButton = screen.getByRole("button", { name: /confirm delete/i });
+		expect(confirmButton).toBeDisabled();
 		fireEvent.change(confirm, { target: { value: "delete" } });
-		expect(deleteButton).toBeEnabled();
-		deleteButton.click();
+		expect(confirmButton).toBeEnabled();
+		confirmButton.click();
 		await waitFor(() => expect(deleteMock).toHaveBeenCalled());
 		expect(deleteMock).toHaveBeenCalledWith(
 			expect.stringContaining("confirm=true"),
@@ -381,13 +386,78 @@ describe("PersonDetail", () => {
 		expect(await screen.findByText("Sign up")).toBeDefined();
 		// trusted source name rides the row
 		expect(screen.getByText("Acme Web")).toBeDefined();
-		// the row opens the canonical Events detail route
+		// the row opens a nested event sheet stacked on the person (recent
+		// occurrences pattern) instead of navigating away to Events
 		const row = screen
 			.getByText("Sign up")
 			.closest("a");
 		expect(row?.getAttribute("href")).toBe(
-			"/workspace/wrk_demo/projects/alpha/events/evt-std-1",
+			"/workspace/wrk_demo/projects/alpha/people/u_1234567890abcdef/events/evt-std-1",
 		);
+	});
+
+	it("stacks the event sheet on top of the person sheet", async () => {
+		const occurredAt = 1_785_542_400_000;
+		const activityEvent = {
+			id: "evt-std-1",
+			sessionId: "sess-9",
+			projectId: "proj_1",
+			name: "$prism_sign_up",
+			type: "track",
+			occurredAt,
+			receivedAt: occurredAt,
+			personId: "u_1234567890abcdef",
+			sourceId: "src_web_1",
+			platform: "web",
+			source: {
+				id: "src_web_1",
+				name: "Acme Web",
+				platform: "web",
+				status: "active",
+			},
+			standardEvent: {
+				key: "sign_up",
+				displayName: "Sign up",
+				category: "Identity",
+				schemaVersion: 1,
+			},
+			properties: null,
+		};
+		getMock.mockImplementation(async (url: string) => ({
+			data: String(url).includes("/activity") ? [activityEvent] : person,
+		}));
+
+		render(
+			<QueryClientProvider client={queryClient}>
+				<MemoryRouter
+					initialEntries={[
+						"/workspace/wrk_demo/projects/alpha/people/u_1234567890abcdef/events/evt-std-1",
+					]}
+				>
+					<Routes>
+						<Route
+							path="/workspace/:wrkSlug/projects/:slug/people"
+							element={<ProjectPeople />}
+						>
+							<Route path=":personId/*" element={<PersonPresentationStack />} />
+						</Route>
+					</Routes>
+				</MemoryRouter>
+			</QueryClientProvider>,
+		);
+
+		// both layers render: the person beneath (inert, hidden from the
+		// accessibility tree like the errors stack), the event on top
+		await screen.findByText("Timing & SDK");
+		const layers = document.querySelectorAll("[data-presentation-layer]");
+		expect(layers).toHaveLength(2);
+		expect(layers[1]?.getAttribute("data-presentation-top")).toBe("true");
+		expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(2);
+		// the person name rides the inert beneath-layer DOM…
+		expect(document.body.textContent).toContain("Ama Mensah");
+		// …and the trusted source renders in BOTH the activity row and the
+		// event detail body reusing the event sheet
+		expect(screen.getAllByText("Acme Web").length).toBeGreaterThanOrEqual(2);
 	});
 
 	it("hides data controls from plain members; owner/admin see them", async () => {
@@ -409,6 +479,9 @@ describe("PersonDetail", () => {
 		expect(
 			await screen.findByRole("button", { name: /export person data/i }),
 		).toBeDefined();
+		// the typed confirmation appears only inside delete mode
+		expect(screen.queryByLabelText(/type delete to confirm/i)).toBeNull();
+		fireEvent.click(screen.getByRole("button", { name: /delete person/i }));
 		expect(screen.getByLabelText(/type delete to confirm/i)).toBeDefined();
 	});
 
@@ -462,7 +535,7 @@ describe("PersonDetail", () => {
 							path="/workspace/:wrkSlug/projects/:slug/people"
 							element={<ProjectPeople />}
 						>
-							<Route path=":personId" element={<PersonDetail />} />
+							<Route path=":personId/*" element={<PersonPresentationStack />} />
 						</Route>
 					</Routes>
 				</MemoryRouter>
@@ -470,10 +543,13 @@ describe("PersonDetail", () => {
 		);
 
 		// the sheet is open over the seeded list row (correct pre-deletion)
-		const confirm = await screen.findByLabelText(/type delete to confirm/i);
 		expect(screen.getAllByText("Ama Mensah").length).toBeGreaterThanOrEqual(1);
+		fireEvent.click(
+			await screen.findByRole("button", { name: /delete person/i }),
+		);
+		const confirm = await screen.findByLabelText(/type delete to confirm/i);
 		fireEvent.change(confirm, { target: { value: "delete" } });
-		fireEvent.click(screen.getByRole("button", { name: /delete person/i }));
+		fireEvent.click(screen.getByRole("button", { name: /confirm delete/i }));
 
 		await waitFor(() => expect(deleteMock).toHaveBeenCalled());
 
@@ -544,14 +620,13 @@ describe("PersonDetail", () => {
 		renderPerson();
 
 		await screen.findByRole("heading", { name: "Ama Mensah" });
-		// section structure: Identity, Linked identities, Technical details,
-		// Activity, Data controls
+		// section structure follows the Errors sheet: Overview, Identity,
+		// Linked identities, Activity, footer actions
 		for (const section of [
+			"Overview",
 			"Identity",
 			"Linked identities",
-			"Technical details",
 			"Activity",
-			"Data controls",
 		]) {
 			expect(screen.getByText(section)).toBeDefined();
 		}

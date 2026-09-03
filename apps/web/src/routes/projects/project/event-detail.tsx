@@ -172,7 +172,7 @@ function Tag({
   );
 }
 
-function EventDetails({ event, base }: { event: EventResource; base: string }) {
+export function EventDetails({ event, base }: { event: EventResource; base: string }) {
   const platform = event.platform ?? event.source?.platform ?? null;
   const lagMs = Math.max(0, event.receivedAt - event.occurredAt);
   const std = (event as EventResource & { standardEvent?: StandardEventAttribution | null }).standardEvent ?? null;

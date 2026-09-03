@@ -1,33 +1,44 @@
-import type {
-	EventResource,
-	PeopleListResource,
-	PersonDetailResource,
-} from "@prism-analytics/types";
-import { Download } from "lucide-react";
-import React from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import type { EventResource, PeopleListResource, PersonDetailResource } from "@prism-analytics/types";
 import { useQueryClient } from "@tanstack/react-query";
+import { Download } from "lucide-react";
+import React, { useSyncExternalStore } from "react";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { Frame, SectionLabel } from "@/components/public/frame";
-import { MetricCard } from "@/components/public/metric-card";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
-import { PresentationStack } from "@/components/ui/presentation-stack";
-import { SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+	SheetFooter,
+	SheetHeader,
+	SheetTitle,
+} from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EventDetails } from "@/routes/projects/project/event-detail";
+import { PresentationStack } from "@/components/ui/presentation-stack";
 import { axiosInstance } from "@/utils/axiosInstance";
 import { platformDotClass, platformLabel } from "@/lib/events";
+import {
+	type PersonPresentationLayer,
+	parsePersonPresentationStack,
+} from "@/lib/presentationStack";
 import { useActiveMember } from "@/lib/workspace";
 import { usePersonActivityQuery, usePersonQuery } from "@/network/queries/usePeopleQueries";
 import { cn } from "@/lib/utils";
 
 /**
- * Person profile (task-20): answers "who is this user and what did they
- * do?" — display identity from explicit traits, a bounded summary, supplied
- * traits, linked identities (anonymous history collapsed), technical
- * details, and a source-aware activity timeline that opens the canonical
- * Events detail. Export/delete are owner/admin actions in the UI and are
+ * Person profile (task-20) as a nested presentation layer — the same sheet
+ * grammar as the Errors issue sheet: tags/title/description header, an
+ * Overview Kv grid, identity and context sections, recent activity as
+ * cards that open nested event sheets (like recent occurrences), and
+ * role-gated actions in the footer (like the workflow footer).
+ *
+ * The URL IS the open state: `/people/:personId` renders the list (still
+ * mounted through <Outlet />) with the person in a Sheet;
+ * `/people/:personId/events/:eventId` stacks the event on top. Browser
+ * back or Escape pops one level; refresh or a pasted link keeps the stack
+ * open. Dismissal navigates deterministically to the parent path (never
+ * history -1). Export/delete are owner/admin actions in the UI and are
  * enforced independently by the API.
  */
 
@@ -111,6 +122,30 @@ function fullTimestamp(timestamp: number): string {
 	});
 }
 
+/** Compact relative time ("3m ago") using real elapsed time. */
+function relativeTime(timestamp: number): string {
+	const seconds = Math.round((timestamp - Date.now()) / 1000);
+	const abs = Math.abs(seconds);
+	if (abs < 60) return "just now";
+	if (abs < 3600) return `${Math.round(abs / 60)}m ago`;
+	if (abs < 86400) return `${Math.round(abs / 3600)}h ago`;
+	return `${Math.round(abs / 86400)}d ago`;
+}
+
+/** Key/value cell — the Errors sheet Kv: Frame inset with mono label. */
+function Kv({ k, children }: { k: string; children: React.ReactNode }) {
+	return (
+		<Frame inset className="min-w-0 px-3 py-3">
+			<div className="mb-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
+				{k}
+			</div>
+			<div className="break-words font-mono text-[12.5px] leading-[1.5] text-text">
+				{children}
+			</div>
+		</Frame>
+	);
+}
+
 function IdentityRow({ id, kind }: { id: string; kind: "external" | "anonymous" }) {
 	return (
 		<div className="flex items-center gap-2.5 py-1.5">
@@ -129,86 +164,151 @@ function IdentityRow({ id, kind }: { id: string; kind: "external" | "anonymous" 
 	);
 }
 
-function ActivityRow({ event, basePath }: { event: EventResource; basePath: string }) {
+function ActivityRow({
+	event,
+	eventPath,
+	search,
+}: {
+	event: EventResource;
+	eventPath: string;
+	search: string;
+}) {
 	const displayName =
 		event.standardEvent?.displayName ?? event.name ?? "Unknown event";
 	const platform = event.platform ?? event.source?.platform ?? null;
+	const sourceName = event.source?.name ?? (platform ? platformLabel(platform) : null);
 	return (
 		<li>
 			<Link
-				to={`${basePath}/events/${encodeURIComponent(event.id)}`}
-				className="group flex items-center gap-3 border-t border-border px-1 py-2.5 transition-colors first:border-t-0 hover:bg-surface/60 focus-visible:outline-2 focus-visible:outline-focus"
+				to={{ pathname: eventPath, search }}
+				data-presentation-trigger={`event:0:${event.id}`}
+				className="group flex flex-col gap-1 border-t border-border px-1 py-2.5 transition-colors first:border-t-0 hover:bg-surface/60 focus-visible:outline-2 focus-visible:outline-focus"
 			>
-				<span className="min-w-0 flex-1">
-					<span className="block truncate text-[13px] font-medium leading-none text-text group-hover:text-link">
+				<span className="flex items-center gap-2">
+					<span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-tight text-text group-hover:text-link">
 						{displayName}
 					</span>
-					<span className="mt-1.5 flex items-center gap-2">
-						{platform ? (
-							<>
-								<span
-									className={cn("size-1.5 shrink-0 rounded-full", platformDotClass(platform))}
-									aria-hidden="true"
-								/>
-								<span className="truncate font-mono text-[10.5px] leading-none text-text-subtle">
-									{event.source?.name ?? platformLabel(platform)}
-								</span>
-							</>
-						) : null}
-						{event.sessionId ? (
-							<span className="truncate font-mono text-[10.5px] leading-none text-text-subtle" title={event.sessionId}>
-								· {event.sessionId.slice(0, 8)}…
-							</span>
-						) : null}
-					</span>
+					<time
+						dateTime={new Date(event.occurredAt).toISOString()}
+						title={fullTimestamp(event.occurredAt)}
+						className="shrink-0 font-mono text-[10.5px] leading-none text-text-subtle tabular-nums"
+					>
+						{relativeTime(event.occurredAt)}
+					</time>
 				</span>
-				<time
-					dateTime={new Date(event.occurredAt).toISOString()}
-					className="shrink-0 font-mono text-[11px] leading-none text-text-muted tabular-nums"
-				>
-					{fullTimestamp(event.occurredAt)}
-				</time>
+				<span className="flex items-center gap-2 font-mono text-[10.5px] leading-none text-text-muted">
+					{platform ? (
+						<span
+							className={cn("size-1.5 shrink-0 rounded-full", platformDotClass(platform))}
+							aria-hidden="true"
+						/>
+					) : null}
+					{sourceName ? (
+						<span className="truncate">{sourceName}</span>
+					) : null}
+					{event.sessionId ? (
+						<span className="truncate" title={event.sessionId}>
+							· {event.sessionId.slice(0, 8)}…
+						</span>
+					) : null}
+				</span>
 			</Link>
 		</li>
 	);
 }
 
-/**
- * The person profile rides the nested presentation stack as a single layer:
- * the People list stays mounted behind via <Outlet />, Escape/backdrop
- * dismiss navigates deterministically to the list base (never history -1),
- * and future links from this sheet (event detail and friends) stack on top
- * through the same component.
- */
-function PersonSheet({
-	listBase,
-	personId,
-	children,
-}: {
-	listBase: string;
-	personId: string;
-	children: React.ReactNode;
-}) {
-	const navigate = useNavigate();
-	const items = React.useMemo(
-		() => [{ key: personId, parentPath: listBase }],
-		[personId, listBase],
-	);
-	return (
-		<PresentationStack
-			items={items}
-			onDismiss={() => navigate(listBase)}
-			renderItem={() => children}
-		/>
+function findPersonEvent(
+	queryClient: ReturnType<typeof useQueryClient>,
+	slug: string | undefined,
+	personId: string | undefined,
+	eventId: string | undefined,
+): EventResource | undefined {
+	if (!slug || !personId || !eventId) return undefined;
+	const entries = queryClient.getQueriesData<EventResource[]>({
+		queryKey: ["person-activity", slug, personId],
+	});
+	for (const [, payload] of entries) {
+		const found = (payload ?? []).find((event) => event.id === eventId);
+		if (found) return found;
+	}
+	return undefined;
+}
+
+function usePersonEventFromCache(
+	slug: string | undefined,
+	personId: string | undefined,
+	eventId: string | undefined,
+): EventResource | undefined {
+	const queryClient = useQueryClient();
+	return useSyncExternalStore(
+		(callback) => queryClient.getQueryCache().subscribe(callback),
+		() => findPersonEvent(queryClient, slug, personId, eventId),
+		() => undefined,
 	);
 }
 
-export function PersonDetail() {
-	const { slug, personId, wrkSlug } = useParams<{
-		slug: string;
-		personId: string;
-		wrkSlug: string;
-	}>();
+function PersonEventLayer({
+	slug,
+	personId,
+	eventId,
+	personPath,
+	search,
+}: {
+	slug: string | undefined;
+	personId: string;
+	eventId: string;
+	personPath: string;
+	search: string;
+}) {
+	const queryClient = useQueryClient();
+	const event = usePersonEventFromCache(slug, personId, eventId);
+	const activityPending = queryClient
+		.getQueryCache()
+		.findAll({ queryKey: ["person-activity", slug, personId] })
+		.some((query) => query.state.status === "pending");
+
+	if (event) {
+		return <EventDetails event={event} base={personPath} />;
+	}
+	if (activityPending) {
+		return (
+			<div className="flex flex-col gap-4 p-6">
+				<Skeleton className="h-4 w-3/4" />
+				<Skeleton className="h-3 w-1/2" />
+				<Skeleton className="h-[120px] w-full rounded-[2px]" />
+			</div>
+		);
+	}
+	return (
+		<div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
+			<p className="font-sans text-[14px] font-medium tracking-[-0.01em] text-text">
+				Event not in this person&apos;s activity
+			</p>
+			<p className="max-w-[320px] text-pretty font-mono text-[12.5px] leading-[1.5] text-text-muted">
+				This event isn&apos;t in the loaded activity window. It may have
+				aged out or the person&apos;s activity was cleared.
+			</p>
+			<Link
+				to={{ pathname: personPath, search }}
+				className="mt-1 inline-flex h-8 items-center rounded-[2px] border border-border bg-surface px-3 font-mono text-[12px] font-medium text-text hover:bg-surface-hover"
+			>
+				Back to person
+			</Link>
+		</div>
+	);
+}
+
+function PersonProfile({
+	slug,
+	personId,
+	listBase,
+	search,
+}: {
+	slug: string | undefined;
+	personId: string;
+	listBase: string;
+	search: string;
+}) {
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const activeMember = useActiveMember();
@@ -217,13 +317,13 @@ export function PersonDetail() {
 	const { data, isLoading, isError, refetch } = usePersonQuery(slug, personId);
 	const activity = usePersonActivityQuery(slug, personId);
 	const [confirmText, setConfirmText] = React.useState("");
+	const [confirmingDelete, setConfirmingDelete] = React.useState(false);
 	const [deleting, setDeleting] = React.useState(false);
 	const [deleteError, setDeleteError] = React.useState<string | null>(null);
 	const [exporting, setExporting] = React.useState(false);
 	const [exportError, setExportError] = React.useState<string | null>(null);
 
-	const basePath = `/workspace/${wrkSlug ?? ""}/projects/${slug ?? ""}`;
-	const listBase = `${basePath}/people`;
+	const personPath = `${listBase}/${encodeURIComponent(personId)}`;
 
 	const handleExport = async () => {
 		if (!slug || !personId || exporting) return;
@@ -260,12 +360,13 @@ export function PersonDetail() {
 			// R2-F1: a successful deletion must never leave the deleted person
 			// in a cached list page. The list stays mounted behind this
 			// sheet and usePeopleQuery reuses the previous page as
-			// placeholderData during a refetch — removing the queries alone
-			// lets the deleted row flash back while the fresh fetch runs.
-			// So first remove the row from every cached page (identified
-			// drops honestly by one; the range-bound counts refresh on the
-			// refetch below), then remove the queries so nothing stale
-			// survives. The profile/activity caches are dead too.
+			// placeholderData during a refetch (the observer reports success
+			// while the fresh fetch runs) — removing the queries alone lets
+			// the deleted row flash back. So first remove the row from every
+			// cached page (identified drops honestly by one; the range-bound
+			// counts refresh on the refetch below), then remove the queries
+			// so nothing stale survives. The profile/activity caches are
+			// dead too.
 			queryClient.setQueriesData<PeopleListResource>(
 				{ queryKey: ["people", slug] },
 				(previous) => {
@@ -301,25 +402,21 @@ export function PersonDetail() {
 
 	if (isLoading) {
 		return (
-			<PersonSheet listBase={listBase} personId={personId ?? ""}>
-				<div className="grid gap-4 p-6" aria-busy="true" aria-label="Loading person">
-					<Skeleton className="h-24 w-full" />
-					<Skeleton className="h-40 w-full" />
-				</div>
-			</PersonSheet>
+			<div className="grid gap-4 p-6" aria-busy="true" aria-label="Loading person">
+				<Skeleton className="h-24 w-full" />
+				<Skeleton className="h-40 w-full" />
+			</div>
 		);
 	}
 	if (isError || !data) {
 		return (
-			<PersonSheet listBase={listBase} personId={personId ?? ""}>
-				<div className="p-6">
-					<ErrorState
-						title="Could not load person"
-						description="Prism could not reach the people store. Check your connection and try again."
-						onRetry={() => refetch()}
-					/>
-				</div>
-			</PersonSheet>
+			<div className="p-6">
+				<ErrorState
+					title="Could not load person"
+					description="Prism could not reach the people store. Check your connection and try again."
+					onRetry={() => refetch()}
+				/>
+			</div>
 		);
 	}
 
@@ -332,10 +429,12 @@ export function PersonDetail() {
 			!(PROFILE_KEYS as readonly string[]).includes(key) &&
 			formatTraitValue(value) !== null,
 	);
-	const linkedIdsCount = data.externalIds.length + data.anonymousIds.length;
+	const externalCount = data.externalIds.length;
+	const anonymousCount = data.anonymousIds.length;
+	const linkedIdsCount = externalCount + anonymousCount;
 
 	return (
-		<PersonSheet listBase={listBase} personId={personId ?? ""}>
+		<>
 			<SheetHeader className="gap-3 border-b border-border px-6 pb-4 pt-6">
 				<SheetTitle className="break-words pr-2 text-left font-sans text-[17px] font-semibold leading-[1.25] tracking-[-0.02em] text-text">
 					{displayName}
@@ -351,69 +450,51 @@ export function PersonDetail() {
 			</SheetHeader>
 
 			<div className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto p-6">
-				<div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-				<MetricCard label="Sessions" caption="distinct project sessions">
-					<span className="font-mono text-[23px] leading-none tracking-[-0.06em] text-text tabular-nums">
-						{data.sessionCount.toLocaleString("en-US")}
-					</span>
-				</MetricCard>
-				<MetricCard label="Events" caption="accepted event occurrences">
-					<span className="font-mono text-[23px] leading-none tracking-[-0.06em] text-text tabular-nums">
-						{data.eventCount.toLocaleString("en-US")}
-					</span>
-				</MetricCard>
-				<MetricCard
-					label="Linked IDs"
-					caption={`${data.externalIdentityCount} external · ${data.anonymousIdentityCount} anonymous`}
-				>
-					<span className="font-mono text-[23px] leading-none tracking-[-0.06em] text-text tabular-nums">
-						{linkedIdsCount.toLocaleString("en-US")}
-					</span>
-				</MetricCard>
-			</div>
-
-			<div className="grid grid-cols-1 gap-7 lg:grid-cols-2">
 				<section>
-					<SectionLabel>Identity</SectionLabel>
-					<div className="mt-3 grid grid-cols-1 gap-3">
-						<Frame inset className="px-3 py-3">
-							<div className="mb-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
-								Email
-							</div>
-							<div className="break-all font-mono text-[12.5px] leading-[1.5] text-text">
-								{email ?? <span className="text-text-subtle">Not supplied</span>}
-							</div>
-						</Frame>
-						<Frame inset className="px-3 py-3">
-							<div className="mb-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
-								Username
-							</div>
-							<div className="break-all font-mono text-[12.5px] leading-[1.5] text-text">
-								{username ?? <span className="text-text-subtle">Not supplied</span>}
-							</div>
-						</Frame>
-						{profileEntries.length > 0 ? (
-							<Frame inset className="px-3 py-3">
-								<div className="mb-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
-									Supplied traits
-								</div>
-								<dl className="grid gap-1.5">
-									{profileEntries.map(([key, value]) => (
-										<div key={key} className="flex items-baseline justify-between gap-4">
-											<dt className="min-w-0 truncate font-mono text-[11px] text-text-subtle">{key}</dt>
-											<dd className="min-w-0 break-all text-right font-mono text-[12px] text-text">
-												{formatTraitValue(value)}
-											</dd>
-										</div>
-									))}
-								</dl>
-							</Frame>
-						) : null}
+					<SectionLabel>Overview</SectionLabel>
+					<div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+						<Kv k="sessions">{data.sessionCount.toLocaleString("en-US")}</Kv>
+						<Kv k="events">{data.eventCount.toLocaleString("en-US")}</Kv>
+						<Kv k="external ids">{data.externalIdentityCount.toLocaleString("en-US")}</Kv>
+						<Kv k="anonymous ids">{data.anonymousIdentityCount.toLocaleString("en-US")}</Kv>
+						<Kv k="first seen">{fullTimestamp(data.firstSeenAt)}</Kv>
+						<Kv k="last seen">{fullTimestamp(data.lastSeenAt)}</Kv>
 					</div>
 				</section>
 
 				<section>
-					<SectionLabel>Linked identities</SectionLabel>
+					<SectionLabel>Identity</SectionLabel>
+					<div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+						<Kv k="email">
+							{email ?? <span className="text-text-subtle">Not supplied</span>}
+						</Kv>
+						<Kv k="username">
+							{username ?? <span className="text-text-subtle">Not supplied</span>}
+						</Kv>
+					</div>
+					{profileEntries.length > 0 ? (
+						<div className="mt-4">
+							<div className="mb-2 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
+								Supplied traits
+							</div>
+							<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+								{profileEntries.map(([key, value]) => (
+									<Kv key={key} k={key}>
+										{formatTraitValue(value)}
+									</Kv>
+								))}
+							</div>
+						</div>
+					) : null}
+				</section>
+
+				<section>
+					<div className="flex items-center justify-between gap-2">
+						<SectionLabel className="leading-none">Linked identities</SectionLabel>
+						<span className="font-mono text-[10px] text-text-subtle">
+							{externalCount} external · {anonymousCount} anonymous
+						</span>
+					</div>
 					<div className="mt-3">
 						{linkedIdsCount === 0 ? (
 							<Frame inset className="border-dashed bg-surface/40 px-3 py-6 text-center">
@@ -445,129 +526,67 @@ export function PersonDetail() {
 							</Frame>
 						)}
 					</div>
+				</section>
 
-					<div className="mt-7">
-						<SectionLabel>Technical details</SectionLabel>
-						<div className="mt-3 grid grid-cols-1 gap-3">
-							<Frame inset className="px-3 py-3">
-								<div className="mb-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
-									Prism person ID
-								</div>
-								<div className="break-all font-mono text-[12px] leading-[1.5] text-text-muted">
-									{data.personId}
+				<section>
+					<div className="flex items-center justify-between gap-2">
+						<SectionLabel className="leading-none">Activity</SectionLabel>
+						<span className="font-mono text-[10px] text-text-subtle">newest first</span>
+					</div>
+					<div className="mt-3">
+						{activity.isLoading ? (
+							<div aria-busy="true" aria-label="Loading activity">
+								<Skeleton className="h-[46px] w-full rounded-[2px]" />
+								<Skeleton className="mt-2 h-[46px] w-full rounded-[2px]" />
+								<Skeleton className="mt-2 h-[46px] w-full rounded-[2px]" />
+							</div>
+						) : activity.isError ? (
+							<Frame className="border-dashed bg-surface/40 px-3 py-6 text-center">
+								<p className="font-mono text-[12px] text-text-subtle">
+									Could not load activity.
+								</p>
+								<Button
+									variant="outline"
+									size="sm"
+									className="mt-3 h-8"
+									onClick={() => activity.refetch()}
+								>
+									Retry
+								</Button>
+							</Frame>
+						) : (activity.data?.length ?? 0) === 0 ? (
+							<Frame className="border-dashed bg-surface/40 px-3 py-6 text-center">
+								<p className="font-mono text-[12px] leading-none text-text-subtle">
+									No events recorded under this person&apos;s identities yet.
+								</p>
+							</Frame>
+						) : (
+							<Frame className="p-0">
+								<div className="overflow-hidden rounded-[2px]">
+									<ol aria-label="Event timeline">
+										{activity.data?.map((event) => (
+											<ActivityRow
+												key={event.id}
+												event={event}
+												eventPath={`${personPath}/events/${encodeURIComponent(event.id)}`}
+												search={search}
+											/>
+										))}
+									</ol>
 								</div>
 							</Frame>
-							<Frame inset className="px-3 py-3">
-								<div className="mb-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
-									First seen
-								</div>
-								<div className="font-mono text-[12px] leading-[1.5] text-text-muted tabular-nums">
-									{fullTimestamp(data.firstSeenAt)}
-								</div>
-							</Frame>
-							<Frame inset className="px-3 py-3">
-								<div className="mb-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
-									Last seen
-								</div>
-								<div className="font-mono text-[12px] leading-[1.5] text-text-muted tabular-nums">
-									{fullTimestamp(data.lastSeenAt)}
-								</div>
-							</Frame>
-						</div>
+						)}
 					</div>
 				</section>
 			</div>
 
-			<section>
-				<div className="flex items-center justify-between gap-2">
-					<SectionLabel className="leading-none">Activity</SectionLabel>
-					<span className="font-mono text-[10px] text-text-subtle">newest first</span>
-				</div>
-				<div className="mt-3">
-					{activity.isLoading ? (
-						<div aria-busy="true" aria-label="Loading activity">
-							<Skeleton className="h-[46px] w-full rounded-[2px]" />
-							<Skeleton className="mt-2 h-[46px] w-full rounded-[2px]" />
-							<Skeleton className="mt-2 h-[46px] w-full rounded-[2px]" />
-						</div>
-					) : activity.isError ? (
-						<Frame className="border-dashed bg-surface/40 px-3 py-6 text-center">
-							<p className="font-mono text-[12px] text-text-subtle">
-								Could not load activity.
-							</p>
-							<Button
-								variant="outline"
-								size="sm"
-								className="mt-3 h-8"
-								onClick={() => activity.refetch()}
-							>
-								Retry
-							</Button>
-						</Frame>
-					) : (activity.data?.length ?? 0) === 0 ? (
-						<Frame className="border-dashed bg-surface/40 px-3 py-6 text-center">
-							<p className="font-mono text-[12px] leading-none text-text-subtle">
-								No events recorded under this person's identities yet.
-							</p>
-						</Frame>
-					) : (
-						<Frame className="p-0">
-							<div className="overflow-hidden rounded-[2px]">
-								<ol aria-label="Event timeline">
-									{activity.data?.map((event) => (
-										<ActivityRow key={event.id} event={event} basePath={basePath} />
-									))}
-								</ol>
-							</div>
-						</Frame>
-					)}
-				</div>
-			</section>
-
-			{canManage ? (
-				<section aria-label="Data controls">
-					<SectionLabel>Data controls</SectionLabel>
-					<div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
-						<Frame inset className="px-3 py-3">
-							<div className="mb-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
-								Export
-							</div>
-							<p className="text-[12.5px] leading-[1.5] text-text-muted">
-								Download this person's documented analytics data: identity
-								references, supplied traits, sessions, events, and error
-								occurrences.
-							</p>
-							<Button
-								type="button"
-								size="sm"
-								variant="outline"
-								className="mt-3 h-8 gap-1.5"
-								onClick={() => void handleExport()}
-								disabled={exporting}
-							>
-								<Download className="size-3.5" aria-hidden="true" />
-								{exporting ? "Exporting…" : "Export person data"}
-							</Button>
-							{exportError ? (
-								<p className="mt-2 text-[12px] text-destructive" role="alert">
-									{exportError}
-								</p>
-							) : null}
-						</Frame>
-						<Frame className="border-destructive/40 px-3 py-3">
-							<div className="mb-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-destructive">
-								Permanent deletion
-							</div>
-							<p className="text-[12.5px] leading-[1.5] text-text-muted">
-								Removing this person deletes their identity links, traits,
-								sessions, and events permanently. A future
-								<code className="mx-1 font-mono text-[11.5px]">identify()</code>
-								with the same external ID starts a fresh person — deleted
-								history never returns.
-							</p>
+			<SheetFooter className="border-t border-border">
+				{canManage ? (
+					confirmingDelete ? (
+						<div className="flex w-full flex-wrap items-center gap-x-2 gap-y-2">
 							<label
 								htmlFor="delete-confirm"
-								className="mt-3 block text-[12px] text-text-subtle"
+								className="w-full text-[12px] text-text-subtle"
 							>
 								Type <code className="font-mono">delete</code> to confirm:
 							</label>
@@ -576,7 +595,8 @@ export function PersonDetail() {
 								value={confirmText}
 								onChange={(event) => setConfirmText(event.target.value)}
 								placeholder="delete"
-								className="mt-1.5 h-8 max-w-[220px] font-mono text-[12.5px]"
+								autoComplete="off"
+								className="h-8 min-w-0 flex-1 basis-40 font-mono text-[12.5px]"
 								aria-describedby="delete-confirm-hint"
 							/>
 							<p id="delete-confirm-hint" className="sr-only">
@@ -585,23 +605,145 @@ export function PersonDetail() {
 							<Button
 								type="button"
 								size="sm"
-								variant="destructive"
-								className="mt-2 h-8"
-								onClick={() => void handleDelete()}
-								disabled={confirmText !== "delete" || deleting}
+								variant="ghost"
+								className="h-8"
+								disabled={deleting}
+								onClick={() => {
+									setConfirmingDelete(false);
+									setConfirmText("");
+									setDeleteError(null);
+								}}
 							>
-								{deleting ? "Deleting…" : "Delete person"}
+								Cancel
+							</Button>
+							<Button
+								type="button"
+								size="sm"
+								variant="destructive"
+								className="h-8 bg-danger text-white hover:bg-danger/90"
+								disabled={confirmText !== "delete" || deleting}
+								onClick={() => void handleDelete()}
+							>
+								{deleting ? "Deleting…" : "Confirm delete"}
 							</Button>
 							{deleteError ? (
-								<p className="mt-2 text-[12px] text-destructive" role="alert">
+								<p className="w-full text-[12px] text-destructive" role="alert">
 									{deleteError}
 								</p>
 							) : null}
-						</Frame>
+						</div>
+					) : (
+						<div className="flex w-full items-center gap-2">
+							<span
+								className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-subtle"
+								title={data.personId}
+							>
+								{data.personId}
+							</span>
+							<Button
+								type="button"
+								size="sm"
+								variant="outline"
+								className="h-8 shrink-0 gap-1.5"
+								onClick={() => void handleExport()}
+								disabled={exporting}
+							>
+								<Download className="size-3.5" aria-hidden="true" />
+								{exporting ? "Exporting…" : "Export person data"}
+							</Button>
+							{exportError ? (
+								<p className="text-[12px] text-destructive" role="alert">
+									{exportError}
+								</p>
+							) : null}
+							<Button
+								type="button"
+								size="sm"
+								variant="destructive"
+								className="h-8 shrink-0 bg-danger text-white hover:bg-danger/90"
+								onClick={() => setConfirmingDelete(true)}
+							>
+								Delete person
+							</Button>
+						</div>
+					)
+				) : (
+					<div className="flex w-full items-center gap-2">
+						<span
+							className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-subtle"
+							title={data.personId}
+						>
+							{data.personId}
+						</span>
+						<span className="shrink-0 text-[11px] text-text-subtle">
+							Owners and admins can export or delete this person.
+						</span>
 					</div>
-				</section>
-			) : null}
-			</div>
-		</PersonSheet>
+				)}
+			</SheetFooter>
+		</>
+	);
+}
+
+export function PersonPresentationStack() {
+	const {
+		slug,
+		wrkSlug,
+		personId,
+		"*": splat,
+	} = useParams<{
+		slug: string;
+		wrkSlug: string;
+		personId: string;
+		"*": string;
+	}>();
+	const location = useLocation();
+	const navigate = useNavigate();
+	const listBase = `/workspace/${wrkSlug ?? ""}/projects/${slug ?? ""}/people`;
+	const parsed = React.useMemo(
+		() => parsePersonPresentationStack(listBase, personId, splat),
+		[listBase, personId, splat],
+	);
+
+	React.useEffect(() => {
+		if (!parsed.valid) {
+			navigate({ pathname: listBase, search: location.search }, { replace: true });
+		}
+	}, [listBase, location.search, navigate, parsed.valid]);
+
+	if (!parsed.valid) return null;
+
+	const renderLayer = (layer: PersonPresentationLayer) => {
+		if (layer.kind === "event") {
+			const personLayer = parsed.layers[0];
+			if (!personLayer || personLayer.kind !== "person") return null;
+			return (
+				<PersonEventLayer
+					slug={slug}
+					personId={personLayer.resourceId}
+					eventId={layer.resourceId}
+					personPath={personLayer.path}
+					search={location.search}
+				/>
+			);
+		}
+		return (
+			<PersonProfile
+				slug={slug}
+				personId={layer.resourceId}
+				listBase={listBase}
+				search={location.search}
+			/>
+		);
+	};
+
+	return (
+		<PresentationStack
+			items={parsed.layers}
+			onDismiss={(layer) =>
+				navigate({ pathname: layer.parentPath, search: location.search })
+			}
+			renderItem={renderLayer}
+		/>
 	);
 }

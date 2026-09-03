@@ -382,7 +382,7 @@ export function ProjectPeople() {
 										return (
 											<TableRow key={person.personId} className="h-[58px] hover:bg-surface/60">
 												<TableCell>
-													<Link className="block rounded-[2px] focus-visible:outline-2 focus-visible:outline-focus" to={href}>
+													<Link className="block rounded-[2px] focus-visible:outline-2 focus-visible:outline-focus" to={href} data-presentation-trigger={`person:${person.personId}`}>
 														<PersonIdentity person={person} />
 													</Link>
 												</TableCell>
@@ -409,6 +409,7 @@ export function ProjectPeople() {
 								<Link
 									key={person.personId}
 									to={`${basePath}/people/${encodeURIComponent(person.personId)}`}
+									data-presentation-trigger={`person:${person.personId}`}
 									className="block px-3.5 py-3.5 hover:bg-surface/60 focus-visible:outline-2 focus-visible:outline-focus"
 								>
 									<PersonIdentity person={person} />

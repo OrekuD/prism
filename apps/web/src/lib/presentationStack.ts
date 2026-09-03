@@ -84,3 +84,70 @@ export function getVisiblePresentationLayers(
 		isTop: index === visible.length - 1,
 	}));
 }
+
+export type PersonPresentationLayer = {
+	key: string;
+	kind: "person" | "event";
+	resourceId: string;
+	path: string;
+	parentPath: string;
+};
+
+export type ParsedPersonPresentationStack =
+	| { valid: true; layers: PersonPresentationLayer[] }
+	| { valid: false; layers: [] };
+
+/**
+ * Parse a person route into presentation layers. The person is always layer
+ * zero; `events/:eventId` pairs stack event detail sheets on top (activity
+ * rows link here instead of navigating away to the Events explorer).
+ */
+export function parsePersonPresentationStack(
+	basePath: string,
+	personId: string | undefined,
+	splat: string | undefined,
+): ParsedPersonPresentationStack {
+	const base = trimTrailingSlash(basePath);
+	if (!personId) return { valid: false, layers: [] };
+
+	const personPath = `${base}/${encodeURIComponent(personId)}`;
+	const layers: PersonPresentationLayer[] = [
+		{
+			key: `person:${personId}`,
+			kind: "person",
+			resourceId: personId,
+			path: personPath,
+			parentPath: base,
+		},
+	];
+
+	if (!splat) return { valid: true, layers };
+
+	const segments = splat.split("/");
+	if (
+		segments.some((segment) => segment.length === 0) ||
+		segments.length % 2 !== 0
+	) {
+		return { valid: false, layers: [] };
+	}
+
+	let path = personPath;
+	for (let index = 0; index < segments.length; index += 2) {
+		const segment = segments[index];
+		const eventId = segments[index + 1];
+		if (segment !== "events" || !eventId) {
+			return { valid: false, layers: [] };
+		}
+
+		path = `${path}/events/${encodeURIComponent(eventId)}`;
+		layers.push({
+			key: `event:${index / 2}:${eventId}`,
+			kind: "event",
+			resourceId: eventId,
+			path,
+			parentPath: layers[layers.length - 1]?.path ?? base,
+		});
+	}
+
+	return { valid: true, layers };
+}

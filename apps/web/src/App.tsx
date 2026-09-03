@@ -71,9 +71,9 @@ const ProjectPeople = lazy(() =>
 		default: m.ProjectPeople,
 	})),
 );
-const PersonDetail = lazy(() =>
+const PersonPresentationStack = lazy(() =>
 	import("./routes/projects/project/person").then((m) => ({
-		default: m.PersonDetail,
+		default: m.PersonPresentationStack,
 	})),
 );
 const ProjectSettingsLayout = lazy(() =>
@@ -254,7 +254,7 @@ const router = createBrowserRouter(
 							/>
 							<Route path="realtime" element={<ProjectRealtime />} />
 							<Route path="people" element={<ProjectPeople />}>
-								<Route path=":personId" element={<PersonDetail />} />
+								<Route path=":personId/*" element={<PersonPresentationStack />} />
 							</Route>
 							<Route path="errors/*" element={<ProjectErrors />} />
 							<Route path="sources" element={<Navigate to="web" replace />} />
