@@ -28,6 +28,12 @@ export interface MobileAnalyticsQueryParams {
 	sourceIds: string[];
 	os: "ios" | "android" | null;
 	release: string | null;
+	/**
+	 * Snapshot cutoff (Task 21 slice 2): sessions/installations started after
+	 * `asOf` and screen views received after `asOf` are excluded. Omitted =
+	 * unbounded (pre-snapshot behavior, unchanged).
+	 */
+	asOf?: number;
 }
 
 /** One grouped screen row straight from SQL (already ranked + capped). */

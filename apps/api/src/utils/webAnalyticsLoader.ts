@@ -56,6 +56,12 @@ function buildWhere(
 	if (params.traffic === "human") {
 		clauses.push("w.is_bot = 0");
 	}
+	if (params.asOf !== undefined) {
+		// Every read-model query joins events (baseJoin); the cutoff rides
+		// the same join so totals, comparisons, trends, and rankings agree.
+		clauses.push("e.received_at <= ?");
+		args.push(params.asOf);
+	}
 	return { clauses, args };
 }
 

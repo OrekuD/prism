@@ -19,6 +19,7 @@ router.get("/:slug", ProjectsController.getProjectBySlug);
 router.get("/:slug/mobile-analytics", ProjectsController.getMobileAnalytics);
 router.get("/:slug/web-analytics", ProjectsController.getWebAnalytics);
 router.get("/:slug/events", ProjectsController.getProjectEvents);
+router.get("/:slug/metrics", ProjectsController.getMetrics);
 // Error tracking (task-15 slices 2 + 4): issue list + detail + workflow
 // state. Detail summarizes sanitized occurrences and workflow history with
 // no occurrence endpoint (occurrence ids are unguessable UUIDs, only ever

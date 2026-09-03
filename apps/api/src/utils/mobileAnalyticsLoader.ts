@@ -1,6 +1,4 @@
 import { MOBILE_LIMITS } from "@prism-analytics/core";
-import type { Context } from "hono";
-import { TursoDatabaseManager } from "../managers/TursoDatabaseManager";
 import {
 	type MobileAnalyticsExecuteClient,
 	type MobileAnalyticsQueryParams,
@@ -42,6 +40,12 @@ function sessionWhere(
 ): { clauses: string[]; args: Array<string | number | null> } {
 	const clauses = ["s.project_id = ?", "s.started_at >= ?", "s.started_at < ?"];
 	const args: Array<string | number | null> = [params.projectId, from, to];
+	if (params.asOf !== undefined) {
+		// Aggregate tables carry no received_at; a session cannot be observed
+		// before it starts, so started_at <= asOf is the honest snapshot bound.
+		clauses.push("s.started_at <= ?");
+		args.push(params.asOf);
+	}
 	if (params.sourceIds.length > 0) {
 		clauses.push(`s.source_id IN (${params.sourceIds.map(() => "?").join(",")})`);
 		args.push(...params.sourceIds);
@@ -65,6 +69,13 @@ function screenWhere(
 ): { clauses: string[]; args: Array<string | number | null> } {
 	const clauses = ["w.project_id = ?", "w.occurred_at >= ?", "w.occurred_at < ?"];
 	const args: Array<string | number | null> = [params.projectId, from, to];
+	if (params.asOf !== undefined) {
+		// Exact snapshot cutoff through the linked accepted event.
+		clauses.push(`EXISTS (SELECT 1 FROM events e
+			WHERE e.project_id = w.project_id AND e.id = w.event_id
+				AND e.received_at <= ?)`);
+		args.push(params.asOf);
+	}
 	if (params.sourceIds.length > 0) {
 		clauses.push(`w.source_id IN (${params.sourceIds.map(() => "?").join(",")})`);
 		args.push(...params.sourceIds);
@@ -96,12 +107,26 @@ async function totalsFor(
 			WHERE ${where.clauses.join(" AND ")}`,
 		args: where.args,
 	});
+	const installClauses = [
+		"i.project_id = ?",
+		"i.first_seen_at < ?",
+		"(i.last_seen_at >= ? OR i.first_seen_at >= ?)",
+	];
+	const installArgs: Array<string | number | null> = [
+		params.projectId,
+		to,
+		from,
+		from,
+	];
+	if (params.asOf !== undefined) {
+		installClauses.push("i.first_seen_at <= ?");
+		installArgs.push(params.asOf);
+	}
 	const installs = await client.execute({
 		sql: `SELECT COUNT(*) AS installations
 			FROM mobile_installations i
-			WHERE i.project_id = ? AND i.first_seen_at < ?
-			AND (i.last_seen_at >= ? OR i.first_seen_at >= ?)`,
-		args: [params.projectId, to, from, from],
+			WHERE ${installClauses.join(" AND ")}`,
+		args: installArgs,
 	});
 	const t = sessions.rows[0] ?? {};
 	const iRow = installs.rows[0] ?? {};
@@ -138,7 +163,7 @@ async function visitorsFor(
 }
 
 export async function loadMobileAnalytics(
-	ctx: Context,
+	client: MobileAnalyticsExecuteClient,
 	params: MobileAnalyticsQueryParams,
 ): Promise<ReturnType<typeof assembleMobileAnalytics>> {
 	if (params.to - params.from > MOBILE_MAX_RANGE_MS) {
@@ -148,8 +173,6 @@ export async function loadMobileAnalytics(
 		throw new Error("mobile_range_invalid");
 	}
 	const span = params.to - params.from;
-	const client: MobileAnalyticsExecuteClient =
-		TursoDatabaseManager.getInstance(ctx);
 
 	// Sequential fixed query set (never concurrent through one libsql client).
 	const totals = await totalsFor(client, params, params.from, params.to);

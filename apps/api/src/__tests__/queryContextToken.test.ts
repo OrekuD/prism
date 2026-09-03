@@ -199,8 +199,8 @@ describe("query context tokens", () => {
       ok: false,
       reason: "version-mismatch",
     });
-    const unversioned = { ...decodePayload(token) };
-    delete unversioned.v;
+    const { v: _removed, ...unversioned } = decodePayload(token);
+    void _removed;
     expect(
       await verifyQueryContextToken(
         await manualSign(unversioned, KEYS.k1),

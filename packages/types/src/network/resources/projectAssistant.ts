@@ -1430,6 +1430,21 @@ export type ProjectOverviewResource = z.infer<
 >;
 
 /**
+ * Canonical multi-metric read (Task 21 slice 2): bounded metric IDs over
+ * one resolved snapshot. The overview adapter (slice 3) and the agent
+ * adapter (slice 5) consume these same facts — dashboard and assistant
+ * agree byte-for-byte for the same query context.
+ */
+export const ProjectMetricsResourceSchema = z.strictObject({
+  queryContext: PublicQueryContextSchema,
+  queryContextToken: QueryContextTokenSchema,
+  facts: z.array(MetricFactSchema).max(27),
+});
+export type ProjectMetricsResource = z.infer<
+  typeof ProjectMetricsResourceSchema
+>;
+
+/**
  * One snapshot per response (R2-F3): every nested fact and artifact context
  * must equal the top-level context behind `queryContextToken`. The server
  * binds the token to that same context at issuance (HMAC + scope checks),

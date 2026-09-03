@@ -178,6 +178,11 @@ export type PaginatedProjectEventsParams = {
   q?: string;
   sourceId?: string;
   platformFamily?: "web" | "mobile" | "server";
+  /** Canonical resolved range (Task 21 slice 2): half-open on occurred_at. */
+  from?: number;
+  to?: number;
+  /** Snapshot cutoff: rows received after `asOf` are excluded. */
+  asOf?: number;
 };
 
 export async function paginatedProjectEvents(
@@ -207,6 +212,18 @@ export async function paginatedProjectEvents(
     } else if (params.platformFamily === "mobile") {
       clauses.push("platform IN ('ios','android','react-native')");
     }
+  }
+  if (params.from !== undefined) {
+    clauses.push("occurred_at >= ?");
+    args.push(params.from);
+  }
+  if (params.to !== undefined) {
+    clauses.push("occurred_at < ?");
+    args.push(params.to);
+  }
+  if (params.asOf !== undefined) {
+    clauses.push("received_at <= ?");
+    args.push(params.asOf);
   }
 
   if (params.cursor) {

@@ -22,6 +22,13 @@ export type Bindings = {
   IP_INFO_API_TOKEN: string;
   TURSO_DATABASE_URL: string;
   TURSO_AUTH_TOKEN: string;
+  /**
+   * Server-held HMAC secret for snapshot query-context tokens (Task 21).
+   * Required by GET /projects/:slug/metrics; absent = 503 with an operator
+   * action, never an unsigned token.
+   */
+  QUERY_CONTEXT_TOKEN_KEY?: string;
+  QUERY_CONTEXT_TOKEN_KID?: string;
 };
 
 export type HonoConfig = {

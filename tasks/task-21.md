@@ -1190,24 +1190,24 @@ implementation.
 
 This slice makes dashboard and assistant measurements share one authority.
 
-- [ ] Add a project-scoped metric repository/service behind an interface that
+- [x] Add a project-scoped metric repository/service behind an interface that
       accepts only validated registry queries.
-- [ ] Implement canonical range, prior-period, UTC bucket, snapshot cutoff,
+- [x] Implement canonical range, prior-period, UTC bucket, snapshot cutoff,
       source, platform, and comparison semantics.
-- [ ] Replace Project overview's paginated event length with a real aggregate.
-- [ ] Replace React-side error summation with canonical error aggregates.
-- [ ] Adapt existing Web, Mobile, People, Events, Standard Event, Errors, and
+- [x] Replace Project overview's paginated event length with a real aggregate.
+- [x] Replace React-side error summation with canonical error aggregates.
+- [x] Adapt existing Web, Mobile, People, Events, Standard Event, Errors, and
       Sources queries without copying their formulas.
-- [ ] Add per-currency Standard Event value aggregation.
-- [ ] Add exact source/capability and data-coverage resolution.
+- [x] Add per-currency Standard Event value aggregation.
+- [x] Add exact source/capability and data-coverage resolution.
 - [ ] Extend drill-down reads with the same resolved range and `asOf` cutoff.
 - [ ] Execute libSQL reads sequentially and verify request completion under the
       Workers development runtime.
-- [ ] Add immutable snapshot caching and run-level query memoization.
-- [ ] Add real-store tests for time boundaries, late arrivals, prior-zero,
+- [x] Add immutable snapshot caching and run-level query memoization.
+- [x] Add real-store tests for time boundaries, late arrivals, prior-zero,
       missing prior data, source filters, cross-source unique counts, multiple
       currencies, archived sources, and project isolation.
-- [ ] Prove the overview adapter and agent adapter return byte-equivalent facts
+- [x] Prove the overview adapter and agent adapter return byte-equivalent facts
       for the same query context.
 
 ## Slice 3: Insights and adaptive overview API
@@ -2081,4 +2081,43 @@ insight-threshold, and accuracy contracts remain unchanged.
   `isToolScopeAllowed` rejecting out-of-context tool scope.
 
 Evidence: types 85/85, api token suite 13/13, core drift 1/1, tsup+DTS
-build clean, api/web/core typechecks clean, Prettier + diff-check clean.
+build clean, api/web/core typechecks clean, Prettier + diff-check clean.\n
+
+### 2026-09-04 — Slice 2 complete: canonical metric service (+2 partials)
+
+New `apps/api/src/utils/projectMetrics.ts`: registry-validated
+`measureMetrics` (unknown metrics/filters/missing keys throw
+`MetricQueryError` before SQL), half-open occurred_at windows with
+immediately-preceding equal periods, `received_at <= asOf` snapshot
+cutoff on every event/occurrence read (projection tables join or bound
+through it; identity-link creation has no ingestion timestamp and is
+documented), per-metric capability gating to explicit null-valued
+unsupported facts, per-currency `valueMinor` rows (one fact per exact
+currency, missing-currency previous reads as prior-zero `new`), error
+state counts reusing the `issueDelta` rule in one grouped read (release
+maps to first/last release, co-occurrence only), zero-decimal currency
+handling, sequential execution with a 60s bounded snapshot cache plus
+run-level memoization. Web/Mobile facts adapt the existing loaders
+(comparisons mapped, never recomputed); project/people/standard/error
+facts use the frozen `compareValues` helper.
+
+- `GET /projects/:slug/metrics` (member auth, non-disclosing 404s,
+  registry/parameter 400s, HMAC snapshot token, 503 without a signing
+  key) with controller tests incl. token verification.
+- Overview `summary.tsx` now renders the canonical event total and error
+  health; unconfigured error collection shows a Sources setup state and
+  omits the error cells (no fabricated zeros). Web hook + 2 summary
+  tests.
+- Drill-down extension: web/mobile loaders and the events list accept
+  canonical range + `asOf`. Errors/People list endpoints keep their
+  native range models until slice 3 canonical detail routes (box left
+  open).
+- New `projectMetrics` (29) + controller (5) + summary (2) tests; full
+  api suite 242 passed, web suite green except pre-existing gallery
+  failure. Typechecks (api/web/core), tsup build, Prettier clean.
+- NOT re-verified under the Workers dev runtime beyond the sequential
+  discipline + real libSQL evidence (same standard as task-17 slice 5);
+  box left open until a wrangler smoke run.
+- Found and fixed a silent `?`-binding-order bug (placeholders bind
+  textually; projectId-first args matched zero rows) — regression test
+  included.

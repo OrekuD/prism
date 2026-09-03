@@ -49,6 +49,12 @@ export interface WebAnalyticsQueryParams {
 	host: string | null;
 	path: string | null;
 	traffic: "human" | "all";
+	/**
+	 * Snapshot cutoff (Task 21 slice 2): page views received after `asOf`
+	 * are excluded via the joined accepted event. Omitted = unbounded
+	 * (pre-snapshot behavior, unchanged).
+	 */
+	asOf?: number;
 }
 
 /* ------------------------------------------------------------------ */

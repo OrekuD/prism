@@ -37,6 +37,20 @@ import {
 	executeMobilePurge,
 	purgeMobileProjectStatements,
 } from "../utils/mobilePurge";
+import {
+	measureMetrics,
+	parseMetricRange,
+	resolveMetricWindow,
+	resolveProjectCapabilities,
+	MetricQueryError,
+	type MetricFilters,
+} from "../utils/projectMetrics";
+import { issueQueryContextToken } from "../utils/queryContextToken";
+import {
+	METRIC_REGISTRY,
+	StandardEventKeySchema,
+	type MetricFact,
+} from "@prism-analytics/types";
 
 export class ProjectsController {
   /**
@@ -339,14 +353,17 @@ export class ProjectsController {
     try {
       // Analytics reads go through the ANALYTICS store (libSQL), never the
       // product Postgres connection used for membership/sources above.
-      const resource = await loadMobileAnalytics(ctx, {
-        projectId: String(projectRow.id),
-        from,
-        to,
-        sourceIds,
-        os,
-        release,
-      });
+      const resource = await loadMobileAnalytics(
+        TursoDatabaseManager.getInstance(ctx),
+        {
+          projectId: String(projectRow.id),
+          from,
+          to,
+          sourceIds,
+          os,
+          release,
+        },
+      );
       return ctx.json(resource);
     } catch (error) {
       if (
@@ -510,8 +527,29 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
     const limitRaw = ctx.req.query("limit");
     const sourceId = ctx.req.query("sourceId") ?? ctx.req.query("source") ?? undefined;
     const sourcePlatform = ctx.req.query("sourcePlatform") ?? ctx.req.query("type") ?? undefined;
+    // Canonical drill-down range (Task 21 slice 2): optional half-open
+    // occurred_at window plus snapshot cutoff. Garbage is a 400, never a
+    // silent full scan.
+    const parseBoundedInt = (raw: string | undefined): number | undefined => {
+      if (raw === undefined) return undefined;
+      const value = Number(raw);
+      if (!Number.isInteger(value) || value < 0) return Number.NaN;
+      return value;
+    };
+    const drillFrom = parseBoundedInt(ctx.req.query("from"));
+    const drillTo = parseBoundedInt(ctx.req.query("to"));
+    const drillAsOf = parseBoundedInt(ctx.req.query("asOf"));
+    if (
+      drillFrom !== undefined && Number.isNaN(drillFrom) ||
+      drillTo !== undefined && Number.isNaN(drillTo) ||
+      drillAsOf !== undefined && Number.isNaN(drillAsOf) ||
+      drillFrom !== undefined && drillTo !== undefined && drillTo <= drillFrom
+    ) {
+      return ctx.json(new ErrorResponse("invalid_range").toJSON(), 400);
+    }
     const hasPagination =
-      q !== undefined || cursor !== undefined || limitRaw !== undefined || sourceId !== undefined || sourcePlatform !== undefined;
+      q !== undefined || cursor !== undefined || limitRaw !== undefined || sourceId !== undefined || sourcePlatform !== undefined ||
+      drillFrom !== undefined || drillTo !== undefined || drillAsOf !== undefined;
 
     if (hasPagination) {
       const limit = limitRaw ? Number(limitRaw) : undefined;
@@ -529,6 +567,9 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
           limit: Number.isFinite(limit as number) ? limit : undefined,
           sourceId: sourceId && sourceId !== "all" ? sourceId : undefined,
           platformFamily,
+          from: drillFrom,
+          to: drillTo,
+          asOf: drillAsOf,
         },
       );
 
@@ -605,6 +646,253 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
         };
       }),
     );
+  }
+
+  /**
+   * Canonical multi-metric read (Task 21 slice 2): bounded metric IDs over
+   * one resolved snapshot. Same non-disclosing project boundary as every
+   * project read; query IDs/filters validate against the frozen registry
+   * before any analytics query runs.
+   */
+  public static async getMetrics(ctx: Context<HonoConfig>) {
+    const slug = ctx.req.param("slug");
+    if (!slug) {
+      return ctx.json(new ErrorResponse("slug_not_found").toJSON(), 404);
+    }
+    const user = ctx.get("user");
+    if (!user) {
+      return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+    }
+    const db = DatabaseManager.getInstance(ctx);
+    const projects = (await db`
+      SELECT id, organization_id FROM projects WHERE slug = ${slug}`) as Array<{
+      id: string;
+      organization_id: string;
+    }>;
+    if (projects.length === 0) {
+      return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
+    }
+    const projectId = String(projects[0].id);
+    const organizationId = String(projects[0].organization_id);
+    const role = await getWorkspaceRole(ctx, user.id, organizationId);
+    if (!role) {
+      return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
+    }
+
+    const rawIds = [
+      ...(ctx.req.queries("id") ?? []),
+      ...(ctx.req.query("ids") ?? "").split(","),
+    ]
+      .map((id) => id.trim())
+      .filter((id) => id.length > 0);
+    const ids = [...new Set(rawIds)];
+    if (ids.length === 0 || ids.length > 27) {
+      return ctx.json(new ErrorResponse("invalid_metric").toJSON(), 400);
+    }
+    const range = parseMetricRange(ctx.req.query("range") ?? "7d");
+    if (!range) {
+      return ctx.json(new ErrorResponse("invalid_range").toJSON(), 400);
+    }
+
+    // Bounded shared filters; per-metric support is enforced by the
+    // service against the registry (unsupported = 400, never silent).
+    const filters: MetricFilters = {};
+    const sourceIdParams = (ctx.req.queries("sourceId") ?? []).map((v) =>
+      v.slice(0, 128),
+    );
+    const standardEventKey = ctx.req.query("standardEventKey");
+    if (standardEventKey !== undefined) {
+      if (!StandardEventKeySchema.safeParse(standardEventKey).success) {
+        return ctx.json(new ErrorResponse("invalid_filter").toJSON(), 400);
+      }
+      filters.standardEventKey = standardEventKey;
+    }
+    const traffic = ctx.req.query("traffic");
+    if (traffic !== undefined) {
+      if (traffic !== "human" && traffic !== "all") {
+        return ctx.json(new ErrorResponse("invalid_filter").toJSON(), 400);
+      }
+      filters.traffic = traffic;
+    }
+    const os = ctx.req.query("os");
+    if (os !== undefined) {
+      if (os !== "ios" && os !== "android") {
+        return ctx.json(new ErrorResponse("invalid_filter").toJSON(), 400);
+      }
+      filters.os = os;
+    }
+    const release = ctx.req.query("release");
+    if (release !== undefined) filters.release = release.slice(0, 64);
+    const host = ctx.req.query("host");
+    if (host !== undefined && host.length > 0) filters.host = host.slice(0, 253);
+    const path = ctx.req.query("path");
+    if (path !== undefined && path.length > 0) filters.path = path.slice(0, 2048);
+    const platform = ctx.req.query("platform");
+    if (platform !== undefined) {
+      if (
+        platform !== "web" &&
+        platform !== "ios" &&
+        platform !== "android" &&
+        platform !== "react-native" &&
+        platform !== "server"
+      ) {
+        return ctx.json(new ErrorResponse("invalid_filter").toJSON(), 400);
+      }
+      filters.platform = platform;
+    }
+    const environment = ctx.req.query("environment");
+    if (environment !== undefined) filters.environment = environment.slice(0, 64);
+    const currency = ctx.req.query("currency");
+    if (currency !== undefined) {
+      if (!/^[A-Z]{3}$/.test(currency)) {
+        return ctx.json(new ErrorResponse("invalid_filter").toJSON(), 400);
+      }
+      filters.currency = currency;
+    }
+
+    // Capability inputs: configured sources (+ live keys) from product
+    // Postgres; live telemetry from the analytics store. Sequential reads.
+    const sourceRows = (await db`
+      SELECT s.id AS id, s.platform AS platform,
+        COALESCE(BOOL_OR(k.status != 'revoked'), false) AS active
+      FROM project_sources s
+      LEFT JOIN project_api_keys k ON k.source_id = s.id
+      WHERE s.project_id = ${projectId}
+      GROUP BY s.id, s.platform`) as Array<{
+      id: string;
+      platform: string;
+      active: boolean;
+    }>;
+    const knownSourceIds = new Set(sourceRows.map((row) => String(row.id)));
+    // Unknown source IDs are ignored (never an existence oracle); an
+    // explicit filter to nothing applicable yields honest empty facts.
+    const sourceIds = [...new Set(sourceIdParams)].filter((id) =>
+      knownSourceIds.has(id),
+    );
+    if (sourceIdParams.length > 0) filters.sourceIds = sourceIds;
+
+    const now = Date.now();
+    const window = resolveMetricWindow(now, range);
+    const analytics = TursoDatabaseManager.getInstance(ctx);
+    const telemetry = await analytics.execute({
+      sql: `SELECT source_id AS source_id, COUNT(*) AS events,
+              MAX(received_at) AS last_received_at
+            FROM events WHERE project_id = ? AND source_id IS NOT NULL
+            GROUP BY source_id`,
+      args: [projectId],
+    });
+    const telemetryBySource = new Map(
+      telemetry.rows.map((row) => [
+        String(row.source_id),
+        {
+          events: Number(row.events ?? 0),
+          lastReceivedAt:
+            row.last_received_at === null || row.last_received_at === undefined
+              ? null
+              : Number(row.last_received_at),
+        },
+      ]),
+    );
+    const errorSettings = await analytics.execute({
+      sql: `SELECT 1 AS n FROM source_error_settings
+            WHERE mode != 'off' LIMIT 1`,
+      args: [],
+    });
+    const errorObserved = await analytics.execute({
+      sql: "SELECT 1 AS n FROM error_occurrences WHERE project_id = ? LIMIT 1",
+      args: [projectId],
+    });
+    const standardRows = await analytics.execute({
+      sql: `SELECT DISTINCT json_extract(properties, '$."$standard".key') AS k
+            FROM events
+            WHERE project_id = ? AND occurred_at >= ? AND occurred_at < ?
+              AND received_at <= ? AND name LIKE '$prism_%'`,
+      args: [projectId, window.from, window.to, window.asOf],
+    });
+    const capabilities = resolveProjectCapabilities({
+      sources: sourceRows.map((row) => ({
+        platform: String(row.platform),
+        active: row.active === true,
+        lastReceivedAt: telemetryBySource.get(String(row.id))?.lastReceivedAt ?? null,
+      })),
+      errorConfigured: errorSettings.rows.length > 0,
+      errorObserved: errorObserved.rows.length > 0,
+      standardEventsObserved: standardRows.rows.map((row) => String(row.k ?? "")),
+    });
+
+    // The human-traffic default applies per metric, only where the
+    // registry supports it — a shared default would poison non-web reads.
+    let facts: MetricFact[];
+    try {
+      facts = await measureMetrics(
+        analytics,
+        projectId,
+        window,
+        sourceIds,
+        ids.map((metricId) => {
+          const definition = METRIC_REGISTRY[metricId as keyof typeof METRIC_REGISTRY];
+          const scoped: MetricFilters = { ...filters };
+          if (
+            scoped.traffic === undefined &&
+            definition &&
+            (definition.supportedFilters as readonly string[]).includes("traffic")
+          ) {
+            scoped.traffic = "human";
+          }
+          return { metricId, filters: scoped };
+        }),
+        { capabilities, now },
+      );
+    } catch (error) {
+      if (error instanceof MetricQueryError) {
+        const code =
+          error.code === "unknown-metric"
+            ? "invalid_metric"
+            : error.code === "invalid-range"
+              ? "invalid_range"
+              : "invalid_filter";
+        return ctx.json(new ErrorResponse(code).toJSON(), 400);
+      }
+      throw error;
+    }
+
+    const signingKey = ctx.env.QUERY_CONTEXT_TOKEN_KEY;
+    const kid = ctx.env.QUERY_CONTEXT_TOKEN_KID ?? "k1";
+    if (!signingKey) {
+      // Fail closed with an operator action — never an unsigned token.
+      return ctx.json(
+        new ErrorResponse("query_context_signing_unavailable").toJSON(),
+        503,
+      );
+    }
+    const queryContextToken = await issueQueryContextToken(
+      {
+        projectId,
+        organizationId,
+        from: window.from,
+        to: window.to,
+        compareFrom: window.compareFrom,
+        compareTo: window.compareTo,
+        asOf: window.asOf,
+        sourceIds,
+      },
+      { kid, secret: signingKey },
+      window.asOf,
+    );
+    return ctx.json({
+      queryContext: {
+        from: window.from,
+        to: window.to,
+        compareFrom: window.compareFrom,
+        compareTo: window.compareTo,
+        asOf: window.asOf,
+        timezone: "UTC",
+        sourceIds,
+        definitionVersion: 1,
+      },
+      queryContextToken,
+      facts,
+    });
   }
 
   public static async getProjectBySlug(ctx: Context<HonoConfig>) {
