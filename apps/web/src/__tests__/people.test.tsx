@@ -410,24 +410,36 @@ describe("PersonDetail", () => {
 		expect(screen.getByLabelText(/type delete to confirm/i)).toBeDefined();
 	});
 
-	it("invalidates People caches after a successful deletion (R1-F6)", async () => {
-		getMock.mockImplementation(async (url: string) => ({
-			data: String(url).includes("/activity") ? [] : person,
-		}));
+	it("removes People list caches so the deleted row never renders after navigation (R2-F1)", async () => {
+		// The fresh list fetch stays pending until released: this proves the
+		// old row never flashes while the post-navigation refetch runs.
+		const gate: { resolve?: (value: { data: typeof emptyPeople }) => void } = {};
+		const pendingList = new Promise<{ data: typeof emptyPeople }>((resolve) => {
+			gate.resolve = resolve;
+		});
+		getMock.mockImplementation(async (url: string) => {
+			if (String(url).includes("/activity")) return { data: [] };
+			if (String(url).includes("u_1234567890abcdef")) return { data: person };
+			return pendingList;
+		});
 
-		// seed the caches the deletion must clear: a list page and the profile
-		queryClient.setQueryData(["people", "alpha", "30d", undefined, undefined, 10], {
-			people: [person],
-			summary: {
-				range: "30d",
-				from: 1,
-				to: 2,
-				identifiedPeople: 1,
-				activePeople: 1,
-				newPeople: 0,
-				anonymousPeople: 0,
-			},
-			nextCursor: null,
+		// seed the caches as if the user visited People, then opened the profile
+		const listKey = ["people", "alpha", "30d", undefined, undefined, 10];
+		queryClient.setQueryData(listKey, {
+			...emptyPeople,
+			people: [
+				{
+					personId: "u_1234567890abcdef",
+					primaryExternalId: "user-1",
+					firstSeenAt: 1,
+					lastSeenAt: Date.now(),
+					traits: { name: "Ama Mensah", plan: "pro" },
+					externalIdentityCount: 1,
+					anonymousIdentityCount: 0,
+					sessionCount: 2,
+					eventCount: 10,
+				},
+			],
 		});
 		queryClient.setQueryData(["person", "alpha", "u_1234567890abcdef"], person);
 		queryClient.setQueryData(
@@ -435,21 +447,48 @@ describe("PersonDetail", () => {
 			[],
 		);
 
-		renderPerson();
+		render(
+			<QueryClientProvider client={queryClient}>
+				<MemoryRouter
+					initialEntries={[
+						"/workspace/wrk_demo/projects/alpha/people/u_1234567890abcdef",
+					]}
+				>
+					<Routes>
+						<Route
+							path="/workspace/:wrkSlug/projects/:slug/people"
+							element={<ProjectPeople />}
+						/>
+						<Route
+							path="/workspace/:wrkSlug/projects/:slug/people/:personId"
+							element={<PersonDetail />}
+						/>
+					</Routes>
+				</MemoryRouter>
+			</QueryClientProvider>,
+		);
+
 		const confirm = await screen.findByLabelText(/type delete to confirm/i);
 		fireEvent.change(confirm, { target: { value: "delete" } });
 		fireEvent.click(screen.getByRole("button", { name: /delete person/i }));
 
 		await waitFor(() => expect(deleteMock).toHaveBeenCalled());
-		await waitFor(() => {
-			const states = queryClient
-				.getQueryCache()
-				.findAll({ queryKey: ["people", "alpha"] });
-			expect(states.length).toBeGreaterThan(0);
-			for (const state of states) {
-				expect(state.state.isInvalidated).toBe(true);
-			}
-		});
+
+		// navigation mounted the People route, which must fetch fresh: while
+		// that request is pending the loading state shows, never the old row
+		await waitFor(() =>
+			expect(
+				document.querySelector('[aria-label="Loading people"]'),
+			).not.toBeNull(),
+		);
+		expect(screen.queryByText("Ama Mensah")).toBeNull();
+		// the seeded list page is REMOVED from the cache, not merely stale
+		expect(queryClient.getQueryData(listKey)).toBeUndefined();
+
+		// after the fresh (now empty) list resolves, still no deleted row
+		gate.resolve?.({ data: emptyPeople });
+		await screen.findByText("No people yet");
+		expect(screen.queryByText("Ama Mensah")).toBeNull();
 		// the profile and activity caches are REMOVED, not just stale
 		expect(
 			queryClient.getQueryData(["person", "alpha", "u_1234567890abcdef"]),

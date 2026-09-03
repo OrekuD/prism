@@ -220,14 +220,18 @@ export function PersonDetail() {
 			await axiosInstance.delete(
 				`/projects/${slug}/people/${encodeURIComponent(personId)}?confirm=true`,
 			);
-			// R1-F6: a successful deletion must never leave the deleted person
-			// in a cached list page (30s staleTime would otherwise render the
-			// stale row) and the profile/activity caches are dead.
+			// R2-F1: a successful deletion must never leave the deleted person
+			// in a cached list page. The People route is unmounted at this
+			// moment, so its queries are inactive — invalidation would only
+			// mark the cached page stale and it would still render the
+			// deleted row synchronously on navigation while the refetch
+			// runs. Removal forces a fresh fetch (loading state, then
+			// current data). The profile/activity caches are dead too.
 			queryClient.removeQueries({ queryKey: ["person", slug, personId] });
 			queryClient.removeQueries({
 				queryKey: ["person-activity", slug, personId],
 			});
-			await queryClient.invalidateQueries({ queryKey: ["people", slug] });
+			queryClient.removeQueries({ queryKey: ["people", slug] });
 			navigate(`${basePath}/people`);
 		} catch {
 			setDeleteError("Deletion failed. Try again.");

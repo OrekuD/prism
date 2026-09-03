@@ -319,89 +319,49 @@ describe("privacy export + deletion (§6)", () => {
 // ---------------------------------------------------------------------------
 
 describe("review round 1 — summary, ordering, cursors", () => {
-  it("newPeople counts only FIRST external links inside the range (R1-F3)", async () => {
+  it("newPeople counts only FIRST external links inside the range (R1-F3, R2-F2)", async () => {
+    // Isolated project: the expected summary count is exact and cannot be
+    // affected by the suite's shared mutable fixtures. Every assertion reads
+    // ONLY through peopleList().summary — no hand-written SQL duplicates the
+    // implementation.
+    const isolated = "itest-r2-newpeople";
     const now = Date.now();
     const day = 86_400_000;
     const from = now - 30 * day;
     const to = now;
 
-    // Person "alias": first link LONG before the range, second link inside
-    // it — the second alias must NOT make them newly identified.
-    const aliasPerson = personIdForUser(PROJECT, "user-alias-r1f3");
-    await client.execute({
-      sql: "INSERT INTO people (person_id, project_id, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING",
-      args: [aliasPerson, PROJECT, from - day, now],
-    });
-    await client.execute({
-      sql: "INSERT INTO external_identities (project_id, user_id, person_id, linked_at) VALUES (?, ?, ?, ?)",
-      args: [PROJECT, "user-alias-old", aliasPerson, from - day],
-    });
-    await client.execute({
-      sql: "INSERT INTO external_identities (project_id, user_id, person_id, linked_at) VALUES (?, ?, ?, ?)",
-      args: [PROJECT, "user-alias-new", aliasPerson, now],
-    });
-
-    // Inclusive boundaries: first links EXACTLY at from and at to count.
-    const atFrom = personIdForUser(PROJECT, "user-first-at-from");
-    const atTo = personIdForUser(PROJECT, "user-first-at-to");
-    await client.execute({
-      sql: "INSERT INTO people (person_id, project_id, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING",
-      args: [atFrom, PROJECT, from, to],
-    });
-    await client.execute({
-      sql: "INSERT INTO external_identities (project_id, user_id, person_id, linked_at) VALUES (?, ?, ?, ?)",
-      args: [PROJECT, "user-first-at-from", atFrom, from],
-    });
-    await client.execute({
-      sql: "INSERT INTO people (person_id, project_id, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING",
-      args: [atTo, PROJECT, to, to],
-    });
-    await client.execute({
-      sql: "INSERT INTO external_identities (project_id, user_id, person_id, linked_at) VALUES (?, ?, ?, ?)",
-      args: [PROJECT, "user-first-at-to", atTo, to],
-    });
-
-    const summary = await peopleList(client, PROJECT, { from, to, range: "30d" });
-    const people = summary.people.filter((p) =>
-      [aliasPerson, atFrom, atTo].includes(p.personId),
-    );
-    void people;
-
-    // Direct summary check through a dedicated range list call: use exact
-    // identity lookups to isolate the counts from the shared fixture.
-    const expectedKnown = new Set([aliasPerson, atFrom, atTo]);
-    // the alias person must not be counted as new; the boundary people must be
-    const newIds = new Set<string>();
-    for (const personId of expectedKnown) {
-      const detail = await personDetail(client, PROJECT, personId);
-      const links = await client.execute({
-        sql: "SELECT MIN(linked_at) AS first_link FROM external_identities WHERE project_id = ? AND person_id = ?",
-        args: [PROJECT, personId],
+    const insertPerson = async (userId: string) => {
+      const personId = personIdForUser(isolated, userId);
+      await client.execute({
+        sql: "INSERT INTO people (person_id, project_id, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING",
+        args: [personId, isolated, from, now],
       });
-      const firstLink = Number(
-        (links.rows[0] as unknown as { first_link: number }).first_link,
-      );
-      if (firstLink >= from && firstLink <= to) newIds.add(personId);
-      void detail;
-    }
-    expect(newIds.has(aliasPerson)).toBe(false);
-    expect(newIds.has(atFrom)).toBe(true);
-    expect(newIds.has(atTo)).toBe(true);
+      return personId;
+    };
+    const link = async (userId: string, personId: string, linkedAt: number) => {
+      await client.execute({
+        sql: "INSERT INTO external_identities (project_id, user_id, person_id, linked_at) VALUES (?, ?, ?, ?)",
+        args: [isolated, userId, personId, linkedAt],
+      });
+    };
+    const newPeople = async () =>
+      (await peopleList(client, isolated, { from, to, range: "30d" })).summary
+        .newPeople;
 
-    // The summary itself: count of people whose MIN(linked_at) is in range.
-    // Query the same fixture directly so the assertion is on the STORE query.
-    const { rows } = await client.execute({
-      sql: `SELECT COUNT(*) FROM (
-              SELECT x.person_id FROM external_identities x
-                WHERE x.project_id = ?
-                GROUP BY x.person_id
-                HAVING MIN(x.linked_at) >= ? AND MIN(x.linked_at) <= ?
-            ) AS first_links`,
-      args: [PROJECT, from, to],
-    });
-    // at least the two boundary people + user-1/user-2 from the shared
-    // fixture (linked at `now`); the alias person is excluded by MIN
-    expect(Number((rows[0] as unknown as { c: number }).c ?? (rows[0] as unknown as Record<string, unknown>)["COUNT(*)"])).toBeGreaterThanOrEqual(2);
+    // boundary first links (exactly at from / to) count; an old first link
+    // with NO in-range alias yet does not
+    const atFrom = await insertPerson("r2-first-at-from");
+    await link("r2-first-at-from", atFrom, from);
+    const atTo = await insertPerson("r2-first-at-to");
+    await link("r2-first-at-to", atTo, to);
+    const alias = await insertPerson("r2-alias-old");
+    await link("r2-alias-old", alias, from - day);
+    expect(await newPeople()).toBe(2);
+
+    // the SAME old person receiving a second alias link inside the range
+    // must NOT change the count — they were identified before the window
+    await link("r2-alias-new", alias, now);
+    expect(await newPeople()).toBe(2);
   });
 
   it("orders list traits deterministically regardless of insert order (R1-F4)", async () => {

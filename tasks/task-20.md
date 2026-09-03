@@ -719,7 +719,7 @@ of receiving a controlled client error.
 ### R1-F6 - Successful deletion can leave a deleted row in the cached list
 
 **Severity:** Medium  
-**Status:** Resolved (2026-09-03)
+**Status:** Re-opened by review round 2 (see R2-F1)
 
 After deletion, `person.tsx` navigates directly to People without invalidating
 or updating any React Query data. People list queries have a 30-second
@@ -730,11 +730,10 @@ opens a profile that correctly returns 404.
 **How to address:**
 
 1. [x] Use `useQueryClient()` in the delete success path.
-2. [x] Remove the deleted person's detail/activity queries and invalidate the
-   `['people', slug]` list queries before navigation.
-3. [x] Add a web regression that seeds a People cache, completes deletion, and
-   proves the list queries are invalidated while the profile/activity caches
-   are removed.
+2. [ ] Remove or update the deleted row in `['people', slug]` list caches before
+   navigation; invalidation alone still exposes cached data during refetch.
+3. [ ] Add a web regression that actually navigates back to People and proves
+   the deleted row is never rendered from the previously fresh cache.
 
 ### R1-F7 - Several recorded regression claims are not proved by the tests
 
@@ -762,6 +761,76 @@ green.
    list audit.
 4. [x] Update the progress log only after these focused proofs pass; the hosted
    proof and design-width QA remain explicitly outstanding.
+
+## Review feedback - round 2 (2026-09-03)
+
+Review scope: focused static re-review of `ebf710a` against R1-F1 through
+R1-F7. The production fixes, changed focused tests, task evidence, and
+certification consumer were inspected. No test, lint, typecheck, build, or
+hosted command was repeated.
+
+### R2-F1 - Invalidating an inactive People query does not prevent the stale row from rendering
+
+**Severity:** Medium
+**Status:** Resolved (2026-09-03)
+
+R1-F6 is not fully closed. After deletion, `person.tsx` removes the detail and
+activity queries but only calls `invalidateQueries({ queryKey: ["people",
+slug] })` for list queries. At that moment the People route is unmounted, so
+those queries are inactive. React Query marks their cached data stale but does
+not remove it. When navigation mounts People again, the stale cached page is
+available synchronously and can render the deleted row while its background
+refetch runs.
+
+The added test confirms only `state.isInvalidated === true`; it never mounts
+the People route after deletion and therefore does not prove the user-visible
+requirement from R1-F6.
+
+**How to address:**
+
+1. [x] For this rare destructive action, remove every matching People list cache
+   with `removeQueries({ queryKey: ["people", slug] })` before navigation. An
+   alternative is to update every cached page immutably to remove the person
+   and reconcile its summary, but that is more error-prone.
+2. [x] Keep removing the person detail and activity caches.
+3. [x] Replace/extend the regression with a router containing both profile and
+   People routes. Seed a fresh list cache containing the person, complete the
+   deletion, allow navigation to occur, and assert the old row never appears
+   while the new list request is pending or after it resolves.
+   Verified failing-first: the router test fails against the invalidateQueries
+   implementation and passes with removeQueries.
+
+### R2-F2 - The `newPeople` regression does not exercise the returned summary
+
+**Severity:** Medium
+**Status:** Resolved (2026-09-03)
+
+The R1-F3 production query now uses the correct `MIN(linked_at)` semantics, but
+its new test does not assert `peopleList(...).summary.newPeople`. It computes
+the expected identities with separate queries, then runs another hand-written
+SQL statement that duplicates the implementation and asserts only that its
+count is at least two. The `summary` returned by `peopleList()` is assigned but
+never checked. Reverting or breaking the production summary query can therefore
+leave this regression green.
+
+There is a related evidence mismatch in the range controller test: it asserts
+both bounds for the summary query, but the list query assertion checks only
+`from`, despite the task claiming exact `from` and `to` coverage for both.
+
+**How to address:**
+
+1. [x] Use an isolated project fixture so the expected count is exact and is not
+   affected by the suite's shared mutable project.
+2. [x] Read the result only through `peopleList()` and assert that an old person
+   receiving a new alias does not change `result.summary.newPeople`, while
+   first links exactly at `from` and `to` increase it by exactly two.
+3. [x] Remove the duplicated summary SQL from the test; otherwise the test can
+   reproduce the implementation's mistake instead of detecting it.
+4. [x] Assert both `from` and `to` in the list query arguments in the controller
+   range test, in addition to the existing summary assertions.
+   Verified failing-first: the isolated test fails (newPeople 3 instead of 2)
+   against the old COUNT(DISTINCT) query and passes with the MIN(linked_at)
+   grouped subquery.
 
 ## Definition of done
 
@@ -905,3 +974,45 @@ Commands and actual results:
   full web suite → only the pre-existing `gallery.test.tsx` calendar failure
 - `node --check scripts/certify-v2-ingest.mjs` → OK (the hosted
   certification run remains part of the outstanding Slice 6 proof)
+
+### 2026-09-03 - review round 2 (R2-F1, R2-F2) resolved
+
+Both re-review findings closed with code changes and failing-first proofs:
+
+- **R2-F1** The delete success path now calls `removeQueries({ queryKey:
+  ["people", slug] })` instead of invalidating the (inactive) list queries,
+  so navigation mounts People with no stale page to flash — a fresh fetch
+  with a loading state. The old R1-F6 invalidation assertion is replaced by
+  a router test containing BOTH the profile and People routes: it seeds a
+  list cache holding the person, completes the deletion, holds the fresh
+  list fetch pending to prove the loading state renders with the old row
+  absent, then resolves it empty and proves the row never appears and all
+  three caches (list, detail, activity) are removed.
+- **R2-F2** The `newPeople` test now uses an isolated project fixture and
+  asserts ONLY through `peopleList().summary.newPeople` (exact `2`: first
+  links at `from` and `to`; adding an in-range second alias to the old
+  person leaves it at `2`). The duplicated hand-written summary SQL and the
+  side-query identity computation are gone. The controller range test now
+  asserts BOTH `from` and `to` in the list query args (plus both
+  `last_seen_at` bound clauses in its SQL), matching the existing summary
+  assertions.
+
+Commands and actual results:
+
+- `yarn workspace prism-web run test -- src/__tests__/people.test.tsx` →
+  13/13 (failing-first: the new R2-F1 router test fails against the
+  invalidateQueries implementation)
+- `yarn workspace prism-api run test src/__tests__/peopleStore.test.ts` →
+  21/21 (failing-first: the isolated newPeople test fails against the old
+  COUNT(DISTINCT) summary query)
+- `yarn workspace prism-api run test src/__tests__/people.test.ts` → 12/12
+- `yarn workspace prism-api run test` (full) → 17 files | 2 skipped, 195
+  passed | 19 skipped; typecheck → clean; `run lint` (biome) → 95 files, clean
+- `yarn workspace prism-web run typecheck` → clean; `build` → success;
+  full web suite → only the pre-existing `gallery.test.tsx` calendar
+  failure; web lint errors remain the pre-existing ones in
+  tooltip/events/people/errors (untouched by this change)
+
+Outstanding (Slice 6 closure): design-system QA captures at the required
+widths in both themes, and the hosted-traffic proof (anonymous activity →
+identify → traits → logout/reset → second user → export → deletion).

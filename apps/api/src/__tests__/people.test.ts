@@ -358,7 +358,8 @@ describe("PeopleController range handling (task-20)", () => {
     expect(numbers).toContain(from);
     expect(numbers).toContain(to);
 
-    // the list query receives the same range for its last_seen_at clause
+    // the list query receives the same [from, to] range for its
+    // last_seen_at clause (R2-F2: both bounds, not just the lower one)
     const listCall = execute.mock.calls.find(
       ([opts]) =>
         String((opts as { sql: string }).sql).includes("FROM people p") &&
@@ -367,8 +368,10 @@ describe("PeopleController range handling (task-20)", () => {
     expect(listCall).toBeDefined();
     const listSql = String((listCall?.[0] as { sql: string }).sql);
     expect(listSql).toContain("p.last_seen_at >= ?");
+    expect(listSql).toContain("p.last_seen_at <= ?");
     const listArgs = (listCall?.[0] as { args?: unknown[] }).args ?? [];
     expect(listArgs).toContain(from);
+    expect(listArgs).toContain(to);
     vi.restoreAllMocks();
   });
 
