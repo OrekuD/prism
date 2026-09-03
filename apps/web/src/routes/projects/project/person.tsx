@@ -13,12 +13,8 @@ import { MetricCard } from "@/components/public/metric-card";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
-import {
-	Sheet,
-	SheetContent,
-	SheetHeader,
-	SheetTitle,
-} from "@/components/ui/sheet";
+import { PresentationStack } from "@/components/ui/presentation-stack";
+import { SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { axiosInstance } from "@/utils/axiosInstance";
 import { platformDotClass, platformLabel } from "@/lib/events";
@@ -178,29 +174,32 @@ function ActivityRow({ event, basePath }: { event: EventResource; basePath: stri
 }
 
 /**
- * Route-backed Sheet frame (events pattern): the People list stays mounted
- * behind via <Outlet />; Escape/backdrop/close navigates deterministically
- * to the list base — never history -1.
+ * The person profile rides the nested presentation stack as a single layer:
+ * the People list stays mounted behind via <Outlet />, Escape/backdrop
+ * dismiss navigates deterministically to the list base (never history -1),
+ * and future links from this sheet (event detail and friends) stack on top
+ * through the same component.
  */
 function PersonSheet({
 	listBase,
+	personId,
 	children,
 }: {
 	listBase: string;
+	personId: string;
 	children: React.ReactNode;
 }) {
 	const navigate = useNavigate();
+	const items = React.useMemo(
+		() => [{ key: personId, parentPath: listBase }],
+		[personId, listBase],
+	);
 	return (
-		<Sheet
-			open
-			onOpenChange={(next) => {
-				if (!next) navigate(listBase);
-			}}
-		>
-			<SheetContent className="w-full gap-0 p-0 sm:max-w-[684px]">
-				{children}
-			</SheetContent>
-		</Sheet>
+		<PresentationStack
+			items={items}
+			onDismiss={() => navigate(listBase)}
+			renderItem={() => children}
+		/>
 	);
 }
 
@@ -302,7 +301,7 @@ export function PersonDetail() {
 
 	if (isLoading) {
 		return (
-			<PersonSheet listBase={listBase}>
+			<PersonSheet listBase={listBase} personId={personId ?? ""}>
 				<div className="grid gap-4 p-6" aria-busy="true" aria-label="Loading person">
 					<Skeleton className="h-24 w-full" />
 					<Skeleton className="h-40 w-full" />
@@ -312,7 +311,7 @@ export function PersonDetail() {
 	}
 	if (isError || !data) {
 		return (
-			<PersonSheet listBase={listBase}>
+			<PersonSheet listBase={listBase} personId={personId ?? ""}>
 				<div className="p-6">
 					<ErrorState
 						title="Could not load person"
@@ -336,7 +335,7 @@ export function PersonDetail() {
 	const linkedIdsCount = data.externalIds.length + data.anonymousIds.length;
 
 	return (
-		<PersonSheet listBase={listBase}>
+		<PersonSheet listBase={listBase} personId={personId ?? ""}>
 			<SheetHeader className="gap-3 border-b border-border px-6 pb-4 pt-6">
 				<SheetTitle className="break-words pr-2 text-left font-sans text-[17px] font-semibold leading-[1.25] tracking-[-0.02em] text-text">
 					{displayName}
