@@ -1,6 +1,7 @@
 import React from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { EmailVerificationAlert } from "@/components/auth/email-verification-alert";
 import { Sidebar } from "./sidebar";
 import { Toolbar } from "./toolbar";
 
@@ -45,6 +46,7 @@ export function DashboardLayout() {
           )}
         >
           <main className="flex min-h-0 flex-1 flex-col animate-in fade-in duration-150">
+            <EmailVerificationAlert />
             <Outlet />
           </main>
         </div>

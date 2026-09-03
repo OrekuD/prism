@@ -5,6 +5,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 
 vi.mock("@/lib/authClient", () => ({
+	resendVerificationEmail: vi.fn(),
 	authClient: {
 		useSession: () => ({
 			data: {
@@ -124,6 +125,7 @@ describe("v2 dashboard shell", () => {
 			document.querySelector("button[aria-label='Open navigation']"),
 		).not.toBeNull();
 		expect(document.querySelector("main")).not.toBeNull();
+		expect(screen.getByText("Verify your email to create workspaces and projects.")).toBeDefined();
 		expect(
 			document.querySelector("button[aria-label='Close navigation']"),
 		).not.toBeNull();
