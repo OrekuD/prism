@@ -425,3 +425,5 @@ export type ErrorIssueDetailResource = {
 
 export * from "./webAnalytics";
 export * from "./mobileAnalytics";
+export * from "./projectAssistant";
+export * from "./projectAssistantFixtures";
