@@ -719,7 +719,7 @@ of receiving a controlled client error.
 ### R1-F6 - Successful deletion can leave a deleted row in the cached list
 
 **Severity:** Medium  
-**Status:** Re-opened by review round 2 (see R2-F1)
+**Status:** Resolved (2026-09-03 via R2-F1)
 
 After deletion, `person.tsx` navigates directly to People without invalidating
 or updating any React Query data. People list queries have a 30-second
@@ -730,9 +730,9 @@ opens a profile that correctly returns 404.
 **How to address:**
 
 1. [x] Use `useQueryClient()` in the delete success path.
-2. [ ] Remove or update the deleted row in `['people', slug]` list caches before
+2. [x] Remove or update the deleted row in `['people', slug]` list caches before
    navigation; invalidation alone still exposes cached data during refetch.
-3. [ ] Add a web regression that actually navigates back to People and proves
+3. [x] Add a web regression that actually navigates back to People and proves
    the deleted row is never rendered from the previously fresh cache.
 
 ### R1-F7 - Several recorded regression claims are not proved by the tests
@@ -799,6 +799,20 @@ requirement from R1-F6.
    while the new list request is pending or after it resolves.
    Verified failing-first: the router test fails against the invalidateQueries
    implementation and passes with removeQueries.
+   Sheet follow-up: `people/:personId` is now a nested route-backed Sheet
+   (events pattern — `Outlet` in `ProjectPeople`, `PersonSheet` frame in
+   `person.tsx`, close navigates to the list base). The list therefore stays
+   mounted, which exposed a second flash path: `usePeopleQuery` reuses the
+   previous page as `placeholderData` during a refetch (observer status is
+   forced to `success`), so `removeQueries` alone lets the deleted row
+   render again while the fresh fetch runs — proven by a failing test
+   (`Found multiple elements with the text: Ama Mensah`). The delete path
+   now first removes the row from every cached `['people', slug]` page via
+   `setQueriesData` (`identifiedPeople - 1`; range-bound counts refresh on
+   the refetch), then removes the queries. No loading skeleton is asserted:
+   with placeholder data present there is intentionally none — the
+   regression asserts the row is absent while pending and after resolve,
+   plus a fresh list fetch and emptied caches.
 
 ### R2-F2 - The `newPeople` regression does not exercise the returned summary
 
@@ -831,6 +845,23 @@ both bounds for the summary query, but the list query assertion checks only
    Verified failing-first: the isolated test fails (newPeople 3 instead of 2)
    against the old COUNT(DISTINCT) query and passes with the MIN(linked_at)
    grouped subquery.
+
+## Focused re-review result - round 3 (2026-09-03)
+
+Commit `edfc571` was inspected specifically against R2-F1 and R2-F2. Both
+findings are closed:
+
+- The deletion path removes all project People list caches before navigation,
+  and the router regression proves the previously cached person is absent while
+  the replacement request is pending and after it resolves.
+- The isolated store regression now asserts the exact `newPeople` value only
+  through `peopleList().summary`, including both inclusive boundaries and the
+  later-alias exclusion. The controller test also checks both list bounds.
+
+No new code finding met the review confidence threshold. No test, lint,
+typecheck, build, certification, hosted, or visual-QA command was repeated in
+this static re-review. The hosted proof and design-width captures remain the
+only outstanding Task 20 work.
 
 ## Definition of done
 
