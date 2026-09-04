@@ -7,6 +7,7 @@ import {
 import {
   containsCausalClaim,
   isSnapshotReplayable,
+  overviewIdentityProblems,
   ProjectOverviewResourceSchema,
   type ComparisonBasis,
   type MetricFact,
@@ -530,10 +531,11 @@ describe("structured-basis insights (R8-F1, R8-F3)", () => {
     expect(insights.filter((insight) => insight.kind === "change")).toHaveLength(0);
   });
 
-  it("gates visitor/installation headlines behind Task 18 R4-F3 (R9-F4)", () => {
+  it("gates visitor/installation headlines behind Task 18 R4-F3 (R9-F4, R10-F1)", () => {
     const queryContext = contextFor();
-    // Eligible numbers, but the series are under Task-18 review: facts
-    // keep serving dashboards while headlines stay silent.
+    // Defense-in-depth: the canonical boundary already returns these as
+    // unavailable (null value), but the selector also excludes synthetic or
+    // legacy available inputs that bypass the boundary.
     const gated = [
       countFact("mobile.visitors", 100, 10, "g-visitors"),
       countFact("mobile.observed_installations", 50, 5, "g-installs"),
@@ -1231,5 +1233,78 @@ describe("overview helpers", () => {
     expect(first).not.toBe(second);
     expect(first).toMatch(/^release-[0-9a-f]{32}$/);
     expect(releaseIdentityId("2.4.1")).toBe(releaseIdentityId("2.4.1"));
+  });
+
+  it("enforces one shared identity helper for schema and pre-storage builder (R10-F3)", () => {
+    // The builder imports the same helper the schema refinement enforces,
+    // so their behavior cannot drift: build the minimal resource shape once
+    // and assert the helper rejects the ambiguous cases directly.
+    const queryContext = contextFor();
+    const returned = countFact("project.accepted_events", 30, 10, "shared-a");
+    const activity = {
+      id: "activity-shared",
+      title: "Activity",
+      summary: "Activity.",
+      factIds: ["shared-a"],
+      queryContext,
+      drilldown: { destination: "events" as const, label: "Open Events" },
+      kind: "timeseries" as const,
+      bucket: "daily" as const,
+      series: [{ name: "Events", points: [{ t: 1, value: 30 }] }],
+    };
+    const secondary = {
+      id: "secondary-shared",
+      title: "Top events",
+      summary: "No events.",
+      factIds: [] as string[],
+      queryContext,
+      drilldown: { destination: "events" as const, label: "Open Events" },
+      kind: "ranked-list" as const,
+      entity: "event" as const,
+      rows: [],
+    };
+    const valid = overviewIdentityProblems({
+      pulse: [returned, countFact("project.sessions", 5, 2, "shared-b"), countFact("project.active_people", 3, 1, "shared-c")],
+      supportingFacts: [],
+      insights: [],
+      activity,
+      secondary,
+    });
+    expect(valid).toEqual([]);
+    const ghostFact = {
+      ...countFact("project.accepted_events", 50, 10, "ghost"),
+      id: "ghost",
+    };
+    const ghostArtifact = {
+      id: "art-ghost",
+      title: "Ghost",
+      summary: "Ghost.",
+      factIds: ["ghost"],
+      queryContext,
+      drilldown: { destination: "events" as const, label: "Open Events" },
+      kind: "metric" as const,
+      fact: ghostFact,
+    };
+    const missing = overviewIdentityProblems({
+      pulse: [returned, countFact("project.sessions", 5, 2, "shared-b"), countFact("project.active_people", 3, 1, "shared-c")],
+      supportingFacts: [],
+      insights: [
+        {
+          id: "i-ghost",
+          kind: "change",
+          severity: "info",
+          title: "t",
+          summary: "s",
+          factIds: ["ghost"],
+          artifact: ghostArtifact,
+          drilldown: { destination: "events" as const, label: "Open Events" },
+          askPrompt: "Tell me more.",
+          observedAt: NOW,
+        },
+      ],
+      activity,
+      secondary,
+    });
+    expect(missing.some((problem) => problem.includes("ghost"))).toBe(true);
   });
 });

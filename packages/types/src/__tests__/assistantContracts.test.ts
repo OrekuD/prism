@@ -610,6 +610,68 @@ describe("artifact union (R1-F2, R1-F3)", () => {
     expect(parsed.success).toBe(true);
   });
 
+  it("requires denominator evidence on rate facts and none on counts (R10-F4)", () => {
+    const rateBase = {
+      metricId: "web.bounce_rate" as const,
+      value: 40,
+      comparison: { kind: "percent" as const, direction: "up" as const, percent: 100 },
+    };
+    // Rate with both denominators missing: reject (widget would render
+    // while deterministic analysis skips for lack of evidence).
+    expect(
+      MetricFactSchema.safeParse(
+        fact({
+          ...rateBase,
+          comparisonBasis: {
+            previousValue: 20,
+            denominatorCurrent: null,
+            denominatorPrevious: null,
+          },
+        }),
+      ).success,
+    ).toBe(false);
+    // Rate with valid paired denominators: accept.
+    expect(
+      MetricFactSchema.safeParse(
+        fact({
+          ...rateBase,
+          comparisonBasis: {
+            previousValue: 20,
+            denominatorCurrent: 40,
+            denominatorPrevious: 30,
+          },
+        }),
+      ).success,
+    ).toBe(true);
+    // Rate with non-finite / non-integer / negative denominators: reject.
+    for (const denominators of [
+      { previousValue: 20, denominatorCurrent: Number.NaN, denominatorPrevious: 30 },
+      { previousValue: 20, denominatorCurrent: 40.5, denominatorPrevious: 30 },
+      { previousValue: 20, denominatorCurrent: 40, denominatorPrevious: -1 },
+      { previousValue: 20, denominatorCurrent: Number.POSITIVE_INFINITY, denominatorPrevious: 30 },
+    ]) {
+      expect(
+        MetricFactSchema.safeParse(
+          fact({ ...rateBase, comparisonBasis: denominators }),
+        ).success,
+      ).toBe(false);
+    }
+    // Count with fabricated denominators: reject (only rate declares them).
+    expect(
+      MetricFactSchema.safeParse(
+        fact({
+          comparisonBasis: {
+            previousValue: 106,
+            denominatorCurrent: 10,
+            denominatorPrevious: 10,
+          },
+        }),
+      ).success,
+    ).toBe(false);
+    // Count with null denominators: accept (existing fixture).
+    expect(MetricFactSchema.safeParse(fact()).success).toBe(true);
+  });
+
   it("rejects comparisons disagreeing with value and basis either way (R9-F1)", () => {
     // Display claims flat while the basis moved: reject.
     expect(
@@ -1841,6 +1903,35 @@ describe("overview snapshot consistency (R2-F3)", () => {
     ).toBe(true);
   });
 
+  it("rejects facts from another snapshot in a metrics response (R10-F2)", () => {
+    const context = publicContext();
+    const base = {
+      queryContext: context,
+      queryContextToken: "opaque-server-issued-token",
+      facts: [fact({ id: "a" }), fact({ id: "b" })],
+    };
+    expect(ProjectMetricsResourceSchema.safeParse(base).success).toBe(true);
+    const variants: Array<[string, Record<string, unknown>]> = [
+      ["from", { from: context.from + 1 }],
+      ["to", { to: context.to + 1 }],
+      ["compareFrom", { compareFrom: context.compareFrom + 1 }],
+      ["compareTo", { compareTo: context.compareTo + 1 }],
+      ["asOf", { asOf: context.asOf - 1 }],
+      ["definitionVersion", { definitionVersion: 2 }],
+      ["sourceIds", { sourceScope: "selected" as const, sourceIds: ["src_9"] }],
+      // `all` ([]) versus `selected` ([]) never alias: same empty list,
+      // different signed scope.
+      ["selected-empty", { sourceScope: "selected" as const, sourceIds: [] as string[] }],
+    ];
+    for (const [name, override] of variants) {
+      const mixed = {
+        ...base,
+        facts: [fact({ id: "a" }), fact({ id: "b", queryContext: { ...context, ...override } })],
+      };
+      expect(ProjectMetricsResourceSchema.safeParse(mixed).success, name).toBe(false);
+    }
+  });
+
   it("rejects every duplicate identity class in an overview (R9-F3)", () => {
     const base = overviewResource();
     // Duplicate pulse IDs.
@@ -1888,6 +1979,72 @@ describe("overview snapshot consistency (R2-F3)", () => {
         secondary: { ...base.secondary, id: base.activity.id },
       }).success,
     ).toBe(false);
+  });
+
+  it("rejects embedded facts missing from returned facts and duplicate embedded IDs (R10-F3)", () => {
+    const base = overviewResource();
+    const metricInsight = (
+      id: string,
+      embedded: ReturnType<typeof fact>,
+      artifactId: string,
+    ) => ({
+      id,
+      kind: "change" as const,
+      severity: "info" as const,
+      title: "t",
+      summary: "s",
+      factIds: [embedded.id],
+      artifact: {
+        ...artifactBase,
+        id: artifactId,
+        title: "t",
+        summary: "s",
+        factIds: [embedded.id],
+        queryContext: publicContext(),
+        drilldown: drilldown(),
+        kind: "metric" as const,
+        fact: embedded,
+      },
+      drilldown: drilldown(),
+      askPrompt: "Tell me more.",
+      observedAt: 1,
+    });
+    // Embedded fact missing from pulse/supporting: reject (never self-validates).
+    const ghost = fact({ id: "ghost", value: 50, comparison: { kind: "new" as const }, comparisonBasis: { previousValue: 0, denominatorCurrent: null, denominatorPrevious: null } });
+    expect(
+      ProjectOverviewResourceSchema.safeParse({
+        ...base,
+        insights: [metricInsight("i-ghost", ghost, "art-ghost")],
+      }).success,
+    ).toBe(false);
+    // Two artifacts carrying the same embedded ID with different values:
+    // the copy disagreeing with the returned fact rejects.
+    const returned = fact({ id: "a" });
+    const equalCopy = fact({ id: "a" });
+    const drifted = fact({
+      id: "a",
+      value: 999,
+      comparison: { kind: "percent", direction: "up", percent: 842.5 },
+      comparisonBasis: { previousValue: 106, denominatorCurrent: null, denominatorPrevious: null },
+    });
+    expect(
+      ProjectOverviewResourceSchema.safeParse({
+        ...base,
+        pulse: [returned, fact({ id: "b" }), fact({ id: "c" })],
+        insights: [
+          metricInsight("i-one", equalCopy, "art-one"),
+          metricInsight("i-two", drifted, "art-two"),
+        ],
+      }).success,
+    ).toBe(false);
+    // Equal embedded copies resolve cleanly.
+    expect(
+      ProjectOverviewResourceSchema.safeParse({
+        ...base,
+        pulse: [returned, fact({ id: "b" }), fact({ id: "c" })],
+        insights: [metricInsight("i-one", equalCopy, "art-one")],
+      }).success,
+    ).toBe(true);
   });
 
   it("requires the exact comparison basis on every fact (R8-F3)", () => {

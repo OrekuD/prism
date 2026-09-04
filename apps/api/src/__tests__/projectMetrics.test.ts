@@ -892,11 +892,27 @@ describe("canonical mobile facts reuse task-18 definitions", () => {
       direction: "up",
       percent: 100,
     });
-    expect(factById(facts, "mobile.visitors").value).toBe(2); // d1, d2
+    // R10-F1 (Task 18 R4-F3): visitor folding and installation dimensions
+    // are known-inaccurate, so the canonical boundary returns explicit
+    // unavailable facts — never numbers with filtered metadata — anywhere
+    // they could reach pulse, evidence, widgets, or assistant tools.
+    for (const metricId of [
+      "mobile.visitors",
+      "mobile.observed_installations",
+    ] as const) {
+      const gated = factById(facts, metricId);
+      expect(gated.value).toBeNull();
+      expect(gated.comparison).toBeNull();
+      expect(gated.comparisonBasis).toEqual({
+        previousValue: null,
+        denominatorCurrent: null,
+        denominatorPrevious: null,
+      });
+      expect(gated.coverageNote).toMatch(/Task 18 R4-F3/);
+    }
     expect(factById(facts, "mobile.sessions").value).toBe(2);
     expect(factById(facts, "mobile.screens_per_session").value).toBe(4); // (5+3)/2
     expect(factById(facts, "mobile.foreground_duration").value).toBe(30000);
-    expect(factById(facts, "mobile.observed_installations").value).toBe(2);
   });
 
   it("narrows mobile facts by runtime OS", async () => {
@@ -995,19 +1011,50 @@ describe("canonical mobile facts reuse task-18 definitions", () => {
       ) as Promise<MetricFact[]>;
     const factValue = (facts: MetricFact[]) => facts[0]?.value;
     const basisOf = (facts: MetricFact[]) => facts[0]?.comparisonBasis ?? null;
-    // All-source: 3 opens / 1 previous; visitors see only digests with
-    // screen views (dB's viewless session excluded): 1 / 1.
+    // All-source: 3 opens / 1 previous on the accurate series.
     const opens = await read("mobile.app_opens");
     expect(factValue(opens)).toBe(3);
     expect(basisOf(opens)).toMatchObject({ previousValue: 1 });
-    const visitors = await read("mobile.visitors");
-    expect(factValue(visitors)).toBe(1);
-    expect(basisOf(visitors)).toMatchObject({ previousValue: 1 });
-    // Installations active in range (dA, dB); the stale row excluded.
-    const installs = await read("mobile.observed_installations");
-    expect(factValue(installs)).toBe(2);
-    // Source scoping is exact on sessions and installations alike
-    // (selected scopes carry the verified per-request list).
+    // R10-F1: visitor/installation facts are explicitly unavailable pending
+    // Task 18 R4-F3 — under every filter combination, including OS/release
+    // and source scoping. No OS- or release-filtered installation fact may
+    // expose mutable last_os/last_app_version as historical truth, and no
+    // visitor fact may expose digest counts as person folding.
+    const unavailableIds = [
+      ["mobile.visitors", {}],
+      ["mobile.observed_installations", {}],
+      ["mobile.visitors", { os: "ios" }],
+      ["mobile.observed_installations", { os: "ios" }],
+      ["mobile.observed_installations", { release: "2.0" }],
+      ["mobile.visitors", { release: "2.0" }],
+    ] as const;
+    for (const [metricId, filters] of unavailableIds) {
+      const gated = await read(metricId, filters as Record<string, string>);
+      expect(gated[0]?.value).toBeNull();
+      expect(gated[0]?.comparison).toBeNull();
+      expect(gated[0]?.comparisonBasis).toEqual({
+        previousValue: null,
+        denominatorCurrent: null,
+        denominatorPrevious: null,
+      });
+      expect(gated[0]?.coverageNote).toMatch(/Task 18 R4-F3/);
+      // Filter identity still travels in metadata and ID without leaking a
+      // filtered number.
+      if (Object.keys(filters).length > 0) {
+        expect(gated[0]?.filters).toMatchObject(filters);
+      }
+    }
+    const srcInstalls = await measureMetrics(
+      client as unknown as CanonicalClient,
+      PMX,
+      WINDOW,
+      { sourceScope: "selected", sourceIds: ["src_m2"] },
+      [{ metricId: "mobile.observed_installations", filters: { sourceIds: ["src_m2"] } } as never],
+      { capabilities: caps, now: NOW },
+    ) as MetricFact[];
+    expect(factValue(srcInstalls)).toBeNull();
+    expect(srcInstalls[0]?.coverageNote).toMatch(/Task 18 R4-F3/);
+    // Source scoping stays exact on the accurate series.
     const srcOpens = await measureMetrics(
       client as unknown as CanonicalClient,
       PMX,
@@ -1017,15 +1064,6 @@ describe("canonical mobile facts reuse task-18 definitions", () => {
       { capabilities: caps, now: NOW },
     ) as MetricFact[];
     expect(factValue(srcOpens)).toBe(1);
-    const srcInstalls = await measureMetrics(
-      client as unknown as CanonicalClient,
-      PMX,
-      WINDOW,
-      { sourceScope: "selected", sourceIds: ["src_m2"] },
-      [{ metricId: "mobile.observed_installations", filters: { sourceIds: ["src_m2"] } } as never],
-      { capabilities: caps, now: NOW },
-    ) as MetricFact[];
-    expect(factValue(srcInstalls)).toBe(1);
     // OS/release splits read session-time dimensions, never mutable lasts.
     const ios = await read("mobile.app_opens", { os: "ios" });
     expect(factValue(ios)).toBe(2);

@@ -8,6 +8,7 @@ import {
   isSnapshotReplayable,
   METRIC_REGISTRY,
   NON_CAUSAL_PHRASES,
+  overviewIdentityProblems,
   RELEASE_AFTER_WORDING,
   INSIGHT_THRESHOLDS,
   type ActivityArtifact,
@@ -300,12 +301,12 @@ function severityForRate(deltaPoints: number): InsightSeverity {
 }
 
 /**
- * Headline gating for known-inaccurate Mobile series (R9-F4): visitor and
- * installation facts keep serving dashboards, pulse, and evidence, but
- * never headline until Task 18 R4-F3 lands (person/anonymous visitor
- * folding; observation-time installation dimensions). Opens, sessions,
- * and means headline normally — their aggregates carry full filter
- * support.
+ * Known-inaccurate Mobile series (R10-F1, Task 18 R4-F3): defense-in-depth
+ * headline exclusion. The canonical boundary (`measureOne`) already returns
+ * these as unavailable facts (null value, skipped below), so this gate only
+ * fires for synthetic or legacy inputs that bypass the boundary. Opens,
+ * sessions, and means headline normally — their aggregates carry full
+ * filter support.
  */
 const MOBILE_HEADLINE_GATED: ReadonlySet<string> = new Set([
   "mobile.visitors",
@@ -1099,16 +1100,19 @@ export async function buildOverviewResource(input: {
     warnings,
   });
 
-  // Builder-level identity assertion (R9-F3): fail closed here — before
-  // Slice 4 persists any insight seed — as well as at the schema
-  // boundary, so a future adapter regression cannot ship ambiguous IDs.
-  assertUniqueOverviewIds(
-    [head, secondPulse, thirdPulse],
+  // Builder-level identity assertion (R9-F3, R10-F3): the SAME shared
+  // helper the schema refinement enforces — fail closed here, before
+  // Slice 4 persists any insight seed, so the two can never drift.
+  const identityProblems = overviewIdentityProblems({
+    pulse: [head, secondPulse, thirdPulse],
     supportingFacts,
     insights,
     activity,
     secondary,
-  );
+  });
+  if (identityProblems.length > 0) {
+    throw new Error(`overview identity violated: ${identityProblems[0]}`);
+  }
 
   return {
     queryContext,
@@ -1120,66 +1124,6 @@ export async function buildOverviewResource(input: {
     secondary,
     dataQuality,
   };
-}
-
-/**
- * Fail-closed identity for one built resource (R9-F3): pulse and
- * supporting IDs are unique and disjoint, insight IDs are unique, and
- * top-level artifact IDs are unique. Embedded copies must deep-equal the
- * cited returned fact. Mirrors the shared schema refinement so builder
- * and boundary enforce the same invariant.
- */
-function assertUniqueOverviewIds(
-  pulse: readonly MetricFact[],
-  supportingFacts: readonly MetricFact[],
-  insights: readonly InsightCandidate[],
-  activity: ActivityArtifact,
-  secondary: SecondaryArtifact,
-): void {
-  const returned = new Map<string, MetricFact>();
-  for (const fact of pulse) {
-    if (returned.has(fact.id)) {
-      throw new Error(`duplicate pulse fact ID ${fact.id}`);
-    }
-    returned.set(fact.id, fact);
-  }
-  for (const fact of supportingFacts) {
-    if (returned.has(fact.id)) {
-      throw new Error(`supporting fact overlaps pulse ID ${fact.id}`);
-    }
-    returned.set(fact.id, fact);
-  }
-  const insightIds = new Set<string>();
-  for (const insight of insights) {
-    if (insightIds.has(insight.id)) {
-      throw new Error(`duplicate insight ID ${insight.id}`);
-    }
-    insightIds.add(insight.id);
-  }
-  const artifactIds = new Set<string>();
-  const artifacts = [
-    activity,
-    secondary,
-    ...insights.map((insight) => insight.artifact),
-  ];
-  for (const artifact of artifacts) {
-    if (artifactIds.has(artifact.id)) {
-      throw new Error(`duplicate artifact ID ${artifact.id}`);
-    }
-    artifactIds.add(artifact.id);
-    const embedded: MetricFact[] =
-      artifact.kind === "metric"
-        ? [artifact.fact]
-        : artifact.kind === "comparison"
-          ? [artifact.current, artifact.previous]
-          : [];
-    for (const fact of embedded) {
-      const cited = returned.get(fact.id);
-      if (cited !== undefined && JSON.stringify(cited) !== JSON.stringify(fact)) {
-        throw new Error(`embedded fact ${fact.id} disagrees with returned fact`);
-      }
-    }
-  }
 }
 
 /** Resolve the canonical window for an overview range key. */

@@ -1172,17 +1172,41 @@ function checkFactComparisonAgreement(
     });
     return;
   }
+  // Denominator evidence (R10-F4): rate facts must carry both exact
+  // denominators — a widget may not render while deterministic analysis
+  // silently skips for lack of evidence. Non-rate facts must carry none
+  // unless a versioned definition declares denominator semantics.
   const { denominatorCurrent, denominatorPrevious } = basis;
+  const isRate = definition.valueKind === "rate";
+  const validDenominator = (value: number | null): boolean =>
+    value !== null &&
+    Number.isFinite(value) &&
+    Number.isInteger(value) &&
+    value >= 0;
+  if (denominatorCurrent === null || denominatorPrevious === null) {
+    if (denominatorCurrent !== denominatorPrevious) {
+      context.addIssue({
+        code: "custom",
+        message: "rate denominators must be paired finite non-negative integers",
+      });
+    } else if (isRate) {
+      context.addIssue({
+        code: "custom",
+        message: "rate facts must carry both exact denominators",
+      });
+    }
+    return;
+  }
+  if (!isRate) {
+    context.addIssue({
+      code: "custom",
+      message: "only rate metrics declare denominator semantics",
+    });
+    return;
+  }
   if (
-    (denominatorCurrent === null) !== (denominatorPrevious === null) ||
-    (denominatorCurrent !== null &&
-      (!Number.isInteger(denominatorCurrent) ||
-        denominatorCurrent < 0 ||
-        !Number.isFinite(denominatorCurrent))) ||
-    (denominatorPrevious !== null &&
-      (!Number.isInteger(denominatorPrevious) ||
-        denominatorPrevious < 0 ||
-        !Number.isFinite(denominatorPrevious)))
+    !validDenominator(denominatorCurrent) ||
+    !validDenominator(denominatorPrevious)
   ) {
     context.addIssue({
       code: "custom",
@@ -1687,6 +1711,19 @@ export const ProjectMetricsResourceSchema = z
       }
       seen.add(fact.id);
     }
+    // Snapshot consistency (R10-F2): every fact must share the signed
+    // top-level context — the same canonical equality the overview
+    // schema enforces — so a future adapter or cache regression cannot
+    // pair project/range A facts with a project/range B token.
+    for (const fact of resource.facts) {
+      if (!areQueryContextsEqual(fact.queryContext, resource.queryContext)) {
+        context.addIssue({
+          code: "custom",
+          message: `fact ${fact.id} must share the response query context`,
+        });
+        return;
+      }
+    }
   });
 export type ProjectMetricsResource = z.infer<
   typeof ProjectMetricsResourceSchema
@@ -1752,35 +1789,14 @@ function checkOverviewConsistency(
       return;
     }
   }
-  const resolvable = new Set<string>();
-  for (const fact of resource.pulse) resolvable.add(fact.id);
-  for (const fact of resource.supportingFacts ?? []) resolvable.add(fact.id);
-  for (const artifact of artifacts) {
-    if (artifact.kind === "metric") {
-      resolvable.add(artifact.fact.id);
-    } else if (artifact.kind === "comparison") {
-      resolvable.add(artifact.current.id);
-      resolvable.add(artifact.previous.id);
-    }
-  }
-  const cited: { where: string; id: string }[] = [];
-  const collect = (where: string, factIds: readonly string[]): void => {
-    for (const id of factIds) cited.push({ where, id });
-  };
-  collect("activity", resource.activity.factIds);
-  collect("secondary", resource.secondary.factIds);
-  for (const insight of resource.insights) {
-    collect(`insight ${insight.id}`, insight.factIds);
-    collect(`insight ${insight.id} artifact`, insight.artifact.factIds);
-  }
-  for (const { where, id } of cited) {
-    if (!resolvable.has(id)) {
-      context.addIssue({
-        code: "custom",
-        message: `${where} cites unreturned fact ${id}`,
-      });
-      return;
-    }
+  // Fail-closed identity (R9-F3, R10-F3): one shared helper enforces
+  // pulse/supporting uniqueness and disjointness, cited resolution,
+  // embedded deep-equality, and insight/artifact uniqueness — in both the
+  // schema boundary and the pre-storage builder assertion, so the two can
+  // never drift.
+  for (const problem of overviewIdentityProblems(resource)) {
+    context.addIssue({ code: "custom", message: problem });
+    return;
   }
   // Activity grounding (R8-F6, production-enforced): a timeseries chart
   // must cite the canonical accepted-events fact and its zero-filled
@@ -1828,54 +1844,66 @@ function checkOverviewConsistency(
       return;
     }
   }
-  // Fail-closed identity (R9-F3): duplicate or overlapping IDs would merge
-  // distinct facts, insights, or artifacts under one persisted reference
-  // once Slice 4 stores insight seeds. Pulse and supporting collections
-  // must be internally unique and mutually disjoint; insight and
-  // top-level artifact IDs must be unique; embedded fact copies survive
-  // only when they deep-equal the cited returned fact.
+}
+
+/**
+ * Shared overview identity invariant (R10-F3): the single helper behind
+ * both the response-schema refinement and the builder's pre-storage
+ * assertion. Every cited fact ID must resolve to a returned pulse or
+ * supporting fact; every embedded fact must resolve AND deep-equal the
+ * returned fact (an absent ID never self-validates); pulse/supporting
+ * IDs are unique and disjoint; insight and top-level artifact IDs are
+ * unique. Returns every violation found (empty means valid).
+ */
+export function overviewIdentityProblems(resource: {
+  pulse: readonly MetricFact[];
+  supportingFacts?: readonly MetricFact[];
+  insights: readonly InsightCandidate[];
+  activity: ActivityArtifact;
+  secondary: SecondaryArtifact;
+}): string[] {
+  const problems: string[] = [];
   const returned = new Map<string, MetricFact>();
   for (const fact of resource.pulse) {
     if (returned.has(fact.id)) {
-      context.addIssue({
-        code: "custom",
-        message: `duplicate pulse fact ID ${fact.id}`,
-      });
-      return;
+      problems.push(`duplicate pulse fact ID ${fact.id}`);
+    } else {
+      returned.set(fact.id, fact);
     }
-    returned.set(fact.id, fact);
   }
   for (const fact of resource.supportingFacts ?? []) {
     if (returned.has(fact.id)) {
-      context.addIssue({
-        code: "custom",
-        message: `supporting fact overlaps pulse ID ${fact.id}`,
-      });
-      return;
+      problems.push(`supporting fact overlaps pulse ID ${fact.id}`);
+    } else {
+      returned.set(fact.id, fact);
     }
-    returned.set(fact.id, fact);
   }
-  const insightIds = new Set<string>();
+  const artifacts = [
+    resource.activity,
+    resource.secondary,
+    ...resource.insights.map((insight) => insight.artifact),
+  ];
+  const cited: { where: string; id: string }[] = [];
+  for (const id of resource.activity.factIds) {
+    cited.push({ where: "activity", id });
+  }
+  for (const id of resource.secondary.factIds) {
+    cited.push({ where: "secondary", id });
+  }
   for (const insight of resource.insights) {
-    if (insightIds.has(insight.id)) {
-      context.addIssue({
-        code: "custom",
-        message: `duplicate insight ID ${insight.id}`,
-      });
-      return;
+    for (const id of insight.factIds) {
+      cited.push({ where: `insight ${insight.id}`, id });
     }
-    insightIds.add(insight.id);
+    for (const id of insight.artifact.factIds) {
+      cited.push({ where: `insight ${insight.id} artifact`, id });
+    }
   }
-  const artifactIds = new Set<string>();
-  for (const artifact of artifacts) {
-    if (artifactIds.has(artifact.id)) {
-      context.addIssue({
-        code: "custom",
-        message: `duplicate artifact ID ${artifact.id}`,
-      });
-      return;
+  for (const { where, id } of cited) {
+    if (!returned.has(id)) {
+      problems.push(`${where} cites unreturned fact ${id}`);
     }
-    artifactIds.add(artifact.id);
+  }
+  for (const artifact of artifacts) {
     const embedded: MetricFact[] =
       artifact.kind === "metric"
         ? [artifact.fact]
@@ -1883,16 +1911,35 @@ function checkOverviewConsistency(
           ? [artifact.current, artifact.previous]
           : [];
     for (const fact of embedded) {
-      const cited = returned.get(fact.id);
-      if (cited !== undefined && JSON.stringify(cited) !== JSON.stringify(fact)) {
-        context.addIssue({
-          code: "custom",
-          message: `embedded fact ${fact.id} disagrees with the returned fact`,
-        });
-        return;
+      const expected = returned.get(fact.id);
+      if (expected === undefined) {
+        problems.push(
+          `embedded fact ${fact.id} resolves to no returned fact`,
+        );
+      } else if (JSON.stringify(expected) !== JSON.stringify(fact)) {
+        problems.push(
+          `embedded fact ${fact.id} disagrees with the returned fact`,
+        );
       }
     }
   }
+  const insightIds = new Set<string>();
+  for (const insight of resource.insights) {
+    if (insightIds.has(insight.id)) {
+      problems.push(`duplicate insight ID ${insight.id}`);
+    } else {
+      insightIds.add(insight.id);
+    }
+  }
+  const artifactIds = new Set<string>();
+  for (const artifact of artifacts) {
+    if (artifactIds.has(artifact.id)) {
+      problems.push(`duplicate artifact ID ${artifact.id}`);
+    } else {
+      artifactIds.add(artifact.id);
+    }
+  }
+  return problems;
 }
 
 // ---------------------------------------------------------------------------

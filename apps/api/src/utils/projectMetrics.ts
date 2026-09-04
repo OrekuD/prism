@@ -1340,6 +1340,29 @@ async function measureOne(
       ),
     ];
   }
+  // Known-inaccurate Mobile series (R10-F1, Task 18 R4-F3): visitor
+  // folding counts installation digests instead of resolved people, and
+  // installations ignore os/release filters. Until that read-model
+  // contract lands, these facts are explicitly unsupported anywhere they
+  // could reach pulse, evidence, widgets, or assistant tools — never
+  // served numbers with filtered metadata. The Mobile dashboard keeps
+  // its loader-direct reads; Task 18 owns that surface.
+  if (
+    metricId === "mobile.visitors" ||
+    metricId === "mobile.observed_installations"
+  ) {
+    return [
+      unsupportedFact(
+        metricId,
+        queryContext,
+        coverage,
+        "Mobile visitor and installation counts are unavailable pending Task 18 R4-F3 (identity folding; observation-time dimensions)",
+        drilldown,
+        filters,
+        scope,
+      ),
+    ];
+  }
   // Explicit empty source intersection (R3-F1, R4-F1): `selected` + `[]`
   // is a successful read over an empty scope — honest zeros, never a
   // widened all-source query. `all` still means every project source.
@@ -1374,8 +1397,12 @@ async function measureOne(
     // Empty selections yield honest zeros, but comparison-unsupported
   // metrics keep the explicit null state (R9-F1): a zero value with no
   // comparison claim and null basis, never a flat comparison the metric
-  // definition does not support.
-  const emptySupported = METRIC_REGISTRY[metricId].comparison === "supported";
+  // definition does not support. Rate metrics carry zero denominators —
+  // zero eligible records — so the required-denominator rule (R10-F4)
+  // holds over empty scopes as well.
+  const emptyDefinition = METRIC_REGISTRY[metricId];
+  const emptySupported = emptyDefinition.comparison === "supported";
+  const emptyIsRate = emptyDefinition.valueKind === "rate";
   return [
       makeFact({
         metricId,
@@ -1383,7 +1410,9 @@ async function measureOne(
         comparison: emptySupported ? compareValues(0, 0) : null,
         // Counts stay comparable over the empty scope; unsupported metrics
         // keep the explicit null state (R9-F1) — value zero, no comparison.
-        comparisonBasis: emptySupported ? exactBasis(0) : undefined,
+        comparisonBasis: emptySupported
+          ? exactBasis(0, emptyIsRate ? { current: 0, previous: 0 } : undefined)
+          : undefined,
         queryContext,
         coverage,
         coverageNote: "No requested sources belong to this project",
@@ -1853,11 +1882,9 @@ async function measureOne(
       break;
     }
     case "mobile.app_opens":
-    case "mobile.visitors":
     case "mobile.sessions":
     case "mobile.screens_per_session":
-    case "mobile.foreground_duration":
-    case "mobile.observed_installations": {
+    case "mobile.foreground_duration": {
       const params: MobileAnalyticsQueryParams = {
         projectId,
         from: w.from,
@@ -1925,17 +1952,6 @@ async function measureOne(
                 : exactBasis(mobilePrevious.appOpens),
             ),
           ];
-        case "mobile.visitors":
-          return [
-            pick(
-              metricId,
-              resource.totals.visitors,
-              resource.comparison.visitors,
-              mobilePrevious === null
-                ? undefined
-                : exactBasis(mobilePrevious.visitors),
-            ),
-          ];
         case "mobile.sessions":
           return [
             pick(
@@ -1981,17 +1997,6 @@ async function measureOne(
               resource.totals.avgSessionDurationMs === null
                 ? undefined
                 : exactBasis(mobilePrevious.foregroundDurationMs),
-            ),
-          ];
-        case "mobile.observed_installations":
-          return [
-            pick(
-              metricId,
-              resource.totals.observedInstallations,
-              resource.comparison.observedInstallations,
-              mobilePrevious === null
-                ? undefined
-                : exactBasis(mobilePrevious.installations),
             ),
           ];
       }

@@ -3718,3 +3718,217 @@ Evidence: api 328 passed | 19 skipped (24 files), types contracts 83+
 passed (4 files), full web green except pre-existing gallery calendar
 failure, api/web typechecks clean, api lint clean, `git diff --check`
 clean.
+
+## Feedback: review round 10
+
+This focused re-review covers commit `67dcbd1` against `af73f1c`. The fact-ID
+encoding and shared comparison calculation are materially improved. However,
+R9-F3 and R9-F4 are not fully closed, and two shared response invariants remain
+too weak for Slice 4 to persist facts and evidence safely. Slice 4 remains
+blocked on the high-severity items below. No broad test, lint, or build gates
+were rerun.
+
+### R10-F1 - Known-inaccurate Mobile facts still leave the canonical boundary
+
+**Severity:** High
+**Status:** Closed; reopens R9-F4 (re-closed with R10-F1 below)
+
+The implementation acknowledges that `mobile.visitors` and
+`mobile.observed_installations` are not accurate yet, but only removes them
+from `selectInsights()`. `MOBILE_HEADLINE_GATED` explicitly says these facts
+continue serving dashboards, pulse, and evidence. Those are also canonical
+facts available to the future assistant tools, so the agent can still return
+or render a known-wrong value without using it as an automatically generated
+headline.
+
+The underlying gaps remain observable:
+
+- `visitorsFor()` counts distinct installation digests rather than the frozen
+  distinct resolved-person, otherwise anonymous-identity definition in Task
+  18 R4-F3.
+- The installation query applies source, time, and cutoff predicates, but
+  deliberately ignores the advertised `os` and `release` filters.
+- `METRIC_REGISTRY` still advertises `source_ids`, `os`, and `release` as
+  supported filters for `mobile.observed_installations`. A filtered fact may
+  therefore carry filtered metadata and a filter-derived ID while containing
+  an all-OS/all-release value.
+- The new real-store matrix checks source filtering for observed
+  installations. Its OS/release assertions exercise `mobile.app_opens`, not
+  `mobile.observed_installations`.
+
+This does not satisfy R9-F4's explicit fallback: if the read-model correction
+cannot land first, the inaccurate facts must be unavailable or unsupported,
+not merely excluded from headline selection.
+
+**How to address:**
+
+1. [x] Keep R9-F4 open until Task 18 R4-F3 supplies the frozen identity and
+       observation-time dimension model.
+2. [x] Until that lands, return explicit unavailable/unsupported facts for
+       `mobile.visitors` and `mobile.observed_installations` anywhere they
+       could reach pulse, supporting evidence, dashboard widgets, or assistant
+       tools. Alternatively remove the unsupported filter declarations in a
+       versioned contract change.
+3. [x] Do not expose an OS- or release-filtered installation fact until the
+       projection records those dimensions at observation time; mutable
+       `last_os` and `last_app_version` are not historical truth.
+4. [x] Add real-store assertions for observed-installation values and bases
+       under both OS and release filters, plus visitor folding across multiple
+       installations, anonymous identities, and identified people.
+
+### R10-F2 - Metrics responses can mix facts from different snapshots
+
+**Severity:** High
+**Status:** Closed
+
+`ProjectMetricsResourceSchema` now rejects duplicate fact IDs, but it does not
+require each fact's `queryContext` to equal the response-level
+`queryContext`. The overview schema has this invariant; the canonical metrics
+schema does not. A structurally valid response can therefore pair a signed
+top-level context for project/range/source A with facts measured under project,
+range, cutoff, or source scope B.
+
+The current controller happens to build facts from one context, but Slice 5's
+agent adapter will also consume this shared contract. The contract must reject
+a future adapter or cache regression instead of relying on the current caller.
+Otherwise dashboard/assistant parity and snapshot-bound authorization are not
+enforced at the canonical boundary.
+
+**How to address:**
+
+1. [x] In `ProjectMetricsResourceSchema`, require every fact context to equal
+       the top-level context using the same canonical equality helper as the
+       overview schema.
+2. [x] Cover mismatches in project, workspace, range, `asOf`, traffic policy,
+       and source scope, including `all` versus `selected([])`.
+3. [x] Keep token verification server-side, but test the endpoint or adapter
+       boundary so a mixed-context resource cannot be emitted or persisted.
+
+### R10-F3 - Embedded facts can still reuse one ID for different measurements
+
+**Severity:** High
+**Status:** Closed; reopens R9-F3 (re-closed with R10-F3 below)
+
+The new overview refinement checks an embedded fact only when a pulse or
+supporting fact with the same ID already exists:
+
+```ts
+const cited = returned.get(fact.id);
+if (cited !== undefined && JSON.stringify(cited) !== JSON.stringify(fact)) {
+  // reject
+}
+```
+
+When the ID is absent from pulse/supporting facts, the embedded copy is added
+to the separate `resolvable` set and effectively validates itself. Two insight
+artifacts can therefore embed different facts with the same ID, and both pass
+as long as that ID is not returned in pulse/supporting. The builder assertion
+duplicates the same conditional behavior.
+
+That contradicts the R9-F3 closure rule that embedded copies survive only when
+they fully equal the cited returned fact. It also leaves Slice 4 with an
+ambiguous fact identity to persist.
+
+**How to address:**
+
+1. [x] Choose and freeze one invariant. Prefer requiring every embedded fact
+       to resolve to a pulse/supporting fact and deep-equal it. If embedded-only
+       facts remain valid, build one global canonical fact map and reject every
+       repeated ID whose complete fact differs.
+2. [x] Reuse one invariant helper from both the shared schema and overview
+       builder so their behavior cannot drift.
+3. [x] Add negatives for an embedded fact missing from returned facts and for
+       two artifacts carrying the same embedded ID with different values.
+4. [x] Keep R9-F3 open until the contract and pre-storage assertion both reject
+       the ambiguous cases.
+
+### R10-F4 - Rate facts may omit their exact denominators
+
+**Severity:** Medium
+**Status:** Closed
+
+`checkFactComparisonAgreement()` verifies that denominators are paired and
+valid only when supplied. It accepts an available `rate` fact with both
+denominators set to `null`, and it accepts denominators on non-rate facts. The
+current negative test covers only one-present/one-missing.
+
+This permits a bounce-rate widget and its relative comparison to render while
+the assistant's deterministic rate analysis silently skips the same fact for
+lack of denominator evidence. The exact evidence contract should describe
+when denominators are required, not only validate their shape when optional.
+
+**How to address:**
+
+1. [x] Require both finite, non-negative integer denominators for every
+       available comparison-supported metric whose `valueKind` is `rate`.
+2. [x] Require both denominator fields to be `null` for non-rate metrics unless
+       a future versioned metric definition explicitly declares denominator
+       semantics.
+3. [x] Add negatives for a rate with both denominators missing and a count with
+       fabricated denominators. Retain the one-sided and non-finite cases.
+
+### R10-F5 - Mobile downward comparisons render a double sign
+
+**Severity:** Medium
+**Status:** Closed
+
+The shared `compareValues()` now intentionally returns a signed percentage.
+The Web comparison badge renders its magnitude with `Math.abs()`, but
+`mobile-analytics.tsx` renders the raw signed value after a direction arrow.
+A decrease therefore appears as `▼ -50% vs previous`.
+
+This is a user-visible regression introduced when Mobile moved from its local
+absolute-percentage comparator to the shared signed representation.
+
+**How to address:**
+
+1. [x] Render `Math.abs(v.percent)` in the Mobile comparison label while the
+       arrow communicates direction, matching the Web surface.
+2. [x] Add focused formatter or component cases for up, down, flat, new, and
+       no-prior-data so future comparison-contract changes update every
+       consumer together.
+
+### 2026-09-04 — Slice 3 follow-up: R10 review closed (3 high + 2 medium)
+
+All five R10 findings are implemented and regression-tested; Slice 4 is
+unblocked. This also re-closes reopened R9-F3/R9-F4.
+
+- R10-F1: known-inaccurate Mobile facts never leave the canonical boundary.
+  `measureOne` returns explicit unavailable facts (null value/comparison and
+  null basis, Task 18 R4-F3 reason) for `mobile.visitors` and
+  `mobile.observed_installations` under every filter combination — including
+  OS/release and source scoping — so no filtered number with filtered
+  metadata can reach pulse, supporting evidence, widgets, or assistant
+  tools. `selectInsights` keeps the headline gate as defense-in-depth for
+  synthetic or legacy inputs. The Mobile dashboard keeps its loader-direct
+  reads; Task 18 R4-F3 owns the visitor-folding and observation-time
+  dimension contract. Real-store matrix asserts unavailable under all,
+  OS, release, and selected-source filters while opens/sessions stay exact.
+- R10-F2: metrics responses enforce one snapshot. `ProjectMetricsResource`
+  requires every fact context to equal the top-level context via the same
+  canonical equality as the overview schema. Contract negatives cover
+  from/to/compareFrom/compareTo/asOf/definitionVersion/sourceIds and
+  `all` versus `selected([])`; the endpoint test proves emitted facts share
+  the signed top context and that a mixed-context resource fails parsing.
+- R10-F3: one frozen embedded invariant. `overviewIdentityProblems` is the
+  single helper behind both the schema refinement and the builder's
+  pre-storage assertion: cited IDs must resolve to returned pulse or
+  supporting facts; every embedded fact must resolve AND deep-equal the
+  returned fact (absent IDs never self-validate); pulse/supporting unique
+  and disjoint; insight and artifact IDs unique. Negatives cover missing
+  embedded facts and duplicate embedded IDs with different values, plus a
+  direct helper test proving schema and builder cannot drift.
+- R10-F4: denominator evidence is required, not optional. Available
+  comparison-supported `rate` facts must carry both finite non-negative
+  integer denominators; non-rate facts must carry none. Empty-scope rates
+  carry zero denominators (zero eligible records). Negatives cover
+  both-missing, one-sided, non-finite/non-integer/negative, and fabricated
+  count denominators.
+- R10-F5: Mobile comparison label renders `Math.abs` magnitude with the
+  arrow carrying direction (flat renders `0%`), matching the Web badge.
+  Focused formatter cases cover up/down/flat/new/no-prior-data.
+
+Evidence: api 331 passed | 19 skipped (24 files), types 95 passed
+(4 files), web mobile-label + overview-key + snapshot-drilldown green
+(full web green except pre-existing gallery calendar failure), api/web
+typechecks clean, api lint clean, `git diff --check` clean.

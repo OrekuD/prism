@@ -754,3 +754,40 @@ describe("release filter boundaries (R8-F7)", () => {
     expect(ok.__json).toBeDefined();
   });
 });
+
+describe("metrics snapshot boundary (R10-F2)", () => {
+  it("emits facts sharing the signed top-level context", async () => {
+    type Body = {
+      queryContext: Record<string, unknown>;
+      facts: Array<{ id?: string; queryContext?: Record<string, unknown> }>;
+    };
+    const result = (await ProjectsController.getMetrics(
+      ctxFor(USER_ID, {
+        ids: "project.accepted_events,web.page_views,mobile.app_opens",
+        range: "7d",
+      }),
+    )) as { __json?: Body; __status?: number };
+    expect(result.__status).toBeUndefined();
+    const top = result.__json?.queryContext;
+    expect(top).toBeDefined();
+    for (const fact of result.__json?.facts ?? []) {
+      expect(fact.queryContext).toEqual(top);
+    }
+    // The shared contract rejects a mixed-context resource that a future
+    // adapter or cache regression might assemble.
+    const { ProjectMetricsResourceSchema } = await import(
+      "@prism-analytics/types"
+    );
+    const mixed = {
+      ...(result.__json as object),
+      facts: [
+        ...(result.__json?.facts ?? []).slice(0, 1),
+        {
+          ...(result.__json?.facts ?? [])[1],
+          queryContext: { ...(top as object), asOf: 1 },
+        },
+      ],
+    };
+    expect(ProjectMetricsResourceSchema.safeParse(mixed).success).toBe(false);
+  });
+});

@@ -32,9 +32,14 @@ function numFmt(v: number): string {
 function comparisonLabel(v: MobileAnalyticsComparisonValue): string {
 	if (v.kind === "no-prior-data") return "no prior data";
 	if (v.kind === "new") return "new";
-	const arrow = v.direction === "up" ? "▲" : v.direction === "down" ? "▼" : "";
-	return `${arrow} ${v.percent}% vs previous`;
+	if (v.direction === "flat") return "0% vs previous";
+	const arrow = v.direction === "up" ? "▲" : "▼";
+	// Signed percentages from the shared compareValues: the arrow carries
+	// direction, so render the magnitude (R10-F5) — matching the Web badge.
+	return `${arrow} ${Math.abs(v.percent)}% vs previous`;
 }
+
+export { comparisonLabel };
 
 function MetricCell({
 	label,
