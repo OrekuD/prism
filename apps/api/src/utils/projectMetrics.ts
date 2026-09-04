@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   areQueryContextsEqual,
+  capabilityFingerprint,
   compareValues,
   DEFINITION_VERSION,
   isSnapshotReplayable,
@@ -120,6 +121,66 @@ export class MetricQueryError extends Error {
     super(message);
     this.code = code;
   }
+}
+
+/**
+ * Canonical source scope (R4-F1, R5-F1): `all` = no source filter,
+ * `selected` = the explicit ID list (possibly empty for an explicit empty
+ * intersection). The scope travels in the public context, token, cache
+ * key, fact filters, and drill-down — never inferred from list length.
+ */
+export type MetricScope = {
+  sourceScope: SourceScope;
+  sourceIds: string[];
+};
+
+const MetricScopeSchema = z
+  .strictObject({
+    sourceScope: z.enum(["all", "selected"]),
+    sourceIds: z.array(z.string().min(1).max(128)).max(64),
+  })
+  .superRefine((value, context) => {
+    if (new Set(value.sourceIds).size !== value.sourceIds.length) {
+      context.addIssue({
+        code: "custom",
+        message: "sourceIds must not contain duplicates",
+      });
+    }
+    if (value.sourceScope === "all" && value.sourceIds.length > 0) {
+      context.addIssue({
+        code: "custom",
+        message: "sourceScope all must carry an empty sourceIds list",
+      });
+    }
+  });
+
+/**
+ * Parse and validate a shared source scope at the canonical service
+ * boundary (R5-F1). `all` must carry no IDs; `selected` IDs are bounded
+ * (64), deduplicated, and length-checked. Rejects mismatched scopes
+ * before any SQL runs so a mislabeled scope can never widen a read.
+ */
+export function parseMetricScope(raw: unknown): MetricScope {
+  const parsed = MetricScopeSchema.safeParse(raw ?? {});
+  if (!parsed.success) {
+    const detail = parsed.error.issues
+      .map((entry) => `${entry.path.join(".") || "scope"}: ${entry.message}`)
+      .join("; ")
+      .slice(0, 280);
+    throw new MetricQueryError("invalid-filter", `Invalid source scope: ${detail}`);
+  }
+  return {
+    sourceScope: parsed.data.sourceScope,
+    sourceIds: [...parsed.data.sourceIds],
+  };
+}
+
+/** Set-equality for scope/filter agreement (order-insensitive). */
+function scopeIdsEqual(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  const set = new Set(a);
+  if (set.size !== a.length) return false;
+  return b.every((id) => set.has(id));
 }
 
 const FILTER_KEYS = [
@@ -432,23 +493,16 @@ function cacheKey(
   filters: MetricFilters,
   capabilities: ProjectCapabilities,
 ): string {
-  // Capabilities join the key (R3-F2): configuring error collection (or any
-  // collection) must never serve a stale unsupported fact for 60 seconds.
-  const caps = [
-    capabilities.web ? 1 : 0,
-    capabilities.mobile ? 1 : 0,
-    capabilities.server ? 1 : 0,
-    capabilities.errorCollection.configured ? 1 : 0,
-    capabilities.errorCollection.observed ? 1 : 0,
-    capabilities.sources.active,
-    capabilities.standardEventsObserved.length,
-  ].join(",");
+  // Capabilities join the key (R3-F2, R5-F3): configuring error collection
+  // (or any collection) must never serve a stale unsupported fact, and
+  // coverage-embedded counts (total/active) plus the observed event set
+  // must never alias across capability changes for 60 seconds.
   return [
     projectId,
     queryContextFingerprint(queryContext),
     metricId,
     JSON.stringify(filters),
-    caps,
+    capabilityFingerprint(capabilities),
   ].join("|");
 }
 
@@ -823,11 +877,18 @@ export type ErrorStateFilter = { platform?: string; release?: string };
  * New = first observed inside the window; regressing = growing versus a
  * positive prior baseline and not new (the issueDelta rule applied over one
  * grouped read instead of row-by-row copies). Release narrows from the
- * SAME cutoff-visible occurrence set (R4-F4) — first-observed release for
- * new issues, current-window co-occurrence for regressing, any
+ * SAME cutoff-visible occurrence set (R4-F4, R5-F2) — first-observed release
+ * for new issues, current-window co-occurrence for regressing, any
  * cutoff-visible occurrence for current-state counts — never from the
  * mutable `first_release`/`last_release` projection that later receipts
  * keep updating. Co-occurrence only, never a causal claim.
+ *
+ * Fixed query count (R5-F2): exactly one `client.execute()` regardless of
+ * issue count or release filtering. Release membership comes from
+ * conditional aggregates in the same grouped read (any-visible count,
+ * window-visible count, and a zero-padded composite MIN for the earliest
+ * visible release) — never per-issue follow-ups, so hundreds of issues
+ * cannot turn one metric into hundreds of libSQL round-trips.
  */
 export async function errorIssueStateCounts(
   client: CanonicalClient,
@@ -839,15 +900,36 @@ export async function errorIssueStateCounts(
   asOf: number,
   filter: ErrorStateFilter = {},
 ): Promise<{ unresolved: number; fresh: number; regressing: number }> {
-  // NOTE: `?` placeholders bind in TEXTUAL order. The six SUM window
-  // parameters precede the WHERE clause in the statement below, so they
-  // come first in args (a previous revision ordered projectId first and
-  // silently matched zero rows — caught by projectMetrics tests).
+  // NOTE: `?` placeholders bind in TEXTUAL order. SELECT aggregates precede
+  // the WHERE clause, so window parameters come first in args (a previous
+  // revision ordered projectId first and silently matched zero rows).
   const issueClauses = ["i.project_id = ?"];
   const scopeArgs: Array<string | number | null> = [projectId];
   if (filter.platform) {
     issueClauses.push("i.platform = ?");
     scopeArgs.push(filter.platform);
+  }
+  const release = filter.release ?? null;
+  const selectExtras: string[] = [];
+  const extraArgs: Array<string | number | null> = [];
+  if (release !== null) {
+    // Earliest cutoff-visible release as a sortable composite: zero-padded
+    // occurred/received (lexical MIN == chronological MIN for equal-width
+    // integers) + id tie-break + release payload after the final pipe.
+    // Release values never contain pipes in practice; parsing rejoins any
+    // surplus segments so a hostile pipe cannot alias another release.
+    selectExtras.push(
+      `MIN(CASE WHEN o.received_at <= ? THEN printf('%020d|%020d|%s|%s', o.occurred_at, o.received_at, o.id, COALESCE(o.release, '')) END) AS snapshot_first_key`,
+    );
+    extraArgs.push(asOf);
+    selectExtras.push(
+      "SUM(CASE WHEN o.received_at <= ? AND o.release = ? THEN 1 ELSE 0 END) AS any_release_n",
+    );
+    extraArgs.push(asOf, release);
+    selectExtras.push(
+      "SUM(CASE WHEN o.occurred_at >= ? AND o.occurred_at < ? AND o.received_at <= ? AND o.release = ? THEN 1 ELSE 0 END) AS window_release_n",
+    );
+    extraArgs.push(from, to, asOf, release);
   }
   const { rows } = await client.execute({
     sql: `SELECT
@@ -856,18 +938,26 @@ export async function errorIssueStateCounts(
             SUM(CASE WHEN o.occurred_at >= ? AND o.occurred_at < ? AND o.received_at <= ? THEN 1 ELSE 0 END) AS current_n,
             SUM(CASE WHEN o.occurred_at >= ? AND o.occurred_at < ? AND o.received_at <= ? THEN 1 ELSE 0 END) AS previous_n,
             MIN(CASE WHEN o.received_at <= ? THEN o.occurred_at END) AS snapshot_first_seen
+            ${selectExtras.length > 0 ? `, ${selectExtras.join(", ")}` : ""}
           FROM error_issues i
           LEFT JOIN error_occurrences o
             ON o.issue_id = i.id AND o.project_id = i.project_id
           WHERE ${issueClauses.join(" AND ")}
           GROUP BY i.id, i.status`,
-    args: [from, to, asOf, compareFrom, compareTo, asOf, asOf, ...scopeArgs],
+    args: [from, to, asOf, compareFrom, compareTo, asOf, asOf, ...extraArgs, ...scopeArgs],
   });
+  const firstReleaseOf = (key: unknown): string | null => {
+    if (key === null || key === undefined) return null;
+    const composite = String(key);
+    const segments = composite.split("|");
+    if (segments.length < 4) return null;
+    const value = segments.slice(3).join("|");
+    return value === "" ? null : value;
+  };
   let unresolved = 0;
   let fresh = 0;
   let regressing = 0;
   for (const row of rows) {
-    const issueId = String(row.issue_id ?? "");
     const status = String(row.status ?? "");
     const current = Number(row.current_n ?? 0);
     const previous = Number(row.previous_n ?? 0);
@@ -883,52 +973,17 @@ export async function errorIssueStateCounts(
       snapshotFirst !== null && snapshotFirst >= from && snapshotFirst < to;
     const isRegressingCandidate =
       snapshotFirst !== null && !isNew && previous > 0 && current > previous;
-    if (filter.release) {
+    if (release !== null) {
       if (isNew) {
-        // New-issue release = the release of the earliest cutoff-visible
-        // occurrence (deterministic by occurred/received/id order).
-        const first = await client.execute({
-          sql: `SELECT release AS release FROM error_occurrences
-                WHERE project_id = ? AND issue_id = ? AND received_at <= ?
-                ORDER BY occurred_at ASC, received_at ASC, id ASC LIMIT 1`,
-          args: [projectId, issueId, asOf],
-        });
-        const firstRelease =
-          first.rows[0]?.release === null || first.rows[0]?.release === undefined
-            ? null
-            : String(first.rows[0]?.release);
-        if (firstRelease !== filter.release) continue;
+        if (firstReleaseOf(row.snapshot_first_key) !== release) continue;
         // Match: fall through to the shared tally below.
       } else {
-        // Non-new: release membership from the same cutoff-visible set.
-        // Unresolved needs any visible occurrence with the release;
-        // regressing additionally needs current-window co-occurrence.
-        // Both are snapshot-stable; projection `last_release` is not.
-        let passesUnresolved = true;
-        if (status === "unresolved") {
-          const any = await client.execute({
-            sql: `SELECT 1 AS n FROM error_occurrences
-                  WHERE project_id = ? AND issue_id = ? AND received_at <= ?
-                    AND release = ? LIMIT 1`,
-            args: [projectId, issueId, asOf, filter.release],
-          });
-          passesUnresolved = any.rows.length > 0;
-          if (!passesUnresolved) continue;
-        }
-        let passesRegressing = isRegressingCandidate;
-        if (isRegressingCandidate) {
-          const inWindow = await client.execute({
-            sql: `SELECT 1 AS n FROM error_occurrences
-                  WHERE project_id = ? AND issue_id = ?
-                    AND occurred_at >= ? AND occurred_at < ?
-                    AND received_at <= ? AND release = ? LIMIT 1`,
-            args: [projectId, issueId, from, to, asOf, filter.release],
-          });
-          passesRegressing = inWindow.rows.length > 0;
-        }
+        const anyVisible = Number(row.any_release_n ?? 0) > 0;
+        const windowVisible = Number(row.window_release_n ?? 0) > 0;
+        if (status === "unresolved" && !anyVisible) continue;
         if (status === "unresolved") unresolved += 1;
         if (snapshotFirst === null) continue;
-        if (passesRegressing) regressing += 1;
+        if (isRegressingCandidate && windowVisible) regressing += 1;
         continue;
       }
     }
@@ -947,17 +1002,6 @@ export type MeasureDeps = {
   capabilities: ProjectCapabilities;
   memo?: Map<string, unknown>;
   now?: number;
-};
-
-/**
- * Canonical source scope (R4-F1): `all` = no source filter, `selected` =
- * the explicit ID list (possibly empty for an explicit empty
- * intersection). The scope travels in the public context, token, cache
- * key, fact filters, and drill-down — never inferred from list length.
- */
-export type MetricScope = {
-  sourceScope: SourceScope;
-  sourceIds: string[];
 };
 
 function normalizeScope(
@@ -1215,14 +1259,13 @@ async function measureOne(
   // Explicit empty source intersection (R3-F1, R4-F1): `selected` + `[]`
   // is a successful read over an empty scope — honest zeros, never a
   // widened all-source query. `all` still means every project source.
-  // The signed scope (not list length) drives the branch so a follow-up
+  // The verified scope (not list length) drives the branch so a follow-up
   // reusing the token cannot widen. Capability shortfalls win above.
+  // measureMetrics already enforces scope/filter agreement, so reaching
+  // here with a mismatch is a caller bug — but scope still drives SQL.
   const isEmptySelected =
     scope.sourceScope === "selected" && scope.sourceIds.length === 0;
-  if (
-    (filters.sourceIds !== undefined && filters.sourceIds.length === 0) ||
-    isEmptySelected
-  ) {
+  if (isEmptySelected) {
     if (metricId === "standard_event.value_by_currency") {
       // No currency rows exist over an empty scope — except an explicit
       // currency request, which always yields its one (real zero) fact.
@@ -1258,7 +1301,32 @@ async function measureOne(
       }),
     ];
   }
-  const sourceIds = filters.sourceIds;
+  // Selected-source contexts cannot widen through metrics that lack source
+  // filtering (R5-F1): omit with an explicit unavailable fact instead of
+  // computing all-source data under selected metadata. Empty selections
+  // already returned honest zeros above.
+  if (
+    scope.sourceScope === "selected" &&
+    !(METRIC_REGISTRY[metricId].supportedFilters as readonly string[]).includes(
+      "source_ids",
+    )
+  ) {
+    return [
+      unsupportedFact(
+        metricId,
+        queryContext,
+        coverage,
+        "Metric does not support source filtering in a selected-source context",
+        drilldown,
+        filters,
+        scope,
+      ),
+    ];
+  }
+  // Authoritative source filter (R5-F1): SQL reads the verified scope, never
+  // a per-request copy. Agreement was enforced in measureMetrics.
+  const sourceIds =
+    scope.sourceScope === "all" ? undefined : [...scope.sourceIds];
   const w = window;
 
   switch (metricId) {
@@ -1960,27 +2028,56 @@ export async function measureMetrics(
   requests: MetricRequest[],
   deps: MeasureDeps,
 ): Promise<MetricFact[]> {
-  // Bare arrays are legacy shared IDs: they always mean `all` for the
-  // snapshot queryContext (the pre-R4 contract). Per-request
-  // `filters.sourceIds` still drives SQL and fact-filter scope via
-  // inference, preserving the old value behavior while new code passes
-  // the explicit object so `all` and `selected([])` never alias.
-  // Test helpers should pass the explicit object for scoped reads.
+  // Authoritative scope (R5-F1): the shared scope is validated once, then
+  // every per-request filter must agree with it exactly. Bare arrays are
+  // legacy `all` (empty only — anything else must use the explicit object).
   let scope: MetricScope;
   if (Array.isArray(scopeInput as unknown as unknown[])) {
-    scope = { sourceScope: "all", sourceIds: [...(scopeInput as readonly string[])] };
+    const ids = [...(scopeInput as readonly string[])];
+    if (ids.length > 0) {
+      throw new MetricQueryError(
+        "invalid-filter",
+        "Bare source ID arrays are legacy all-scope only; pass an explicit MetricScope",
+      );
+    }
+    scope = parseMetricScope({ sourceScope: "all", sourceIds: ids });
   } else {
-    const explicit = scopeInput as MetricScope;
-    scope = {
-      sourceScope: explicit.sourceScope,
-      sourceIds: [...explicit.sourceIds],
-    };
+    scope = parseMetricScope(scopeInput as MetricScope);
   }
   const now = deps.now ?? Date.now();
   const { queryContext } = publicContextFor(projectId, "", window, scope);
   const facts: MetricFact[] = [];
   for (const request of requests) {
     const { metricId, filters } = validateMetricRequest(request);
+    // Scope/filter agreement (R5-F1): for source-capable metrics `all`
+    // carries no per-request IDs and `selected` must carry exactly the
+    // verified set (order-insensitive) — omitted or conflicting filters
+    // reject instead of widening. Metrics without source support cannot
+    // carry per-request IDs (registry validation already rejects them);
+    // they stay measurable under any scope and resolve to honest zeros
+    // (empty selections) or explicit unavailable facts (non-empty
+    // selections) inside measureOne — never all-source data relabeled.
+    const supportsSources = (
+      METRIC_REGISTRY[metricId].supportedFilters as readonly string[]
+    ).includes("source_ids");
+    if (supportsSources) {
+      if (scope.sourceScope === "all") {
+        if (filters.sourceIds !== undefined) {
+          throw new MetricQueryError(
+            "invalid-filter",
+            "all-source scope must not carry per-request sourceIds",
+          );
+        }
+      } else if (
+        filters.sourceIds === undefined ||
+        !scopeIdsEqual(scope.sourceIds, filters.sourceIds)
+      ) {
+        throw new MetricQueryError(
+          "invalid-filter",
+          "per-request sourceIds must exactly match the verified source scope",
+        );
+      }
+    }
     const key = cacheKey(
       projectId,
       queryContext,

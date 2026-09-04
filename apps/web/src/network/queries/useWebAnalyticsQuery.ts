@@ -18,6 +18,7 @@ export function webAnalyticsQueryKey(params: {
 	host?: string | null;
 	path?: string | null;
 	traffic?: "human" | "all";
+	ctx?: string | null;
 }) {
 	return [
 		"workspace-project-web-analytics",
@@ -28,6 +29,7 @@ export function webAnalyticsQueryKey(params: {
 		params.host ?? null,
 		params.path ?? null,
 		params.traffic ?? "human",
+		params.ctx ?? null,
 	] as const;
 }
 
@@ -39,6 +41,7 @@ async function fetchWebAnalytics(
 		from: String(params.from),
 		to: String(params.to),
 	});
+	if (params.ctx) search.set("ctx", params.ctx);
 	for (const id of params.sourceIds ?? []) search.append("sourceId", id);
 	if (params.host) search.set("host", params.host);
 	if (params.path) search.set("path", params.path);
@@ -58,6 +61,7 @@ export function useWebAnalyticsQuery(params: {
 	host?: string | null;
 	path?: string | null;
 	traffic?: "human" | "all";
+	ctx?: string | null;
 	enabled?: boolean;
 }) {
 	return useQuery({
@@ -70,6 +74,7 @@ export function useWebAnalyticsQuery(params: {
 				host: params.host,
 				path: params.path,
 				traffic: params.traffic,
+				ctx: params.ctx ?? null,
 			}),
 		enabled:
 			(params.enabled ?? true) &&

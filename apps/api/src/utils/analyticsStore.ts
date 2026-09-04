@@ -177,6 +177,12 @@ export type PaginatedProjectEventsParams = {
   limit?: number;
   q?: string;
   sourceId?: string;
+  /**
+   * Multi-source selection (R5-F1): verified drill-down scopes carry up to
+   * 64 IDs. When present (even empty), it is authoritative over singular
+   * `sourceId`. Empty means an explicit empty intersection (no rows).
+   */
+  sourceIds?: string[];
   platformFamily?: "web" | "mobile" | "server";
   /** Canonical resolved range (Task 21 slice 2): half-open on occurred_at. */
   from?: number;
@@ -200,7 +206,15 @@ export async function paginatedProjectEvents(
     clauses.push("lower(name) LIKE lower(?)");
     args.push(term);
   }
-  if (params.sourceId) {
+  if (params.sourceIds !== undefined) {
+    if (params.sourceIds.length === 0) {
+      return { events: [], nextCursor: null };
+    }
+    clauses.push(
+      `source_id IN (${params.sourceIds.map(() => "?").join(",")})`,
+    );
+    args.push(...params.sourceIds);
+  } else if (params.sourceId) {
     clauses.push("source_id = ?");
     args.push(params.sourceId);
   }

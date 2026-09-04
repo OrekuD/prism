@@ -45,7 +45,7 @@ import {
 	MetricQueryError,
 	type MetricFilters,
 } from "../utils/projectMetrics";
-import { issueQueryContextToken, resolveTokenKeyConfig } from "../utils/queryContextToken";
+import { issueQueryContextToken, resolveTokenKeyConfig, verifyDrilldownToken } from "../utils/queryContextToken";
 import {
 	METRIC_REGISTRY,
 	ProjectMetricsResourceSchema,
@@ -300,9 +300,37 @@ export class ProjectsController {
     }
 
     // Range validation (UTC epoch ms, frozen 13-month ceiling).
+    // A verified drill-down `ctx` token rebuilds range/cutoff/source from
+    // signed state (R5-F1); the `scope` param is never trusted.
+    const mobileCtxToken = ctx.req.query("ctx") ?? undefined;
+    let mobileCtx: { from: number; to: number; asOf: number; sourceScope: "all" | "selected"; sourceIds: string[] } | null = null;
+    if (mobileCtxToken !== undefined) {
+      const idRows = (await db`
+        SELECT id FROM project_sources WHERE project_id = ${String(projectRow.id)}`) as Array<{
+        id: string;
+      }>;
+      const verified = await verifyDrilldownToken({
+        token: mobileCtxToken,
+        env: ctx.env,
+        projectId: String(projectRow.id),
+        organizationId: String(projectRow.organization_id),
+        allowedSourceIds: idRows.map((row) => String(row.id)),
+      });
+      if (!verified.present || !verified.ok) {
+        return ctx.json(new ErrorResponse("invalid_filter").toJSON(), 400);
+      }
+      mobileCtx = {
+        from: verified.context.from,
+        to: verified.context.to,
+        asOf: verified.context.asOf,
+        sourceScope: verified.context.sourceScope,
+        sourceIds: [...verified.context.sourceIds],
+      };
+    }
     const now = Date.now();
-    const from = Number(ctx.req.query("from") ?? now - 24 * 60 * 60 * 1000);
-    const to = Number(ctx.req.query("to") ?? now);
+    const from = mobileCtx !== null ? mobileCtx.from : Number(ctx.req.query("from") ?? now - 24 * 60 * 60 * 1000);
+    const to = mobileCtx !== null ? mobileCtx.to : Number(ctx.req.query("to") ?? now);
+    const mobileAsOf = mobileCtx !== null ? mobileCtx.asOf : undefined;
     if (
       !Number.isFinite(from) ||
       !Number.isFinite(to) ||
@@ -314,23 +342,21 @@ export class ProjectsController {
 
     // Repeatable sourceId params - validated against THIS project's React
     // Native sources only; unknown or non-mobile ids are ignored (never an
-    // error that discloses other workspaces' source existence).
-    const requestedSourceIds = (ctx.req.queries("sourceId") ?? []).map((v) =>
-      v.slice(0, 64),
-    );
+    // error that discloses other workspaces' source existence). A verified
+    // `ctx` scope overrides URL sources (R5-F1).
     let sourceIds: string[] = [];
     let os: "ios" | "android" | null = null;
     const osParam = ctx.req.query("os");
     if (osParam === "ios" || osParam === "android") os = osParam;
     const release = ctx.req.query("release")?.slice(0, 32) || null;
-    if (requestedSourceIds.length > 0) {
+    if (mobileCtx !== null && mobileCtx.sourceScope === "selected") {
       const rows = (await db`
         SELECT id FROM project_sources
         WHERE project_id = ${String(projectRow.id)} AND platform = 'react-native'`) as Array<{
         id: string;
       }>;
       const allowedMobileSources = new Set(rows.map((r) => String(r.id)));
-      sourceIds = [...new Set(requestedSourceIds)].filter((id) =>
+      sourceIds = [...new Set(mobileCtx.sourceIds)].filter((id) =>
         allowedMobileSources.has(id),
       );
       if (sourceIds.length === 0) {
@@ -349,6 +375,37 @@ export class ProjectsController {
           coverage: { technologyPercent: 0, geographyPercent: 0 },
         });
       }
+    } else if (mobileCtx === null) {
+      const requestedSourceIds = (ctx.req.queries("sourceId") ?? []).map((v) =>
+        v.slice(0, 64),
+      );
+      if (requestedSourceIds.length > 0) {
+        const rows = (await db`
+          SELECT id FROM project_sources
+          WHERE project_id = ${String(projectRow.id)} AND platform = 'react-native'`) as Array<{
+          id: string;
+        }>;
+        const allowedMobileSources = new Set(rows.map((r) => String(r.id)));
+        sourceIds = [...new Set(requestedSourceIds)].filter((id) =>
+          allowedMobileSources.has(id),
+        );
+        if (sourceIds.length === 0) {
+          // Explicitly filtered to nothing applicable -> honest empty payload.
+          return ctx.json({
+            range: { from, to, timezone: "UTC" },
+            filters: { sourceIds: [], os: null, release: null },
+            totals: { appOpens: 0, visitors: 0, appSessions: 0, avgScreensPerSession: 0, avgSessionDurationMs: null, observedInstallations: 0, excludedBots: 0 },
+            comparison: { appOpens: { kind: "no-prior-data" }, visitors: { kind: "no-prior-data" }, appSessions: { kind: "no-prior-data" }, observedInstallations: { kind: "no-prior-data" } },
+            trend: { bucket: "daily", points: [] },
+            screens: [],
+            releases: [],
+            installations: { observed: 0, rows: [] },
+            technology: { devices: [], operatingSystems: [], sizeClasses: [], coveragePercent: 0 },
+            locations: { countries: [], regions: [], cities: [], coveragePercent: 0 },
+            coverage: { technologyPercent: 0, geographyPercent: 0 },
+          });
+        }
+      }
     }
 
     try {
@@ -363,6 +420,7 @@ export class ProjectsController {
           sourceIds,
           os,
           release,
+          ...(mobileCtx !== null ? { asOf: mobileAsOf } : {}),
         },
       );
       return ctx.json(resource);
@@ -408,8 +466,38 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
       return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
     }
 
-    const from = Number(ctx.req.query("from"));
-    const to = Number(ctx.req.query("to"));
+    // Verified drill-down snapshot (R5-F1): a `ctx` token rebuilds the
+    // immutable range, cutoff, and source filter from signed state. The
+    // user-controlled `scope` param is never read as authority.
+    const webCtxToken = ctx.req.query("ctx") ?? undefined;
+    let webCtx: { from: number; to: number; asOf: number; sourceScope: "all" | "selected"; sourceIds: string[] } | null = null;
+    if (webCtxToken !== undefined) {
+      const idRows = (await db`
+        SELECT id FROM project_sources WHERE project_id = ${projectId}`) as Array<{
+        id: string;
+      }>;
+      const verified = await verifyDrilldownToken({
+        token: webCtxToken,
+        env: ctx.env,
+        projectId,
+        organizationId: String(projectRow.organization_id),
+        allowedSourceIds: idRows.map((row) => String(row.id)),
+      });
+      if (!verified.present || !verified.ok) {
+        return ctx.json(new ErrorResponse("invalid_filter").toJSON(), 400);
+      }
+      webCtx = {
+        from: verified.context.from,
+        to: verified.context.to,
+        asOf: verified.context.asOf,
+        sourceScope: verified.context.sourceScope,
+        sourceIds: [...verified.context.sourceIds],
+      };
+    }
+
+    const from = webCtx !== null ? webCtx.from : Number(ctx.req.query("from"));
+    const to = webCtx !== null ? webCtx.to : Number(ctx.req.query("to"));
+    const webAsOf = webCtx !== null ? webCtx.asOf : Date.now();
     if (
       !Number.isFinite(from) ||
       !Number.isFinite(to) ||
@@ -430,17 +518,16 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
 
     // Repeatable sourceId params — validated against THIS project's Web
     // sources only; unknown or non-web ids are ignored (never an error that
-    // discloses other workspaces' source existence).
-    const requestedSourceIds = (ctx.req.queries("sourceId") ?? []).map((v) =>
-      v.slice(0, 64),
-    );
+    // discloses other workspaces' source existence). A verified `ctx`
+    // scope overrides URL sources entirely (R5-F1): `all` means no filter,
+    // `selected` narrows to the signed IDs (empty stays empty).
     let sourceIds: string[] = [];
-    if (requestedSourceIds.length > 0) {
+    if (webCtx !== null && webCtx.sourceScope === "selected") {
       const rows = (await db`
         SELECT id FROM project_sources
         WHERE project_id = ${projectId} AND platform = 'web'`) as Array<{ id: string }>;
       const allowedWebSources = new Set(rows.map((r) => String(r.id)));
-      sourceIds = [...new Set(requestedSourceIds)].filter((id) =>
+      sourceIds = [...new Set(webCtx.sourceIds)].filter((id) =>
         allowedWebSources.has(id),
       );
       if (sourceIds.length === 0) {
@@ -474,11 +561,64 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
           coverage: { technologyPercent: 0, geographyPercent: 0, campaignPercent: 0 },
         });
       }
+    } else if (webCtx === null) {
+      const requestedSourceIds = (ctx.req.queries("sourceId") ?? []).map((v) =>
+        v.slice(0, 64),
+      );
+      if (requestedSourceIds.length > 0) {
+        const rows = (await db`
+          SELECT id FROM project_sources
+          WHERE project_id = ${projectId} AND platform = 'web'`) as Array<{ id: string }>;
+        const allowedWebSources = new Set(rows.map((r) => String(r.id)));
+        sourceIds = [...new Set(requestedSourceIds)].filter((id) =>
+          allowedWebSources.has(id),
+        );
+        if (sourceIds.length === 0) {
+          // Explicitly filtered to nothing applicable → honest empty payload.
+          return ctx.json({
+            range: { from, to, timezone: "UTC" },
+            filters: {
+              sourceIds: [],
+              host,
+              path,
+              traffic,
+            },
+            totals: {
+              pageViews: 0, visitors: 0, sessions: 0,
+              viewsPerSession: 0, bounceRate: null, excludedBots: 0,
+            },
+            comparison: {
+              pageViews: { kind: "no-prior-data" },
+              visitors: { kind: "no-prior-data" },
+              sessions: { kind: "no-prior-data" },
+              viewsPerSession: { kind: "no-prior-data" },
+              bounceRate: null,
+            },
+            trend: { bucket: "daily", points: [] },
+            pages: [], referrers: [], campaigns: [],
+            locations: { countries: [], regions: [], cities: [], coveragePercent: 0 },
+            technology: {
+              browsers: [], operatingSystems: [], devices: [],
+              viewports: [], languages: [], coveragePercent: 0,
+            },
+            coverage: { technologyPercent: 0, geographyPercent: 0, campaignPercent: 0 },
+          });
+        }
+      }
     }
 
     const resource = await loadWebAnalytics(
-      { projectId, from, to, sourceIds, host, path, traffic },
-      Date.now(),
+      {
+        projectId,
+        from,
+        to,
+        sourceIds,
+        host,
+        path,
+        traffic,
+        ...(webCtx !== null ? { asOf: webAsOf } : {}),
+      },
+      webCtx !== null ? webAsOf : Date.now(),
       TursoDatabaseManager.getInstance(ctx),
     );
     return ctx.json(resource);
@@ -523,10 +663,52 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
     // source of truth — search and pagination hit the DB via keyset cursor,
     // not an unbounded in-memory load. Legacy callers with no pagination
     // params still get the bounded array for backwards compat.
+    // A verified drill-down `ctx` token overrides range + source filtering
+    // (R5-F1): after membership, the signed range/source scope is
+    // authoritative and the user-controlled `scope` param is never read.
+    const ctxToken = ctx.req.query("ctx") ?? undefined;
+    let ctxScope: { sourceScope: "all" | "selected"; sourceIds: string[] } | null = null;
+    let ctxRange: { from?: number; to?: number; asOf?: number } = {};
+    if (ctxToken !== undefined) {
+      const dbForCtx = DatabaseManager.getInstance(ctx);
+      const idRows = (await dbForCtx`
+        SELECT id FROM project_sources WHERE project_id = ${project[0].id}`) as Array<{
+        id: string;
+      }>;
+      const verified = await verifyDrilldownToken({
+        token: ctxToken,
+        env: ctx.env,
+        projectId: String(project[0].id),
+        organizationId: String(project[0].organization_id),
+        allowedSourceIds: idRows.map((row) => String(row.id)),
+      });
+      if (!verified.present || !verified.ok) {
+        return ctx.json(new ErrorResponse("invalid_filter").toJSON(), 400);
+      }
+      ctxScope = {
+        sourceScope: verified.context.sourceScope,
+        sourceIds: [...verified.context.sourceIds],
+      };
+      ctxRange = {
+        from: verified.context.from,
+        to: verified.context.to,
+        asOf: verified.context.asOf,
+      };
+    }
     const q = ctx.req.query("q") ?? ctx.req.query("eventName") ?? undefined;
     const cursor = ctx.req.query("cursor") ?? undefined;
     const limitRaw = ctx.req.query("limit");
-    const sourceId = ctx.req.query("sourceId") ?? ctx.req.query("source") ?? undefined;
+    // Multi-source URL params stay representable (R5-F1): repeated
+    // `sourceId`/`source` values form the URL filter when no verified `ctx`
+    // overrides it.
+    const urlSourceIds = [
+      ...(ctx.req.queries("sourceId") ?? []),
+      ...(ctx.req.queries("source") ?? []),
+    ].filter((id) => id.length > 0 && id !== "all");
+    const sourceId =
+      ctxScope !== null
+        ? undefined
+        : (ctx.req.query("sourceId") ?? ctx.req.query("source") ?? undefined);
     const sourcePlatform = ctx.req.query("sourcePlatform") ?? ctx.req.query("type") ?? undefined;
     // Canonical drill-down range (Task 21 slice 2): optional half-open
     // occurred_at window plus snapshot cutoff. Garbage is a 400, never a
@@ -537,9 +719,9 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
       if (!Number.isInteger(value) || value < 0) return Number.NaN;
       return value;
     };
-    const drillFrom = parseBoundedInt(ctx.req.query("from"));
-    const drillTo = parseBoundedInt(ctx.req.query("to"));
-    const drillAsOf = parseBoundedInt(ctx.req.query("asOf"));
+    const drillFrom = ctxScope !== null ? ctxRange.from : parseBoundedInt(ctx.req.query("from"));
+    const drillTo = ctxScope !== null ? ctxRange.to : parseBoundedInt(ctx.req.query("to"));
+    const drillAsOf = ctxScope !== null ? ctxRange.asOf : parseBoundedInt(ctx.req.query("asOf"));
     if (
       drillFrom !== undefined && Number.isNaN(drillFrom) ||
       drillTo !== undefined && Number.isNaN(drillTo) ||
@@ -549,8 +731,8 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
       return ctx.json(new ErrorResponse("invalid_range").toJSON(), 400);
     }
     const hasPagination =
-      q !== undefined || cursor !== undefined || limitRaw !== undefined || sourceId !== undefined || sourcePlatform !== undefined ||
-      drillFrom !== undefined || drillTo !== undefined || drillAsOf !== undefined;
+      q !== undefined || cursor !== undefined || limitRaw !== undefined || sourceId !== undefined || urlSourceIds.length > 0 || sourcePlatform !== undefined ||
+      drillFrom !== undefined || drillTo !== undefined || drillAsOf !== undefined || ctxScope !== null;
 
     if (hasPagination) {
       const limit = limitRaw ? Number(limitRaw) : undefined;
@@ -559,6 +741,25 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
           ? (sourcePlatform as "web" | "mobile" | "server")
           : undefined;
 
+      // Verified scope drives the source filter (R5-F1): `all` means no
+      // filter, `selected` means exactly the signed IDs (empty stays
+      // empty via the loader's authoritative empty-array branch).
+      const scopedSourceIds =
+        ctxScope !== null
+          ? ctxScope.sourceScope === "all"
+            ? undefined
+            : [...ctxScope.sourceIds]
+          : urlSourceIds.length > 1
+            ? [...new Set(urlSourceIds)]
+            : undefined;
+      const scopedSourceId =
+        ctxScope !== null
+          ? undefined
+          : urlSourceIds.length > 1
+            ? undefined
+            : sourceId && sourceId !== "all"
+              ? sourceId
+              : undefined;
       const { events, nextCursor } = await paginatedProjectEvents(
         TursoDatabaseManager.getInstance(ctx),
         project[0].id,
@@ -566,7 +767,8 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
           q: q && q.trim().length > 0 ? q : undefined,
           cursor,
           limit: Number.isFinite(limit as number) ? limit : undefined,
-          sourceId: sourceId && sourceId !== "all" ? sourceId : undefined,
+          ...(scopedSourceIds !== undefined ? { sourceIds: scopedSourceIds } : {}),
+          ...(scopedSourceId !== undefined ? { sourceId: scopedSourceId } : {}),
           platformFamily,
           from: drillFrom,
           to: drillTo,

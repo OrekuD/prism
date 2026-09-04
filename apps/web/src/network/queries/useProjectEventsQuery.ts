@@ -5,9 +5,16 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 export type ProjectEventsParams = {
   q?: string;
   sourceId?: string;
+  /** Multi-source selection (R5-F1): repeated IDs stay representable. */
+  sourceIds?: string[];
   platformFamily?: "web" | "mobile" | "server";
   cursor?: string;
   limit?: number;
+  from?: number;
+  to?: number;
+  asOf?: number;
+  /** Verified snapshot token (R5-F1): server rebuilds range + source filter. */
+  ctx?: string;
 };
 
 export type ProjectEventsPage = {
@@ -21,11 +28,19 @@ async function projectEvents(
 ): Promise<ProjectEventsPage> {
   if (!slug) return { events: [], nextCursor: null };
   const search = new URLSearchParams();
+  if (params.ctx) search.set("ctx", params.ctx);
   if (params.q) search.set("q", params.q);
-  if (params.sourceId) search.set("sourceId", params.sourceId);
+  if (params.sourceIds !== undefined) {
+    for (const id of params.sourceIds) search.append("sourceId", id);
+  } else if (params.sourceId) {
+    search.set("sourceId", params.sourceId);
+  }
   if (params.platformFamily) search.set("type", params.platformFamily);
   if (params.cursor) search.set("cursor", params.cursor);
   if (params.limit) search.set("limit", String(params.limit));
+  if (params.from !== undefined) search.set("from", String(params.from));
+  if (params.to !== undefined) search.set("to", String(params.to));
+  if (params.asOf !== undefined) search.set("asOf", String(params.asOf));
   const qs = search.toString();
   const response = await axiosInstance.get(`/projects/${slug}/events${qs ? `?${qs}` : ""}`);
 
@@ -56,7 +71,7 @@ export function useProjectEventsQuery(
   params: ProjectEventsParams = {},
 ) {
   return useQuery<ProjectEventsPage>({
-    queryKey: ["project-events", slug, params.q ?? null, params.sourceId ?? null, params.platformFamily ?? null, params.cursor ?? null, params.limit ?? null],
+    queryKey: ["project-events", slug, params.q ?? null, params.sourceId ?? null, [...(params.sourceIds ?? [])].sort(), params.platformFamily ?? null, params.cursor ?? null, params.limit ?? null, params.from ?? null, params.to ?? null, params.asOf ?? null, params.ctx ?? null],
     queryFn: () => projectEvents(slug, params),
     enabled: Boolean(slug),
     refetchOnWindowFocus: false,

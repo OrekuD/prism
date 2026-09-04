@@ -1121,6 +1121,32 @@ export const ProjectCapabilitiesSchema = z.strictObject({
 export type ProjectCapabilities = z.infer<typeof ProjectCapabilitiesSchema>;
 
 /**
+ * Canonical capability fingerprint for the snapshot cache (R5-F3): every
+ * capability value that can affect a cached fact or its coverage joins the
+ * key — total AND active source counts, collection flags, traffic policy,
+ * and the sorted observed Standard Event set. `lastReceivedAt` is excluded:
+ * no cached fact or coverage field renders it, so including it would only
+ * churn the cache. Facts embed `coverage.sourcesConfigured`, so omitting
+ * `total` (or aliasing event sets by length) would serve stale coverage.
+ */
+export function capabilityFingerprint(
+  capabilities: ProjectCapabilities,
+): string {
+  const events = [...capabilities.standardEventsObserved].sort().join(",");
+  return [
+    capabilities.web ? 1 : 0,
+    capabilities.mobile ? 1 : 0,
+    capabilities.server ? 1 : 0,
+    capabilities.errorCollection.configured ? 1 : 0,
+    capabilities.errorCollection.observed ? 1 : 0,
+    capabilities.trafficPolicy,
+    capabilities.sources.total,
+    capabilities.sources.active,
+    events,
+  ].join(",");
+}
+
+/**
  * Derive collection capabilities from stored source platforms. Future
  * Swift/Kotlin (`ios`/`android`) sources feed `mobile` with no contract
  * change — proven by the future-native fixtures.

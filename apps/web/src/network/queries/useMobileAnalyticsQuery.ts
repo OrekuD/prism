@@ -15,6 +15,7 @@ export function mobileAnalyticsQueryKey(params: {
 	sourceIds?: string[];
 	os?: "ios" | "android" | null;
 	release?: string | null;
+	ctx?: string | null;
 }) {
 	return [
 		"workspace-project-mobile-analytics",
@@ -24,6 +25,7 @@ export function mobileAnalyticsQueryKey(params: {
 		[...(params.sourceIds ?? [])].sort(),
 		params.os ?? null,
 		params.release ?? null,
+		params.ctx ?? null,
 	] as const;
 }
 
@@ -35,6 +37,7 @@ async function fetchMobileAnalytics(
 		from: String(params.from),
 		to: String(params.to),
 	});
+	if (params.ctx) search.set("ctx", params.ctx);
 	for (const id of params.sourceIds ?? []) search.append("sourceId", id);
 	if (params.os) search.set("os", params.os);
 	if (params.release) search.set("release", params.release);
@@ -52,6 +55,7 @@ export function useMobileAnalyticsQuery(params: {
 	sourceIds?: string[];
 	os?: "ios" | "android" | null;
 	release?: string | null;
+	ctx?: string | null;
 	enabled?: boolean;
 }) {
 	return useQuery({
@@ -63,6 +67,7 @@ export function useMobileAnalyticsQuery(params: {
 				sourceIds: params.sourceIds,
 				os: params.os ?? null,
 				release: params.release ?? null,
+				ctx: params.ctx ?? null,
 			}),
 		enabled:
 			(params.enabled ?? true) &&

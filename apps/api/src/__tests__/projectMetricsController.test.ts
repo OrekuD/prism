@@ -40,7 +40,7 @@ function productDb(role: string | null) {
     if (sql.includes("SELECT role FROM member")) {
       return role ? [{ role }] : [];
     }
-    if (sql.includes("FROM projects") && sql.includes("WHERE slug")) {
+    if (sql.includes("FROM projects")) {
       return [
         { id: PROJECT_ID, organization_id: ORG_ID, slug: SLUG, name: "Alpha" },
       ];
@@ -463,5 +463,120 @@ describe("GET /projects/:slug/metrics", () => {
     expect(() =>
       resolveTokenKeyConfig({ QUERY_CONTEXT_TOKEN_KEY: "short" }),
     ).toThrow();
+  });
+
+  describe("verified drill-down scope (R5-F1)", () => {
+    async function metricsToken(
+      query: Record<string, string>,
+    ): Promise<string> {
+      const res = (await ProjectsController.getMetrics(
+        ctxFor(USER_ID, query),
+      )) as { __json?: { queryContextToken: string } };
+      const token = res.__json?.queryContextToken;
+      if (!token) throw new Error("missing metrics token");
+      return token;
+    }
+
+    it("serves Events from the verified scope, never URL scope", async () => {
+      const at = Date.now() - 500;
+      await analytics.execute({
+        sql: `INSERT INTO events (id, project_id, type, name, schema_version, occurred_at,
+          received_at, session_id, anonymous_id, user_id, person_id, properties,
+          context, sdk_name, sdk_version, source_id, platform)
+         VALUES ('e_other_evt', ?, 'track', 'click', 1, ?, ?, 's9', 'a9', NULL, NULL, '{}', NULL, NULL, NULL, 'src_other', 'web')`,
+        args: [PROJECT_ID, at, at],
+      });
+      const emptyToken = await metricsToken({
+        ids: "project.accepted_events",
+        range: "7d",
+        sourceId: "src_unknown",
+      });
+      const emptyRes = (await ProjectsController.getProjectEvents(
+        ctxFor(USER_ID, { ctx: emptyToken }),
+      )) as { __json?: unknown[] | { events: unknown[] } };
+      const emptyEvents = Array.isArray(emptyRes.__json)
+        ? emptyRes.__json
+        : (emptyRes.__json as { events: unknown[] }).events;
+      expect(emptyEvents).toEqual([]);
+      const knownToken = await metricsToken({
+        ids: "project.accepted_events",
+        range: "7d",
+        sourceId: "src_web_1",
+      });
+      const scopedRes = (await ProjectsController.getProjectEvents(
+        ctxFor(USER_ID, { ctx: knownToken }),
+      )) as { __json?: unknown[] | { events: Array<{ sourceId?: string; source?: { id: string } | null }> } };
+      const scopedEvents = Array.isArray(scopedRes.__json)
+        ? (scopedRes.__json as Array<{ sourceId?: string; source?: { id: string } | null }>)
+        : scopedRes.__json?.events ?? [];
+      expect(scopedEvents.length).toBeGreaterThan(0);
+      for (const event of scopedEvents) {
+        const sid = event.sourceId ?? event.source?.id;
+        expect(sid).toBe("src_web_1");
+      }
+      // Hostile URL params cannot widen a verified scope.
+      const hostileRes = (await ProjectsController.getProjectEvents(
+        ctxFor(USER_ID, {
+          ctx: knownToken,
+          sourceId: "src_other",
+          scope: "selected",
+        }),
+      )) as { __json?: unknown[] | { events: Array<{ sourceId?: string; source?: { id: string } | null }> } };
+      const hostileEvents = Array.isArray(hostileRes.__json)
+        ? (hostileRes.__json as Array<{ sourceId?: string; source?: { id: string } | null }>)
+        : hostileRes.__json?.events ?? [];
+      for (const event of hostileEvents) {
+        const sid = event.sourceId ?? event.source?.id;
+        expect(sid).toBe("src_web_1");
+      }
+      // Forged ctx fails closed instead of widening.
+      const badRes = (await ProjectsController.getProjectEvents(
+        ctxFor(USER_ID, { ctx: "bad.token" }),
+      )) as { __status?: number };
+      expect(badRes.__status).toBe(400);
+    });
+
+    it("serves Web analytics from the verified scope", async () => {
+      const at = Date.now() - 500;
+      const seedWeb = async (eventId: string, source: string) => {
+        await analytics.execute({
+          sql: `INSERT INTO events (id, project_id, type, name, schema_version, occurred_at,
+            received_at, session_id, anonymous_id, user_id, person_id, properties,
+            context, sdk_name, sdk_version, source_id, platform)
+           VALUES (?, ?, 'track', '$prism_page_view', 1, ?, ?, 'sw', ?, NULL, NULL, '{}', NULL, NULL, NULL, ?, 'web')`,
+          args: [eventId, PROJECT_ID, at, at, `a-${eventId}`, source],
+        });
+        await analytics.execute({
+          sql: `INSERT INTO web_page_views (project_id, event_id, occurred_at, host, path, navigation_type, page_sequence, is_bot)
+           VALUES (?, ?, ?, 'example.com', '/a', 'initial', 1, 0)`,
+          args: [PROJECT_ID, eventId, at],
+        });
+      };
+      await seedWeb("w_ctx_known", "src_web_1");
+      await seedWeb("w_ctx_other", "src_other");
+      const emptyToken = await metricsToken({
+        ids: "project.accepted_events",
+        range: "7d",
+        sourceId: "src_unknown",
+      });
+      const emptyRes = (await ProjectsController.getWebAnalytics(
+        ctxFor(USER_ID, { ctx: emptyToken }),
+      )) as { __json?: { totals: { pageViews: number } } };
+      expect(emptyRes.__json?.totals.pageViews).toBe(0);
+      const knownToken = await metricsToken({
+        ids: "project.accepted_events",
+        range: "7d",
+        sourceId: "src_web_1",
+      });
+      const scopedRes = (await ProjectsController.getWebAnalytics(
+        ctxFor(USER_ID, { ctx: knownToken }),
+      )) as { __json?: { totals: { pageViews: number } } };
+      // Only the verified source counts; src_other cannot leak in.
+      expect(scopedRes.__json?.totals.pageViews).toBe(1);
+      const badRes = (await ProjectsController.getWebAnalytics(
+        ctxFor(USER_ID, { ctx: "bad.token" }),
+      )) as { __status?: number };
+      expect(badRes.__status).toBe(400);
+    });
   });
 });

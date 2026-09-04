@@ -2388,7 +2388,7 @@ or link facts whose signed scope or historical meaning can change.
 ### R4-F1 - The signed source context still cannot distinguish no matches from all sources
 
 **Severity:** High
-**Status:** Closed
+**Status:** Re-opened by review round 5
 
 The metric service now distinguishes `filters.sourceIds === undefined` from an
 explicit empty array and returns honest zero facts for the latter. That state
@@ -2542,5 +2542,154 @@ unblocked.
   resolve/reopen + post-`asOf` release proves identical historical values.
 
 Evidence: api 263 passed, types 86 passed, web green except pre-existing
+gallery failure, api/web typechecks + api lint clean, types rebuilt, diff
+minimal per-file-convention (no bulk reformats).
+
+## Review feedback - round 5 (Slice 2 R4 re-review, 2026-09-04)
+
+Review scope: focused static review of `849d0e2` against R4-F1 through R4-F4.
+The review inspected only the changed contracts, metric service, controller,
+token code, focused regressions, and the existing drill-down request
+boundaries. The reported test, lint, typecheck, and build suites were not
+repeated.
+
+R4-F2, R4-F3, and R4-F4 are materially closed. Historical anonymous counts now
+survive the production identity reassignment flow, metric-token issuance fails
+closed on invalid key configuration, and current-only unresolved status is
+machine-readable and unavailable in historical snapshots. R4-F1 is not closed
+at the service/drill-down boundary. R5-F1 and R5-F2 should be resolved before
+Slice 3 creates insights and links from these facts. R5-F3 is a bounded cache
+correctness follow-up that should land in the same repair slice.
+
+### R5-F1 - Signed source scope is descriptive, not authoritative
+
+**Severity:** High
+**Status:** Closed
+
+`measureMetrics()` accepts the signed/shared `MetricScope` separately from each
+request's `filters.sourceIds`, but it never reconciles them. The scope is used
+for the query-context fingerprint, fact metadata, and drill-down metadata while
+the SQL path still reads only `filters.sourceIds`. A caller can therefore pass
+`selected + [source-a]` with no request source filter, or with a different
+filter, and receive an all-source or differently scoped value labelled and
+cached as the signed selected scope. `selected + []` happens to short-circuit,
+but non-empty selections remain vulnerable to widening.
+
+The new follow-up regression hides this mismatch by manually passing the
+verified empty list twice: once as `MetricScope` and again as
+`filters.sourceIds`. It does not prove that the verified scope is the authority
+for the read.
+
+The drill-down half is also not wired. `buildDrilldownUrl()` emits `ctx` and
+`scope`, but the Events request hook sends neither, and
+`ProjectsController.getProjectEvents()` reads neither or verifies the token.
+The other destination APIs likewise do not consume the signed scope. Clicking
+a zero fact for `selected + []` can therefore open an unfiltered destination
+and show project-wide rows, which is the original R4-F1 failure mode. A
+user-controlled `scope=selected` query parameter is not an authorization or
+snapshot boundary by itself.
+
+**How to address:**
+
+1. [x] Parse and validate `MetricScope` at the canonical service boundary.
+       Require `all` to carry no IDs, bound/deduplicate selected IDs, and reject
+       any per-request `sourceIds` that differs from the verified scope.
+2. [x] Make the verified scope drive SQL. For metrics supporting source IDs,
+       derive the effective source filter inside `measureMetrics()` instead of
+       relying on every caller to copy it. For metrics that cannot honor a
+       selected-source context, omit them or return an explicit unavailable
+       fact; never compute all-source data under selected metadata.
+3. [x] Wire `ctx` through the Web query hooks and destination APIs. Verify it
+       server-side after the normal session/membership check, rebuild the
+       immutable range and source filter from the verified context, and ignore
+       `scope` as authority. Multi-source selections must remain representable.
+4. [x] Add direct service regressions for `selected + [known]` with omitted and
+       conflicting request filters. Then exercise at least Events plus one
+       aggregate destination through its real controller/loader using
+       `selected + []` and `selected + [known]`; assert the former returns no
+       rows and the latter cannot include another source.
+
+### R5-F2 - Release-scoped error metrics perform unbounded N+1 HTTP queries
+
+**Severity:** High
+**Status:** Closed
+
+`errorIssueStateCounts()` first reads every issue in the project, then performs
+one or two additional `client.execute()` calls per issue whenever a release
+filter is present. There is no issue bound. On the remote libSQL HTTP client, a
+project with hundreds or thousands of issues can therefore turn one overview
+or assistant metric into hundreds or thousands of sequential network
+round-trips. This defeats the fixed-query-count requirement and can time out a
+Worker even though the correctness tests use only one issue.
+
+**How to address:**
+
+1. [x] Replace the per-row reads with one bounded SQL statement or a fixed
+       small number of statements. A cutoff-visible occurrence CTE can derive
+       the first visible release, any-visible release membership, and
+       current-window release membership with conditional aggregates/window
+       functions before joining the issue rows.
+2. [x] Preserve the existing semantics exactly: earliest cutoff-visible
+       release for new issues, current-window co-occurrence for regressing
+       issues, and any cutoff-visible occurrence for the current-only unresolved
+       count.
+3. [x] Add a counting-client regression with many matching and non-matching
+       issues and assert query count stays constant as issue count grows. Keep
+       the exact historical replay test after resolve/reopen and a later
+       release.
+
+### R5-F3 - The snapshot cache capability key is still incomplete
+
+**Severity:** Medium
+**Status:** Closed
+
+The cache key claims to include capabilities, but its fingerprint includes
+`sources.active` and omits `sources.total`. Facts embed
+`coverage.sourcesConfigured`, so adding an inactive source while the active
+count stays unchanged can return the previous cached coverage for 60 seconds.
+The key also represents `standardEventsObserved` only by array length, allowing
+different observed event sets of the same size to alias if those capabilities
+later affect adaptive selection or coverage.
+
+**How to address:**
+
+1. [x] Build one canonical capability fingerprint containing every capability
+       value that can affect a cached fact or its coverage: total and active
+       source counts, collection flags, traffic policy, and a sorted set of
+       observed Standard Event keys. Include `lastReceivedAt` only if cached
+       output or eligibility depends on it.
+2. [x] Add a same-window cache regression where source total changes but active
+       count does not; the second fact must report the new configured-source
+       count. Add a same-length/different-Standard-Event-set case before Slice 3
+       uses that set for adaptive selection.
+
+### 2026-09-04 — Slice 2 follow-up: R5 review closed (2 high + 1 medium)
+
+All three R5 findings are implemented and regression-tested; Slice 3 is
+unblocked.
+
+- R5-F1: `parseMetricScope` validates the shared scope once;
+  per-request filters must agree exactly (all carries none, selected
+  carries exactly the verified set) or the service rejects instead of
+  widening. SQL derives from the verified scope; selected non-empty over
+  metrics without source support returns explicit unavailable. `ctx` is
+  wired through Events/Web/Mobile hooks and controllers: verified range +
+  source filter override URL params, `scope` is never trusted, invalid
+  tokens fail closed 400, empty selections stay empty, multi-source stays
+  representable (repeated params + array-capable Events listing).
+  Regressions cover omitted/conflicting filters plus Events and Web
+  through their real controllers.
+- R5-F2: release membership comes from one grouped read (conditional
+  any/window counts plus a zero-padded composite MIN for the earliest
+  visible release) — exactly one query regardless of issue count, with
+  identical new/regressing/unresolved semantics. Counting-client
+  regression proves constant queries as issues grow; historical replay
+  retained.
+- R5-F3: canonical `capabilityFingerprint` (total + active, collection
+  flags, traffic policy, sorted observed keys; `lastReceivedAt` excluded
+  as non-rendered) keys the snapshot cache. Regressions prove total-only
+  and event-set-only changes bust the cache.
+
+Evidence: api 269 passed, types 86 passed, web green except pre-existing
 gallery failure, api/web typechecks + api lint clean, types rebuilt, diff
 minimal per-file-convention (no bulk reformats).

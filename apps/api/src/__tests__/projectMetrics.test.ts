@@ -1754,3 +1754,186 @@ describe("current-only status and release cutoffs (R4-F4)", () => {
     clearMetricSnapshotCache();
   });
 });
+
+describe("verified scope authority (R5-F1)", () => {
+  it("rejects omitted and conflicting per-request source filters", async () => {
+    const scope = { sourceScope: "selected" as const, sourceIds: [W] };
+    // Omitted filter with a selected scope must not widen to all.
+    await expect(
+      measureMetrics(
+        client as unknown as CanonicalClient,
+        P,
+        WINDOW,
+        scope,
+        [{ metricId: "project.accepted_events" }],
+        { capabilities: CAPABILITIES, now: NOW },
+      ),
+    ).rejects.toThrowError(MetricQueryError);
+    // Conflicting IDs must not relabel another scope's value.
+    await expect(
+      measureMetrics(
+        client as unknown as CanonicalClient,
+        P,
+        WINDOW,
+        scope,
+        [{ metricId: "project.accepted_events", filters: { sourceIds: [S] } }],
+        { capabilities: CAPABILITIES, now: NOW },
+      ),
+    ).rejects.toThrowError(MetricQueryError);
+    // all-scope must not carry per-request IDs.
+    await expect(
+      measureMetrics(
+        client as unknown as CanonicalClient,
+        P,
+        WINDOW,
+        { sourceScope: "all" as const, sourceIds: [] },
+        [{ metricId: "project.accepted_events", filters: { sourceIds: [W] } }],
+        { capabilities: CAPABILITIES, now: NOW },
+      ),
+    ).rejects.toThrowError(MetricQueryError);
+    // Matching scope + filter succeeds with scoped metadata and value.
+    const facts = (await measureMetrics(
+      client as unknown as CanonicalClient,
+      P,
+      WINDOW,
+      scope,
+      [{ metricId: "project.accepted_events", filters: { sourceIds: [W] } }],
+      { capabilities: CAPABILITIES, now: NOW },
+    )) as MetricFact[];
+    expect(facts[0]?.value).toBe(14);
+    expect(facts[0]?.queryContext.sourceScope).toBe("selected");
+    clearMetricSnapshotCache();
+  });
+
+  it("returns unavailable for selected-source contexts on metrics without source support", async () => {
+    const scope = { sourceScope: "selected" as const, sourceIds: [W] };
+    const facts = (await measureMetrics(
+      client as unknown as CanonicalClient,
+      P,
+      WINDOW,
+      scope,
+      [{ metricId: "errors.new_issues" }],
+      { capabilities: CAPABILITIES, now: NOW },
+    )) as MetricFact[];
+    // Never all-source data under selected metadata.
+    expect(facts[0]?.value).toBeNull();
+    expect(facts[0]?.coverageNote).toMatch(/selected-source/);
+    expect(facts[0]?.queryContext.sourceScope).toBe("selected");
+    clearMetricSnapshotCache();
+  });
+});
+
+describe("bounded error release queries and capability cache (R5-F2, R5-F3)", () => {
+  it("reads release-scoped states in one query regardless of issue count", async () => {
+    const PX = "proj_err_count";
+    const seedIssue = async (n: number) => {
+      await exec(
+        `INSERT INTO error_issues (id, project_id, platform, fingerprint_version, fingerprint, level, status, title, first_seen_at, last_seen_at, occurrence_count, users_affected, first_release, last_release)
+         VALUES (?, ?, 'web', 1, ?, 'error', 'unresolved', ?, ?, ?, 0, 0, '2.4.1', '2.4.1')`,
+        [`cnt${n}`, PX, `fp-cnt${n}`, `Title cnt${n}`, FROM + n, NOW],
+      );
+      await exec(
+        `INSERT INTO error_occurrences (id, client_event_id, issue_id, project_id, source_id, platform, level, handled, occurred_at, received_at, release, environment, anonymous_id, payload)
+         VALUES (?, ?, ?, ?, 's', 'web', 'error', 0, ?, ?, '2.4.1', 'production', ?, '{}')`,
+        [`co${n}`, `c-co${n}`, `cnt${n}`, PX, FROM + n, FROM + n, `u${n}`],
+      );
+    };
+    for (let n = 0; n < 5; n += 1) await seedIssue(n);
+    const counting = (counter: { n: number }): CanonicalClient => ({
+      execute: async (input) => {
+        counter.n += 1;
+        return client.execute(input);
+      },
+    });
+    const window: MetricWindow = { ...WINDOW };
+    const first = { n: 0 };
+    const fresh5 = await errorIssueStateCounts(
+      counting(first) as unknown as CanonicalClient,
+      PX,
+      FROM,
+      NOW,
+      CFROM,
+      FROM,
+      NOW,
+      { release: "2.4.1" },
+    );
+    expect(fresh5.fresh).toBe(5);
+    expect(first.n).toBe(1);
+    for (let n = 5; n < 20; n += 1) await seedIssue(n);
+    const second = { n: 0 };
+    const fresh20 = await errorIssueStateCounts(
+      counting(second) as unknown as CanonicalClient,
+      PX,
+      FROM,
+      NOW,
+      CFROM,
+      FROM,
+      NOW,
+      { release: "2.4.1" },
+    );
+    expect(fresh20.fresh).toBe(20);
+    expect(second.n).toBe(1);
+    // Unfiltered states also stay single-query.
+    const plain = { n: 0 };
+    await errorIssueStateCounts(
+      counting(plain) as unknown as CanonicalClient,
+      PX,
+      FROM,
+      NOW,
+      CFROM,
+      FROM,
+      NOW,
+      {},
+    );
+    expect(plain.n).toBe(1);
+  });
+
+  it("separates cache entries by total sources and observed event sets", async () => {
+    clearMetricSnapshotCache();
+    const window: MetricWindow = { ...WINDOW };
+    const base: ProjectCapabilities = {
+      ...CAPABILITIES,
+      sources: { total: 1, active: 1, lastReceivedAt: null },
+      standardEventsObserved: ["sign_up"],
+    };
+    const first = (await measureMetrics(
+      client as unknown as CanonicalClient,
+      P,
+      window,
+      { sourceScope: "all" as const, sourceIds: [] },
+      [{ metricId: "project.accepted_events" }],
+      { capabilities: base, now: NOW },
+    )) as MetricFact[];
+    expect(first[0]?.coverage.sourcesConfigured).toBe(1);
+    // Same active count, new configured total: must not serve stale coverage.
+    const totalChanged: ProjectCapabilities = {
+      ...base,
+      sources: { total: 2, active: 1, lastReceivedAt: null },
+    };
+    const second = (await measureMetrics(
+      client as unknown as CanonicalClient,
+      P,
+      window,
+      { sourceScope: "all" as const, sourceIds: [] },
+      [{ metricId: "project.accepted_events" }],
+      { capabilities: totalChanged, now: NOW + 1000 },
+    )) as MetricFact[];
+    expect(second[0]?.coverage.sourcesConfigured).toBe(2);
+    // Same length, different observed set: must not alias.
+    const eventsChanged: ProjectCapabilities = {
+      ...base,
+      standardEventsObserved: ["purchase"],
+    };
+    const third = (await measureMetrics(
+      client as unknown as CanonicalClient,
+      P,
+      window,
+      { sourceScope: "all" as const, sourceIds: [] },
+      [{ metricId: "project.accepted_events" }],
+      { capabilities: eventsChanged, now: NOW + 2000 },
+    )) as MetricFact[];
+    expect(third[0]?.coverage.sourcesConfigured).toBe(1);
+    expect(third).not.toEqual(second);
+    clearMetricSnapshotCache();
+  });
+});

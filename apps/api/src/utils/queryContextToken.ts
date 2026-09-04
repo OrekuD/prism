@@ -183,6 +183,45 @@ export function resolveTokenKeyConfig(env: {
   return { kid, secret };
 }
 
+/**
+ * Verify a drill-down `ctx` token for a destination API (R5-F1). Builds the
+ * single-key record from bindings (no rotation set in v1), verifies HMAC +
+ * scope + range + expiry + source membership against the project's current
+ * source set, and returns the verified context. Returns `null` when no
+ * token was supplied (caller falls back to URL params); returns
+ * `{ ok: false }` when a supplied token is unusable so the caller can fail
+ * closed instead of widening. The URL `scope` parameter is never trusted
+ * as authority — only the signed context is.
+ */
+export async function verifyDrilldownToken(input: {
+  token: string | undefined;
+  env: { QUERY_CONTEXT_TOKEN_KEY?: string; QUERY_CONTEXT_TOKEN_KID?: string };
+  projectId: string;
+  organizationId: string;
+  allowedSourceIds: readonly string[];
+  now?: number;
+}): Promise<
+  | { present: false }
+  | { present: true; ok: true; context: VerifiedQueryContext }
+  | { present: true; ok: false; reason: TokenVerifyFailure }
+> {
+  if (!input.token) return { present: false };
+  const kid = input.env.QUERY_CONTEXT_TOKEN_KID ?? "k1";
+  const secret = input.env.QUERY_CONTEXT_TOKEN_KEY ?? "";
+  if (!kid || kid.length > 64 || !secret || secret.length < 16) {
+    return { present: true, ok: false, reason: "unknown-key" };
+  }
+  const result = await verifyQueryContextToken(input.token, {
+    keys: { [kid]: secret },
+    now: input.now,
+    projectId: input.projectId,
+    organizationId: input.organizationId,
+    allowedSourceIds: input.allowedSourceIds,
+  });
+  if (!result.ok) return { present: true, ok: false, reason: result.reason };
+  return { present: true, ok: true, context: result.context };
+}
+
 const textEncoder = new TextEncoder();
 
 const base64UrlEncodeBytes = (bytes: Uint8Array): string => {
