@@ -1389,6 +1389,13 @@ This slice determines whether the feature is accurate enough to release.
       48-query ceiling; file the result under the Slice 8 hosted evidence.
       Overview and assistant reads stay disabled in the hosted release
       until this passes.
+- [ ] Prove Canonical Term Policy v1 portable before self-hosted release
+      (R15-F1.5): on every supported PostgreSQL major version and hosted
+      database locale, confirm a baseline business term, then propose each
+      ECMAScript-whitespace and ASCII-case variant and prove same-slot
+      supersession, plus blank-name rejection and Greek-case coexistence.
+      File the matrix beside the Slice 8 hosted evidence; any policy change
+      ships versioned with a healing migration, never a redefinition.
 - [ ] Record screenshots, exact questions, tool traces, API/dashboard values,
       artifacts, drill-down results, latency, token use, and failures.
 - [ ] Require zero metric mismatches in the release evaluation set.
@@ -4734,3 +4741,127 @@ unblocked.
 Evidence: api 400 passed | 19 skipped (27 files: 25 passed | 2 skipped),
 types 95 passed (4 files), api/web typechecks clean, api lint clean,
 `git diff --check` clean, `db:generate` reports no drift.
+
+## Feedback: review round 15
+
+This focused re-review covers commit `814f409` against `34c5925`. The legacy
+digest sentinel now fails closed on both creation and append retries while
+remaining readable through history, so R14-F2 closes cleanly. Moving slot
+derivation into PostgreSQL also removes the JavaScript/PostgreSQL write
+failure from R14-F1, but it does not yet preserve the frozen canonical-term
+semantics or fully protect the stored discriminator.
+
+Slice 4 remains **In progress**. Resolve R15-F1 before Slice 5 injects business
+terms into model context. No broad test, lint, typecheck, or build gates were
+rerun; this review inspected only the closure diff and its focused tests.
+
+### R15-F1 - Database canonicalization misses Unicode whitespace
+
+**Severity:** High
+**Status:** Closed (partially reopens R13-F5/R14-F1)
+
+R13-F5 froze business-term identity as NFKC, Unicode-whitespace collapse,
+trim, and case normalization. Making PostgreSQL the only implementation fixes
+cross-runtime disagreement, but `assistant_canonical_term()` still uses
+PostgreSQL 14's `\s` class and `btrim(..., ' ')`. As the R14 probe already
+proved, that expression retains `U+FEFF`; PostgreSQL's regular-expression and
+case behavior also remains locale/version dependent.
+
+The new 23-character test verifies only that every value is accepted and that
+the trigger output equals a direct call to the same function. It never proves
+that a whitespace variant maps to the same slot. For example, visually
+equivalent names `AB` and `A<U+FEFF>B` still receive different stored
+`slot_term` values and can both become confirmed. This restores the original
+failure mode: contradictory definitions for what appears to users and the
+assistant as one business term.
+
+**How to address:**
+
+1. [x] Freeze a versioned canonical-equivalence policy independently of the
+       implementation. Define the exact whitespace and case behavior that
+       makes two business-term names the same slot.
+2. [x] Implement that policy in the single database function. Replace the
+       locale-dependent shorthand with an explicit, tested mapping for the
+       agreed Unicode whitespace set. Either use a controlled/versioned case
+       fold or deliberately restrict canonical case folding to a stable
+       alphabet while preserving the original Unicode display name.
+3. [x] Reject a name whose canonical form is empty instead of placing every
+       blank-looking term in the empty slot.
+4. [x] Change the whitespace tests from acceptance/self-comparison to
+       equivalence tests: confirm a baseline term, propose every supported
+       whitespace/case variant, and prove each uses the same slot and
+       supersedes the baseline. Retain distinct-term coexistence coverage.
+5. [x] Document the PostgreSQL version/locale compatibility rule and exercise
+       it in the existing hosted proof before considering the canonicalization
+       contract portable to self-hosted deployments.
+
+### R15-F2 - Direct slot_term updates bypass the database-owned derivation
+
+**Severity:** Medium
+**Status:** Closed (partially reopens R14-F1)
+
+Migration 0007 drops `assistant_memory_slot_term_check` and creates a trigger
+for `INSERT OR UPDATE OF key, payload`. PostgreSQL does not fire an
+`UPDATE OF key, payload` trigger when a statement updates only `slot_term`.
+The column remains writable through raw SQL and the exported Drizzle schema,
+so a future store change or migration can persist an arbitrary discriminator.
+That can split one logical term into multiple confirmed slots or make a new
+term supersede an unrelated one despite the exclusion constraint.
+
+This contradicts the claim that the database owns the discriminator and
+overwrites caller-supplied values. Current tests cover inserts and payload
+paths only; none attempts a direct `slot_term` update.
+
+**How to address:**
+
+1. [x] Restore a CHECK comparing `slot_term` with the same database function.
+       This no longer creates the R14 cross-runtime problem because both sides
+       are PostgreSQL-owned. Alternatively, include `slot_term` in the UPDATE
+       trigger column list and always recompute it, preferably with the CHECK
+       as defense in depth.
+2. [x] Add raw-SQL regressions proving a caller-supplied value on insert is
+       overwritten and a direct `slot_term` update cannot leave a value that
+       disagrees with `key` and `payload`.
+3. [x] Update the stale schema comment that still names the deleted
+       `canonicalBusinessTermName` helper and dropped slot-term CHECK.
+
+### 2026-09-04 — Slice 4 follow-up: R15 review closed (1 high + 1 medium)
+
+Slice 4 returns to complete. Both R15 findings are implemented and
+regression-tested against real PostgreSQL (ephemeral per-file clusters
+with full Drizzle migrations, including the new 0008); Slice 5 is
+unblocked.
+
+- R15-F1: versioned canonical equivalence, fully database-owned.
+  Canonical Term Policy v1 is frozen in migration 0008 independently of
+  any runtime: NFKC, then every character of the agreed 25-member
+  ECMAScript-whitespace set (explicit `translate()`, never a
+  locale-dependent shorthand — U+FEFF now collapses like every other
+  member) maps to one ASCII space, runs collapse, trim, then ASCII-only
+  A–Z folds (non-ASCII case such as Greek final sigma is deliberately
+  distinct; display spelling preserved verbatim). Blank-after-
+  normalization names are rejected by the CHECK into the store's typed
+  `invalid-input` (nothing persists) instead of sharing an empty slot.
+  Only NFKC follows the database's Unicode version: identity is STORED
+  at write time so reads never recompute, and any policy change ships
+  versioned with a healing migration. The 0008 backfill heals FEFF-era
+  values through the single function before the CHECK validates them.
+  Evidence: baseline-plus-23-variant sequential equivalence chain (each
+  variant same slot + supersedes, ending in exactly one confirmed),
+  ASCII fold chain vs Greek-case coexistence, blank rejection with
+  zero-row persistence, plus the retained repro-string and concurrent
+  coverage. Portability matrix (PG majors x locales) filed as an
+  explicit Slice 8 hosted-proof item.
+- R15-F2: trigger plus CHECK close the bypass. The trigger now fires on
+  EVERY update (no column list), always recomputing `slot_term`, and the
+  restored `assistant_memory_slot_term_check` recomputes the same
+  PostgreSQL function as defense in depth — no R14 cross-runtime issue is
+  possible. Evidence: raw INSERT with `slot_term='hacker'` stored `mrr`,
+  direct `slot_term` and payload UPDATEs recomputed (`mrr` kept, rename
+  followed to `ndr`). Stale schema comments updated to name the trigger
+  and restored CHECK.
+
+Evidence: api 404 passed | 19 skipped (27 files: 25 passed | 2 skipped),
+types 95 passed (4 files), api/web typechecks clean, api lint clean,
+`git diff --check` clean, `db:generate` reports no drift. Memory race
+suites re-run stable.

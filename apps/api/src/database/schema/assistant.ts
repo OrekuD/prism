@@ -1,5 +1,5 @@
 /**
- * Assistant control-plane tables (Task 21 slice 4, hardened per R12+R13).
+ * Assistant control-plane tables (Task 21 slice 4, hardened per R12–R15).
  *
  * Durable foundation for conversations, messages, runs, typed memory, and
  * audit history — without invoking any model. All assistant reads/writes
@@ -16,20 +16,31 @@
  * another conversation. Run rows additionally derive project/user from
  * their conversation at insert time (see the store).
  *
- * Slot invariant (R12-F2, R13-F5, R14-F1): at most one `confirmed`
- * record per canonical slot lives in migration 0006 as a DEFERRABLE
- * exclusion constraint over `slot_term` (also raw SQL — drizzle cannot
- * express it). `slot_term` is DATABASE-generated: migration 0007 owns it
- * with a BEFORE trigger over key/payload (`assistant_canonical_term`),
- * so exactly one Unicode implementation ever derives slot identity —
- * JavaScript never computes it. Display spelling stays verbatim in
- * `payload.name`.
+ * Slot invariant (R12-F2, R13-F5, R14-F1, R15-F1/F2): at most one
+ * `confirmed` record per canonical slot lives in migration 0006 as a
+ * DEFERRABLE exclusion constraint over `slot_term` (also raw SQL —
+ * drizzle cannot express it). `slot_term` is DATABASE-generated and
+ * DATABASE-checked: the 0007 trigger derives it on every insert and
+ * update with `assistant_canonical_term()` (Canonical Term Policy v1,
+ * frozen in migration 0008), and the restored
+ * `assistant_memory_slot_term_check` recomputes the same function —
+ * both sides are PostgreSQL-owned, so no JavaScript reimplementation
+ * exists to disagree. Display spelling stays verbatim in `payload.name`.
+ *
+ * Canonical Term Policy v1 (frozen, R15-F1): NFKC composition, then every
+ * character of the agreed ECMAScript-whitespace set (U+0009–000D, U+0020,
+ * U+00A0, U+1680, U+2000–200A, U+2028, U+2029, U+202F, U+205F, U+3000,
+ * U+FEFF) maps to one ASCII space, runs collapse, trim, then ASCII-only
+ * A–Z folds to a–z. Non-ASCII case variants (e.g. Greek final sigma) are
+ * deliberately distinct slots; blank-after-normalization names are
+ * rejected rather than sharing an empty slot. Only NFKC follows the
+ * database's Unicode version — see the migration 0008 compatibility rule.
  *
  * Durable checks (R12-F5): enums, non-negative times, step bounds, the
  * frozen definition version, running/completed timestamp rules, the
  * idempotency-key/digest pairing, digest format (SHA-256 or the single
  * `legacy-0004-unverifiable` sentinel from the 0005 backfill), and the
- * slot-term shape below.
+ * slot-term CHECK below.
  *
  * Idempotency digests (R12-F6, R13-F1): every idempotency key travels with
  * a SHA-256 digest of the request content. A reused key with different
@@ -234,9 +245,11 @@ export const assistantRuns = pgTable(
  * one-confirmed-per-slot exclusion constraint (migration 0006, over
  * `slot_term`) plus conditional `UPDATE ... WHERE status='proposed'`
  * resolve confirmation races. Member preferences persist directly as
- * `confirmed` (R12-F7). `slot_term` is the normalized business-term slot
- * (`canonicalBusinessTermName`); all other keys store `''`, enforced by
- * `assistant_memory_slot_term_check`. Display spelling stays in payload.
+ * `confirmed` (R12-F7). `slot_term` is database-owned: the trigger
+ * derives it on every write and `assistant_memory_slot_term_check`
+ * recomputes the same function as defense in depth (R15-F2) — both
+ * PostgreSQL-owned, so raw SQL can neither smuggle nor strand a
+ * discriminator. Display spelling stays in payload.
  */
 export const assistantMemory = pgTable(
   DatabaseTables.ASSISTANT_MEMORY,
@@ -265,10 +278,12 @@ export const assistantMemory = pgTable(
     createdAt: bigint("created_at", { mode: "number" }).notNull(),
     updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
     /**
-     * Database-generated slot discriminator (R14-F1): owned by the 0007
-     * BEFORE trigger, never written by application code. Business terms
-     * carry the trigger-computed canonical value; all other keys store
-     * `''`.
+     * Database-generated slot discriminator (R14-F1, R15-F1/F2): owned by
+     * the BEFORE trigger on every write and re-validated by
+     * `assistant_memory_slot_term_check`, never written by application
+     * code. Business terms carry the trigger-computed canonical value
+     * (Policy v1); all other keys store `''`; blank business-term
+     * canonicals are rejected rather than sharing an empty slot.
      */
     slotTerm: text("slot_term").notNull().default(""),
   },
@@ -288,6 +303,10 @@ export const assistantMemory = pgTable(
     check(
       "assistant_memory_shape_check",
       sql`"scope" IN ('project', 'workspace', 'member') AND "status" IN ('proposed', 'confirmed', 'superseded', 'rejected') AND "created_at" >= 0 AND "updated_at" >= 0 AND "version" >= 0`,
+    ),
+    check(
+      "assistant_memory_slot_term_check",
+      sql`(("key" <> 'business-term') AND ("slot_term" = '')) OR (("key" = 'business-term') AND ("slot_term" = assistant_canonical_term("payload" ->> 'name')) AND ("slot_term" <> ''))`,
     ),
   ],
 );

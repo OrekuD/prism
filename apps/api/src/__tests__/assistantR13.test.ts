@@ -418,7 +418,7 @@ run("R13-F5 normalized business-term slots (R14-F1: database-owned)", () => {
     }
   });
 
-  it("accepts the full ECMAScript whitespace set without raw errors", async () => {
+  it("maps every ECMAScript whitespace variant to one slot (equivalence)", async () => {
     const tenant = await newTenant("ecmaws");
     const whitespaces = [
       "	",
@@ -445,22 +445,188 @@ run("R13-F5 normalized business-term slots (R14-F1: database-owned)", () => {
       "　",
       "﻿",
     ];
+    const termValue = (name: string) => ({
+      version: 1,
+      label: "Rate",
+      description: "rate term",
+      payload: { name, description: "rate term" },
+    });
+    // Baseline: plain-space spelling, confirmed.
+    const baseline = await proposeMemory(db, {
+      organizationId: tenant.orgId,
+      scope: "workspace",
+      key: "business-term",
+      value: termValue("A B"),
+      proposerId: tenant.userId,
+      authenticatedUserId: tenant.userId,
+      now: tick(),
+    });
+    expect(
+      await confirmMemoryProposal(db, {
+        organizationId: tenant.orgId,
+        recordId: baseline.id,
+        confirmerId: tenant.userId,
+        role: "owner",
+        now: tick(),
+        action: "confirm",
+      }),
+    ).toMatchObject({ ok: true });
+    const baselineSlot = String(
+      (
+        (await db`SELECT slot_term AS s FROM assistant_memory WHERE id = ${baseline.id}`) as Array<{
+          s: unknown;
+        }>
+      )[0]?.s,
+    );
+    // Every whitespace variant lands in the SAME slot and supersedes the
+    // running winner — including U+FEFF, which the old shorthand kept
+    // separate. No raw CHECK error may surface.
+    let winnerId = baseline.id;
     for (const ws of whitespaces) {
       const name = `A${ws}B`;
       const proposal = await proposeMemory(db, {
         organizationId: tenant.orgId,
         scope: "workspace",
         key: "business-term",
-        value: { version: 1, label: "R", description: "r", payload: { name, description: "r" } },
+        value: termValue(name),
         proposerId: tenant.userId,
         authenticatedUserId: tenant.userId,
         now: tick(),
       });
-      const stored = (await db`SELECT slot_term AS s FROM assistant_memory WHERE id = ${proposal.id}`) as Array<{
+      const stored = (await db`SELECT slot_term AS s, payload AS p FROM assistant_memory WHERE id = ${proposal.id}`) as Array<{
         s: unknown;
+        p: unknown;
       }>;
-      expect(String(stored[0]?.s)).toBe(await dbCanon(name));
+      expect(String(stored[0]?.s)).toBe(baselineSlot);
+      expect((stored[0]?.p as { name?: unknown })?.name).toBe(name);
+      const confirmed = await confirmMemoryProposal(db, {
+        organizationId: tenant.orgId,
+        recordId: proposal.id,
+        confirmerId: tenant.userId,
+        role: "owner",
+        now: tick(),
+        action: "confirm",
+      });
+      expect(confirmed.ok).toBe(true);
+      if (!confirmed.ok) throw new Error(`expected confirm for ${JSON.stringify(name)}`);
+      expect(confirmed.supersededIds).toEqual([winnerId]);
+      winnerId = proposal.id;
     }
+    const knowledge = await readConfirmedKnowledge(db, {
+      organizationId: tenant.orgId,
+      projectId: tenant.projectId,
+      subjectUserId: tenant.userId,
+    });
+    expect(knowledge.workspace.map((entry) => entry.id)).toEqual([winnerId]);
+  });
+
+  it("folds ASCII case into one slot and keeps non-ASCII case distinct (Policy v1)", async () => {
+    const tenant = await newTenant("casefold");
+    const termValue = (name: string) => ({
+      version: 1,
+      label: "T",
+      description: "t",
+      payload: { name, description: "t" },
+    });
+    const confirm = async (recordId: string) =>
+      confirmMemoryProposal(db, {
+        organizationId: tenant.orgId,
+        recordId,
+        confirmerId: tenant.userId,
+        role: "owner",
+        now: tick(),
+        action: "confirm",
+      });
+    const first = await proposeMemory(db, {
+      organizationId: tenant.orgId,
+      scope: "workspace",
+      key: "business-term",
+      value: termValue("Acme Rate"),
+      proposerId: tenant.userId,
+      authenticatedUserId: tenant.userId,
+      now: tick(),
+    });
+    expect(await confirm(first.id)).toMatchObject({ ok: true });
+    // ASCII case variants share the slot and supersede in turn.
+    let winnerId = first.id;
+    for (const variant of ["ACME RATE", "acme rate", "AcMe RaTe"]) {
+      const proposal = await proposeMemory(db, {
+        organizationId: tenant.orgId,
+        scope: "workspace",
+        key: "business-term",
+        value: termValue(variant),
+        proposerId: tenant.userId,
+        authenticatedUserId: tenant.userId,
+        now: tick(),
+      });
+      const confirmed = await confirm(proposal.id);
+      expect(confirmed.ok).toBe(true);
+      if (!confirmed.ok) throw new Error(`expected confirm for ${variant}`);
+      expect(confirmed.supersededIds).toEqual([winnerId]);
+      winnerId = proposal.id;
+    }
+    // Non-ASCII case is deliberately NOT folded: medial vs final sigma
+    // coexist as distinct slots with display spellings intact.
+    const upper = await proposeMemory(db, {
+      organizationId: tenant.orgId,
+      scope: "workspace",
+      key: "business-term",
+      value: termValue("ΟΣ"),
+      proposerId: tenant.userId,
+      authenticatedUserId: tenant.userId,
+      now: tick(),
+    });
+    expect(await confirm(upper.id)).toMatchObject({ ok: true });
+    const lower = await proposeMemory(db, {
+      organizationId: tenant.orgId,
+      scope: "workspace",
+      key: "business-term",
+      value: termValue("ος"),
+      proposerId: tenant.userId,
+      authenticatedUserId: tenant.userId,
+      now: tick(),
+    });
+    const confirmedLower = await confirm(lower.id);
+    expect(confirmedLower.ok).toBe(true);
+    if (!confirmedLower.ok) throw new Error("expected confirm");
+    expect(confirmedLower.supersededIds).toHaveLength(0);
+    const knowledge = await readConfirmedKnowledge(db, {
+      organizationId: tenant.orgId,
+      projectId: tenant.projectId,
+      subjectUserId: tenant.userId,
+    });
+    expect(knowledge.workspace.map((entry) => entry.id).sort()).toEqual(
+      [winnerId, upper.id, lower.id].sort(),
+    );
+  });
+
+  it("rejects blank-after-normalization names with a typed error", async () => {
+    const tenant = await newTenant("blankterm");
+    const before = (
+      (await db`SELECT COUNT(*) AS n FROM assistant_memory WHERE organization_id = ${tenant.orgId}`) as Array<{
+        n: unknown;
+      }>
+    )[0]?.n;
+    for (const name of ["   ", "	 ", " "]) {
+      await expect(
+        proposeMemory(db, {
+          organizationId: tenant.orgId,
+          scope: "workspace",
+          key: "business-term",
+          value: { version: 1, label: "Blank", description: "b", payload: { name, description: "b" } },
+          proposerId: tenant.userId,
+          authenticatedUserId: tenant.userId,
+          now: tick(),
+        }),
+      ).rejects.toMatchObject({ code: "invalid-input" });
+    }
+    const after = (
+      (await db`SELECT COUNT(*) AS n FROM assistant_memory WHERE organization_id = ${tenant.orgId}`) as Array<{
+        n: unknown;
+      }>
+    )[0]?.n;
+    // Rejected writes persist nothing.
+    expect(Number(after)).toBe(Number(before));
   });
 
   it("supersedes spelling variants within one slot while distinct terms coexist", async () => {
@@ -734,5 +900,61 @@ run("R14-F2 legacy sentinel fails closed", () => {
       }),
     ).rejects.toMatchObject({ code: "idempotency-conflict" });
     expect(await countMsgs()).toBe(2);
+  });
+});
+
+run("R15-F2 slot_term is database-owned end to end", () => {
+  it("overwrites caller-supplied discriminators on insert", async () => {
+    const tenant = await newTenant("slotown");
+    const rows = (await db`INSERT INTO assistant_memory
+      (id, organization_id, scope, "key", project_id, subject_user_id,
+       status, version, label, description, payload, slot_term,
+       proposer_id, confirmer_id, created_at, updated_at)
+      VALUES (${`mem_slotown_${seq}`}, ${tenant.orgId}, 'workspace', 'business-term',
+        NULL, NULL, 'proposed', 1, 'MRR', 'd',
+        '{"name":"MRR","description":"d"}', 'hacker', ${tenant.userId}, NULL, ${tick()}, ${tick()})
+      RETURNING id, slot_term`) as Array<{ id: unknown; slot_term: unknown }>;
+    expect(String(rows[0]?.slot_term)).toBe("mrr");
+    // Non-business keys are forced back to empty as well.
+    const pref = await proposeMemory(db, {
+      organizationId: tenant.orgId,
+      scope: "member",
+      key: "preferred-comparison-range",
+      subjectUserId: tenant.userId,
+      value: { version: 1, label: "R", description: "r", payload: { range: "7d" } },
+      proposerId: tenant.userId,
+      authenticatedUserId: tenant.userId,
+      now: tick(),
+    });
+    await db`UPDATE assistant_memory SET slot_term = 'hacker' WHERE id = ${pref.id}`;
+    const after = (await db`SELECT slot_term AS s FROM assistant_memory WHERE id = ${pref.id}`) as Array<{
+      s: unknown;
+    }>;
+    expect(String(after[0]?.s)).toBe("");
+  });
+
+  it("recomputes the discriminator on direct slot_term and payload updates", async () => {
+    const tenant = await newTenant("slotupd");
+    const proposal = await proposeMemory(db, {
+      organizationId: tenant.orgId,
+      scope: "workspace",
+      key: "business-term",
+      value: { version: 1, label: "MRR", description: "d", payload: { name: "MRR", description: "d" } },
+      proposerId: tenant.userId,
+      authenticatedUserId: tenant.userId,
+      now: tick(),
+    });
+    // A direct discriminator write cannot persist a foreign value.
+    await db`UPDATE assistant_memory SET slot_term = 'unrelated' WHERE id = ${proposal.id}`;
+    const kept = (await db`SELECT slot_term AS s FROM assistant_memory WHERE id = ${proposal.id}`) as Array<{
+      s: unknown;
+    }>;
+    expect(String(kept[0]?.s)).toBe("mrr");
+    // Renaming the term follows the payload through the same function.
+    await db`UPDATE assistant_memory SET payload = '{"name":"NDR","description":"d"}' WHERE id = ${proposal.id}`;
+    const moved = (await db`SELECT slot_term AS s FROM assistant_memory WHERE id = ${proposal.id}`) as Array<{
+      s: unknown;
+    }>;
+    expect(String(moved[0]?.s)).toBe("ndr");
   });
 });
