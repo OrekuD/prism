@@ -1234,27 +1234,27 @@ This slice creates the default page without invoking an LLM.
 
 This slice adds the durable control-plane foundation without calling a model.
 
-- [ ] Add Drizzle schemas and migrations for conversations, messages, runs,
+- [x] Add Drizzle schemas and migrations for conversations, messages, runs,
       typed memory, proposals, and audit history.
-- [ ] Support many private conversation records per `(project, user)` and add
+- [x] Support many private conversation records per `(project, user)` and add
       deterministic cursor ordering for chat history.
-- [ ] Implement lazy chat creation, deterministic first-message titles, insight
+- [x] Implement lazy chat creation, deterministic first-message titles, insight
       seed references, and atomic first-message persistence.
-- [ ] Implement atomic message sequencing and idempotent client request IDs.
-- [ ] Implement chat deletion without deleting confirmed project/workspace
+- [x] Implement atomic message sequencing and idempotent client request IDs.
+- [x] Implement chat deletion without deleting confirmed project/workspace
       memory.
-- [ ] Implement bounded recent-turn context selection from the selected chat
+- [x] Implement bounded recent-turn context selection from the selected chat
       only; do not summarize or import other chat transcripts.
-- [ ] Enforce one active run per `(project, user)` without preventing the member
+- [x] Enforce one active run per `(project, user)` without preventing the member
       from retaining or browsing multiple chats.
-- [ ] Implement typed project/workspace/member-memory reads and proposal state
+- [x] Implement typed project/workspace/member-memory reads and proposal state
       transitions.
-- [ ] Cascade or explicitly purge data on project, workspace, and account
+- [x] Cascade or explicitly purge data on project, workspace, and account
       deletion.
-- [ ] Add retention configuration and a documented purge job/path.
-- [ ] Add authorization tests proving members cannot read each other's chats or
+- [x] Add retention configuration and a documented purge job/path.
+- [x] Add authorization tests proving members cannot read each other's chats or
       cross-project/workspace memory.
-- [ ] Add concurrency tests for duplicate creation/submission, two active tabs,
+- [x] Add concurrency tests for duplicate creation/submission, two active tabs,
       switching or deleting during a run, the one-active-run constraint, and
       proposal confirmation races.
 
@@ -4060,3 +4060,51 @@ Evidence: api 336 passed | 19 skipped (24 files), api lint clean,
 api/web typechecks clean, `git diff --check` clean. Types/web suites
 unchanged by this slice (no contract-shape change; envelope is
 server-internal).
+
+### 2026-09-04 — Slice 4 complete: conversation and memory storage
+
+Durable control-plane foundation without calling a model. No endpoints
+yet (Slice 6); the store is the single authority Slice 5/6 will build on.
+
+- Schemas: `apps/api/src/database/schema/assistant.ts` + migration
+  `drizzle/0004_solid_shooting_star.sql` (via `db:generate`) for
+  `assistant_conversations`, `assistant_messages`, `assistant_runs`,
+  `assistant_memory`, `assistant_memory_audit` — prefixed text IDs,
+  ms-epoch bigints matching the frozen contracts, JSONB parts/payloads,
+  FK cascades (project/org/user/message), partial uniques for create
+  idempotency, message idempotency, sequencing, and one-active-run.
+- Store: `apps/api/src/utils/assistantStore.ts` on the tagged-template
+  `ProductQuery` shape (Neon-HTTP compatible — single statements only,
+  no multi-statement transactions; races resolve via constraints +
+  bounded retries). Lazy atomic create-with-first-message (deterministic
+  titles, seed references, client-request convergence incl. crash-heal),
+  keyset history `(lastMessageAt DESC NULLS LAST, id DESC)` with opaque
+  cursors, atomic append sequencing, run start/finish (conflict returns
+  the winner's identity), CTE chat deletion reporting `abortedRun`
+  without touching shared memory, bounded `selectRecentTurns` from the
+  selected chat only, typed propose/confirm/reject with slot supersession
+  and audit, confirmed-knowledge reads, tenant-scoped list reads.
+- Purge: project purge wired into `deleteProject` before the product row
+  delete (workspace memory + member prefs survive); workspace/user purge
+  paths provided (user attribution tombstoned, never leaked); retention
+  config (`PRISM_ASSISTANT_RUN_RETENTION_DAYS` 90d,
+  `PRISM_ASSISTANT_AUDIT_RETENTION_DAYS` 365d) + `purgeAssistantRetention`
+  + runnable `src/database/purge-assistant.ts`. Chats/messages/memory are
+  never retention-aged.
+- Tests: real ephemeral PostgreSQL (`assistantDb.ts`: initdb + full
+  Drizzle migrate per file, skipped only without local binaries) —
+  26 conversation tests (lifecycle, titles, seeds, dup create x5
+  concurrent, resubmit, gapless + 8-way concurrent sequencing, cursors
+  incl. null-region paging + tamper, one-active-run + 3-way race +
+  refinish, delete-during-run, authz isolation, recent turns, retention,
+  project purge) and 12 memory tests (lifecycle + audit, reject,
+  confirm race, permissions, supersession incl. coexisting terms,
+  validation matrix, tenant sharing rules, audit retention, workspace +
+  user purges), plus controller evidence that project deletion purges
+  assistant data. Proposals are `proposed`-status records (no separate
+  table); every confirm/reject/supersede transition is audited.
+
+Evidence: api 374 passed | 19 skipped (26 files: 24 passed | 2 skipped),
+types 95 passed (4 files), web green except pre-existing gallery
+calendar failure, api/web typechecks clean, api lint clean,
+`git diff --check` clean.

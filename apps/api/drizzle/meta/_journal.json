@@ -29,6 +29,13 @@
       "when": 1786858798043,
       "tag": "0003_mushy_clea",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788492674026,
+      "tag": "0004_solid_shooting_star",
+      "breakpoints": true
     }
   ]
 }

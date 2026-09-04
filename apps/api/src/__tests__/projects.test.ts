@@ -228,6 +228,31 @@ describe("ProjectsController (organization-bound authorization)", () => {
             s.args[0] === PROJECT_ID,
         ),
       ).toBe(true);
+      // Task 21 slice 4: assistant chats and project memory purge in the
+      // same operation, scoped to the project, before the product row dies.
+      const productDeletes = neon.mock.calls
+        .map(([strings, ...args]) => ({
+          sql: String((strings as TemplateStringsArray).join("?")).replace(
+            /\s+/g,
+            " ",
+          ),
+          args: args as unknown[],
+        }))
+        .filter(({ sql }) => sql.includes("DELETE FROM assistant_"));
+      expect(
+        productDeletes.some(
+          ({ sql, args }) =>
+            sql.includes("DELETE FROM assistant_conversations") &&
+            args[0] === PROJECT_ID,
+        ),
+      ).toBe(true);
+      expect(
+        productDeletes.some(
+          ({ sql, args }) =>
+            sql.includes("DELETE FROM assistant_memory") &&
+            args.includes(PROJECT_ID),
+        ),
+      ).toBe(true);
     });
 
     it("member cannot delete (404, non-disclosing)", async () => {

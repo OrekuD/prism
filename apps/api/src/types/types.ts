@@ -67,6 +67,11 @@ export class DatabaseTables {
   static PROJECTS = "projects";
   static PROJECT_SOURCES = "project_sources";
   static PROJECT_API_KEYS = "project_api_keys";
+  static ASSISTANT_CONVERSATIONS = "assistant_conversations";
+  static ASSISTANT_MESSAGES = "assistant_messages";
+  static ASSISTANT_RUNS = "assistant_runs";
+  static ASSISTANT_MEMORY = "assistant_memory";
+  static ASSISTANT_MEMORY_AUDIT = "assistant_memory_audit";
 }
 
 export type CorrectTimeStamps<T> = T & {
