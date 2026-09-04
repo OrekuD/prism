@@ -40,6 +40,7 @@ import {
 import {
 	measureMetrics,
 	parseMetricRange,
+	parseReleaseFilter,
 	resolveMetricWindow,
 	resolveProjectCapabilities,
 	MetricQueryError,
@@ -360,7 +361,17 @@ export class ProjectsController {
     if (osParam === "ios" || osParam === "android") os = osParam;
     // Release bound aligned with ingestion (R7-F6, max 128): the full
     // identifier travels in filter semantics; only display copy shortens.
-    const release = ctx.req.query("release")?.slice(0, 128) || null;
+    // Strict shared boundary (R8-F7): overlong values reject instead of
+    // slicing into an unrelated prefix.
+    const releaseRaw = ctx.req.query("release");
+    let release: string | null = null;
+    if (releaseRaw !== undefined) {
+      try {
+        release = parseReleaseFilter(releaseRaw);
+      } catch {
+        return ctx.json(new ErrorResponse("invalid_filter").toJSON(), 400);
+      }
+    }
     if (mobileCtx !== null && mobileCtx.sourceScope === "selected") {
       const rows = (await db`
         SELECT id FROM project_sources
@@ -423,7 +434,7 @@ export class ProjectsController {
     try {
       // Analytics reads go through the ANALYTICS store (libSQL), never the
       // product Postgres connection used for membership/sources above.
-      const resource = await loadMobileAnalytics(
+      const { resource } = await loadMobileAnalytics(
         TursoDatabaseManager.getInstance(ctx),
         {
           projectId: String(projectRow.id),
@@ -625,7 +636,7 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
       }
     }
 
-    const resource = await loadWebAnalytics(
+    const { resource } = await loadWebAnalytics(
       {
         projectId,
         from,
@@ -966,10 +977,11 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
     }
     const release = ctx.req.query("release");
     if (release !== undefined) {
-      if (release.length === 0 || release.length > 128) {
+      try {
+        filters.release = parseReleaseFilter(release);
+      } catch {
         return ctx.json(new ErrorResponse("invalid_filter").toJSON(), 400);
       }
-      filters.release = release;
     }
     const host = ctx.req.query("host");
     if (host !== undefined && host.length > 0) {

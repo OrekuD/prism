@@ -8,6 +8,7 @@ import {
   containsCausalClaim,
   isSnapshotReplayable,
   ProjectOverviewResourceSchema,
+  type ComparisonBasis,
   type MetricFact,
   type ProjectCapabilities,
   type PublicQueryContext,
@@ -20,26 +21,25 @@ import {
   type MetricWindow,
 } from "../utils/projectMetrics";
 import {
-  basisKeyForFact,
   buildDataQuality,
   buildOverviewResource,
-  previousWindowOf,
+  releaseIdentityId,
   selectDetectionPlans,
   selectInsights,
   selectPulsePlans,
   trendBucketForOverview,
-  validateOverviewReferences,
-  type InsightBasis,
   type OverviewIssueRow,
   type OverviewReleaseRow,
 } from "../utils/projectOverview";
 
 /**
  * Deterministic overview tests (Task 21 slice 3, revised per review
- * round 7): REAL in-memory libSQL with the ACTUAL analytics migrations.
- * Exact previous basis, detection-beyond-pulse, stable project-level
- * outcomes, readiness wording, current-only secondary, identifier bounds,
- * and evidence grounding are exercised against production SQL.
+ * round 8): REAL in-memory libSQL with the ACTUAL analytics migrations.
+ * Structured-basis consumption, percentage-point rates, canonical fact
+ * identity, single-pass budgets, stable project-level outcomes,
+ * readiness wording, current-only secondary, digest-bounded IDs, and
+ * schema-enforced evidence grounding are exercised against production
+ * SQL — never mocked aggregates.
  */
 
 const NOW = 1_785_628_800_000;
@@ -83,10 +83,6 @@ async function seedEvent(row: {
       row.source ?? "s1",
     ],
   );
-}
-
-function stdProps(key: string) {
-  return JSON.stringify({ $standard: { schemaVersion: 1, key, data: {} } });
 }
 
 async function seedIssue(id: string, title: string, status = "unresolved") {
@@ -147,6 +143,12 @@ function contextFor(): PublicQueryContext {
   };
 }
 
+const NULL_BASIS: ComparisonBasis = {
+  previousValue: null,
+  denominatorCurrent: null,
+  denominatorPrevious: null,
+};
+
 function countFact(
   metricId: string,
   current: number,
@@ -178,6 +180,11 @@ function countFact(
     formattedValue: String(current),
     unit: null,
     comparison,
+    comparisonBasis: {
+      previousValue: previous,
+      denominatorCurrent: null,
+      denominatorPrevious: null,
+    },
     queryContext,
     coverage: {
       sourcesConfigured: 1,
@@ -191,19 +198,21 @@ function countFact(
   };
 }
 
-function basisFor(
-  entries: Array<[MetricFact, number | null]>,
-  rates: Record<string, { current: number; previous: number }> = {},
-): InsightBasis {
-  const previousByKey: Record<string, number | null> = {};
-  for (const [fact, previous] of entries) {
-    previousByKey[basisKeyForFact(fact)] = previous;
-  }
-  const rateDenominatorsByKey: Record<string, { current: number; previous: number }> = {};
-  for (const [key, value] of Object.entries(rates)) {
-    rateDenominatorsByKey[key] = value;
-  }
-  return { previousByKey, rateDenominatorsByKey };
+function rateFact(
+  current: number,
+  previous: number | null,
+  denominators: { current: number; previous: number } | null,
+  id = "web.bounce_rate",
+): MetricFact {
+  const fact = countFact(id, current, previous);
+  return {
+    ...fact,
+    comparisonBasis: {
+      previousValue: previous,
+      denominatorCurrent: denominators?.current ?? null,
+      denominatorPrevious: denominators?.previous ?? null,
+    },
+  };
 }
 
 beforeAll(async () => {
@@ -258,7 +267,7 @@ describe("adaptive pulse selection", () => {
     expect(plans[0]?.filters?.standardEventKey).toBe("login");
   });
 
-  it("selects a bounded detection set covering pulse plus rate bases", () => {
+  it("selects a bounded detection set covering pulse plus the rate metric", () => {
     const capabilities = capabilitiesFor({
       web: true,
       mobile: true,
@@ -282,26 +291,34 @@ describe("adaptive pulse selection", () => {
       "project.accepted_events",
       "project.sessions",
       "web.bounce_rate",
-      "web.views_per_session",
-      "mobile.screens_per_session",
     ]) {
       expect(ids).toContain(required);
     }
-    expect(detection.length).toBeLessThanOrEqual(13);
+    // Decimal means stay out until a dedicated rule is frozen (R8-F1).
+    expect(ids).not.toContain("web.views_per_session");
+    expect(ids).not.toContain("mobile.screens_per_session");
+    expect(detection.length).toBeLessThanOrEqual(10);
   });
 });
 
-describe("exact previous basis (R7-F1)", () => {
+describe("structured-basis insights (R8-F1, R8-F3)", () => {
   // Observed outcome suppresses the definition signal so change
   // eligibility is isolated in these unit cases.
   const capabilities = () =>
     capabilitiesFor({ standardEventsObserved: ["sign_up"] });
 
-  it("states the exact previous value for large awkward ratios", () => {
-    const fact = countFact("project.accepted_events", 1_000_000, 42.9);
+  it("states the exact basis previous, not a reversed percentage", () => {
+    // Rounded display says 42.9%; reversing it would yield 699790.
+    const fact = {
+      ...countFact("project.accepted_events", 1_000_000, 700_000),
+      comparison: {
+        kind: "percent" as const,
+        direction: "up" as const,
+        percent: 42.9,
+      },
+    };
     const insights = selectInsights({
       facts: [fact],
-      basis: basisFor([[fact, 700_000]]),
       capabilities: capabilities(),
       issues: [],
       releases: [],
@@ -309,12 +326,64 @@ describe("exact previous basis (R7-F1)", () => {
       observedAt: NOW,
     });
     expect(insights).toHaveLength(1);
-    // Reversing the rounded 42.9% would yield 699790 — the insight must
-    // carry the exact canonical 700000.
     expect(insights[0]?.summary).toContain("from 700000 to 1000000");
+    // The embedded fact carries the same structured basis the text cites.
+    const embedded =
+      insights[0]?.artifact.kind === "metric"
+        ? insights[0]?.artifact.fact
+        : undefined;
+    expect(embedded?.comparisonBasis.previousValue).toBe(700_000);
   });
 
-  it("matches a direct canonical measurement of the previous window", async () => {
+  it("lets a flat comparison with a changed basis still headline, and vice versa", () => {
+    // Comparison claims flat; the exact basis moved 30 vs 10.
+    const changed = {
+      ...countFact("project.accepted_events", 30, 30),
+      comparison: {
+        kind: "percent" as const,
+        direction: "flat" as const,
+        percent: 0,
+      },
+      comparisonBasis: {
+        previousValue: 10,
+        denominatorCurrent: null,
+        denominatorPrevious: null,
+      },
+    };
+    const changedInsights = selectInsights({
+      facts: [changed],
+      capabilities: capabilities(),
+      issues: [],
+      releases: [],
+      queryContext: contextFor(),
+      observedAt: NOW,
+    });
+    expect(
+      changedInsights.filter((insight) => insight.kind === "change"),
+    ).toHaveLength(1);
+    // Comparison claims a move; the exact basis is flat.
+    const flat = {
+      ...countFact("project.accepted_events", 30, 10),
+      comparisonBasis: {
+        previousValue: 30,
+        denominatorCurrent: null,
+        denominatorPrevious: null,
+      },
+    };
+    const flatInsights = selectInsights({
+      facts: [flat],
+      capabilities: capabilities(),
+      issues: [],
+      releases: [],
+      queryContext: contextFor(),
+      observedAt: NOW,
+    });
+    expect(
+      flatInsights.filter((insight) => insight.kind === "change"),
+    ).toHaveLength(0);
+  });
+
+  it("matches a direct canonical measurement of the same metric", async () => {
     const PX = "proj_ov_exact";
     for (let n = 0; n < 30; n += 1) {
       await seedEvent({ id: `x${n}`, project: PX, occurred: FROM + n * 1000 });
@@ -337,26 +406,31 @@ describe("exact previous basis (R7-F1)", () => {
       (insight) => insight.kind === "change",
     );
     expect(change).toBeDefined();
-    // Independent canonical read of the previous window as current.
-    const previous = (await measureMetrics(
+    // The same metric through the canonical endpoint carries the same
+    // structured previous — byte-equivalent evidence, not text.
+    const direct = (await measureMetrics(
       client as unknown as CanonicalClient,
       PX,
-      previousWindowOf({ ...WINDOW }),
+      { ...WINDOW },
       { sourceScope: "all", sourceIds: [] },
       [{ metricId: "project.accepted_events" }],
       { capabilities: caps, now: NOW },
     )) as MetricFact[];
+    const embedded =
+      change?.artifact.kind === "metric" ? change.artifact.fact : undefined;
+    expect(embedded?.comparisonBasis).toEqual(
+      direct[0]?.comparisonBasis,
+    );
     expect(change?.summary).toContain(
-      `from ${previous[0]?.value} to 30`,
+      `from ${direct[0]?.comparisonBasis.previousValue} to 30`,
     );
     clearMetricSnapshotCache();
   });
 
-  it("skips change headlines when the exact basis is missing", () => {
-    const fact = countFact("project.accepted_events", 100, 900);
+  it("skips change headlines when the structured basis is missing", () => {
+    const fact = { ...countFact("project.accepted_events", 100, 900), comparisonBasis: NULL_BASIS };
     const insights = selectInsights({
       facts: [fact],
-      basis: basisFor([]),
       capabilities: capabilities(),
       issues: [],
       releases: [],
@@ -365,44 +439,27 @@ describe("exact previous basis (R7-F1)", () => {
     });
     expect(insights.filter((insight) => insight.kind === "change")).toHaveLength(0);
   });
-});
-
-describe("insight eligibility and ranking", () => {
-  const capabilities = () =>
-    capabilitiesFor({ standardEventsObserved: ["sign_up"] });
 
   it("suppresses low-volume changes and promotes eligible ones", () => {
     const queryContext = contextFor();
-    const changesOf = (fact: MetricFact, previous: number) =>
+    const changesOf = (fact: MetricFact) =>
       selectInsights({
         facts: [fact],
-        basis: basisFor([[fact, previous]]),
         capabilities: capabilities(),
         issues: [],
         releases: [],
         queryContext,
         observedAt: NOW,
       }).filter((insight) => insight.kind === "change");
-    expect(changesOf(countFact("project.accepted_events", 3, 2), 2)).toHaveLength(0);
-    expect(changesOf(countFact("project.accepted_events", 12, 10), 10)).toHaveLength(0);
-    expect(changesOf(countFact("project.accepted_events", 100, 95), 95)).toHaveLength(0);
-    const eligible = selectInsights({
-      facts: [countFact("project.accepted_events", 30, 10)],
-      basis: basisFor([[countFact("project.accepted_events", 30, 10), 10]]),
-      capabilities: capabilities(),
-      issues: [],
-      releases: [],
-      queryContext,
-      observedAt: NOW,
-    });
-    expect(eligible.filter((insight) => insight.kind === "change")).toHaveLength(1);
+    expect(changesOf(countFact("project.accepted_events", 3, 2))).toHaveLength(0);
+    expect(changesOf(countFact("project.accepted_events", 12, 10))).toHaveLength(0);
+    expect(changesOf(countFact("project.accepted_events", 100, 95))).toHaveLength(0);
+    expect(changesOf(countFact("project.accepted_events", 30, 10))).toHaveLength(1);
   });
 
   it("treats sufficient prior-zero volume as a headline change", () => {
-    const fact = countFact("project.accepted_events", 25, 0);
     const insights = selectInsights({
-      facts: [fact],
-      basis: basisFor([[fact, 0]]),
+      facts: [countFact("project.accepted_events", 25, 0)],
       capabilities: capabilities(),
       issues: [],
       releases: [],
@@ -417,7 +474,6 @@ describe("insight eligibility and ranking", () => {
     const unresolved = countFact("errors.unresolved_issues", 50, 10);
     const insights = selectInsights({
       facts: [unresolved],
-      basis: basisFor([[unresolved, 10]]),
       capabilities: capabilitiesFor({
         errorCollection: { configured: true, observed: true },
       }),
@@ -435,39 +491,61 @@ describe("insight eligibility and ranking", () => {
       { id: "thin", title: "Thin", status: "unresolved", current: 2, previous: 0, users: 2, snapshotFirstSeen: FROM + 10 },
     ];
     expect(
-      selectInsights({ facts: [], basis: basisFor([]), capabilities: capabilities(), issues: thin, releases: [], queryContext, observedAt: NOW }).filter((insight) => insight.kind === "error"),
+      selectInsights({ facts: [], capabilities: capabilities(), issues: thin, releases: [], queryContext, observedAt: NOW }).filter((insight) => insight.kind === "error"),
     ).toHaveLength(0);
     const eligible: OverviewIssueRow[] = [
       { id: "thick", title: "Thick", status: "unresolved", current: 5, previous: 0, users: 4, snapshotFirstSeen: FROM + 10 },
     ];
-    const insights = selectInsights({ facts: [], basis: basisFor([]), capabilities: capabilities(), issues: eligible, releases: [], queryContext, observedAt: NOW });
+    const insights = selectInsights({ facts: [], capabilities: capabilities(), issues: eligible, releases: [], queryContext, observedAt: NOW });
     expect(insights.filter((insight) => insight.kind === "error")).toHaveLength(1);
   });
 
-  it("emits rate insights from exact denominators and suppresses thin ones", () => {
+  it("emits bounce insights in percentage points with exact denominators", () => {
     const queryContext = contextFor();
-    const bounce = countFact("web.bounce_rate", 0.55, 0.4);
-    const key = basisKeyForFact(bounce);
+    // Canonical pp scale (R8-F1): 100 renders as 100%, never 10000%.
+    const bounce = rateFact(100, 40, { current: 40, previous: 40 });
     const eligible = selectInsights({
       facts: [bounce],
-      basis: basisFor([[bounce, 0.4]], { [key]: { current: 60, previous: 55 } }),
       capabilities: capabilities(),
       issues: [],
       releases: [],
       queryContext,
       observedAt: NOW,
     });
-    expect(eligible.filter((insight) => insight.kind === "change")).toHaveLength(1);
-    const thin = selectInsights({
-      facts: [bounce],
-      basis: basisFor([[bounce, 0.4]], { [key]: { current: 20, previous: 55 } }),
+    const changes = eligible.filter((insight) => insight.kind === "change");
+    expect(changes).toHaveLength(1);
+    expect(changes[0]?.summary).toContain("from 40% to 100%");
+    expect(changes[0]?.summary).toContain("up 60 points");
+    expect(changes[0]?.summary).not.toContain("10000");
+    const suppressed = selectInsights({
+      facts: [rateFact(100, 40, { current: 20, previous: 40 })],
       capabilities: capabilities(),
       issues: [],
       releases: [],
       queryContext,
       observedAt: NOW,
     });
-    expect(thin.filter((insight) => insight.kind === "change")).toHaveLength(0);
+    expect(suppressed.filter((insight) => insight.kind === "change")).toHaveLength(0);
+  });
+
+  it("keeps decimal means out of the rate branch until a rule is frozen", () => {
+    const views = {
+      ...countFact("web.views_per_session", 3.5, 2.0),
+      comparisonBasis: {
+        previousValue: 2.0,
+        denominatorCurrent: 50,
+        denominatorPrevious: 50,
+      },
+    };
+    const insights = selectInsights({
+      facts: [views],
+      capabilities: capabilities(),
+      issues: [],
+      releases: [],
+      queryContext: contextFor(),
+      observedAt: NOW,
+    });
+    expect(insights.filter((insight) => insight.kind === "change")).toHaveLength(0);
   });
 
   it("ranks critical before attention before info with stable IDs", () => {
@@ -476,7 +554,6 @@ describe("insight eligibility and ranking", () => {
     const b = countFact("web.page_views", 200, 50, "b-change");
     const insights = selectInsights({
       facts: [a, b],
-      basis: basisFor([[a, 10], [b, 50]]),
       capabilities: capabilities(),
       issues: [],
       releases: [{ release: "1.0", count: 4 }],
@@ -504,7 +581,6 @@ describe("insight eligibility and ranking", () => {
     ];
     const insights = selectInsights({
       facts,
-      basis: basisFor(facts.map((fact) => [fact, 10] as [MetricFact, number])),
       capabilities: capabilities(),
       issues: [],
       releases: [{ release: "9.9", count: 9 }],
@@ -517,7 +593,6 @@ describe("insight eligibility and ranking", () => {
   it("words readiness with a named dimension and retained-data statement", () => {
     const insights = selectInsights({
       facts: [],
-      basis: basisFor([]),
       capabilities: capabilitiesFor({ sources: { total: 4, active: 2, lastReceivedAt: NOW } }),
       issues: [],
       releases: [],
@@ -537,7 +612,6 @@ describe("insight eligibility and ranking", () => {
     const releases: OverviewReleaseRow[] = [{ release, count: 7 }];
     const insights = selectInsights({
       facts: [],
-      basis: basisFor([]),
       capabilities: capabilitiesFor({ standardEventsObserved: ["sign_up"] }),
       issues: [],
       releases,
@@ -550,6 +624,41 @@ describe("insight eligibility and ranking", () => {
     expect(containsCausalClaim(candidate?.summary ?? "")).toBe(false);
     expect(candidate?.id.length).toBeLessThanOrEqual(128);
     expect(candidate?.drilldown.filters?.release).toBe(release);
+  });
+
+  it("gives the R8-F5 collision pair distinct IDs with unchanged filters", () => {
+    const releases: OverviewReleaseRow[] = [
+      { release: "rel-3c7944c7-1kc9", count: 5 },
+      { release: "rel-e0b251dd-2553", count: 5 },
+    ];
+    const capabilities = capabilitiesFor({ standardEventsObserved: ["sign_up"] });
+    const firstRelease = releases[0];
+    const secondRelease = releases[1];
+    if (!firstRelease || !secondRelease) throw new Error("test setup");
+    const first = selectInsights({
+      facts: [],
+      capabilities,
+      issues: [],
+      releases: [firstRelease],
+      queryContext: contextFor(),
+      observedAt: NOW,
+    });
+    const second = selectInsights({
+      facts: [],
+      capabilities,
+      issues: [],
+      releases: [secondRelease],
+      queryContext: contextFor(),
+      observedAt: NOW,
+    });
+    const firstId = first.find((insight) => insight.kind === "release")?.id;
+    const secondId = second.find((insight) => insight.kind === "release")?.id;
+    expect(firstId).toBeDefined();
+    expect(secondId).toBeDefined();
+    expect(firstId).not.toBe(secondId);
+    expect(releaseIdentityId("rel-3c7944c7-1kc9")).not.toBe(
+      releaseIdentityId("rel-e0b251dd-2553"),
+    );
   });
 });
 
@@ -587,9 +696,82 @@ describe("overview resource over real storage", () => {
       expect(resource.activity.series[0]?.points.length).toBeLessThanOrEqual(93);
     }
     expect(resource.dataQuality.hasAcceptedData).toBe(true);
-    // Evidence grounding (R7-F7): every cited ID resolves and the chart
-    // total agrees with the canonical accepted-events fact.
-    expect(validateOverviewReferences({ ...resource, queryContextToken: "x".repeat(16) }).ok).toBe(true);
+    clearMetricSnapshotCache();
+  });
+
+  it("renders two Standard Event slots with distinct facts and candidates (R8-F2)", async () => {
+    const PX = "proj_ov_two_keys";
+    const props = (key: string) =>
+      JSON.stringify({ $standard: { schemaVersion: 1, key, data: {} } });
+    for (let n = 0; n < 30; n += 1) {
+      await seedEvent({
+        id: `tk_signup${n}`,
+        project: PX,
+        occurred: FROM + n * 1000,
+        name: "$prism_sign_up",
+        properties: props("sign_up"),
+      });
+    }
+    for (let n = 0; n < 10; n += 1) {
+      await seedEvent({
+        id: `tk_signup_prev${n}`,
+        project: PX,
+        occurred: CFROM + n * 1000,
+        name: "$prism_sign_up",
+        properties: props("sign_up"),
+      });
+    }
+    for (let n = 0; n < 5; n += 1) {
+      await seedEvent({
+        id: `tk_purchase${n}`,
+        project: PX,
+        occurred: FROM + n * 1000,
+        name: "$prism_purchase",
+        properties: props("purchase"),
+      });
+    }
+    // Server-only project with two observed keys and no Errors: the fill
+    // slot legitimately selects the second key.
+    const caps = capabilitiesFor({
+      server: true,
+      standardEventsObserved: ["purchase", "sign_up"],
+      sources: { total: 1, active: 1, lastReceivedAt: NOW },
+    });
+    const build = () =>
+      buildOverviewResource({
+        client: client as unknown as CanonicalClient,
+        projectId: PX,
+        window: { ...WINDOW },
+        scope: { sourceScope: "all", sourceIds: [] },
+        capabilities: caps,
+        deps: { capabilities: caps, now: NOW },
+      });
+    const first = await build();
+    const pulseKeys = first.pulse
+      .filter((fact) => fact.metricId === "standard_event.occurrences")
+      .map((fact) => fact.filters.standardEventKey);
+    expect(pulseKeys.sort()).toEqual(["purchase", "sign_up"]);
+    const pulseIds = first.pulse.map((fact) => fact.id);
+    expect(new Set(pulseIds).size).toBe(3);
+    expect(
+      first.pulse.find((fact) => fact.filters.standardEventKey === "sign_up")?.value,
+    ).toBe(30);
+    expect(
+      first.pulse.find((fact) => fact.filters.standardEventKey === "purchase")?.value,
+    ).toBe(5);
+    // Distinct candidates and stable ordering across repeated reads.
+    const changeIds = first.insights
+      .filter((insight) => insight.kind === "change")
+      .map((insight) => insight.id);
+    expect(new Set(changeIds).size).toBe(changeIds.length);
+    clearMetricSnapshotCache();
+    const second = await build();
+    expect(second.pulse.map((fact) => fact.id)).toEqual(
+      first.pulse.map((fact) => fact.id),
+    );
+    expect(second.insights.map((insight) => insight.id)).toEqual(
+      first.insights.map((insight) => insight.id),
+    );
     clearMetricSnapshotCache();
   });
 
@@ -627,7 +809,10 @@ describe("overview resource over real storage", () => {
       const inPulse = resource.pulse.some((fact) => fact.id === id);
       expect(inPulse || supportingIds.has(id)).toBe(true);
     }
-    expect(validateOverviewReferences({ ...resource, queryContextToken: "x".repeat(16) }).ok).toBe(true);
+    // The cited evidence fact carries the structured basis it headlines.
+    const cited =
+      change?.artifact.kind === "metric" ? change.artifact.fact : undefined;
+    expect(cited?.comparisonBasis.previousValue).toBe(10);
     clearMetricSnapshotCache();
   });
 
@@ -834,10 +1019,11 @@ describe("overview resource over real storage", () => {
         0,
       );
       expect(total, id).toBe(cited?.value);
-      expect(
-        validateOverviewReferences({ ...resource, queryContextToken: "x".repeat(16) }).ok,
-        id,
-      ).toBe(true);
+      const parsed = ProjectOverviewResourceSchema.safeParse({
+        ...resource,
+        queryContextToken: "x".repeat(16),
+      });
+      expect(parsed.success, id).toBe(true);
       clearMetricSnapshotCache();
     }
   });
@@ -865,11 +1051,11 @@ describe("overview resource over real storage", () => {
         [PX, eventId, occurred, seq],
       );
     };
-    // Current: 40 single-view (bounced) completed sessions.
+    // Current: 40 single-view (bounced) completed sessions → 100 points.
     for (let n = 0; n < 40; n += 1) {
       await pageView(`bc${n}`, FROM + n * 1000, `bcs${n}`, 1, `bcp${n}`);
     }
-    // Previous: 40 two-view (engaged) completed sessions.
+    // Previous: 40 two-view (engaged) completed sessions → 0 points.
     for (let n = 0; n < 40; n += 1) {
       await pageView(`bp${n}a`, CFROM + n * 1000, `bps${n}`, 1, `bpp${n}`);
       await pageView(`bp${n}b`, CFROM + n * 1000 + 60_000, `bps${n}`, 2, `bpp${n}`);
@@ -890,8 +1076,58 @@ describe("overview resource over real storage", () => {
       (insight) => insight.id === "rate-web.bounce_rate",
     );
     expect(bounce).toBeDefined();
-    expect(bounce?.summary).toMatch(/40 eligible records/);
-    expect(validateOverviewReferences({ ...resource, queryContextToken: "x".repeat(16) }).ok).toBe(true);
+    // Exact percentage-point evidence (R8-F1): 100%, never 10000%.
+    expect(bounce?.summary).toContain("from 0% to 100%");
+    expect(bounce?.summary).toContain("up 100 points");
+    expect(bounce?.summary).toContain("40 eligible records (previous 40)");
+    expect(bounce?.summary).not.toContain("10000");
+    expect(bounce?.severity).toBe("critical");
+    const embedded =
+      bounce?.artifact.kind === "metric" ? bounce.artifact.fact : undefined;
+    expect(embedded?.value).toBe(100);
+    expect(embedded?.formattedValue).toBe("100%");
+    expect(embedded?.comparisonBasis).toEqual({
+      previousValue: 0,
+      denominatorCurrent: 40,
+      denominatorPrevious: 40,
+    });
+    clearMetricSnapshotCache();
+  });
+
+  it("stays within a fixed query budget on the maximal mix (R8-F4)", async () => {
+    const PX = "proj_ov_budget";
+    for (let n = 0; n < 5; n += 1) {
+      await seedEvent({ id: `bq${n}`, project: PX, occurred: FROM + n });
+    }
+    const caps = capabilitiesFor({
+      web: true,
+      mobile: true,
+      server: true,
+      errorCollection: { configured: true, observed: true },
+      standardEventsObserved: ["sign_up"],
+      sources: { total: 3, active: 3, lastReceivedAt: NOW },
+    });
+    let queries = 0;
+    const counting = {
+      execute: async (input: { sql: string; args: Array<string | number | null> }) => {
+        queries += 1;
+        return (client as unknown as CanonicalClient).execute(input);
+      },
+    } as unknown as CanonicalClient;
+    await buildOverviewResource({
+      client: counting,
+      projectId: PX,
+      window: { ...WINDOW },
+      scope: { sourceScope: "all", sourceIds: [] },
+      capabilities: caps,
+      deps: { capabilities: caps, now: NOW },
+    });
+    // One canonical pass with a shared run memo: no previous-window
+    // rerun, no per-metric loader repeats. Fixed ceiling for the maximal
+    // capability mix (capabilities excluded — the controller owns those).
+    // Current budget is ~40 queries; the ceiling leaves headroom for
+    // bounded aggregates but fails a second full pass.
+    expect(queries).toBeLessThanOrEqual(48);
     clearMetricSnapshotCache();
   });
 
@@ -978,11 +1214,11 @@ describe("overview helpers", () => {
     expect(window.from - window.compareFrom).toBe(7 * 86_400_000);
   });
 
-  it("derives previous windows with the same cutoff", () => {
-    const previous = previousWindowOf({ ...WINDOW });
-    expect(previous.from).toBe(CFROM);
-    expect(previous.to).toBe(FROM);
-    expect(previous.asOf).toBe(NOW);
-    expect(previous.to - previous.from).toBe(SPAN);
+  it("digests releases with domain-separated SHA-256 (R8-F5)", () => {
+    const first = releaseIdentityId("rel-3c7944c7-1kc9");
+    const second = releaseIdentityId("rel-e0b251dd-2553");
+    expect(first).not.toBe(second);
+    expect(first).toMatch(/^release-[0-9a-f]{16}$/);
+    expect(releaseIdentityId("2.4.1")).toBe(releaseIdentityId("2.4.1"));
   });
 });

@@ -24,8 +24,10 @@ import {
   type DataQualitySummary,
 } from "@prism-analytics/types";
 import {
+  factIdFor,
   measureMetrics,
   resolveMetricWindow,
+  sha256Hex,
   type CanonicalClient,
   type MeasureDeps,
   type MetricFilters,
@@ -33,41 +35,43 @@ import {
   type MetricScope,
   type MetricWindow,
 } from "./projectMetrics";
-import { webBounceDenominators } from "./webAnalyticsLoader";
 
 /**
  * Deterministic insight detection + adaptive overview resource
- * (Task 21 slice 3, revised per review round 7).
+ * (Task 21 slice 3, revised per review rounds 7 and 8).
  *
  * Accuracy boundaries:
- * - Change/rate insights use EXACT canonical pairs: detection facts are
- *   measured for the current window and again for the previous window as
- *   its own current window through the same `measureMetrics` service. The
- *   previous value is that second measurement's value — never a reversed
- *   rounded percentage. Rounded percentages are presentation only.
- * - Detection runs over a bounded capability-driven DETECTION set that is
- *   wider than the three display pulse slots (R7-F2): a qualifying change
- *   in a non-pulse metric still headlines, with its evidence fact carried
- *   in the bounded `supportingFacts` collection.
- * - Only `isSnapshotReplayable()` metrics feed headlines; `current-only`
- *   facts never drive selection.
+ * - Change/rate insights consume the STRUCTURED basis on each returned
+ *   fact (`comparisonBasis.previousValue` + rate denominators, R8-F3) —
+ *   populated by the canonical service in the same pass that computes the
+ *   displayed comparison. Rounded percentages are presentation only, and
+ *   human-readable text is never the sole carrier of "before".
+ * - Rates are canonical percentage-point values (`100` renders as `100%`,
+ *   R8-F1): the frozen five-point rule is `5`, display never multiplies by
+ *   100, and decimal means stay out of the rate branch until a dedicated
+ *   decimal-change rule is frozen.
+ * - Detection runs over a bounded capability-driven DETECTION set wider
+ *   than the three display pulse slots; referenced non-pulse facts travel
+ *   in bounded `supportingFacts` (R7-F2/R8-F4).
+ * - One canonical measurement pass per overview (R8-F4): prior values and
+ *   denominators come from each domain loader's already-computed
+ *   comparison data (plus one bounded prior entry-session aggregate for
+ *   bounce). A shared run memo lets the Web/Mobile loaders serve every
+ *   metric from one pass each. No previous-window re-measurement.
  * - Pulse slot selection is capability-only, and the observed Standard
- *   Event set behind it is project-level (bounded by `received_at <=
- *   asOf`, never by the display range), so a temporary zero keeps its
- *   slot (R7-F3).
- * - Source readiness is ingest readiness: warnings/insights say which
- *   sources can currently accept new data and state explicitly that
- *   retained historical data remains included (R7-F4). No ratio of key
- *   records is presented as measured event coverage.
- * - Secondary issues are restricted to current-period occurrences
- *   (`HAVING current_n > 0`); otherwise the event/release ranking (or an
- *   honest empty state) renders (R7-F5).
- * - Release identifiers travel whole in filter semantics (128-char
- *   ingestion bound); only display copy shortens, and raw telemetry never
- *   interpolates into bounded IDs — digests do (R7-F6).
+ *   Event set is project-level (`received_at <= asOf`), so a temporary
+ *   zero keeps its slot (R7-F3).
+ * - Source readiness is ingest readiness with an explicit retained-data
+ *   statement (R7-F4).
+ * - Secondary issues require current-period occurrences
+ *   (`HAVING current_n > 0`, R7-F5).
+ * - Release identifiers travel whole in filter semantics (128-char bound);
+ *   only display copy shortens, and bounded IDs carry a truncated
+ *   server-only SHA-256 digest over a domain-separated value (R7-F6/R8-F5).
  * - The activity chart cites the canonical `project.accepted_events`
- *   detection fact (pulse or supporting), and every cited ID resolves
- *   (R7-F7, schema-enforced plus `validateOverviewReferences`).
+ *   detection fact; the shared schema enforces context equality,
+ *   reference resolution, and chart-total agreement in production and
+ *   tests alike (R7-F7/R8-F6).
  * - Reads run SEQUENTIALLY (libSQL HTTP under Workers). No `Promise.all`.
  * - Never reads Live preview state: only `events`, `error_*`,
  *   `web_page_views`, `mobile_*`, and `external_identities`.
@@ -190,12 +194,12 @@ export function selectPulsePlans(
 }
 
 /**
- * Bounded capability-driven DETECTION set (R7-F2): the pulse plans plus
- * every other metric whose change can headline (audience counts, exact
- * rate bases, reliability, key outcome). Display shows three cards;
- * detection sees the full set. Measured twice (current + previous
- * windows) through the canonical service under one context each; reads
- * stay sequential and memoized loaders share work within a window.
+ * Bounded capability-driven DETECTION set (R7-F2/R8-F4): the pulse plans
+ * plus every other metric whose change can headline (audience counts and
+ * the bounce rate with its denominator basis). Display shows three cards;
+ * detection sees the full set. Everything is measured in ONE canonical
+ * pass; the shared run memo lets each domain loader serve all of its
+ * metrics from a single sequential read model.
  */
 export function selectDetectionPlans(
   capabilities: ProjectCapabilities,
@@ -215,44 +219,26 @@ export function selectDetectionPlans(
   pushUnique({ metricId: "project.accepted_events" });
   pushUnique({ metricId: "project.sessions" });
   for (const plan of selectPulsePlans(capabilities)) pushUnique(plan);
-  // Exact rate bases and count headlines beyond the pulse cards.
+  // Exact count headlines and the sole rate metric beyond the pulse cards.
   if (capabilities.web) {
     pushUnique({ metricId: "web.sessions" });
     pushUnique({ metricId: "web.bounce_rate" });
-    pushUnique({ metricId: "web.views_per_session" });
   }
   if (capabilities.mobile) {
     pushUnique({ metricId: "mobile.sessions" });
-    pushUnique({ metricId: "mobile.screens_per_session" });
   }
   return plans;
 }
 
-/** Previous window as its own measurement window (same span, same cutoff). */
-export function previousWindowOf(window: MetricWindow): MetricWindow {
-  const span = window.to - window.from;
-  return {
-    from: window.compareFrom,
-    to: window.compareTo,
-    compareFrom: window.compareFrom - span,
-    compareTo: window.compareFrom,
-    asOf: window.asOf,
-  };
-}
-
 /**
- * Collision-resistant bounded ID for raw telemetry (R7-F6): FNV-1a hex
- * digest instead of interpolating unbounded strings into capped IDs.
- * Display copy keeps the readable value (sliced); filter semantics keep
- * the whole identifier.
+ * Bounded release identity (R8-F5): truncated server-only SHA-256 over the
+ * domain-separated full identifier. Sixty-four bits with domain
+ * separation is the documented collision-resistant length for these
+ * small per-project release sets — never another 32-bit hash, and never
+ * raw telemetry inside a capped ID.
  */
-export function stableDigest(value: string): string {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return (hash >>> 0).toString(16).padStart(8, "0");
+export function releaseIdentityId(release: string): string {
+  return `release-${sha256Hex(`release\0${release}`).slice(0, 16)}`;
 }
 
 /** Bucket for the primary trend (same thresholds as Web analytics). */
@@ -278,36 +264,6 @@ export type OverviewIssueRow = {
 
 export type OverviewReleaseRow = { release: string; count: number };
 
-/** Exact canonical basis for one detection fact (R7-F1, R7-F2). */
-export type InsightBasis = {
-  /**
-   * Exact previous-window values from the canonical service keyed by
-   * `basisKeyForFact` (null = no prior data). Missing keys are skipped —
-   * never reversed from a rounded percentage.
-   */
-  previousByKey: Readonly<Record<string, number | null>>;
-  /** Exact rate denominators keyed by `basisKeyForFact`. */
-  rateDenominatorsByKey?: Readonly<
-    Record<string, { current: number; previous: number }>
-  >;
-};
-
-/**
- * Stable basis key for one detection fact. Standard-event facts share a
- * bare metric ID across keys, so the key joins the exact event filter —
- * two cards on different keys never alias one basis entry.
- */
-export function basisKeyForFact(fact: {
-  metricId: string;
-  filters?: { standardEventKey?: unknown };
-}): string {
-  const key =
-    typeof fact.filters?.standardEventKey === "string"
-      ? fact.filters.standardEventKey
-      : "";
-  return `${fact.metricId}|${key}`;
-}
-
 function formatCountDirection(current: number, previous: number): string {
   if (previous === 0) return "new";
   if (current === previous) return "flat";
@@ -315,15 +271,15 @@ function formatCountDirection(current: number, previous: number): string {
   return current > previous ? `up ${percent}%` : `down ${Math.abs(percent)}%`;
 }
 
-function formatRateValue(valueKind: string, value: number): string {
-  if (valueKind === "rate") return `${(value * 100).toFixed(1)}%`;
-  return value.toFixed(2);
+/** Percentage-point display (R8-F1): values already are points, never ×100. */
+function formatPoints(value: number): string {
+  return `${Math.round(value * 10) / 10}%`;
 }
 
 function formatRateDirection(current: number, previous: number): string {
-  const delta = current - previous;
+  const delta = Math.round((current - previous) * 10) / 10;
   if (delta === 0) return "flat";
-  const magnitude = Math.abs(delta) >= 0.095 ? Math.abs(delta).toFixed(1) : Math.abs(delta).toFixed(2);
+  const magnitude = Math.abs(delta);
   return delta > 0 ? `up ${magnitude} points` : `down ${magnitude} points`;
 }
 
@@ -335,23 +291,26 @@ function severityForChange(current: number, previous: number): InsightSeverity {
   return "info";
 }
 
-function severityForRate(deltaFraction: number): InsightSeverity {
-  const absolute = Math.abs(deltaFraction);
-  if (absolute >= 0.2) return "critical";
-  if (absolute >= 0.1) return "attention";
+/** Percentage-point severity (R8-F1): 20+ critical, 10+ attention. */
+function severityForRate(deltaPoints: number): InsightSeverity {
+  const absolute = Math.abs(deltaPoints);
+  if (absolute >= 20) return "critical";
+  if (absolute >= 10) return "attention";
   return "info";
 }
 
 /**
  * Deterministic insight selection (pure, testable).
  *
- * Inputs are same-snapshot current-window facts plus the EXACT previous
- * basis from the canonical previous-window measurement (R7-F1) — never a
- * reversed rounded percentage. Rate insights additionally require exact
- * denominators (R7-F2).
+ * Consumes the STRUCTURED basis on each returned fact (R8-F3): exact
+ * previous values and rate denominators populated by the canonical
+ * service in the same pass as the displayed comparison. Missing basis
+ * (null previous) never headlines — no reversal, no estimates.
  * - Change: replayable count facts with eligible exact (current, previous).
- * - Rate: replayable rate/decimal facts with eligible exact values and
- *   denominators under the frozen 30/30 + five-point rule.
+ * - Rate: the bounce-rate metric only (the sole `rate` valueKind), with
+ *   eligible exact values and denominators under the frozen 30/30 +
+ *   five-point rule. Decimal means stay out until a dedicated rule is
+ *   frozen (R8-F1).
  * - Error: new/regressing issues with >=3 current occurrences.
  * - Coverage: ingest-readiness signal naming the source dimension and the
  *   measured ready share, stating retained-data inclusion (R7-F4).
@@ -361,37 +320,29 @@ function severityForRate(deltaFraction: number): InsightSeverity {
  */
 export function selectInsights(input: {
   facts: readonly MetricFact[];
-  basis: InsightBasis;
   capabilities: ProjectCapabilities;
   issues: readonly OverviewIssueRow[];
   releases: readonly OverviewReleaseRow[];
   queryContext: PublicQueryContext;
   observedAt: number;
 }): InsightCandidate[] {
-  const {
-    facts,
-    basis,
-    capabilities,
-    issues,
-    releases,
-    queryContext,
-    observedAt,
-  } = input;
+  const { facts, capabilities, issues, releases, queryContext, observedAt } =
+    input;
   const candidates: InsightCandidate[] = [];
 
   for (const fact of facts) {
     if (!isSnapshotReplayable(fact.metricId)) continue;
     if (fact.value === null) continue;
     const definition = METRIC_REGISTRY[fact.metricId];
+    const previous = fact.comparisonBasis.previousValue;
+    if (previous === null) continue;
     if (definition.valueKind === "count") {
-      const previous = basis.previousByKey[basisKeyForFact(fact)];
-      if (previous === undefined || previous === null) continue;
       if (!isCountChangeEligible(fact.value, previous)) continue;
       const direction = formatCountDirection(fact.value, previous);
       const severity = severityForChange(fact.value, previous);
       const title = `${definition.label} ${direction} vs previous period`;
       const summary = `${definition.label} moved from ${previous} to ${fact.value} in this period (${direction}). Evidence: ${fact.formattedValue}.`;
-      const id = `change-${fact.metricId}`;
+      const id = `change-${fact.id}`;
       const artifact: AssistantArtifact = {
         kind: "metric",
         id: `artifact-${id}`,
@@ -403,7 +354,7 @@ export function selectInsights(input: {
         fact,
       };
       candidates.push({
-        id,
+        id: id.slice(0, 128),
         kind: "change",
         severity,
         title: title.slice(0, 140),
@@ -417,14 +368,14 @@ export function selectInsights(input: {
         ),
         observedAt,
       });
-    } else if (
-      definition.valueKind === "rate" ||
-      definition.valueKind === "decimal"
-    ) {
-      const previous = basis.previousByKey[basisKeyForFact(fact)];
-      if (previous === undefined || previous === null) continue;
-      const denominators = basis.rateDenominatorsByKey?.[basisKeyForFact(fact)];
-      if (!denominators) continue;
+    } else if (definition.valueKind === "rate") {
+      const denominators = {
+        current: fact.comparisonBasis.denominatorCurrent,
+        previous: fact.comparisonBasis.denominatorPrevious,
+      };
+      if (denominators.current === null || denominators.previous === null) {
+        continue;
+      }
       if (
         !isRateChangeEligible(
           fact.value,
@@ -438,22 +389,22 @@ export function selectInsights(input: {
       const severity = severityForRate(fact.value - previous);
       const title = `${definition.label} ${direction} vs previous period`;
       const summary =
-        `${definition.label} moved from ${formatRateValue(definition.valueKind, previous)} ` +
-        `to ${formatRateValue(definition.valueKind, fact.value)} (${direction}) ` +
+        `${definition.label} moved from ${formatPoints(previous)} ` +
+        `to ${formatPoints(fact.value)} (${direction}) ` +
         `across ${denominators.current} eligible records (previous ${denominators.previous}).`;
-      const id = `rate-${fact.metricId}`;
+      const id = `rate-${fact.id}`;
       const artifact: AssistantArtifact = {
         kind: "metric",
         id: `artifact-${id}`,
         title: definition.label,
-        summary: `${definition.label}: ${formatRateValue(definition.valueKind, fact.value)} (${direction}).`,
+        summary: `${definition.label}: ${formatPoints(fact.value)} (${direction}).`,
         factIds: [fact.id],
         queryContext,
         drilldown: fact.drilldown,
         fact,
       };
       candidates.push({
-        id,
+        id: id.slice(0, 128),
         kind: "change",
         severity,
         title: title.slice(0, 140),
@@ -615,9 +566,10 @@ export function selectInsights(input: {
     const displayRelease = topRelease.release.slice(0, 80);
     const summary = `Release ${displayRelease} was observed ${wording} ${topRelease.count} occurrences in this period. Co-occurrence only.`;
     if (!containsCausalClaim(summary)) {
-      // Digest-bounded ID (R7-F6): the full identifier travels in filter
-      // semantics and row keys below; the capped ID carries only a digest.
-      const id = `release-${stableDigest(topRelease.release)}`;
+      // Digest-bounded ID (R8-F5): the full identifier travels in filter
+      // semantics and row keys below; the capped ID carries only the
+      // truncated SHA-256 of the domain-separated value.
+      const id = releaseIdentityId(topRelease.release);
       const artifact: AssistantArtifact = {
         kind: "ranked-list",
         id: `artifact-${id}`,
@@ -672,66 +624,6 @@ export function buildDataQuality(input: {
     definitionLabel: observed[0] ?? null,
     warnings: input.warnings.slice(0, 8),
   };
-}
-
-/**
- * Referential + agreement validation for a built resource (R7-F7):
- * every cited fact ID resolves to pulse/supporting/embedded facts, and
- * the activity series total agrees with the canonical accepted-events
- * fact it cites. Tests enforce this; the schema enforces the
- * context-equality and resolution halves on every parse.
- */
-export function validateOverviewReferences(resource: ProjectOverviewResource): {
-  ok: boolean;
-  problems: string[];
-} {
-  const problems: string[] = [];
-  const byId = new Map<string, MetricFact>();
-  for (const fact of resource.pulse) byId.set(fact.id, fact);
-  for (const fact of resource.supportingFacts) byId.set(fact.id, fact);
-  const artifacts = [
-    resource.activity,
-    resource.secondary,
-    ...resource.insights.map((insight) => insight.artifact),
-  ];
-  for (const artifact of artifacts) {
-    if (artifact.kind === "metric") byId.set(artifact.fact.id, artifact.fact);
-    if (artifact.kind === "comparison") {
-      byId.set(artifact.current.id, artifact.current);
-      byId.set(artifact.previous.id, artifact.previous);
-    }
-  }
-  const check = (where: string, factIds: readonly string[]): void => {
-    for (const id of factIds) {
-      if (!byId.has(id)) problems.push(`${where} cites unreturned fact ${id}`);
-    }
-  };
-  check("activity", resource.activity.factIds);
-  check("secondary", resource.secondary.factIds);
-  for (const insight of resource.insights) {
-    check(`insight ${insight.id}`, insight.factIds);
-    check(`insight ${insight.id} artifact`, insight.artifact.factIds);
-  }
-  if (resource.activity.kind === "timeseries") {
-    const cited = resource.activity.factIds
-      .map((id) => byId.get(id))
-      .find((fact) => fact?.metricId === "project.accepted_events");
-    if (!cited) {
-      problems.push("activity chart does not cite accepted events");
-    } else if (cited.value !== null) {
-      const total = resource.activity.series.reduce(
-        (sum, entry) =>
-          sum + entry.points.reduce((inner, point) => inner + point.value, 0),
-        0,
-      );
-      if (total !== cited.value) {
-        problems.push(
-          `activity total ${total} disagrees with accepted events ${cited.value}`,
-        );
-      }
-    }
-  }
-  return { ok: problems.length === 0, problems };
 }
 
 async function readActivitySeries(
@@ -966,11 +858,11 @@ function requestsFor(
 
 /**
  * Build the complete overview resource for one snapshot.
- * Sequential reads only; pulse facts come from the canonical service so
- * dashboard and assistant agree byte-for-byte. Detection facts are
- * measured for the current window (display + insight currents) and again
- * for the previous window (exact insight basis); only current-window
- * facts enter the response.
+ * Sequential reads only, in ONE canonical measurement pass (R8-F4):
+ * pulse and detection facts come from a single `measureMetrics` call
+ * sharing one run memo, so each domain loader serves all of its metrics
+ * from one sequential read model. Prior values and denominators ride on
+ * the returned facts' structured basis — no previous-window rerun.
  */
 export async function buildOverviewResource(input: {
   client: CanonicalClient;
@@ -983,6 +875,9 @@ export async function buildOverviewResource(input: {
   const { client, projectId, window, scope, capabilities, deps } = input;
   const pulsePlans = selectPulsePlans(capabilities);
   const detectionPlans = selectDetectionPlans(capabilities);
+  // Shared run memo (R8-F4): every metric in the single pass reuses its
+  // domain loader's already-computed read model instead of rerunning it.
+  const memo = deps.memo ?? new Map<string, unknown>();
   const requests = requestsFor(detectionPlans, scope);
   const detectionFacts = (await measureMetrics(
     client,
@@ -990,30 +885,16 @@ export async function buildOverviewResource(input: {
     window,
     scope,
     requests,
-    deps,
+    { ...deps, memo },
   )) as MetricFact[];
-  // Exact previous basis (R7-F1): the same detection set measured with
-  // the previous window as its current window. Values are canonical by
-  // construction; contexts are discarded (never embedded).
-  const previousFacts = (await measureMetrics(
-    client,
-    projectId,
-    previousWindowOf(window),
-    scope,
-    requests,
-    deps,
-  )) as MetricFact[];
-  const previousByKey: Record<string, number | null> = {};
-  for (const fact of previousFacts) {
-    previousByKey[basisKeyForFact(fact)] = fact.value;
-  }
+  // Pulse resolves by canonical plan key (R8-F2): the fact ID embeds the
+  // normalized filter identity, so two Standard Event keys never alias.
   const detectionById = new Map(detectionFacts.map((fact) => [fact.id, fact]));
-  // Pulse is a subset of detection by construction (detection unions the
-  // pulse plans), so every pulse card resolves to a detection fact.
-  // Standard-event single-row facts carry the bare metric ID.
   const pulseFacts: MetricFact[] = [];
   for (const plan of pulsePlans) {
-    const found = detectionById.get(plan.metricId);
+    const found = detectionById.get(
+      factIdFor(plan.metricId, plan.filters ?? {}),
+    );
     if (!found) {
       throw new Error(`detection set must cover pulse metric ${plan.metricId}`);
     }
@@ -1033,82 +914,6 @@ export async function buildOverviewResource(input: {
     if (!areQueryContextsEqual(fact.queryContext, queryContext)) {
       throw new Error("overview detection facts must share one query context");
     }
-  }
-
-  // Exact rate denominators (R7-F2).
-  const rateDenominatorsByKey: Record<
-    string,
-    { current: number; previous: number }
-  > = {};
-  const findDetection = (metricId: string): MetricFact | undefined =>
-    detectionFacts.find((fact) => fact.metricId === (metricId as MetricId));
-  // Sessions denominators come from the same canonical detection facts
-  // (current + exact previous basis) — never inferred.
-  const webSessionsFact = findDetection("web.sessions");
-  const sessionsCurrent = webSessionsFact?.value ?? null;
-  const sessionsPrevious =
-    webSessionsFact !== undefined
-      ? (previousByKey[basisKeyForFact(webSessionsFact)] ?? null)
-      : null;
-  const viewsFact = findDetection("web.views_per_session");
-  if (
-    viewsFact &&
-    viewsFact.value !== null &&
-    sessionsCurrent !== null &&
-    sessionsPrevious !== null
-  ) {
-    rateDenominatorsByKey[basisKeyForFact(viewsFact)] = {
-      current: sessionsCurrent,
-      previous: sessionsPrevious,
-    };
-  }
-  const mobileSessions = findDetection("mobile.sessions");
-  const screensFact = findDetection("mobile.screens_per_session");
-  if (screensFact && screensFact.value !== null && mobileSessions) {
-    const previous = previousByKey[basisKeyForFact(mobileSessions)] ?? null;
-    if (mobileSessions.value !== null && previous !== null) {
-      rateDenominatorsByKey[basisKeyForFact(screensFact)] = {
-        current: mobileSessions.value,
-        previous,
-      };
-    }
-  }
-  const bounceFact = findDetection("web.bounce_rate");
-  if (bounceFact && bounceFact.value !== null && capabilities.web) {
-    const sourceIds =
-      scope.sourceScope === "selected" ? [...scope.sourceIds] : [];
-    // Mirror the loader filters behind the bounce fact exactly (v1
-    // detection carries no host/path/traffic filters; derived here so a
-    // future filtered detection cannot drift from its denominator).
-    const params = {
-      projectId,
-      from: window.from,
-      to: window.to,
-      sourceIds,
-      host: bounceFact.filters.host ?? null,
-      path: bounceFact.filters.path ?? null,
-      traffic: bounceFact.filters.traffic ?? ("human" as const),
-      asOf: window.asOf,
-    };
-    const previous = previousWindowOf(window);
-    const currentDenominators = await webBounceDenominators(
-      client,
-      params,
-      window.from,
-      window.to,
-      window.asOf,
-    );
-    const previousDenominators = await webBounceDenominators(
-      client,
-      { ...params, from: previous.from, to: previous.to },
-      previous.from,
-      previous.to,
-      window.asOf,
-    );
-    rateDenominatorsByKey[basisKeyForFact(bounceFact)] = {
-      current: currentDenominators.denominator,
-      previous: previousDenominators.denominator,
-    };
   }
 
   // Sequential derivations: activity, issues, releases, top events.
@@ -1235,7 +1040,6 @@ export async function buildOverviewResource(input: {
 
   const insights = selectInsights({
     facts: detectionFacts,
-    basis: { previousByKey, rateDenominatorsByKey },
     capabilities,
     issues,
     releases,

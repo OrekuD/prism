@@ -162,10 +162,29 @@ async function visitorsFor(
 	return Number(result.rows[0]?.visitors ?? 0);
 }
 
+/**
+ * Exact prior-period basis returned with every Mobile read (R8-F3):
+ * previous totals plus previous means, mirroring the assemble formulas
+ * exactly. Callers attach these to facts instead of reversing percentages.
+ */
+export type MobileComparisonBasis = {
+  previous: {
+    appOpens: number;
+    visitors: number;
+    sessions: number;
+    screensPerSession: number;
+    foregroundDurationMs: number | null;
+    installations: number;
+  } | null;
+};
+
 export async function loadMobileAnalytics(
 	client: MobileAnalyticsExecuteClient,
 	params: MobileAnalyticsQueryParams,
-): Promise<ReturnType<typeof assembleMobileAnalytics>> {
+): Promise<{
+	resource: ReturnType<typeof assembleMobileAnalytics>;
+	basis: MobileComparisonBasis;
+}> {
 	if (params.to - params.from > MOBILE_MAX_RANGE_MS) {
 		throw new Error("mobile_range_too_large");
 	}
@@ -323,7 +342,8 @@ export async function loadMobileAnalytics(
 		args: [...sw.args, minSessions, MOBILE_LIMITS.rankingRowLimit],
 	});
 
-	return assembleMobileAnalytics(params, {
+	return {
+		resource: assembleMobileAnalytics(params, {
 		totals,
 		previousTotals,
 		bucket:
@@ -391,5 +411,33 @@ export async function loadMobileAnalytics(
 			visitors: Number(r.visitors ?? 0),
 			sessions: Number(r.sessions ?? 0),
 		})),
-	});
+		}),
+		basis: {
+			previous: previousTotals
+				? {
+						appOpens: Number(previousTotals.app_opens),
+						visitors: Number(previousTotals.visitors),
+						sessions: Number(previousTotals.sessions),
+						screensPerSession:
+							Number(previousTotals.sessions) > 0
+								? Math.round(
+										(Number(previousTotals.screens) /
+											Number(previousTotals.sessions)) *
+											100,
+									) / 100
+								: 0,
+						foregroundDurationMs:
+							previousTotals.duration_ms_total !== null &&
+							previousTotals.duration_ms_total !== undefined &&
+							Number(previousTotals.completed_sessions) > 0
+								? Math.round(
+										Number(previousTotals.duration_ms_total) /
+											Number(previousTotals.completed_sessions),
+									)
+								: null,
+						installations: Number(previousTotals.installations),
+					}
+				: null,
+		},
+	};
 }

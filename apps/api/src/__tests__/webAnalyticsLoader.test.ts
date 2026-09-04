@@ -34,7 +34,9 @@ describe("web analytics loader", () => {
 
 		await loadWebAnalytics(params, params.to, client);
 
-		expect(statements).toHaveLength(13);
+		// 13 read-model queries plus the one bounded previous-window
+		// entry-session aggregate feeding the bounce basis (R8-F3/F4).
+		expect(statements).toHaveLength(14);
 		expect(maximumActiveQueries).toBe(1);
 	});
 });

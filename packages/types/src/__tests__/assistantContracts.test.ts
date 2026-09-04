@@ -118,6 +118,11 @@ const fact = (overrides: Partial<MetricFact> = {}): MetricFact => ({
   formattedValue: "120",
   unit: null,
   comparison: { kind: "percent", direction: "up", percent: 12.5 },
+  comparisonBasis: {
+    previousValue: 106,
+    denominatorCurrent: null,
+    denominatorPrevious: null,
+  },
   queryContext: publicContext(),
   coverage,
   coverageNote: "2 active sources",
@@ -435,10 +440,13 @@ describe("insight eligibility", () => {
   });
 
   it("gates rate changes on both denominators plus five points", () => {
-    expect(isRateChangeEligible(0.4, 0.3, 50, 60)).toBe(true);
-    expect(isRateChangeEligible(0.4, 0.38, 50, 60)).toBe(false);
-    expect(isRateChangeEligible(0.9, 0.1, 10, 60)).toBe(false);
-    expect(isRateChangeEligible(0.9, 0.1, 50, 10)).toBe(false);
+    // Percentage-point scale (R8-F1): 40 means 40%, and the frozen rule
+    // needs a five-point move with 30+ records on both sides.
+    expect(isRateChangeEligible(40, 30, 50, 60)).toBe(true);
+    expect(isRateChangeEligible(40, 38, 50, 60)).toBe(false);
+    expect(isRateChangeEligible(90, 10, 10, 60)).toBe(false);
+    expect(isRateChangeEligible(90, 10, 50, 10)).toBe(false);
+    expect(isRateChangeEligible(100, 0, 40, 0)).toBe(false);
   });
 
   it("requires three occurrences for an issue signal", () => {
@@ -1314,7 +1322,7 @@ describe("overview resource (R1-F2)", () => {
     kind: "timeseries" as const,
     factIds: ["a"],
     bucket: "daily" as const,
-    series: [{ name: "Events", points: [{ t: 1, value: 5 }] }],
+    series: [{ name: "Events", points: [{ t: 1, value: 120 }] }],
   };
   const secondary = {
     ...artifactBase,
@@ -1725,7 +1733,7 @@ describe("overview snapshot consistency (R2-F3)", () => {
       kind: "timeseries" as const,
       factIds: ["a"],
       bucket: "daily" as const,
-      series: [{ name: "Events", points: [{ t: 1, value: 5 }] }],
+      series: [{ name: "Events", points: [{ t: 1, value: 120 }] }],
     },
     secondary: {
       ...artifactBase,
@@ -1741,6 +1749,63 @@ describe("overview snapshot consistency (R2-F3)", () => {
       definitionLabel: null,
       warnings: [],
     },
+  });
+
+  it("requires the exact comparison basis on every fact (R8-F3)", () => {
+    const { comparisonBasis: _basis, ...withoutBasis } = fact();
+    void _basis;
+    expect(
+      ProjectOverviewResourceSchema.safeParse({
+        ...overviewResource(),
+        pulse: [withoutBasis, fact({ id: "b" }), fact({ id: "c" })],
+      }).success,
+    ).toBe(false);
+    expect(
+      ProjectOverviewResourceSchema.safeParse({
+        ...overviewResource(),
+        supportingFacts: [withoutBasis],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects charts citing a real but wrong fact or a mismatched total (R8-F6)", () => {
+    const pageViews = fact({
+      id: "pv",
+      metricId: "web.page_views",
+      value: 6,
+    });
+    // Real pulse fact, wrong metric: the chart counts accepted events.
+    expect(
+      ProjectOverviewResourceSchema.safeParse({
+        ...overviewResource(),
+        pulse: [fact({ id: "a" }), fact({ id: "b" }), pageViews],
+        activity: {
+          ...overviewResource().activity,
+          factIds: ["pv"],
+        },
+      }).success,
+    ).toBe(false);
+    // Right fact, wrong total: one bucket point is missing.
+    expect(
+      ProjectOverviewResourceSchema.safeParse({
+        ...overviewResource(),
+        pulse: [
+          fact({ id: "a", metricId: "project.accepted_events", value: 6 }),
+          fact({ id: "b" }),
+          fact({ id: "c" }),
+        ],
+        activity: {
+          ...artifactBase,
+          id: "art_activity",
+          kind: "timeseries" as const,
+          factIds: ["a"],
+          queryContext: publicContext(),
+          drilldown: drilldown(),
+          bucket: "daily" as const,
+          series: [{ name: "Events", points: [{ t: 1, value: 5 }] }],
+        },
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects fact IDs that resolve to no returned fact (R7-F7)", () => {

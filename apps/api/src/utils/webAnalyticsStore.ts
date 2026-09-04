@@ -93,7 +93,7 @@ function percent(part: number, whole: number): number {
 }
 
 /** §7: prior zero → New (current>0) / No prior data (both zero). */
-function comparisonValue(
+export function comparisonValue(
 	current: number,
 	prior: number,
 ): WebAnalyticsComparisonValue {

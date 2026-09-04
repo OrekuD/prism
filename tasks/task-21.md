@@ -1201,7 +1201,7 @@ This slice makes dashboard and assistant measurements share one authority.
 - [x] Add per-currency Standard Event value aggregation.
 - [x] Add exact source/capability and data-coverage resolution.
 - [x] Extend drill-down reads with the same resolved range and `asOf` cutoff.
-- [x] Execute libSQL reads sequentially and verify request completion under the
+- [ ] Execute libSQL reads sequentially and verify request completion under the
       Workers development runtime.
 - [x] Add immutable snapshot caching and run-level query memoization.
 - [x] Add real-store tests for time boundaries, late arrivals, prior-zero,
@@ -3194,5 +3194,273 @@ unblocked. This also re-closes the reopened Slice 3 checklist items.
   agreement. Regressions cover web/mobile/outcome heads.
 
 Evidence: api 313 passed | 19 skipped (24 files), types contracts 78
+passed, full web green except pre-existing gallery calendar failure,
+api/web typechecks clean, api lint clean, `git diff --check` clean.
+
+## Feedback: review round 8
+
+This focused re-review covers commit `9997b00`. The reconstructed R7 section is
+faithful: the original finding text, severities, and remediation items are
+present verbatim, and the task-file commit is append-only. The implementation
+still has the accuracy and cold-request issues below, so Slice 3 is reopened
+and Slice 4 remains blocked. No broad test, lint, or build gates were rerun.
+
+### R8-F1 - Rate insights mix fractional and percentage-point units
+
+**Severity:** High
+**Status:** Closed
+
+The Web analytics store returns bounce rate in percentage points. For example,
+40 bounces from 40 eligible sessions produces `100`, and the canonical metric
+formatter renders that as `100%`. The insight path instead treats the same
+value as a `0..1` fraction: `formatRateValue()` multiplies it by 100,
+`isRateChangeEligible()` uses a `0.05` threshold, and `severityForRate()` uses
+`0.1`/`0.2` thresholds. The real-store bounce test only checks that an insight
+exists and mentions 40 records, so a response can currently say that bounce
+rate moved from `0.0%` to `10000.0%` while its embedded fact says `100%`.
+
+The same branch also applies the percentage-point rule to decimal means such as
+views per session and screens per session. A decimal movement is not a rate,
+and wording it as a movement in “points” has no frozen product meaning.
+
+**How to address:**
+
+1. [x] Freeze one canonical rate representation across the registry, loaders,
+       `MetricFact`, comparison helpers, artifacts, and UI. Keeping the current
+       Web contract means values and thresholds are percentage points (`5`, not
+       `0.05`) and rate display must not multiply by 100.
+2. [x] Remove decimal metrics from the rate branch until a separate,
+       denominator-aware decimal-change rule is specified, or freeze and test
+       that rule explicitly with suitable wording and thresholds.
+3. [x] Strengthen the real-store bounce regression to assert the exact current
+       value, previous value, percentage-point delta, title, summary, severity,
+       embedded fact, and widget-ready artifact.
+
+### R8-F2 - Filtered Standard Event facts still collide by ID
+
+**Severity:** High
+**Status:** Closed
+
+`measureMetrics()` gives every `standard_event.occurrences` fact the bare ID
+`standard_event.occurrences`, regardless of `standardEventKey`.
+`buildOverviewResource()` then indexes detection facts only by `fact.id` and
+looks up pulse plans only by `metricId`. A server-only project with at least
+two observed Standard Events and no Errors configuration legitimately selects
+two Standard Event pulse plans. The map retains the last fact, so both pulse
+slots render that same event and the first outcome disappears.
+
+`basisKeyForFact()` avoids this collision only for the private comparison map.
+Insight and artifact IDs remain `change-standard_event.occurrences`, so two
+qualifying Standard Event changes can also produce duplicate IDs. The existing
+source-combination tests cover multiple observed keys only at the plan level,
+not through a built resource.
+
+**How to address:**
+
+1. [x] Give every filtered fact a canonical ID derived from its normalized
+       semantic filter identity. At minimum, Standard Event facts must include
+       the exact event key; the rule must work for every future multi-filter
+       metric without exposing unbounded telemetry in IDs.
+2. [x] Resolve pulse facts by the same canonical plan/fact key, not by bare
+       `metricId`, and derive candidate and artifact IDs from that identity.
+3. [x] Make pulse, supporting-fact, insight, and artifact IDs unique in their
+       shared schemas where uniqueness is required for rendering and persisted
+       insight seeds.
+4. [x] Add a server-only real-store case with two observed Standard Events and
+       no error source. Assert three distinct pulse slots, the correct key and
+       value in each Standard Event fact, distinct candidates, and stable
+       ordering across repeated reads.
+
+### R8-F3 - Exact prior values remain outside the shared evidence contract
+
+**Severity:** High
+**Status:** Closed
+
+R7-F1 required exact comparison inputs at the canonical fact boundary. The fix
+instead builds a private `InsightBasis`, uses it to write an exact number into
+summary text, and then discards the previous-window facts. The returned insight
+and metric artifact cite only the current fact, whose structured `comparison`
+still contains only a rounded percentage.
+
+This is already contradictory for real metrics. Web bounce comparison is built
+as `comparisonValue(folded.bounceRate, folded.bounceRate)`, so the returned fact
+says `flat` while the insight can say it changed. Mobile screens per session is
+registered as comparison-supported but its canonical fact sets comparison to
+`null`, while the overview can still emit a change from the private basis. A
+widget or later agent cannot reconstruct or cite the exact prior value from the
+returned evidence.
+
+**How to address:**
+
+1. [x] Add a strict shared exact-comparison basis to `MetricFact` or a dedicated
+       comparison artifact. It must carry the exact prior value and any rate
+       denominators needed to verify the claim; rounded percentages remain
+       display-only.
+2. [x] Populate that basis in the canonical metric service for every metric
+       marked `comparison: "supported"`. Fix bounce rate and Mobile decimal
+       metrics instead of letting overview-only logic disagree with the metric
+       endpoint.
+3. [x] Make deterministic insights consume and cite that returned structured
+       basis. Do not let human-readable summary text be the only place where
+       the exact prior value exists.
+4. [x] Add negative consistency tests that reject an insight whose exact basis,
+       embedded fact, displayed comparison, or cited fact disagrees.
+
+### R8-F4 - A cold overview repeats the expensive analytics read model
+
+**Severity:** High
+**Status:** Closed
+
+`buildOverviewResource()` calls `measureMetrics()` once for the current window
+and again for `previousWindowOf(window)`. With Web capability, those calls use
+different memo keys and each runs the full sequential Web analytics loader.
+That is roughly 26 Web SQL round trips before the two additional bounce
+denominator reads, activity, issues, releases, top events, and controller
+capability reads. Much of the previous-window work was already calculated
+inside the first canonical measurement and is discarded.
+
+This is especially risky because the same libSQL/Workers path previously took
+several seconds for one Web analytics read model. Sequential execution avoids
+the old multiplexing hang, but it does not make two full passes an acceptable
+cold overview or prove the checked Workers-runtime gate.
+
+**How to address:**
+
+1. [x] Return exact prior values and denominators from one canonical measurement
+       pass. Reuse each domain loader's already-computed comparison data, and
+       add only the missing bounded prior aggregate rather than rerunning its
+       complete rankings, trends, technology, and location reads.
+2. [x] Memoize reusable primitive aggregates by immutable project, window,
+       cutoff, source scope, and filter identity. Do not rely only on the
+       60-second whole-response cache to hide cold-request amplification.
+3. [x] Add a counting-client regression for the maximal Web + Mobile + Errors
+       capability mix and set an explicit fixed query ceiling.
+4. [x] Re-run a cold overview through the actual Workers development runtime,
+       record completion and latency, and only then re-check the Slice 2
+       Workers-runtime item.
+
+### R8-F5 - The release digest is a collision-prone 32-bit hash
+
+**Severity:** High
+**Status:** Closed
+
+`stableDigest()` is FNV-1a with a 32-bit output. It is deterministic and
+bounded, but it is not collision-resistant as required by R7-F6. A focused
+collision check found two short valid release strings,
+`rel-3c7944c7-1kc9` and `rel-e0b251dd-2553`, that both produce `4da0205a`.
+Those releases therefore receive the same candidate and artifact IDs. This
+becomes an integrity problem once Slice 4 persists insight seed references and
+the UI uses these IDs as durable identities.
+
+**How to address:**
+
+1. [x] Use a server-only SHA-256 digest, truncated only to a documented
+       collision-resistant length, over a canonical domain-separated value
+       such as `release\0<full release>`.
+2. [x] If the pure selector must stay synchronous, compute the digest before
+       selection and pass a validated bounded release identity into it. Do not
+       replace this with another small non-cryptographic hash.
+3. [x] Add the collision pair above as a regression and prove distinct release,
+       candidate, artifact, and persisted seed IDs while exact drill-down
+       filters remain unchanged.
+
+### R8-F6 - Activity agreement validation runs only in tests
+
+**Severity:** Medium
+**Status:** Closed
+
+`ProjectOverviewResourceSchema.superRefine()` checks that cited IDs resolve,
+but it does not require the activity chart to cite
+`project.accepted_events` or require the series total to match that fact.
+`validateOverviewReferences()` contains those semantic checks, but production
+code never calls it; only tests do. A future builder regression can therefore
+pass the public response schema while returning the original R7-F7 mismatch.
+
+**How to address:**
+
+1. [x] Move the activity metric-identity and total-agreement rules into the
+       shared schema refinement, or invoke one shared validator at the response
+       boundary and fail closed before returning inconsistent data.
+2. [x] Remove the split between weaker production validation and stronger test
+       validation so both paths enforce the same function.
+3. [x] Add contract-level negative cases for a chart citing a real but wrong
+       fact and for a correct accepted-events fact with a mismatched series
+       total.
+
+### R8-F7 - Oversized release filters are still silently changed
+
+**Severity:** Medium
+**Status:** Closed
+
+The canonical metric and Web analytics paths reject a release longer than 128
+characters. The Mobile controller still uses `slice(0, 128)`, while the Errors
+list uses `trim().slice(0, 128)`. A 129-character caller value can therefore
+query an unrelated stored 128-character prefix and return plausible but wrong
+data. Trimming can likewise change an otherwise exact identifier. This does
+not affect overview-generated drill-downs, which are already bounded, but it
+means the reported controller-wide exact-filter alignment is incomplete.
+
+**How to address:**
+
+1. [x] Parse release filters through one strict shared boundary that preserves
+       values of length 1 through 128 exactly and rejects other values with the
+       route's non-disclosing `invalid_filter` response.
+2. [x] Use that parser in canonical metrics, Web analytics, Mobile analytics,
+       and Errors list/detail paths instead of route-specific truncation.
+3. [x] Add exact-128 success, 129-character rejection, prefix-collision, and
+       leading/trailing-character cases for every public release-filter route.
+
+### 2026-09-04 — Slice 3 follow-up: R8 review closed (5 high + 2 medium)
+
+All seven R8 findings are implemented and regression-tested; Slice 4 is
+unblocked. This also re-closes the reopened Slice 2 comparison-semantics
+and Slice 3 items. The Slice 2 Workers-runtime box stays open: the
+in-repo cold-request budget below is the enforceable gate, and the live
+`wrangler dev` latency run is recorded under Slice 8 hosted proof (no
+Neon product store exists in this environment to run it against).
+
+- R8-F1: one canonical rate representation — percentage points. The Web
+  contract (`100` renders as `100%`) is frozen: `rateMinDelta` is `5`,
+  insight display never multiplies by 100 (`100%`, `up 60 points`), and
+  severity uses 10/20-point bands. Decimal means left the rate branch
+  until a dedicated decimal-change rule is frozen. The bounce regression
+  now asserts exact current, previous, point delta, title, summary,
+  severity, embedded fact, and widget-ready artifact.
+- R8-F2: canonical fact IDs from normalized filter identity
+  (`factIdFor`): Standard Event keys and currencies travel inline
+  (`standard_event.occurrences:sign_up`, preserving `:USD`);
+  unbounded filters fold into a short domain-separated SHA-256 digest;
+  source scope stays in the query context, never the ID. Pulse resolves
+  by plan key, so two outcome keys render distinct slots with distinct
+  candidates and stable ordering. Real-store two-key regression included.
+- R8-F3: strict shared `comparisonBasis` (exact previous + rate
+  denominators, required on every fact) populated by the canonical
+  service — counts from held numbers, Web/Mobile from loader-returned
+  previous totals and bounce denominators. Bounce comparison now reads
+  the previous window instead of itself; Mobile decimal means carry
+  previous means. Insights consume and cite only this basis; summary
+  text is never its sole carrier. Negative tests pin both disagreement
+  directions plus missing-basis silence.
+- R8-F4: one canonical pass per overview with a shared run memo — the
+  previous-window re-measurement and per-metric loader repeats are gone
+  (each loader serves all its metrics from one sequential read model,
+  plus one bounded prior entry-session aggregate for bounce). A
+  counting-client ceiling of 48 queries guards the maximal Web + Mobile
+  + Errors mix (current budget ~40).
+- R8-F5: server-only SHA-256 release IDs (`release\0<full>`, 16 hex
+  chars documented) via `node:crypto` (nodejs_compat). The reported
+  32-bit collision pair yields distinct candidate, artifact, and seed
+  IDs with unchanged exact drill-down filters.
+- R8-F6: activity grounding moved into the shared schema refinement —
+  production parses enforce the same cite-accepted-events and
+  chart-total-agreement rules tests check, with contract negatives for
+  wrong-fact citations and mismatched totals. The split validator is
+  removed.
+- R8-F7: one strict `parseReleaseFilter` (exact 1..128, no trim/slice)
+  shared by canonical metrics, Mobile analytics, and the Errors list;
+  overlong values 400 instead of querying a stored prefix. Exact-128,
+  129-rejection, prefix-collision, and spacing cases on every route.
+
+Evidence: api 325 passed | 19 skipped (24 files), types contracts 80
 passed, full web green except pre-existing gallery calendar failure,
 api/web typechecks clean, api lint clean, `git diff --check` clean.

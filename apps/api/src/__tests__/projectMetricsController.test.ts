@@ -693,3 +693,64 @@ describe("GET /projects/:slug/metrics", () => {
     });
   });
 });
+
+describe("release filter boundaries (R8-F7)", () => {
+  const LONG = `rel-${"r".repeat(124)}`;
+
+  it("serves exact-128 releases on the metrics route and rejects 129", async () => {
+    expect(LONG).toHaveLength(128);
+    const at = Date.now() - 1000;
+    await analytics.execute({
+      sql: `INSERT INTO error_issues (id, project_id, platform, fingerprint_version, fingerprint, level, status, title, first_seen_at, last_seen_at, occurrence_count, users_affected, first_release, last_release)
+       VALUES ('iss-rel128', ?, 'web', 1, 'fp-rel128', 'error', 'unresolved', 'Rel', ?, ?, 0, 0, NULL, NULL)`,
+      args: [PROJECT_ID, at, at],
+    });
+    await analytics.execute({
+      sql: `INSERT INTO error_occurrences (id, client_event_id, issue_id, project_id, source_id, platform, level, handled, occurred_at, received_at, release, environment, anonymous_id, payload)
+       VALUES ('occ-rel128', 'c-rel128', 'iss-rel128', ?, 'src_web_1', 'web', 'error', 0, ?, ?, ?, 'production', 'u-rel128', '{}')`,
+      args: [PROJECT_ID, at, at, LONG],
+    });
+    type Body = { facts: Array<{ metricId?: string; value?: number | null }> };
+    const exact = (await ProjectsController.getMetrics(
+      ctxFor(USER_ID, { ids: "errors.occurrences", range: "7d", release: LONG }),
+    )) as { __json?: Body; __status?: number };
+    expect(exact.__status).toBeUndefined();
+    expect(
+      exact.__json?.facts.find((fact) => fact.metricId === "errors.occurrences")?.value,
+    ).toBe(1);
+    // One character more is rejected — never truncated into the stored prefix.
+    const over = (await ProjectsController.getMetrics(
+      ctxFor(USER_ID, { ids: "errors.occurrences", range: "7d", release: `${LONG}x` }),
+    )) as { __status?: number };
+    expect(over.__status).toBe(400);
+  });
+
+  it("preserves leading/trailing characters instead of trimming", async () => {
+    const at = Date.now() - 1000;
+    await analytics.execute({
+      sql: `INSERT INTO error_occurrences (id, client_event_id, issue_id, project_id, source_id, platform, level, handled, occurred_at, received_at, release, environment, anonymous_id, payload)
+       VALUES ('occ-sp', 'c-sp', 'iss-rel128', ?, 'src_web_1', 'web', 'error', 0, ?, ?, ' v1 ', 'production', 'u-sp', '{}')`,
+      args: [PROJECT_ID, at, at],
+    });
+    type Body = { facts: Array<{ metricId?: string; value?: number | null }> };
+    const exact = (await ProjectsController.getMetrics(
+      ctxFor(USER_ID, { ids: "errors.occurrences", range: "7d", release: " v1 " }),
+    )) as { __json?: Body; __status?: number };
+    expect(exact.__status).toBeUndefined();
+    expect(
+      exact.__json?.facts.find((fact) => fact.metricId === "errors.occurrences")?.value,
+    ).toBe(1);
+  });
+
+  it("rejects overlong releases on the mobile route without slicing", async () => {
+    const over = (await ProjectsController.getMobileAnalytics(
+      ctxFor(USER_ID, { release: "x".repeat(129) }),
+    )) as { __status?: number };
+    expect(over.__status).toBe(400);
+    const ok = (await ProjectsController.getMobileAnalytics(
+      ctxFor(USER_ID, { release: LONG }),
+    )) as { __status?: number; __json?: unknown };
+    expect(ok.__status).toBeUndefined();
+    expect(ok.__json).toBeDefined();
+  });
+});

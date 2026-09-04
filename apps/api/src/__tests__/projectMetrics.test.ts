@@ -27,6 +27,7 @@ import {
   resolveMetricWindow,
   resolveProjectCapabilities,
   validateMetricRequest,
+  factIdFor,
   MetricQueryError,
   type CanonicalClient,
   type MetricWindow,
@@ -653,14 +654,14 @@ describe("canonical standard event aggregates", () => {
         filters: { standardEventKey: "sign_up" },
       },
     ]);
-    expect(factById(facts, "standard_event.occurrences").value).toBe(2); // bad1 never counts
+    expect(factById(facts, factIdFor("standard_event.occurrences", { standardEventKey: "sign_up" })).value).toBe(2); // bad1 never counts
     const people = await measure([
       {
         metricId: "standard_event.people",
         filters: { standardEventKey: "sign_up" },
       },
     ]);
-    expect(factById(people, "standard_event.people").value).toBe(2);
+    expect(factById(people, factIdFor("standard_event.people", { standardEventKey: "sign_up" })).value).toBe(2);
   });
 
   it("returns one fact per currency, never converted", async () => {
@@ -714,6 +715,85 @@ describe("canonical standard event aggregates", () => {
     ]);
     expect(facts).toHaveLength(1);
     expect(facts[0]?.value).toBe(2000);
+  });
+});
+
+describe("canonical fact identity and comparison basis (R8-F2, R8-F3)", () => {
+  it("gives each Standard Event key its own stable fact ID", async () => {
+    const first = await measure([
+      {
+        metricId: "standard_event.occurrences",
+        filters: { standardEventKey: "sign_up" },
+      },
+      {
+        metricId: "standard_event.occurrences",
+        filters: { standardEventKey: "purchase" },
+      },
+    ]);
+    expect(first).toHaveLength(2);
+    const ids = first.map((fact) => fact.id).sort();
+    expect(ids).toEqual([
+      "standard_event.occurrences:purchase",
+      "standard_event.occurrences:sign_up",
+    ]);
+    expect(first.find((fact) => fact.id.endsWith(":sign_up"))?.value).toBe(2);
+    expect(first.find((fact) => fact.id.endsWith(":purchase"))?.value).toBe(2);
+    // Stable across repeated reads.
+    const second = await measure([
+      {
+        metricId: "standard_event.occurrences",
+        filters: { standardEventKey: "sign_up" },
+      },
+      {
+        metricId: "standard_event.occurrences",
+        filters: { standardEventKey: "purchase" },
+      },
+    ]);
+    expect(second.map((fact) => fact.id).sort()).toEqual(ids);
+    clearMetricSnapshotCache();
+  });
+
+  it("digests unbounded filters instead of interpolating them", async () => {
+    const a = await measure([
+      { metricId: "web.page_views", filters: { host: "a.example.com" } },
+    ]);
+    const b = await measure([
+      { metricId: "web.page_views", filters: { host: "b.example.com" } },
+    ]);
+    expect(a).toHaveLength(1);
+    expect(b).toHaveLength(1);
+    expect(a[0]?.id).not.toBe(b[0]?.id);
+    expect(a[0]?.id).not.toContain("a.example.com");
+    expect(a[0]?.id).toMatch(/^web\.page_views:f[0-9a-f]{12}$/);
+    const again = await measure([
+      { metricId: "web.page_views", filters: { host: "a.example.com" } },
+    ]);
+    expect(again[0]?.id).toBe(a[0]?.id);
+    clearMetricSnapshotCache();
+  });
+
+  it("carries the exact basis on count and bounce facts", async () => {
+    const counts = await measure([{ metricId: "project.accepted_events" }]);
+    const accepted = factById(counts, "project.accepted_events");
+    expect(accepted.comparisonBasis.previousValue).not.toBeNull();
+    const web = await measure([
+      { metricId: "web.page_views" },
+      { metricId: "web.bounce_rate" },
+    ]);
+    const bounce = factById(web, "web.bounce_rate");
+    expect(bounce.comparisonBasis.denominatorCurrent).not.toBeNull();
+    expect(bounce.comparisonBasis.denominatorPrevious).not.toBeNull();
+    expect(typeof bounce.comparisonBasis.previousValue).toBe("number");
+    // Comparison-supported null claims stay null-based.
+    const states = await measure([{ metricId: "errors.unresolved_issues" }]);
+    expect(
+      factById(states, "errors.unresolved_issues").comparisonBasis,
+    ).toEqual({
+      previousValue: null,
+      denominatorCurrent: null,
+      denominatorPrevious: null,
+    });
+    clearMetricSnapshotCache();
   });
 });
 
@@ -779,8 +859,8 @@ describe("canonical mobile facts reuse task-18 definitions", () => {
     const facts = await measure([
       { metricId: "mobile.app_opens", filters: { os: "ios" } },
     ]);
-    expect(factById(facts, "mobile.app_opens").value).toBe(1);
-    expect(factById(facts, "mobile.app_opens").filters).toEqual({
+    expect(factById(facts, factIdFor("mobile.app_opens", { os: "ios" })).value).toBe(1);
+    expect(factById(facts, factIdFor("mobile.app_opens", { os: "ios" })).filters).toEqual({
       os: "ios",
       sourceScope: "all",
     });
@@ -819,26 +899,26 @@ describe("canonical error aggregates", () => {
     const facts = await measure([
       { metricId: "errors.occurrences", filters: { platform: "web" } },
     ]);
-    expect(factById(facts, "errors.occurrences").value).toBe(5); // iss_new 3 + iss_res 2
+    expect(factById(facts, factIdFor("errors.occurrences", { platform: "web" })).value).toBe(5); // iss_new 3 + iss_res 2
     const release = await measure([
       { metricId: "errors.occurrences", filters: { release: "2.4.1" } },
     ]);
-    expect(factById(release, "errors.occurrences").value).toBe(8);
+    expect(factById(release, factIdFor("errors.occurrences", { release: "2.4.1" })).value).toBe(8);
   });
 
   it("maps release filters to first/last release for state counts", async () => {
     const fresh = await measure([
       { metricId: "errors.new_issues", filters: { release: "2.4.1" } },
     ]);
-    expect(factById(fresh, "errors.new_issues").value).toBe(1);
+    expect(factById(fresh, factIdFor("errors.new_issues", { release: "2.4.1" })).value).toBe(1);
     const none = await measure([
       { metricId: "errors.new_issues", filters: { release: "9.9" } },
     ]);
-    expect(factById(none, "errors.new_issues").value).toBe(0);
+    expect(factById(none, factIdFor("errors.new_issues", { release: "9.9" })).value).toBe(0);
     const unresolved = await measure([
       { metricId: "errors.unresolved_issues", filters: { platform: "web" } },
     ]);
-    expect(factById(unresolved, "errors.unresolved_issues").value).toBe(1); // iss_new only
+    expect(factById(unresolved, factIdFor("errors.unresolved_issues", { platform: "web" })).value).toBe(1); // iss_new only
   });
 
   it("resolves state counts directly", async () => {
@@ -1302,14 +1382,14 @@ describe("standard event currency accuracy (R3-F4)", () => {
         filters: { standardEventKey: "purchase", currency: "USD" },
       },
     ]);
-    expect(factById(usd, "standard_event.occurrences").value).toBe(1); // pu1 only
+    expect(factById(usd, factIdFor("standard_event.occurrences", { standardEventKey: "purchase", currency: "USD" })).value).toBe(1); // pu1 only
     const eur = await measure([
       {
         metricId: "standard_event.occurrences",
         filters: { standardEventKey: "purchase", currency: "EUR" },
       },
     ]);
-    expect(factById(eur, "standard_event.occurrences").value).toBe(1);
+    expect(factById(eur, factIdFor("standard_event.occurrences", { standardEventKey: "purchase", currency: "EUR" })).value).toBe(1);
     // Sign-up rows carry no currency: a currency filter matches nothing.
     const none = await measure([
       {
@@ -1317,7 +1397,7 @@ describe("standard event currency accuracy (R3-F4)", () => {
         filters: { standardEventKey: "sign_up", currency: "USD" },
       },
     ]);
-    expect(factById(none, "standard_event.occurrences").value).toBe(0);
+    expect(factById(none, factIdFor("standard_event.occurrences", { standardEventKey: "sign_up", currency: "USD" })).value).toBe(0);
   });
 
   it("always returns one fact for an explicit currency, even empty", async () => {
@@ -1561,7 +1641,7 @@ describe("error snapshot semantics (R3-F5)", () => {
     const scoped = (release: string) =>
       measure([
         { metricId: "errors.affected_identities", filters: { release } },
-      ]).then((facts) => factById(facts, "errors.affected_identities").value);
+      ]).then((facts) => factById(facts, factIdFor("errors.affected_identities", { release })).value);
     expect(await scoped("2.4.1")).toBe(2); // e_a1, e_a2
     expect(await scoped("2.3.0")).toBe(1); // e_a4
   });

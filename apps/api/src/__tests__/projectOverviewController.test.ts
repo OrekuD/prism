@@ -112,6 +112,10 @@ describe("GET /projects/:slug/overview", () => {
     if (!parsed.success) return;
     expect(parsed.data.pulse).toHaveLength(3);
     expect(parsed.data.insights.length).toBeLessThanOrEqual(3);
+    // Every returned fact carries the structured exact basis (R8-F3).
+    for (const fact of [...parsed.data.pulse, ...parsed.data.supportingFacts]) {
+      expect(fact.comparisonBasis).toBeDefined();
+    }
     const verified = await verifyQueryContextToken(
       parsed.data.queryContextToken,
       {

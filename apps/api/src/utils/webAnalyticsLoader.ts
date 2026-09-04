@@ -13,6 +13,7 @@ import {
 	type WebAnalyticsRawAggregates,
 	assembleWebAnalytics,
 	bucketMsFor,
+	comparisonValue,
 	foldEntrySessions,
 } from "./webAnalyticsStore";
 
@@ -109,84 +110,27 @@ async function totalsFor(
 }
 
 /**
- * Exact bounce-rate denominators for deterministic insight detection
- * (R7-F2): completed entry sessions for an arbitrary window under the
- * same filters, join, snapshot cutoff, and completion predicate as the
- * read model. Reuses `buildWhere` and `foldEntrySessions` so the
- * denominator can never drift from the rate it grounds.
+ * Exact prior-period basis returned with every Web read (R8-F3): previous
+ * totals plus the previous bounce rate/denominator from one bounded
+ * prior entry-session aggregate. Callers attach these to facts instead of
+ * reversing rounded percentages.
  */
-export async function webBounceDenominators(
-	client: WebAnalyticsExecuteClient,
-	params: WebAnalyticsQueryParams,
-	from: number,
-	to: number,
-	nowMs: number,
-): Promise<{ rate: number | null; denominator: number }> {
-	const scoped = { ...params, from, to };
-	const { clauses, args } = buildWhere(scoped, {
-		time: "w.occurred_at",
-		source: "e.source_id",
-	});
-	const baseJoin = `FROM web_page_views w
-		JOIN events e ON e.project_id = w.project_id AND e.id = w.event_id`;
-	const result = await client.execute({
-		sql: `SELECT e.session_id AS session_id,
-					w.referrer_host AS referrer_host,
-					w.host AS page_host,
-					w.campaign_source AS campaign_source,
-					w.campaign_medium AS campaign_medium,
-					w.campaign_name AS campaign_name,
-					e.person_id AS person_id,
-					MIN(w.occurred_at) AS first_seen,
-					MAX(w.occurred_at) AS last_activity
-				${baseJoin}
-				WHERE ${clauses.join(" AND ")}
-				GROUP BY e.session_id`,
-		args: args as Array<string | number | null>,
-	});
-	const rows = (
-		Array.isArray((result as { rows?: unknown }).rows)
-			? (result as { rows: Array<Record<string, unknown>> }).rows
-			: []
-	).map(
-		(row): SessionEntryRow => ({
-			session_id:
-				row.session_id === null || row.session_id === undefined
-					? null
-					: String(row.session_id),
-			referrer_host:
-				row.referrer_host === null || row.referrer_host === undefined
-					? null
-					: String(row.referrer_host),
-			page_host: String(row.page_host ?? ""),
-			campaign_source:
-				row.campaign_source === null || row.campaign_source === undefined
-					? null
-					: String(row.campaign_source),
-			campaign_medium:
-				row.campaign_medium === null || row.campaign_medium === undefined
-					? null
-					: String(row.campaign_medium),
-			campaign_name:
-				row.campaign_name === null || row.campaign_name === undefined
-					? null
-					: String(row.campaign_name),
-			person_id:
-				row.person_id === null || row.person_id === undefined
-					? null
-					: String(row.person_id),
-			first_seen: Number(row.first_seen ?? 0),
-			last_activity: Number(row.last_activity ?? 0),
-		}),
-	);
-	const folded = foldEntrySessions(rows, nowMs);
-	return { rate: folded.bounceRate, denominator: folded.completedEntrySessions };
-}
+export type WebComparisonBasis = {
+  previous: {
+    pageViews: number;
+    visitors: number;
+    sessions: number;
+    viewsPerSession: number;
+    bounceRate: number | null;
+  };
+  bounceDenominators: { current: number; previous: number };
+};
 
-export async function loadWebAnalytics(	params: WebAnalyticsQueryParams,
+export async function loadWebAnalytics(
+	params: WebAnalyticsQueryParams,
 	nowMs: number,
 	client: WebAnalyticsExecuteClient,
-): Promise<WebAnalyticsResource> {
+): Promise<{ resource: WebAnalyticsResource; basis: WebComparisonBasis }> {
 	const bucket: WebAnalyticsBucket =
 		params.to - params.from <= 26 * 3_600_000
 			? "hourly"
@@ -204,6 +148,13 @@ export async function loadWebAnalytics(	params: WebAnalyticsQueryParams,
 		time: "w.occurred_at",
 		source: "e.source_id",
 	});
+	const previousWhere = buildWhere(
+		{ ...params, from: previous.from, to: previous.to },
+		{
+			time: "w.occurred_at",
+			source: "e.source_id",
+		},
+	);
 	const baseJoin = `FROM web_page_views w
 		JOIN events e ON e.project_id = w.project_id AND e.id = w.event_id`;
 
@@ -259,6 +210,26 @@ export async function loadWebAnalytics(	params: WebAnalyticsQueryParams,
 				WHERE ${scopedWhere.clauses.join(" AND ")}
 				GROUP BY e.session_id`,
 		args: [...scopedWhere.args] as Array<string | number | null>,
+	});
+
+	// Previous-window entry rows (R8-F3/F4): the one bounded prior
+	// aggregate the bounce comparison and denominator basis need. Rankings,
+	// trends, technology, and locations are NOT rerun for the previous
+	// window — the current pass already computed them.
+	const previousEntryRows = await client.execute({
+		sql: `SELECT e.session_id AS session_id,
+					w.referrer_host AS referrer_host,
+					w.host AS page_host,
+					w.campaign_source AS campaign_source,
+					w.campaign_medium AS campaign_medium,
+					w.campaign_name AS campaign_name,
+					e.person_id AS person_id,
+					MIN(w.occurred_at) AS first_seen,
+					MAX(w.occurred_at) AS last_activity
+				${baseJoin}
+				WHERE ${previousWhere.clauses.join(" AND ")}
+				GROUP BY e.session_id`,
+		args: [...previousWhere.args] as Array<string | number | null>,
 	});
 
 	const countries = await client.execute({
@@ -370,6 +341,23 @@ export async function loadWebAnalytics(	params: WebAnalyticsQueryParams,
 	function num(value: unknown): number {
 		return Number(value ?? 0);
 	}
+	function toEntryRows(
+		rows: Array<Record<string, unknown>>,
+	): SessionEntryRow[] {
+		return rows.map(
+			(row): SessionEntryRow => ({
+				session_id: str(row.session_id),
+				referrer_host: str(row.referrer_host),
+				page_host: String(row.page_host ?? ""),
+				campaign_source: str(row.campaign_source),
+				campaign_medium: str(row.campaign_medium),
+				campaign_name: str(row.campaign_name),
+				person_id: str(row.person_id),
+				first_seen: num(row.first_seen),
+				last_activity: num(row.last_activity),
+			}),
+		);
+	}
 	function rowsOf(result: { rows?: unknown }): Array<Record<string, unknown>> {
 		const rows = (result as { rows?: unknown }).rows;
 		return Array.isArray(rows) ? (rows as Array<Record<string, unknown>>) : [];
@@ -399,19 +387,7 @@ export async function loadWebAnalytics(	params: WebAnalyticsQueryParams,
 			visitors: num(row.visitors),
 			entrances: num(row.entrances),
 		})),
-		entrySessionRows: rowsOf(entryRows).map(
-			(row): SessionEntryRow => ({
-				session_id: str(row.session_id),
-				referrer_host: str(row.referrer_host),
-				page_host: String(row.page_host ?? ""),
-				campaign_source: str(row.campaign_source),
-				campaign_medium: str(row.campaign_medium),
-				campaign_name: str(row.campaign_name),
-				person_id: str(row.person_id),
-				first_seen: num(row.first_seen),
-				last_activity: num(row.last_activity),
-			}),
-		),
+		entrySessionRows: toEntryRows(rowsOf(entryRows)),
 		countries: rowsOf(countries).map((row) => ({
 			countryCode: String(row.country_code ?? ""),
 			pageViews: num(row.page_views),
@@ -468,5 +444,41 @@ export async function loadWebAnalytics(	params: WebAnalyticsQueryParams,
 		})),
 	};
 
-	return assembleWebAnalytics(params, raw, nowMs);
+	const previousFolded = foldEntrySessions(
+		toEntryRows(rowsOf(previousEntryRows)),
+		nowMs,
+	);
+	const resource = assembleWebAnalytics(params, raw, nowMs);
+	// Bounce compares against the previous window (R8-F3): the assembled
+	// self-comparison always reads flat, so the exact prior rate replaces
+	// it. A missing current rate keeps a null comparison (no claim).
+	if (resource.totals.bounceRate !== null) {
+		resource.comparison.bounceRate = comparisonValue(
+			resource.totals.bounceRate,
+			previousFolded.bounceRate ?? 0,
+		);
+	}
+	const previousViewsPerSession =
+		previousTotals.sessions > 0
+			? Math.round(
+					(previousTotals.pageViews / previousTotals.sessions) * 100,
+				) / 100
+			: 0;
+	return {
+		resource,
+		basis: {
+			previous: {
+				pageViews: previousTotals.pageViews,
+				visitors: previousTotals.visitors,
+				sessions: previousTotals.sessions,
+				viewsPerSession: previousViewsPerSession,
+				bounceRate: previousFolded.bounceRate,
+			},
+			bounceDenominators: {
+				current: foldEntrySessions(toEntryRows(rowsOf(entryRows)), nowMs)
+					.completedEntrySessions,
+				previous: previousFolded.completedEntrySessions,
+			},
+		},
+	};
 }

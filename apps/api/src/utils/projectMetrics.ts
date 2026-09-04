@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import {
   areQueryContextsEqual,
@@ -10,6 +11,7 @@ import {
   METRIC_REGISTRY,
   queryContextFingerprint,
   StandardEventKeySchema,
+  type ComparisonBasis,
   type ComparisonValue,
   type CoverageSummary,
   type DrilldownDestination,
@@ -181,6 +183,74 @@ function scopeIdsEqual(a: readonly string[], b: readonly string[]): boolean {
   const set = new Set(a);
   if (set.size !== a.length) return false;
   return b.every((id) => set.has(id));
+}
+
+/** Sync SHA-256 hex (server-only; R8-F5 release IDs, R8-F2 filter IDs). */
+export function sha256Hex(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+/**
+ * Canonical fact ID from normalized semantic filter identity (R8-F2).
+ * Bounded enum filters travel inline (`standardEventKey`, `currency` —
+ * preserving the existing `:USD` shape); any other present filter folds
+ * into a short domain-separated SHA-256 digest so distinct filter
+ * combinations never alias one ID and unbounded telemetry (hosts, paths,
+ * releases) never enters the ID. `sourceIds` are excluded: the source
+ * scope lives in the query context, never the fact ID.
+ */
+export function factIdFor(metricId: MetricId, filters: MetricFilters): string {
+  const parts: string[] = [metricId];
+  if (filters.standardEventKey) parts.push(filters.standardEventKey);
+  if (filters.currency) parts.push(filters.currency);
+  const rest: Array<[string, string]> = [];
+  if (filters.traffic) rest.push(["traffic", filters.traffic]);
+  if (filters.os) rest.push(["os", filters.os]);
+  if (filters.release) rest.push(["release", filters.release]);
+  if (filters.host) rest.push(["host", filters.host]);
+  if (filters.path) rest.push(["path", filters.path]);
+  if (filters.platform) rest.push(["platform", filters.platform]);
+  if (filters.environment) rest.push(["environment", filters.environment]);
+  if (rest.length > 0) {
+    const canonical = [...rest]
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .map(([key, value]) => `${key}=${value}`)
+      .join("&");
+    parts.push(
+      `f${sha256Hex(`metric-filter\0${metricId}\0${canonical}`).slice(0, 12)}`,
+    );
+  }
+  return parts.join(":");
+}
+
+/**
+ * Strict shared release-filter boundary (R8-F7): values of length 1
+ * through 128 (the ingestion bound) pass through exactly — never trimmed,
+ * never sliced. Anything else is a non-disclosing `invalid_filter` at the
+ * route, never a silent query for an unrelated prefix.
+ */
+export function parseReleaseFilter(raw: unknown): string {
+  if (typeof raw !== "string" || raw.length < 1 || raw.length > 128) {
+    throw new MetricQueryError("invalid-filter", "Invalid release filter");
+  }
+  return raw;
+}
+
+/**
+ * Exact comparison basis for one canonical measurement (R8-F3): the
+ * previous-window value the comparison was computed from, plus exact rate
+ * denominators where the metric has them. Callers pass the numbers they
+ * already hold — never a reversed rounded percentage.
+ */
+export function exactBasis(
+  previousValue: number | null,
+  denominators?: { current: number | null; previous: number | null },
+): ComparisonBasis {
+  return {
+    previousValue,
+    denominatorCurrent: denominators?.current ?? null,
+    denominatorPrevious: denominators?.previous ?? null,
+  };
 }
 
 const FILTER_KEYS = [
@@ -1151,6 +1221,7 @@ function makeFact(args: {
   idSuffix?: string;
   value: number | null;
   comparison: ComparisonValue | null;
+  comparisonBasis?: ComparisonBasis;
   queryContext: PublicQueryContext;
   coverage: CoverageSummary;
   coverageNote: string;
@@ -1165,8 +1236,15 @@ function makeFact(args: {
     args.value === null
       ? { formattedValue: "—", unit: null }
       : formatMetricValue(definition.valueKind, args.value, args.currency);
+  // Canonical ID (R8-F2): explicit currency rows keep `:USD`; everything
+  // else derives from the normalized filter identity so two Standard
+  // Event keys (or any future multi-filter combination) never alias.
+  const id =
+    args.idSuffix !== undefined
+      ? `${args.metricId}:${args.idSuffix}`
+      : factIdFor(args.metricId, args.requestFilters ?? {});
   return {
-    id: args.idSuffix ? `${args.metricId}:${args.idSuffix}` : args.metricId,
+    id,
     metricId: args.metricId,
     definitionVersion: DEFINITION_VERSION,
     label: args.labelSuffix
@@ -1176,6 +1254,11 @@ function makeFact(args: {
     formattedValue,
     unit,
     comparison: args.comparison,
+    comparisonBasis: args.comparisonBasis ?? {
+      previousValue: null,
+      denominatorCurrent: null,
+      denominatorPrevious: null,
+    },
     queryContext: args.queryContext,
     coverage: args.coverage,
     coverageNote: args.coverageNote.slice(0, 200),
@@ -1277,6 +1360,7 @@ async function measureOne(
           idSuffix: filters.currency,
           value: 0,
           comparison: compareValues(0, 0),
+          comparisonBasis: exactBasis(0),
           queryContext,
           coverage,
           coverageNote: "No requested sources belong to this project",
@@ -1293,6 +1377,7 @@ async function measureOne(
         metricId,
         value: 0,
         comparison: compareValues(0, 0),
+        comparisonBasis: exactBasis(0),
         queryContext,
         coverage,
         coverageNote: "No requested sources belong to this project",
@@ -1353,6 +1438,7 @@ async function measureOne(
           metricId,
           value: current,
           comparison: compareValues(current, previous),
+          comparisonBasis: exactBasis(previous),
           queryContext,
           coverage,
           coverageNote: "Accepted event occurrences",
@@ -1384,6 +1470,7 @@ async function measureOne(
           metricId,
           value: current,
           comparison: compareValues(current, previous),
+          comparisonBasis: exactBasis(previous),
           queryContext,
           coverage,
           coverageNote: "Sessions started in range",
@@ -1415,6 +1502,7 @@ async function measureOne(
           metricId,
           value: current,
           comparison: compareValues(current, previous),
+          comparisonBasis: exactBasis(previous),
           queryContext,
           coverage,
           coverageNote: "Identified people with activity",
@@ -1437,6 +1525,7 @@ async function measureOne(
           metricId,
           value: current,
           comparison: compareValues(current, previous),
+          comparisonBasis: exactBasis(previous),
           queryContext,
           coverage,
           coverageNote: "First external identity links",
@@ -1468,6 +1557,7 @@ async function measureOne(
           metricId,
           value: current,
           comparison: compareValues(current, previous),
+          comparisonBasis: exactBasis(previous),
           queryContext,
           coverage,
           coverageNote: "Anonymous-only subjects, not unique humans",
@@ -1510,6 +1600,7 @@ async function measureOne(
             metricId,
             value: current,
             comparison: compareValues(current, previous),
+          comparisonBasis: exactBasis(previous),
             queryContext,
             coverage,
             coverageNote: `Accepted ${key} occurrences`,
@@ -1545,6 +1636,7 @@ async function measureOne(
             metricId,
             value: current,
             comparison: compareValues(current, previous),
+          comparisonBasis: exactBasis(previous),
             queryContext,
             coverage,
             coverageNote: `Identified people with ${key}`,
@@ -1611,6 +1703,7 @@ async function measureOne(
           idSuffix: currency,
           value: total,
           comparison: compareValues(total, previous),
+          comparisonBasis: exactBasis(previous),
           queryContext,
           coverage: { ...coverage, warnings: warnings.slice(0, 8) },
           coverageNote: `${key} value in ${currency}; never converted`,
@@ -1644,18 +1737,20 @@ async function measureOne(
             : (filters.traffic ?? "human"),
       };
       const memoKey = `web|${w.from}|${w.to}|${w.asOf}|${JSON.stringify(params)}`;
-      let resource = memoized<Awaited<ReturnType<typeof loadWebAnalytics>>>(
+      let loaded = memoized<Awaited<ReturnType<typeof loadWebAnalytics>>>(
         deps.memo,
         memoKey,
       );
-      if (!resource) {
-        resource = await loadWebAnalytics(
+      if (!loaded) {
+        loaded = await loadWebAnalytics(
           { ...params, asOf: w.asOf },
           w.asOf,
           client,
         );
-        remember(deps.memo, memoKey, resource);
+        remember(deps.memo, memoKey, loaded);
       }
+      const resource = loaded.resource;
+      const webBasis = loaded.basis;
       const webCoverage = coverageFor(
         deps.capabilities,
         [],
@@ -1679,11 +1774,13 @@ async function measureOne(
         id: MetricId,
         value: number | null,
         comparison: ComparisonValue | null,
+        basis?: ComparisonBasis,
       ): MetricFact =>
         makeFact({
           metricId: id,
           value,
           comparison,
+          comparisonBasis: basis,
           queryContext,
           coverage: webCoverage,
           coverageNote: note,
@@ -1698,6 +1795,7 @@ async function measureOne(
               metricId,
               resource.totals.pageViews,
               resource.comparison.pageViews,
+              exactBasis(webBasis.previous.pageViews),
             ),
           ];
         case "web.visitors":
@@ -1706,6 +1804,7 @@ async function measureOne(
               metricId,
               resource.totals.visitors,
               resource.comparison.visitors,
+              exactBasis(webBasis.previous.visitors),
             ),
           ];
         case "web.sessions":
@@ -1714,6 +1813,7 @@ async function measureOne(
               metricId,
               resource.totals.sessions,
               resource.comparison.sessions,
+              exactBasis(webBasis.previous.sessions),
             ),
           ];
         case "web.views_per_session":
@@ -1722,6 +1822,7 @@ async function measureOne(
               metricId,
               resource.totals.viewsPerSession,
               resource.comparison.viewsPerSession,
+              exactBasis(webBasis.previous.viewsPerSession),
             ),
           ];
         case "web.bounce_rate":
@@ -1732,6 +1833,12 @@ async function measureOne(
               resource.totals.bounceRate === null
                 ? null
                 : resource.comparison.bounceRate,
+              resource.totals.bounceRate === null
+                ? undefined
+                : exactBasis(webBasis.previous.bounceRate, {
+                    current: webBasis.bounceDenominators.current,
+                    previous: webBasis.bounceDenominators.previous,
+                  }),
             ),
           ];
         case "web.excluded_bots":
@@ -1754,17 +1861,19 @@ async function measureOne(
         release: filters.release ?? null,
       };
       const memoKey = `mobile|${w.from}|${w.to}|${w.asOf}|${JSON.stringify(params)}`;
-      let resource = memoized<Awaited<ReturnType<typeof loadMobileAnalytics>>>(
+      let loaded = memoized<Awaited<ReturnType<typeof loadMobileAnalytics>>>(
         deps.memo,
         memoKey,
       );
-      if (!resource) {
-        resource = await loadMobileAnalytics(client, {
+      if (!loaded) {
+        loaded = await loadMobileAnalytics(client, {
           ...params,
           asOf: w.asOf,
         });
-        remember(deps.memo, memoKey, resource);
+        remember(deps.memo, memoKey, loaded);
       }
+      const resource = loaded.resource;
+      const mobilePrevious = loaded.basis.previous;
       const mobileCoverage = coverageFor(
         deps.capabilities,
         [],
@@ -1784,11 +1893,13 @@ async function measureOne(
         id: MetricId,
         value: number | null,
         comparison: ComparisonValue | null,
+        basis?: ComparisonBasis,
       ): MetricFact =>
         makeFact({
           metricId: id,
           value,
           comparison,
+          comparisonBasis: basis,
           queryContext,
           coverage: mobileCoverage,
           coverageNote: note,
@@ -1803,6 +1914,9 @@ async function measureOne(
               metricId,
               resource.totals.appOpens,
               resource.comparison.appOpens,
+              mobilePrevious === null
+                ? undefined
+                : exactBasis(mobilePrevious.appOpens),
             ),
           ];
         case "mobile.visitors":
@@ -1811,6 +1925,9 @@ async function measureOne(
               metricId,
               resource.totals.visitors,
               resource.comparison.visitors,
+              mobilePrevious === null
+                ? undefined
+                : exactBasis(mobilePrevious.visitors),
             ),
           ];
         case "mobile.sessions":
@@ -1819,18 +1936,42 @@ async function measureOne(
               metricId,
               resource.totals.appSessions,
               resource.comparison.appSessions,
+              mobilePrevious === null
+                ? undefined
+                : exactBasis(mobilePrevious.sessions),
             ),
           ];
         case "mobile.screens_per_session":
-          return [pick(metricId, resource.totals.avgScreensPerSession, null)];
+          return [
+            pick(
+              metricId,
+              resource.totals.avgScreensPerSession,
+              null,
+              mobilePrevious === null
+                ? undefined
+                : exactBasis(mobilePrevious.screensPerSession),
+            ),
+          ];
         case "mobile.foreground_duration":
-          return [pick(metricId, resource.totals.avgSessionDurationMs, null)];
+          return [
+            pick(
+              metricId,
+              resource.totals.avgSessionDurationMs,
+              null,
+              mobilePrevious === null
+                ? undefined
+                : exactBasis(mobilePrevious.foregroundDurationMs),
+            ),
+          ];
         case "mobile.observed_installations":
           return [
             pick(
               metricId,
               resource.totals.observedInstallations,
               resource.comparison.observedInstallations,
+              mobilePrevious === null
+                ? undefined
+                : exactBasis(mobilePrevious.installations),
             ),
           ];
       }
@@ -1871,6 +2012,7 @@ async function measureOne(
             metricId,
             value: current,
             comparison: compareValues(current, previous),
+          comparisonBasis: exactBasis(previous),
             queryContext,
             coverage,
             coverageNote: "Error occurrences in range",
@@ -1902,6 +2044,7 @@ async function measureOne(
             metricId,
             value: current,
             comparison: compareValues(current, previous),
+          comparisonBasis: exactBasis(previous),
             queryContext,
             coverage,
             coverageNote: "Distinct anonymous ids in range",
@@ -1934,6 +2077,7 @@ async function measureOne(
             metricId,
             value: current,
             comparison: compareValues(current, previous),
+          comparisonBasis: exactBasis(previous),
             queryContext,
             coverage,
             coverageNote:

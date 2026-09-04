@@ -1076,6 +1076,21 @@ export const CoverageSummarySchema = z.strictObject({
 });
 export type CoverageSummary = z.infer<typeof CoverageSummarySchema>;
 
+/**
+ * Strict exact-comparison basis (R8-F3): the canonical service carries the
+ * exact prior-window value (and, for rate metrics, both exact denominators)
+ * on every comparison-supported fact. Rounded percentages stay display-only
+ * inside `comparison`; any claim an insight or widget makes about "before"
+ * must come from here. Metrics without comparison support carry explicit
+ * nulls — never a reversed estimate.
+ */
+export const ComparisonBasisSchema = z.strictObject({
+  previousValue: z.number().nullable(),
+  denominatorCurrent: z.number().nullable(),
+  denominatorPrevious: z.number().nullable(),
+});
+export type ComparisonBasis = z.infer<typeof ComparisonBasisSchema>;
+
 export const MetricFactSchema = z.strictObject({
   id: z.string().min(1).max(128),
   metricId: MetricIdSchema,
@@ -1085,6 +1100,8 @@ export const MetricFactSchema = z.strictObject({
   formattedValue: z.string().min(1).max(64),
   unit: z.string().max(32).nullable(),
   comparison: ComparisonValueSchema.nullable(),
+  /** Exact prior value + rate denominators backing `comparison` (R8-F3). */
+  comparisonBasis: ComparisonBasisSchema,
   queryContext: PublicQueryContextSchema,
   /** Structured coverage is the source of truth (R1-F2). */
   coverage: CoverageSummarySchema,
@@ -1194,8 +1211,12 @@ export const INSIGHT_THRESHOLDS = deepFreeze({
   countMinRatio: 0.2,
   /** Minimum denominator records in BOTH periods for a rate change. */
   rateMinDenominator: 30,
-  /** Minimum absolute rate change in percentage points (0..1 fraction). */
-  rateMinDelta: 0.05,
+  /**
+   * Minimum absolute rate change in percentage points (R8-F1): rates are
+   * canonical percentage-point values (`100` renders as `100%`), so the
+   * frozen five-point rule is `5`, never `0.05`.
+   */
+  rateMinDelta: 5,
   /** Minimum current occurrences for a new/regressing issue signal. */
   issueMinOccurrences: 3,
   /** Maximum headline insights per overview. */
@@ -1665,6 +1686,51 @@ function checkOverviewConsistency(
         message: `${where} cites unreturned fact ${id}`,
       });
       return;
+    }
+  }
+  // Activity grounding (R8-F6, production-enforced): a timeseries chart
+  // must cite the canonical accepted-events fact and its zero-filled
+  // total must agree with that fact. An empty chart cites nothing.
+  const byId = new Map<string, MetricFact>();
+  for (const fact of resource.pulse) byId.set(fact.id, fact);
+  for (const fact of resource.supportingFacts ?? []) byId.set(fact.id, fact);
+  const activity = resource.activity;
+  if (activity.kind === "empty") {
+    if (activity.factIds.length > 0) {
+      context.addIssue({
+        code: "custom",
+        message: "empty activity must not cite facts",
+      });
+      return;
+    }
+  } else {
+    const citedAccepted = activity.factIds
+      .map((id) => byId.get(id))
+      .find((fact) => fact?.metricId === "project.accepted_events");
+    if (!citedAccepted) {
+      context.addIssue({
+        code: "custom",
+        message: "activity chart must cite accepted events",
+      });
+      return;
+    }
+    if (citedAccepted.value === null) {
+      context.addIssue({
+        code: "custom",
+        message: "activity chart cites an unavailable accepted-events fact",
+      });
+      return;
+    }
+    const total = activity.series.reduce(
+      (sum, entry) =>
+        sum + entry.points.reduce((inner, point) => inner + point.value, 0),
+      0,
+    );
+    if (total !== citedAccepted.value) {
+      context.addIssue({
+        code: "custom",
+        message: "activity total disagrees with accepted events",
+      });
     }
   }
 }
