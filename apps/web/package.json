@@ -13,6 +13,7 @@
 		"dev:web": "vite --host 0.0.0.0 --clearScreen false"
 	},
 	"dependencies": {
+		"@ai-sdk/react": "^4.0.95",
 		"@hookform/resolvers": "^5.7.1",
 		"@prism-analytics/react": "*",
 		"@prism-analytics/types": "*",
@@ -29,8 +30,8 @@
 		"cmdk": "^1.1.1",
 		"d3-scale": "^4.0.2",
 		"date-fns": "^3.6.0",
-		"fuse.js": "^7.0.0",
 		"framer-motion": "^12.43.0",
+		"fuse.js": "^7.0.0",
 		"input-otp": "^1.4.2",
 		"lucide-react": "^1.31.0",
 		"mapbox-gl": "^3.28.1",

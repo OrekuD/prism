@@ -1263,34 +1263,40 @@ This slice adds the durable control-plane foundation without calling a model.
 This slice introduces Vercel AI SDK and OpenRouter behind the frozen Prism
 contracts.
 
-- [ ] Add pinned `ai`, `@openrouter/ai-sdk-provider`, and Zod-compatible
+- [x] Add pinned `ai`, `@openrouter/ai-sdk-provider`, and Zod-compatible
       dependencies to the server package. Add `@ai-sdk/react` only to the Web
       app; do not add `@ai-sdk/openai`.
-- [ ] Create one OpenRouter adapter that validates the server-only key, exact
+- [x] Create one OpenRouter adapter that validates the server-only key, exact
       model allowlist, required routing/privacy options, and price limits.
 - [ ] Evaluate small, fast tool-capable candidates and record grounding,
       structured-output success, p50/p95 latency, input/output usage, and cost.
       Pin the cheapest candidate that clears every correctness gate.
-- [ ] Create one `ToolLoopAgent` with five default steps, a hard maximum of six,
+      (2026-09-04: harness `scripts/evaluate-assistant-models.mjs`
+      implemented with the frozen gates; live run needs OPENROUTER_API_KEY,
+      absent in every environment here, so no results are recorded yet.
+      Default stays pinned to `openai/gpt-4o-mini` on documented rationale
+      with eval-gated prices; live evaluation rides the Slice 8 hosted
+      proof. No fabricated results.)
+- [x] Create one `ToolLoopAgent` with five default steps, a hard maximum of six,
       and read-only tools by default.
-- [ ] Implement the required tool registry with exact Zod schemas and friendly
+- [x] Implement the required tool registry with exact Zod schemas and friendly
       activity labels.
-- [ ] Inject authorization and query context outside model-controlled input.
-- [ ] Implement the run-scoped authorization cache with immutable identity
+- [x] Inject authorization and query context outside model-controlled input.
+- [x] Implement the run-scoped authorization cache with immutable identity
       keys, in-flight lookup memoization, bounded expiry, and source-subset
       enforcement.
-- [ ] Return compact `modelSummary` facts and full UI artifacts through separate
+- [x] Return compact `modelSummary` facts and full UI artifacts through separate
       typed channels; prove full artifacts never enter model messages.
-- [ ] Implement run-level memoization, sequential analytics execution,
+- [x] Implement run-level memoization, sequential analytics execution,
       cancellation, and timeout propagation.
-- [ ] Implement structured grounded answers and one bounded validation/repair
+- [x] Implement structured grounded answers and one bounded validation/repair
       pass that respects the remaining usage quota.
-- [ ] Reject unsupported numeric/directional claims and fall back safely.
-- [ ] Add tests for correct tool choice, missing definitions, incompatible
+- [x] Reject unsupported numeric/directional claims and fall back safely.
+- [x] Add tests for correct tool choice, missing definitions, incompatible
       dimensions, multi-currency questions, empty data, tool failure, and step
       exhaustion.
-- [ ] Add prompt-injection and cross-tenant tool-argument tests.
-- [ ] Add context-budget, output-budget, OpenRouter usage/cost-accounting,
+- [x] Add prompt-injection and cross-tenant tool-argument tests.
+- [x] Add context-budget, output-budget, OpenRouter usage/cost-accounting,
       privacy-routing, price-limit, and no-expensive-fallback tests.
 
 ## Slice 6: Streaming assistant API
@@ -4986,3 +4992,51 @@ Evidence: api 406 passed | 19 skipped (28 files: 26 passed | 2 skipped),
 types 95 passed (4 files), api/web typechecks clean, api lint clean,
 `git diff --check` clean, `db:generate` reports no drift. R16 suite
 re-run 3x stable; memory race suites re-run stable.
+
+### 2026-09-04 — Slice 5: agent runtime and tools (13/14 boxes)
+
+Slice 5 is implemented with scripted-provider tests throughout (no
+network in unit tests). The one open box is live model evaluation,
+which needs `OPENROUTER_API_KEY` — absent in every environment here —
+so no results are recorded or claimed; the harness is implemented and
+the live run rides the Slice 8 hosted proof alongside the pinned
+default.
+
+- Deps: `ai@7.0.92` + `@openrouter/ai-sdk-provider@3.0.0` pinned in
+  `prism-api`, `@ai-sdk/react@4.0.95` in the Web app only, no
+  `@ai-sdk/openai` anywhere. Zod v4 schemas cross the SDK boundary via
+  `zodSchema()` (verified compatible).
+- Adapter (`assistantModel.ts`): server-only key, exact single-model
+  allowlist (`openai/gpt-4o-mini`, eval-gated), routing/privacy options
+  verified field-by-field against the installed provider
+  (`allow_fallbacks:false`, `require_parameters`, `data_collection:deny`,
+  `sort:price`, per-request `max_price`, `zdr:true`, `usage:include`),
+  per-run price caps with fail-closed `price-exceeded` (never an
+  expensive fallback), integer micro-USD cost math.
+- Eval harness (`scripts/evaluate-assistant-models.mjs`): frozen gates
+  (exact tool-call args, structured-output validity + citation, latency,
+  usage, reported cost) with cheapest-clearing recommendation; offline
+  path exits 2 with setup instructions (verified).
+- `ToolLoopAgent` (`toolLoopAgent.ts`): five default steps, hard max six
+  (`stepCountIs`), read-only/propose-only tools, frozen grounding system
+  prompt, selected-chat bounded turns + confirmed knowledge in a clamped
+  context budget (oldest turns drop first), run memoization, a
+  run-scoped mutex forcing sequential analytics reads, user-signal +
+  total-timeout cancellation, structured `AssistantAnswer` via explicit
+  JSON mode plus ONE repair pass inside remaining output quota else a
+  schema-valid fallback, exact usage with OpenRouter-reported cost
+  preferred, token budgets (`denied-quota`) and per-run cost cap
+  (`denied-cost`, `per-run-cost`).
+- Registry (`assistantTools.ts`): all 11 `TOOL_IDS` with exact Zod
+  inputs, friendly registry labels, no model-supplied provenance (only
+  `sourceIds` narrow within the cached allow-list), measurement through
+  the run-bound adapter (`measureForAuthorizedContext` wiring point),
+  honest comparison facts (previous-window measurement re-based onto the
+  run snapshot context, schema-validated), sequential bucket/dimension/
+  candidate reads sharing the run `asOf`, typed `ToolFailure` results.
+- Channels: compact `ModelSummary` text is the only model-bound
+  payload; full `AssistantArtifact` widgets travel the run scope to the
+  (slice 6) stream — proven by inspecting scripted provider calls.
+- Evidence: api 451 passed | 19 skipped (31 files: 29 passed |
+  2 skipped) incl. 45 new Slice 5 tests, types 95 passed, api/web
+  typechecks clean, api lint clean, `git diff --check` clean.
