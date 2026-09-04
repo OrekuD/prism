@@ -1,4 +1,5 @@
 import { MOBILE_LIMITS } from "@prism-analytics/core";
+import { compareValues } from "@prism-analytics/types";
 import type {
 	MobileAnalyticsBucket,
 	MobileAnalyticsComparisonValue,
@@ -107,27 +108,6 @@ export interface MobileAnalyticsRawAggregates {
 	cities: MobileLocationRow[];
 }
 
-function pct(current: number, previous: number): number | null {
-	if (previous <= 0) return null;
-	return Math.round(((current - previous) / previous) * 1000) / 10;
-}
-
-function compare(
-	current: number,
-	previous: number | undefined,
-): MobileAnalyticsComparisonValue {
-	if (previous === undefined || previous === null)
-		return { kind: "no-prior-data" };
-	const delta = pct(current, previous);
-	if (delta === null) return current > 0 ? { kind: "new" } : { kind: "no-prior-data" };
-	if (delta === 0) return { kind: "percent", direction: "flat", percent: 0 };
-	return {
-		kind: "percent",
-		direction: delta > 0 ? "up" : "down",
-		percent: Math.abs(delta),
-	};
-}
-
 function share(part: number, total: number): number {
 	if (total <= 0) return 0;
 	return Math.round((part / total) * 1000) / 10;
@@ -208,23 +188,25 @@ export function assembleMobileAnalytics(
 			excludedBots: 0,
 		},
 		comparison: {
-			appOpens: compare(
+			// One canonical comparison function (R9-F1): signed percentages
+			// from the frozen shared helper, never a local absolute variant.
+			appOpens: compareValues(
 				Number(t.app_opens),
-				raw.previousTotals ? Number(raw.previousTotals.app_opens) : undefined,
+				raw.previousTotals ? Number(raw.previousTotals.app_opens) : null,
 			),
-			visitors: compare(
+			visitors: compareValues(
 				Number(t.visitors),
-				raw.previousTotals ? Number(raw.previousTotals.visitors) : undefined,
+				raw.previousTotals ? Number(raw.previousTotals.visitors) : null,
 			),
-			appSessions: compare(
+			appSessions: compareValues(
 				Number(t.sessions),
-				raw.previousTotals ? Number(raw.previousTotals.sessions) : undefined,
+				raw.previousTotals ? Number(raw.previousTotals.sessions) : null,
 			),
-			observedInstallations: compare(
+			observedInstallations: compareValues(
 				Number(t.installations),
 				raw.previousTotals
 					? Number(raw.previousTotals.installations)
-					: undefined,
+					: null,
 			),
 		},
 		trend: { bucket: raw.bucket, points: raw.trend.slice(0, cap * 4).map((p) => ({

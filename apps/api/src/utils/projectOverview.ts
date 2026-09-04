@@ -231,14 +231,14 @@ export function selectDetectionPlans(
 }
 
 /**
- * Bounded release identity (R8-F5): truncated server-only SHA-256 over the
- * domain-separated full identifier. Sixty-four bits with domain
- * separation is the documented collision-resistant length for these
- * small per-project release sets — never another 32-bit hash, and never
- * raw telemetry inside a capped ID.
+ * Bounded release identity (R8-F5, R9-F2): truncated server-only SHA-256
+ * over the domain-separated full identifier. Thirty-two hex characters
+ * (128 bits) with domain separation is the documented
+ * collision-resistant width for these per-project identifier sets —
+ * never a 32-bit hash, and never raw telemetry inside a capped ID.
  */
 export function releaseIdentityId(release: string): string {
-  return `release-${sha256Hex(`release\0${release}`).slice(0, 16)}`;
+  return `release-${sha256Hex(`release\0${release}`).slice(0, 32)}`;
 }
 
 /** Bucket for the primary trend (same thresholds as Web analytics). */
@@ -300,6 +300,19 @@ function severityForRate(deltaPoints: number): InsightSeverity {
 }
 
 /**
+ * Headline gating for known-inaccurate Mobile series (R9-F4): visitor and
+ * installation facts keep serving dashboards, pulse, and evidence, but
+ * never headline until Task 18 R4-F3 lands (person/anonymous visitor
+ * folding; observation-time installation dimensions). Opens, sessions,
+ * and means headline normally — their aggregates carry full filter
+ * support.
+ */
+const MOBILE_HEADLINE_GATED: ReadonlySet<string> = new Set([
+  "mobile.visitors",
+  "mobile.observed_installations",
+]);
+
+/**
  * Deterministic insight selection (pure, testable).
  *
  * Consumes the STRUCTURED basis on each returned fact (R8-F3): exact
@@ -332,6 +345,7 @@ export function selectInsights(input: {
 
   for (const fact of facts) {
     if (!isSnapshotReplayable(fact.metricId)) continue;
+    if (MOBILE_HEADLINE_GATED.has(fact.metricId)) continue;
     if (fact.value === null) continue;
     const definition = METRIC_REGISTRY[fact.metricId];
     const previous = fact.comparisonBasis.previousValue;
@@ -1085,6 +1099,17 @@ export async function buildOverviewResource(input: {
     warnings,
   });
 
+  // Builder-level identity assertion (R9-F3): fail closed here — before
+  // Slice 4 persists any insight seed — as well as at the schema
+  // boundary, so a future adapter regression cannot ship ambiguous IDs.
+  assertUniqueOverviewIds(
+    [head, secondPulse, thirdPulse],
+    supportingFacts,
+    insights,
+    activity,
+    secondary,
+  );
+
   return {
     queryContext,
     capabilities,
@@ -1095,6 +1120,66 @@ export async function buildOverviewResource(input: {
     secondary,
     dataQuality,
   };
+}
+
+/**
+ * Fail-closed identity for one built resource (R9-F3): pulse and
+ * supporting IDs are unique and disjoint, insight IDs are unique, and
+ * top-level artifact IDs are unique. Embedded copies must deep-equal the
+ * cited returned fact. Mirrors the shared schema refinement so builder
+ * and boundary enforce the same invariant.
+ */
+function assertUniqueOverviewIds(
+  pulse: readonly MetricFact[],
+  supportingFacts: readonly MetricFact[],
+  insights: readonly InsightCandidate[],
+  activity: ActivityArtifact,
+  secondary: SecondaryArtifact,
+): void {
+  const returned = new Map<string, MetricFact>();
+  for (const fact of pulse) {
+    if (returned.has(fact.id)) {
+      throw new Error(`duplicate pulse fact ID ${fact.id}`);
+    }
+    returned.set(fact.id, fact);
+  }
+  for (const fact of supportingFacts) {
+    if (returned.has(fact.id)) {
+      throw new Error(`supporting fact overlaps pulse ID ${fact.id}`);
+    }
+    returned.set(fact.id, fact);
+  }
+  const insightIds = new Set<string>();
+  for (const insight of insights) {
+    if (insightIds.has(insight.id)) {
+      throw new Error(`duplicate insight ID ${insight.id}`);
+    }
+    insightIds.add(insight.id);
+  }
+  const artifactIds = new Set<string>();
+  const artifacts = [
+    activity,
+    secondary,
+    ...insights.map((insight) => insight.artifact),
+  ];
+  for (const artifact of artifacts) {
+    if (artifactIds.has(artifact.id)) {
+      throw new Error(`duplicate artifact ID ${artifact.id}`);
+    }
+    artifactIds.add(artifact.id);
+    const embedded: MetricFact[] =
+      artifact.kind === "metric"
+        ? [artifact.fact]
+        : artifact.kind === "comparison"
+          ? [artifact.current, artifact.previous]
+          : [];
+    for (const fact of embedded) {
+      const cited = returned.get(fact.id);
+      if (cited !== undefined && JSON.stringify(cited) !== JSON.stringify(fact)) {
+        throw new Error(`embedded fact ${fact.id} disagrees with returned fact`);
+      }
+    }
+  }
 }
 
 /** Resolve the canonical window for an overview range key. */

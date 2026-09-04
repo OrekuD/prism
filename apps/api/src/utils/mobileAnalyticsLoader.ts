@@ -118,6 +118,16 @@ async function totalsFor(
 		from,
 		from,
 	];
+	// Source filtering is exact (R9-F4): installations carry an indexed
+	// source_id. OS/release stay unfiltered — the projection only stores
+	// mutable last_os/last_app_version, which cannot serve as historical
+	// filter truth (see the overview's headline gating).
+	if (params.sourceIds.length > 0) {
+		installClauses.push(
+			`i.source_id IN (${params.sourceIds.map(() => "?").join(",")})`,
+		);
+		installArgs.push(...params.sourceIds);
+	}
 	if (params.asOf !== undefined) {
 		installClauses.push("i.first_seen_at <= ?");
 		installArgs.push(params.asOf);
@@ -202,6 +212,14 @@ export async function loadMobileAnalytics(
 		params.from,
 	);
 	totals.visitors = await visitorsFor(client, params, params.from, params.to);
+	// Previous visitors use the same definition as current visitors
+	// (R9-F4): the session-count placeholder made every comparison invalid.
+	previousTotals.visitors = await visitorsFor(
+		client,
+		params,
+		params.from - span,
+		params.from,
+	);
 
 	const ms = bucketMsFor(params.from, params.to);
 

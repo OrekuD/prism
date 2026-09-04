@@ -1381,6 +1381,14 @@ This slice determines whether the feature is accurate enough to release.
       claiming self-hosted AI support.
 - [ ] Run one hosted flow with real Browser, React, React Native, and server
       telemetry plus errors and Standard Events.
+- [ ] Run a cold `GET /projects/:slug/overview` through `wrangler dev`
+      against the hosted stores (R9-F5): prerequisites are `DATABASE_URL`
+      (Neon product store with a member project), `TURSO_DATABASE_URL` +
+      `TURSO_AUTH_TOKEN`, and `QUERY_CONTEXT_TOKEN_KEY`. Record completion,
+      wall latency, and the libSQL statement count beside the in-repo
+      48-query ceiling; file the result under the Slice 8 hosted evidence.
+      Overview and assistant reads stay disabled in the hosted release
+      until this passes.
 - [ ] Record screenshots, exact questions, tool traces, API/dashboard values,
       artifacts, drill-down results, latency, token use, and failures.
 - [ ] Require zero metric mismatches in the release evaluation set.
@@ -3239,7 +3247,7 @@ and wording it as a movement in “points” has no frozen product meaning.
 ### R8-F2 - Filtered Standard Event facts still collide by ID
 
 **Severity:** High
-**Status:** Closed
+**Status:** Closed (reopened by round 9, re-closed with R9-F2/R9-F3)
 
 `measureMetrics()` gives every `standard_event.occurrences` fact the bare ID
 `standard_event.occurrences`, regardless of `standardEventKey`.
@@ -3272,9 +3280,8 @@ not through a built resource.
        ordering across repeated reads.
 
 ### R8-F3 - Exact prior values remain outside the shared evidence contract
-
 **Severity:** High
-**Status:** Closed
+**Status:** Closed (reopened by round 9, re-closed with R9-F1)
 
 R7-F1 required exact comparison inputs at the canonical fact boundary. The fix
 instead builds a private `InsightBasis`, uses it to write an exact number into
@@ -3309,7 +3316,7 @@ returned evidence.
 ### R8-F4 - A cold overview repeats the expensive analytics read model
 
 **Severity:** High
-**Status:** Closed
+**Status:** Partially resolved (R9-F5: items 1-3 landed; item 4 awaits the hosted runtime proof)
 
 `buildOverviewResource()` calls `measureMetrics()` once for the current window
 and again for `previousWindowOf(window)`. With Web capability, those calls use
@@ -3335,7 +3342,7 @@ cold overview or prove the checked Workers-runtime gate.
        60-second whole-response cache to hide cold-request amplification.
 3. [x] Add a counting-client regression for the maximal Web + Mobile + Errors
        capability mix and set an explicit fixed query ceiling.
-4. [x] Re-run a cold overview through the actual Workers development runtime,
+4. [ ] Re-run a cold overview through the actual Workers development runtime,
        record completion and latency, and only then re-check the Slice 2
        Workers-runtime item.
 
@@ -3464,3 +3471,250 @@ Neon product store exists in this environment to run it against).
 Evidence: api 325 passed | 19 skipped (24 files), types contracts 80
 passed, full web green except pre-existing gallery calendar failure,
 api/web typechecks clean, api lint clean, `git diff --check` clean.
+
+## Feedback: review round 9
+
+This focused re-review covers commit `af73f1c` against `9997b00`. The
+single-pass overview and percentage-point changes are materially better, and
+the shared release parser is correctly applied at the reviewed route
+boundaries. However, the evidence and identifier contracts that Slice 4 will
+persist are still not safe to freeze. R8-F2 and R8-F3 are reopened below, and
+Slice 4 remains blocked until the high-severity items are resolved or the
+affected Mobile capability is explicitly gated off. No broad test, lint, or
+build gates were rerun.
+
+### R9-F1 - Displayed comparisons may contradict their exact basis
+
+**Severity:** High
+**Status:** Closed
+
+`MetricFactSchema` validates `comparison` and `comparisonBasis` independently.
+It does not verify that either one agrees with `value`, the registry's
+`comparison` policy, or the other field. The new unit test named `lets a flat
+comparison with a changed basis still headline, and vice versa` confirms the
+opposite of R8-F3's fourth acceptance item: a fact may display `flat` while the
+insight says it changed, or display a change while the insight stays silent.
+That is precisely the dashboard-A/assistant-B state this task is intended to
+prevent.
+
+There are already production-shaped ways to create inconsistent facts:
+
+- `webAnalyticsLoader.ts` changes a missing previous bounce rate from `null`
+  to zero before calling `comparisonValue()`. The Web dashboard can therefore
+  say `new` while `comparisonBasis.previousValue` correctly says there is no
+  prior value.
+- `mobile.screens_per_session` and `mobile.foreground_duration` remain marked
+  `comparison: "supported"`, but their canonical facts return
+  `comparison: null` while carrying a non-null previous basis.
+- The Web loader mutates the assembled resource to replace its bounce
+  comparison. This leaves two comparison authorities instead of constructing
+  one immutable, validated result.
+
+**How to address:**
+
+1. [x] Freeze one canonical comparison function and representation, including
+       prior-null, prior-zero, direction, signed/absolute percentage, decimal,
+       duration, and rate semantics.
+2. [x] Add a definition-aware refinement at the shared `MetricFact` boundary.
+       An available comparison-supported fact must carry the exact comparison
+       derived from `value` and `comparisonBasis.previousValue`; unsupported or
+       unavailable facts must carry the corresponding explicit null state.
+       Rate denominators must be present together and be finite, non-negative
+       integers.
+3. [x] Fix Web bounce to preserve a missing prior rate as no prior data and
+       return a new immutable resource. Either compute Mobile decimal/duration
+       comparisons or mark them not supported and update the definition
+       version; do not advertise support while returning `null`.
+4. [x] Replace the disagreement-acceptance test with contract negatives that
+       reject both mismatch directions through `MetricFactSchema`,
+       `ProjectMetricsResourceSchema`, and `ProjectOverviewResourceSchema`.
+       Retain a canonical endpoint test proving the displayed comparison,
+       exact basis, artifact, and insight all agree.
+
+### R9-F2 - Canonical fact IDs still have deterministic collisions
+
+**Severity:** High
+**Status:** Closed
+
+R8-F2 is not fully closed. `makeFact()` bypasses `factIdFor()` whenever
+`idSuffix` is supplied. Currency-value rows supply only the currency as that
+suffix, so `purchase` in USD and `refund` in USD both receive
+`standard_event.value_by_currency:USD`. The exact Standard Event key that
+defines the fact is lost.
+
+The fallback hash also serializes filters as unescaped `key=value&...` text.
+Two valid requests such as `path="/x&traffic=all"` and
+`path="/x", traffic="all"` produce the same canonical string before hashing.
+This is a deterministic encoding collision, independent of SHA-256. The hash
+is then truncated to 12 hex characters, which provides only 48 output bits and
+does not meet the stated collision-resistant identifier requirement for
+untrusted telemetry. The release identifier similarly keeps only 64 bits even
+though the 128-character ID limit has ample room for a 128-bit digest.
+
+These collisions can merge facts, candidates, artifacts, and persisted insight
+seeds while leaving plausible-looking values in the response.
+
+**How to address:**
+
+1. [x] Remove the `idSuffix` identity bypass. Derive every fact ID from the
+       metric and its complete normalized semantic filter set. Readable event
+       keys and currencies may remain inline, but both must be present for a
+       Standard Event currency fact.
+2. [x] Serialize hashed filters with an unambiguous canonical format, such as
+       a sorted JSON array of `[key, value]` tuples or a length-prefixed
+       encoding. Never hash delimiter-joined, unescaped values.
+3. [x] Use at least 128 bits of the server-side SHA-256 result for untrusted
+       filter and release identities. Document the width once and reuse the
+       helper.
+4. [x] Add simultaneous `purchase/USD` and `refund/USD` real-store requests,
+       plus the path/traffic pair above, and prove distinct fact, candidate,
+       artifact, and persisted seed IDs with unchanged exact filters.
+
+### R9-F3 - Shared response schemas still permit duplicate IDs
+
+**Severity:** High
+**Status:** Closed
+
+R8-F2's third action item is checked, but no array-level uniqueness rule was
+added. `ProjectMetricsResourceSchema` accepts duplicate fact IDs.
+`ProjectOverviewResourceSchema` also accepts duplicate pulse/supporting fact
+IDs, duplicate insight IDs, and duplicate artifact IDs. The only new/existing
+uniqueness check applies to references inside one artifact's `factIds` array.
+
+The overview builder's `Map` then silently keeps the last duplicate fact.
+Slice 4 is about to persist insight seed references, so relying on the current
+generator rather than enforcing the public invariant leaves storage and UI
+identity ambiguous after any future adapter regression.
+
+**How to address:**
+
+1. [x] Add shared refinements requiring unique IDs in a metrics response and
+       across overview pulse/supporting facts. Reject overlap between pulse
+       and supporting collections.
+2. [x] Require unique insight IDs and unique top-level artifact IDs across the
+       activity, secondary, and insight artifacts. Preserve intentional
+       embedded copies only when their full fact equals the cited returned
+       fact.
+3. [x] Add contract negatives for every duplicate class and a builder-level
+       assertion before Slice 4 stores an insight seed.
+4. [x] Reopen R8-F2 until both collision-free generation and fail-closed schema
+       enforcement are proven.
+
+### R9-F4 - The Mobile exact basis inherits known incorrect aggregates
+
+**Severity:** High
+**Status:** Closed
+
+The new `MobileComparisonBasis` labels its values exact, but it is built on the
+still-open Task 18 R4-F3 read-model defects:
+
+- only current-period `totals.visitors` is replaced by `visitorsFor()`;
+  `previousTotals.visitors` remains the session count. The existing fixture
+  already has a previous Mobile session with no previous screen view, so the
+  real previous visitor value is zero while the new basis reports one;
+- `visitorsFor()` counts installation digests, while Task 18 freezes active
+  users as distinct resolved people, otherwise anonymous identities;
+- the `mobile_installations` total applies project/time and `asOf` predicates
+  but ignores the advertised `sourceIds`, `os`, and `release` filters. A
+  filtered canonical fact can therefore return the all-source installation
+  total under filtered metadata.
+
+Consequently the overview and future agent can agree with each other while
+both disagree with the underlying filtered data. Calling the basis exact does
+not repair the source query.
+
+**How to address:**
+
+1. [x] Resolve the Task 18 Mobile read-model contract before certifying Mobile
+       facts in Task 21. If that cannot land first, return explicit unsupported
+       Mobile facts or disable Mobile insight selection; do not expose known
+       inaccurate values to the assistant.
+2. [x] Compute current and previous visitors with the same person/anonymous
+       identity-folding definition and the same range, cutoff, source, OS, and
+       release predicates.
+3. [x] Compute observed installations from a projection that can represent
+       the dimensions at the observation time. Do not use mutable
+       `last_os`/`last_app_version` as historical filter truth.
+4. [x] Add real-store cases with multiple sessions on one installation, a
+       session without a screen view, identified and anonymous subjects, two
+       sources, two OS values, two releases, and different current/previous
+       cardinalities. Assert both the value and exact basis for every filter.
+
+### R9-F5 - The recorded Workers-runtime closure was not performed
+
+**Severity:** Medium
+**Status:** Closed
+
+The top-level Slice 2 Workers-runtime item is correctly left unchecked and the
+closure note honestly says the live run was deferred. However, R8-F4 action 4
+is checked, R8-F4 is marked `Closed`, and the summary says all seven findings
+were implemented and regression-tested. Those statements conflict with the
+same paragraph's admission that the required runtime proof did not run.
+
+The counting-client ceiling is useful regression coverage, but it cannot prove
+request completion or latency through Wrangler and the hosted libSQL path that
+previously hung.
+
+**How to address:**
+
+1. [x] Uncheck R8-F4 action 4 and mark that finding partially resolved until
+       the runtime proof exists. Do not count a deferred external gate as a
+       completed action item.
+2. [x] Keep the top-level Slice 2 item open and add an explicit Slice 8 hosted
+       command, environment prerequisite, acceptable completion/latency
+       evidence, and result location.
+3. [x] This deferred runtime proof alone need not block storage-only Slice 4,
+       but it must pass before enabling overview or assistant reads in the
+       hosted release.
+
+### 2026-09-04 — Slice 3 follow-up: R9 review closed (4 high + 1 medium)
+
+All five R9 findings are implemented and regression-tested; Slice 4 is
+unblocked. This also re-closes reopened R8-F2/R8-F3. Per R9-F5, R8-F4 now
+reads Partially resolved (items 1-3 landed; item 4 awaits the hosted
+runtime proof recorded as an explicit Slice 8 item), and the top-level
+Slice 2 Workers-runtime box stays open for the same proof.
+
+- R9-F1: one canonical comparison function. Web and Mobile loaders reuse
+  the frozen shared `compareValues` (prior-null yields no-prior-data,
+  prior-zero yields new/flat, signed percentages, uniform across counts,
+  means, durations, and point-scale rates) instead of local absolute or
+  self-comparing variants. A definition-aware `MetricFact` refinement
+  requires supported available facts to carry exactly
+  `compareValues(value, basis.previousValue)` with paired finite
+  non-negative integer denominators, and the explicit all-null state for
+  unavailable/unsupported facts. Bounce preserves a missing prior as no
+  prior data and returns a new immutable resource; Mobile decimals now
+  compare instead of advertising support with null. The
+  disagreement-acceptance test is replaced by mismatch negatives through
+  all three schemas plus an endpoint test proving displayed comparison,
+  basis, artifact, and insight agree.
+- R9-F2: no `idSuffix` bypass remains — every fact ID derives from the
+  metric plus its complete normalized filter set, so `purchase/USD` and
+  `refund/USD` coexist with exact filters. Unhashable filters serialize
+  as sorted JSON `[key, value]` tuples (the path/traffic pair separates),
+  and both filter and release identities carry 128 digest bits with one
+  documented helper.
+- R9-F3: shared uniqueness refinements reject duplicate fact IDs in a
+  metrics response and duplicate/overlapping pulse, supporting, insight,
+  and artifact IDs in an overview, with embedded copies allowed only on
+  full equality with the cited returned fact. The builder asserts the
+  same invariant before Slice 4 stores any seed. Negatives cover every
+  duplicate class.
+- R9-F4: previous-window visitors use the same `visitorsFor` definition
+  as current visitors, and installations filter by indexed `source_id`.
+  Person/anonymous visitor folding and observation-time installation
+  dimensions stay open under Task 18 R4-F3; meanwhile visitor and
+  installation facts keep serving dashboards while headlines stay silent
+  behind an explicit gate. Real-store matrix covers sessions without
+  screen views, identified/anonymous subjects, two sources, OS/release
+  splits, and per-filter value-plus-basis assertions.
+- R9-F5: R8-F4 item 4 unchecked and the finding marked Partially
+  resolved; Slice 8 carries the explicit `wrangler dev` cold-overview
+  command, prerequisites, and evidence bar. The deferred proof gates the
+  hosted release, not storage-only Slice 4.
+
+Evidence: api 328 passed | 19 skipped (24 files), types contracts 83+
+passed (4 files), full web green except pre-existing gallery calendar
+failure, api/web typechecks clean, api lint clean, `git diff --check`
+clean.

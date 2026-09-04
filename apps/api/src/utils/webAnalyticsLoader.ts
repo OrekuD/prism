@@ -13,7 +13,6 @@ import {
 	type WebAnalyticsRawAggregates,
 	assembleWebAnalytics,
 	bucketMsFor,
-	comparisonValue,
 	foldEntrySessions,
 } from "./webAnalyticsStore";
 
@@ -448,16 +447,14 @@ export async function loadWebAnalytics(
 		toEntryRows(rowsOf(previousEntryRows)),
 		nowMs,
 	);
-	const resource = assembleWebAnalytics(params, raw, nowMs);
-	// Bounce compares against the previous window (R8-F3): the assembled
-	// self-comparison always reads flat, so the exact prior rate replaces
-	// it. A missing current rate keeps a null comparison (no claim).
-	if (resource.totals.bounceRate !== null) {
-		resource.comparison.bounceRate = comparisonValue(
-			resource.totals.bounceRate,
-			previousFolded.bounceRate ?? 0,
-		);
-	}
+	// One immutable, validated result (R9-F1): the previous rate travels
+	// into assembly, so no post-hoc mutation leaves two authorities.
+	const resource = assembleWebAnalytics(
+		params,
+		raw,
+		nowMs,
+		previousFolded.bounceRate,
+	);
 	const previousViewsPerSession =
 		previousTotals.sessions > 0
 			? Math.round(

@@ -81,6 +81,7 @@ describe("web analytics assembler", () => {
 			},
 			agg,
 			DATE_NOW,
+			null,
 		);
 		expect(resource.comparison.pageViews).toEqual({
 			kind: "percent",
@@ -114,7 +115,7 @@ describe("web analytics assembler", () => {
 			},
 		];
 		agg.totals = { ...agg.totals, sessions: 1 };
-		let resource = assembleWebAnalytics(baseParams(), agg, now);
+		let resource = assembleWebAnalytics(baseParams(), agg, now, null);
 		expect(resource.totals.bounceRate).toBeNull();
 
 		// Completed single-page session → bounce 100%.
@@ -133,7 +134,7 @@ describe("web analytics assembler", () => {
 				last_activity: now - 45 * 60_000,
 			},
 		];
-		resource = assembleWebAnalytics(baseParams(), agg, now);
+		resource = assembleWebAnalytics(baseParams(), agg, now, null);
 		expect(resource.totals.bounceRate).toBe(100);
 		// Referrers[0] is ALWAYS the explicit Direct row; external follows sorted.
 		expect(resource.referrers[0]).toMatchObject({ referrerHost: null });

@@ -335,21 +335,11 @@ describe("structured-basis insights (R8-F1, R8-F3)", () => {
     expect(embedded?.comparisonBasis.previousValue).toBe(700_000);
   });
 
-  it("lets a flat comparison with a changed basis still headline, and vice versa", () => {
-    // Comparison claims flat; the exact basis moved 30 vs 10.
-    const changed = {
-      ...countFact("project.accepted_events", 30, 30),
-      comparison: {
-        kind: "percent" as const,
-        direction: "flat" as const,
-        percent: 0,
-      },
-      comparisonBasis: {
-        previousValue: 10,
-        denominatorCurrent: null,
-        denominatorPrevious: null,
-      },
-    };
+  it("reads headlines from the structured basis behind each fact", () => {
+    // Real facts always agree (schema-enforced): the selector trusts the
+    // structured basis, and disagreement fixtures belong to the contract
+    // negatives, not the detector.
+    const changed = countFact("project.accepted_events", 30, 10);
     const changedInsights = selectInsights({
       facts: [changed],
       capabilities: capabilities(),
@@ -361,15 +351,7 @@ describe("structured-basis insights (R8-F1, R8-F3)", () => {
     expect(
       changedInsights.filter((insight) => insight.kind === "change"),
     ).toHaveLength(1);
-    // Comparison claims a move; the exact basis is flat.
-    const flat = {
-      ...countFact("project.accepted_events", 30, 10),
-      comparisonBasis: {
-        previousValue: 30,
-        denominatorCurrent: null,
-        denominatorPrevious: null,
-      },
-    };
+    const flat = countFact("project.accepted_events", 30, 30);
     const flatInsights = selectInsights({
       facts: [flat],
       capabilities: capabilities(),
@@ -546,6 +528,35 @@ describe("structured-basis insights (R8-F1, R8-F3)", () => {
       observedAt: NOW,
     });
     expect(insights.filter((insight) => insight.kind === "change")).toHaveLength(0);
+  });
+
+  it("gates visitor/installation headlines behind Task 18 R4-F3 (R9-F4)", () => {
+    const queryContext = contextFor();
+    // Eligible numbers, but the series are under Task-18 review: facts
+    // keep serving dashboards while headlines stay silent.
+    const gated = [
+      countFact("mobile.visitors", 100, 10, "g-visitors"),
+      countFact("mobile.observed_installations", 50, 5, "g-installs"),
+    ];
+    const silent = selectInsights({
+      facts: gated,
+      capabilities: capabilitiesFor({ mobile: true }),
+      issues: [],
+      releases: [],
+      queryContext,
+      observedAt: NOW,
+    });
+    expect(silent.filter((insight) => insight.kind === "change")).toHaveLength(0);
+    // Accurate mobile counts still headline normally.
+    const opens = selectInsights({
+      facts: [countFact("mobile.app_opens", 100, 10, "g-opens")],
+      capabilities: capabilitiesFor({ mobile: true }),
+      issues: [],
+      releases: [],
+      queryContext,
+      observedAt: NOW,
+    });
+    expect(opens.filter((insight) => insight.kind === "change")).toHaveLength(1);
   });
 
   it("ranks critical before attention before info with stable IDs", () => {
@@ -1218,7 +1229,7 @@ describe("overview helpers", () => {
     const first = releaseIdentityId("rel-3c7944c7-1kc9");
     const second = releaseIdentityId("rel-e0b251dd-2553");
     expect(first).not.toBe(second);
-    expect(first).toMatch(/^release-[0-9a-f]{16}$/);
+    expect(first).toMatch(/^release-[0-9a-f]{32}$/);
     expect(releaseIdentityId("2.4.1")).toBe(releaseIdentityId("2.4.1"));
   });
 });

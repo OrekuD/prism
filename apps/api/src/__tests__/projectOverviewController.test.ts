@@ -6,7 +6,7 @@ import {
 } from "../../../analytics-api/src/database/migrations";
 import { ProjectsController } from "../controllers/ProjectsController";
 import { verifyQueryContextToken } from "../utils/queryContextToken";
-import { ProjectOverviewResourceSchema } from "@prism-analytics/types";
+import { ProjectOverviewResourceSchema, compareValues } from "@prism-analytics/types";
 import { makeMockDb, makeCtx } from "./helpers";
 
 vi.mock("../managers/DatabaseManager", () => ({
@@ -270,5 +270,53 @@ describe("GET /projects/:slug/overview", () => {
       .map((id) => facts.find((fact) => fact.id === id))
       .find((fact) => fact?.metricId === "project.accepted_events");
     expect(cited?.metricId).toBe("project.accepted_events");
+  });
+
+  it("keeps displayed comparison, basis, artifact, and insight in agreement (R9-F1)", async () => {
+    const now = Date.now();
+    const day = 86_400_000;
+    for (let n = 0; n < 30; n += 1) {
+      const at = now - 3 * day + n * 1000;
+      await analytics.execute({
+        sql: `INSERT INTO events (id, project_id, type, name, schema_version, occurred_at,
+          received_at, session_id, anonymous_id, user_id, person_id, properties,
+          context, sdk_name, sdk_version, source_id, platform)
+         VALUES (?, ?, 'track', 'agree', 1, ?, ?, ?, ?, NULL, NULL, '{}', NULL, NULL, NULL, 'src_web_1', 'web')`,
+        args: [`agree-cur${n}`, PROJECT_ID, at, at, `agrees${n}`, `agreea${n}`],
+      });
+    }
+    for (let n = 0; n < 10; n += 1) {
+      const at = now - 10 * day + n * 1000;
+      await analytics.execute({
+        sql: `INSERT INTO events (id, project_id, type, name, schema_version, occurred_at,
+          received_at, session_id, anonymous_id, user_id, person_id, properties,
+          context, sdk_name, sdk_version, source_id, platform)
+         VALUES (?, ?, 'track', 'agree', 1, ?, ?, ?, ?, NULL, NULL, '{}', NULL, NULL, NULL, 'src_web_1', 'web')`,
+        args: [`agree-prev${n}`, PROJECT_ID, at, at, `agreesp${n}`, `agreeap${n}`],
+      });
+    }
+    const result = (await ProjectsController.getOverview(
+      ctxFor(USER_ID, { range: "7d" }),
+    )) as { __json?: Record<string, unknown>; __status?: number };
+    expect(result.__status).toBeUndefined();
+    const parsed = ProjectOverviewResourceSchema.safeParse(result.__json);
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+    const change = parsed.data.insights.find(
+      (insight) =>
+        insight.kind === "change" &&
+        insight.artifact.kind === "metric" &&
+        insight.artifact.fact.metricId === "project.accepted_events",
+    );
+    expect(change).toBeDefined();
+    if (!change || change.artifact.kind !== "metric") return;
+    const fact = change.artifact.fact;
+    const previous = fact.comparisonBasis.previousValue;
+    expect(typeof previous).toBe("number");
+    // Displayed comparison is exactly compareValues(value, basis).
+    expect(fact.comparison).toEqual(compareValues(fact.value ?? 0, previous));
+    // The insight text cites the same structured previous.
+    expect(change.summary).toContain(`from ${previous} to ${fact.value}`);
+    expect(change.factIds).toContain(fact.id);
   });
 });

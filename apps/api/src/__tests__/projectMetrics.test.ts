@@ -671,38 +671,40 @@ describe("canonical standard event aggregates", () => {
         filters: { standardEventKey: "purchase" },
       },
     ]);
+    // Both key and currency travel in the ID (R9-F2): purchase rows
+    // never alias refund rows in the same currency.
     expect(facts.map((fact) => fact.id).sort()).toEqual([
-      "standard_event.value_by_currency:EUR",
-      "standard_event.value_by_currency:GBP",
-      "standard_event.value_by_currency:USD",
+      "standard_event.value_by_currency:purchase:EUR",
+      "standard_event.value_by_currency:purchase:GBP",
+      "standard_event.value_by_currency:purchase:USD",
     ]);
-    expect(factById(facts, "standard_event.value_by_currency:USD").value).toBe(
+    expect(factById(facts, "standard_event.value_by_currency:purchase:USD").value).toBe(
       1000,
     );
-    expect(factById(facts, "standard_event.value_by_currency:EUR").value).toBe(
+    expect(factById(facts, "standard_event.value_by_currency:purchase:EUR").value).toBe(
       2000,
     );
-    expect(factById(facts, "standard_event.value_by_currency:USD").unit).toBe(
+    expect(factById(facts, "standard_event.value_by_currency:purchase:USD").unit).toBe(
       "USD",
     );
     expect(
-      factById(facts, "standard_event.value_by_currency:USD").formattedValue,
+      factById(facts, "standard_event.value_by_currency:purchase:USD").formattedValue,
     ).toBe("$10.00");
     expect(
-      factById(facts, "standard_event.value_by_currency:EUR").comparison,
+      factById(facts, "standard_event.value_by_currency:purchase:EUR").comparison,
     ).toEqual({ kind: "new" });
     expect(
-      factById(facts, "standard_event.value_by_currency:USD").comparison,
+      factById(facts, "standard_event.value_by_currency:purchase:USD").comparison,
     ).toMatchObject({
       kind: "percent",
       percent: 150,
     });
     // Previous-only currency: current zero with a complete drop, not silence.
-    expect(factById(facts, "standard_event.value_by_currency:GBP").value).toBe(
+    expect(factById(facts, "standard_event.value_by_currency:purchase:GBP").value).toBe(
       0,
     );
     expect(
-      factById(facts, "standard_event.value_by_currency:GBP").comparison,
+      factById(facts, "standard_event.value_by_currency:purchase:GBP").comparison,
     ).toMatchObject({ kind: "percent", direction: "down", percent: -100 });
   });
 
@@ -753,6 +755,36 @@ describe("canonical fact identity and comparison basis (R8-F2, R8-F3)", () => {
     clearMetricSnapshotCache();
   });
 
+  it("keeps purchase and refund rows distinct in the same currency (R9-F2)", async () => {
+    const facts = await measure([
+      {
+        metricId: "standard_event.value_by_currency",
+        filters: { standardEventKey: "purchase" },
+      },
+      {
+        metricId: "standard_event.value_by_currency",
+        filters: { standardEventKey: "refund" },
+      },
+    ]);
+    const ids = facts.map((fact) => fact.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    const purchaseUsd = factById(
+      facts,
+      "standard_event.value_by_currency:purchase:USD",
+    );
+    const refundUsd = factById(
+      facts,
+      "standard_event.value_by_currency:refund:USD",
+    );
+    expect(purchaseUsd.value).toBe(1000);
+    expect(refundUsd.value).toBe(500);
+    // Exact filters survive on each fact.
+    expect(purchaseUsd.filters.standardEventKey).toBe("purchase");
+    expect(refundUsd.filters.standardEventKey).toBe("refund");
+    expect(purchaseUsd.filters.currency).toBe("USD");
+    clearMetricSnapshotCache();
+  });
+
   it("digests unbounded filters instead of interpolating them", async () => {
     const a = await measure([
       { metricId: "web.page_views", filters: { host: "a.example.com" } },
@@ -764,11 +796,23 @@ describe("canonical fact identity and comparison basis (R8-F2, R8-F3)", () => {
     expect(b).toHaveLength(1);
     expect(a[0]?.id).not.toBe(b[0]?.id);
     expect(a[0]?.id).not.toContain("a.example.com");
-    expect(a[0]?.id).toMatch(/^web\.page_views:f[0-9a-f]{12}$/);
+    expect(a[0]?.id).toMatch(/^web\.page_views:f[0-9a-f]{32}$/);
     const again = await measure([
       { metricId: "web.page_views", filters: { host: "a.example.com" } },
     ]);
     expect(again[0]?.id).toBe(a[0]?.id);
+    // Delimiter-joined values never serialize alike (R9-F2): a path
+    // containing "&traffic=" cannot alias a separate traffic filter.
+    const tricky = await measure([
+      { metricId: "web.page_views", filters: { path: "/x&traffic=all" } },
+    ]);
+    const split = await measure([
+      { metricId: "web.page_views", filters: { path: "/x", traffic: "all" } },
+    ]);
+    expect(tricky[0]?.id).not.toBe(split[0]?.id);
+    expect(tricky[0]?.filters.path).toBe("/x&traffic=all");
+    expect(split[0]?.filters.path).toBe("/x");
+    expect(split[0]?.filters.traffic).toBe("all");
     clearMetricSnapshotCache();
   });
 
@@ -864,6 +908,132 @@ describe("canonical mobile facts reuse task-18 definitions", () => {
       os: "ios",
       sourceScope: "all",
     });
+  });
+
+  it("grounds every mobile filter in the same session/install aggregates (R9-F4)", async () => {
+    // Matrix: two sessions on installation dA across OS/releases, one
+    // session without screen views (dB), identified + anonymous subjects,
+    // two sources, and different current/previous cardinalities.
+    const PMX = "proj_mob_matrix";
+    const session = (
+      id: string,
+      source: string,
+      digest: string,
+      started: number,
+      fg: number,
+      screens: number,
+      version: string,
+      os: string,
+    ) =>
+      exec(
+        `INSERT INTO mobile_app_sessions (project_id, session_id, source_id, installation_digest, started_at, last_active_at, foreground_active_ms, screen_count, app_version, os)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [PMX, id, source, digest, started, started + 1000, fg, screens, version, os],
+      );
+    await session("sA1", "src_m", "dA", FROM + 1000, 60000, 5, "1.0", "ios");
+    await session("sA2", "src_m", "dA", FROM + 2000, 30000, 3, "2.0", "android");
+    await session("sB1", "src_m2", "dB", FROM + 3000, 0, 0, "1.0", "ios");
+    await session("sP1", "src_m", "dA", CFROM + 1000, 10000, 2, "1.0", "ios");
+    const screen = async (
+      id: string,
+      sessionId: string,
+      occurred: number,
+      digest: string,
+      os: string,
+      version: string,
+      source: string,
+      person: string | null,
+    ) => {
+      await exec(
+        `INSERT INTO events (id, project_id, type, name, schema_version, occurred_at,
+          received_at, session_id, anonymous_id, user_id, person_id, properties,
+          context, sdk_name, sdk_version, source_id, platform)
+         VALUES (?, ?, 'track', '$prism_screen_view', 1, ?, ?, ?, ?, NULL, ?, '{}', NULL, NULL, NULL, ?, 'react-native')`,
+        [id, PMX, occurred, occurred, sessionId, `anon-${id}`, person, source],
+      );
+      await exec(
+        `INSERT INTO mobile_screen_views (project_id, event_id, occurred_at, session_id, session_sequence, screen_name, navigation, app_version, os, installation_digest, source_id)
+         VALUES (?, ?, ?, ?, 1, 'Home', 'push', ?, ?, ?, ?)`,
+        [PMX, id, occurred, sessionId, version, os, digest, source],
+      );
+    };
+    const identified = personIdForUser(PMX, "u1");
+    await exec(
+      "INSERT INTO external_identities (project_id, user_id, person_id, linked_at) VALUES (?, ?, ?, ?)",
+      [PMX, "u1", identified, FROM - 1000],
+    );
+    await screen("vA1", "sA1", FROM + 1100, "dA", "ios", "1.0", "src_m", identified);
+    await screen("vA2", "sA1", FROM + 1200, "dA", "ios", "1.0", "src_m", null);
+    await screen("vA3", "sA2", FROM + 2100, "dA", "android", "2.0", "src_m", null);
+    await screen("vP1", "sP1", CFROM + 1100, "dA", "ios", "1.0", "src_m", null);
+    await exec(
+      `INSERT INTO mobile_installations (project_id, installation_digest, source_id, first_seen_at, last_seen_at, last_os, last_app_version)
+       VALUES (?, 'dA', 'src_m', ?, ?, 'android', '2.0'), (?, 'dB', 'src_m2', ?, ?, 'ios', '1.0'), (?, 'dOld', 'src_m', ?, ?, 'ios', '0.1')`,
+      [PMX, CFROM, NOW, PMX, FROM, NOW, PMX, CFROM - 100_000_000, CFROM - 50_000_000],
+    );
+    const caps: ProjectCapabilities = {
+      web: false,
+      mobile: true,
+      server: false,
+      errorCollection: { configured: false, observed: false },
+      standardEventsObserved: [],
+      sources: { total: 2, active: 2, lastReceivedAt: NOW },
+      trafficPolicy: "human",
+    };
+    const read = (
+      metricId: string,
+      filters: Record<string, string> = {},
+      scope?: { sourceScope: "all" | "selected"; sourceIds: string[] },
+    ) =>
+      measureMetrics(
+        client as unknown as CanonicalClient,
+        PMX,
+        WINDOW,
+        scope ?? { sourceScope: "all", sourceIds: [] },
+        [{ metricId, filters } as never],
+        { capabilities: caps, now: NOW },
+      ) as Promise<MetricFact[]>;
+    const factValue = (facts: MetricFact[]) => facts[0]?.value;
+    const basisOf = (facts: MetricFact[]) => facts[0]?.comparisonBasis ?? null;
+    // All-source: 3 opens / 1 previous; visitors see only digests with
+    // screen views (dB's viewless session excluded): 1 / 1.
+    const opens = await read("mobile.app_opens");
+    expect(factValue(opens)).toBe(3);
+    expect(basisOf(opens)).toMatchObject({ previousValue: 1 });
+    const visitors = await read("mobile.visitors");
+    expect(factValue(visitors)).toBe(1);
+    expect(basisOf(visitors)).toMatchObject({ previousValue: 1 });
+    // Installations active in range (dA, dB); the stale row excluded.
+    const installs = await read("mobile.observed_installations");
+    expect(factValue(installs)).toBe(2);
+    // Source scoping is exact on sessions and installations alike
+    // (selected scopes carry the verified per-request list).
+    const srcOpens = await measureMetrics(
+      client as unknown as CanonicalClient,
+      PMX,
+      WINDOW,
+      { sourceScope: "selected", sourceIds: ["src_m2"] },
+      [{ metricId: "mobile.app_opens", filters: { sourceIds: ["src_m2"] } } as never],
+      { capabilities: caps, now: NOW },
+    ) as MetricFact[];
+    expect(factValue(srcOpens)).toBe(1);
+    const srcInstalls = await measureMetrics(
+      client as unknown as CanonicalClient,
+      PMX,
+      WINDOW,
+      { sourceScope: "selected", sourceIds: ["src_m2"] },
+      [{ metricId: "mobile.observed_installations", filters: { sourceIds: ["src_m2"] } } as never],
+      { capabilities: caps, now: NOW },
+    ) as MetricFact[];
+    expect(factValue(srcInstalls)).toBe(1);
+    // OS/release splits read session-time dimensions, never mutable lasts.
+    const ios = await read("mobile.app_opens", { os: "ios" });
+    expect(factValue(ios)).toBe(2);
+    expect(basisOf(ios)).toMatchObject({ previousValue: 1 });
+    const rel = await read("mobile.app_opens", { release: "2.0" });
+    expect(factValue(rel)).toBe(1);
+    expect(basisOf(rel)).toMatchObject({ previousValue: 0 });
+    clearMetricSnapshotCache();
   });
 });
 
@@ -1473,9 +1643,9 @@ describe("currency overflow and response bounds (R3-F4)", () => {
       { capabilities: CAPABILITIES, now: NOW },
     );
     expect(facts).toHaveLength(10);
-    expect(facts.map((fact) => fact.id.split(":")[1]).sort()).toEqual(
-      [...codes].sort().slice(0, 10),
-    );
+    expect(
+      facts.map((fact) => fact.id.split(":").slice(-1)[0]).sort(),
+    ).toEqual([...codes].sort().slice(0, 10));
     expect(
       facts.some((fact) =>
         fact.coverage.warnings.some((warning) =>

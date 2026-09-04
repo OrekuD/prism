@@ -191,13 +191,14 @@ export function sha256Hex(value: string): string {
 }
 
 /**
- * Canonical fact ID from normalized semantic filter identity (R8-F2).
+ * Canonical fact ID from normalized semantic filter identity (R8-F2, R9-F2).
  * Bounded enum filters travel inline (`standardEventKey`, `currency` —
- * preserving the existing `:USD` shape); any other present filter folds
- * into a short domain-separated SHA-256 digest so distinct filter
- * combinations never alias one ID and unbounded telemetry (hosts, paths,
- * releases) never enters the ID. `sourceIds` are excluded: the source
- * scope lives in the query context, never the fact ID.
+ * both are required on a Standard Event currency fact); any other present
+ * filter folds into a domain-separated SHA-256 digest over the sorted JSON
+ * `[key, value]` tuple array, so `path="/x&traffic=all"` and
+ * `path="/x", traffic="all"` never serialize alike. At least 128 digest
+ * bits travel in the ID and unbounded telemetry never does. `sourceIds`
+ * are excluded: the source scope lives in the query context, never the ID.
  */
 export function factIdFor(metricId: MetricId, filters: MetricFilters): string {
   const parts: string[] = [metricId];
@@ -212,13 +213,11 @@ export function factIdFor(metricId: MetricId, filters: MetricFilters): string {
   if (filters.platform) rest.push(["platform", filters.platform]);
   if (filters.environment) rest.push(["environment", filters.environment]);
   if (rest.length > 0) {
-    const canonical = [...rest]
-      .sort(([a], [b]) => (a < b ? -1 : 1))
-      .map(([key, value]) => `${key}=${value}`)
-      .join("&");
-    parts.push(
-      `f${sha256Hex(`metric-filter\0${metricId}\0${canonical}`).slice(0, 12)}`,
-    );
+    rest.sort(([a], [b]) => (a < b ? -1 : 1));
+    const digest = sha256Hex(
+      `metric-filter\0${metricId}\0${JSON.stringify(rest)}`,
+    ).slice(0, 32);
+    parts.push(`f${digest}`);
   }
   return parts.join(":");
 }
@@ -1218,7 +1217,7 @@ function factFiltersFor(
 
 function makeFact(args: {
   metricId: MetricId;
-  idSuffix?: string;
+  idFilters?: MetricFilters;
   value: number | null;
   comparison: ComparisonValue | null;
   comparisonBasis?: ComparisonBasis;
@@ -1236,13 +1235,14 @@ function makeFact(args: {
     args.value === null
       ? { formattedValue: "—", unit: null }
       : formatMetricValue(definition.valueKind, args.value, args.currency);
-  // Canonical ID (R8-F2): explicit currency rows keep `:USD`; everything
-  // else derives from the normalized filter identity so two Standard
-  // Event keys (or any future multi-filter combination) never alias.
-  const id =
-    args.idSuffix !== undefined
-      ? `${args.metricId}:${args.idSuffix}`
-      : factIdFor(args.metricId, args.requestFilters ?? {});
+  // Canonical ID (R8-F2, R9-F2): every fact ID derives from the metric
+  // plus its complete normalized filter set — no bypass. Callers measuring
+  // one row per filter combination pass that row's exact filters via
+  // `idFilters` (e.g. per-currency rows); it defaults to the request
+  // filters. A Standard Event currency fact therefore carries both key
+  // and currency.
+  const identityFilters = args.idFilters ?? args.requestFilters ?? {};
+  const id = factIdFor(args.metricId, identityFilters);
   return {
     id,
     metricId: args.metricId,
@@ -1262,7 +1262,7 @@ function makeFact(args: {
     queryContext: args.queryContext,
     coverage: args.coverage,
     coverageNote: args.coverageNote.slice(0, 200),
-    filters: factFiltersFor(args.requestFilters ?? {}, args.scope),
+    filters: factFiltersFor(identityFilters, args.scope),
     drilldown: args.drilldown,
   };
 }
@@ -1357,7 +1357,6 @@ async function measureOne(
       return [
         makeFact({
           metricId,
-          idSuffix: filters.currency,
           value: 0,
           comparison: compareValues(0, 0),
           comparisonBasis: exactBasis(0),
@@ -1372,12 +1371,19 @@ async function measureOne(
         }),
       ];
     }
-    return [
+    // Empty selections yield honest zeros, but comparison-unsupported
+  // metrics keep the explicit null state (R9-F1): a zero value with no
+  // comparison claim and null basis, never a flat comparison the metric
+  // definition does not support.
+  const emptySupported = METRIC_REGISTRY[metricId].comparison === "supported";
+  return [
       makeFact({
         metricId,
         value: 0,
-        comparison: compareValues(0, 0),
-        comparisonBasis: exactBasis(0),
+        comparison: emptySupported ? compareValues(0, 0) : null,
+        // Counts stay comparable over the empty scope; unsupported metrics
+        // keep the explicit null state (R9-F1) — value zero, no comparison.
+        comparisonBasis: emptySupported ? exactBasis(0) : undefined,
         queryContext,
         coverage,
         coverageNote: "No requested sources belong to this project",
@@ -1700,14 +1706,14 @@ async function measureOne(
             : coverage.warnings;
         return makeFact({
           metricId,
-          idSuffix: currency,
+          idFilters: { ...filters, currency },
           value: total,
           comparison: compareValues(total, previous),
           comparisonBasis: exactBasis(previous),
           queryContext,
           coverage: { ...coverage, warnings: warnings.slice(0, 8) },
           coverageNote: `${key} value in ${currency}; never converted`,
-          drilldown,
+          drilldown: drilldownFor(metricId, { ...filters, currency }, scope),
           currency: /^[A-Z]{3}$/.test(currency) ? currency : undefined,
           labelSuffix: currency,
           requestFilters: filters,
@@ -1946,8 +1952,16 @@ async function measureOne(
             pick(
               metricId,
               resource.totals.avgScreensPerSession,
-              null,
-              mobilePrevious === null
+              // Decimal means compare through the one canonical function
+              // (R9-F1) instead of advertising support while returning null.
+              resource.totals.avgScreensPerSession === null
+                ? null
+                : compareValues(
+                    resource.totals.avgScreensPerSession,
+                    mobilePrevious?.screensPerSession ?? null,
+                  ),
+              mobilePrevious === null ||
+              resource.totals.avgScreensPerSession === null
                 ? undefined
                 : exactBasis(mobilePrevious.screensPerSession),
             ),
@@ -1957,8 +1971,14 @@ async function measureOne(
             pick(
               metricId,
               resource.totals.avgSessionDurationMs,
-              null,
-              mobilePrevious === null
+              resource.totals.avgSessionDurationMs === null
+                ? null
+                : compareValues(
+                    resource.totals.avgSessionDurationMs,
+                    mobilePrevious?.foregroundDurationMs ?? null,
+                  ),
+              mobilePrevious === null ||
+              resource.totals.avgSessionDurationMs === null
                 ? undefined
                 : exactBasis(mobilePrevious.foregroundDurationMs),
             ),

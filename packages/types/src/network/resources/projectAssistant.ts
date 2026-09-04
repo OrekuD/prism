@@ -1039,11 +1039,23 @@ export type ComparisonValue = z.infer<typeof ComparisonValueSchema>;
 /**
  * Shared current-vs-previous semantics for dashboard and assistant.
  * `previous === null` means no prior data exists for the window.
+ *
+ * Canonical comparison decisions (R9-F1), frozen for every surface:
+ * prior-null yields no-prior-data; prior-zero yields new (current > 0)
+ * or flat (both zero); otherwise a SIGNED one-decimal percentage with an
+ * up/down/flat direction. The same function covers counts, decimal and
+ * duration means, and percentage-point rates — loaders must reuse it
+ * rather than shadowing it with local absolute/percentage variants.
  */
+export type CanonicalComparison =
+  | { kind: "percent"; direction: "up" | "down" | "flat"; percent: number }
+  | { kind: "new" }
+  | { kind: "no-prior-data" };
+
 export function compareValues(
   current: number,
   previous: number | null,
-): ComparisonValue {
+): CanonicalComparison {
   if (previous === null) return { kind: "no-prior-data" };
   if (previous === 0) {
     if (current === 0)
@@ -1091,27 +1103,93 @@ export const ComparisonBasisSchema = z.strictObject({
 });
 export type ComparisonBasis = z.infer<typeof ComparisonBasisSchema>;
 
-export const MetricFactSchema = z.strictObject({
-  id: z.string().min(1).max(128),
-  metricId: MetricIdSchema,
-  definitionVersion: z.literal(DEFINITION_VERSION),
-  label: z.string().min(1).max(160),
-  value: z.number().nullable(),
-  formattedValue: z.string().min(1).max(64),
-  unit: z.string().max(32).nullable(),
-  comparison: ComparisonValueSchema.nullable(),
-  /** Exact prior value + rate denominators backing `comparison` (R8-F3). */
-  comparisonBasis: ComparisonBasisSchema,
-  queryContext: PublicQueryContextSchema,
-  /** Structured coverage is the source of truth (R1-F2). */
-  coverage: CoverageSummarySchema,
-  /** Short display sentence derived from `coverage`, not the truth. */
-  coverageNote: z.string().max(200),
-  /** Resolved filter values defining this fact (registry declares support). */
-  filters: DrilldownFiltersSchema,
-  drilldown: DrilldownDestinationSchema,
-});
+export const MetricFactSchema = z
+  .strictObject({
+    id: z.string().min(1).max(128),
+    metricId: MetricIdSchema,
+    definitionVersion: z.literal(DEFINITION_VERSION),
+    label: z.string().min(1).max(160),
+    value: z.number().nullable(),
+    formattedValue: z.string().min(1).max(64),
+    unit: z.string().max(32).nullable(),
+    comparison: ComparisonValueSchema.nullable(),
+    /** Exact prior value + rate denominators backing `comparison` (R8-F3). */
+    comparisonBasis: ComparisonBasisSchema,
+    queryContext: PublicQueryContextSchema,
+    /** Structured coverage is the source of truth (R1-F2). */
+    coverage: CoverageSummarySchema,
+    /** Short display sentence derived from `coverage`, not the truth. */
+    coverageNote: z.string().max(200),
+    /** Resolved filter values defining this fact (registry declares support). */
+    filters: DrilldownFiltersSchema,
+    drilldown: DrilldownDestinationSchema,
+  })
+  .superRefine(checkFactComparisonAgreement);
 export type MetricFact = z.infer<typeof MetricFactSchema>;
+
+/**
+ * Definition-aware comparison agreement (R9-F1): the displayed comparison
+ * must be exactly what the frozen `compareValues` derives from the fact's
+ * own value and structured basis — one function, one representation
+ * (prior-null → no-prior-data, prior-zero → new/flat, signed percent,
+ * uniform across counts, means, durations, and point-scale rates).
+ * Unavailable facts (null value) and comparison-unsupported metrics carry
+ * the explicit all-null state instead.
+ */
+function checkFactComparisonAgreement(
+  fact: MetricFact,
+  context: z.RefinementCtx,
+): void {
+  const definition = METRIC_REGISTRY[fact.metricId];
+  const basis = fact.comparisonBasis;
+  const nullBasis =
+    basis.previousValue === null &&
+    basis.denominatorCurrent === null &&
+    basis.denominatorPrevious === null;
+  if (fact.value === null) {
+    if (fact.comparison !== null || !nullBasis) {
+      context.addIssue({
+        code: "custom",
+        message: "unavailable facts must carry the explicit null state",
+      });
+    }
+    return;
+  }
+  if (definition.comparison !== "supported") {
+    if (fact.comparison !== null || !nullBasis) {
+      context.addIssue({
+        code: "custom",
+        message: "comparison-unsupported facts must carry the null state",
+      });
+    }
+    return;
+  }
+  const expected = compareValues(fact.value, basis.previousValue);
+  if (JSON.stringify(fact.comparison) !== JSON.stringify(expected)) {
+    context.addIssue({
+      code: "custom",
+      message: "comparison must equal compareValues(value, basis.previousValue)",
+    });
+    return;
+  }
+  const { denominatorCurrent, denominatorPrevious } = basis;
+  if (
+    (denominatorCurrent === null) !== (denominatorPrevious === null) ||
+    (denominatorCurrent !== null &&
+      (!Number.isInteger(denominatorCurrent) ||
+        denominatorCurrent < 0 ||
+        !Number.isFinite(denominatorCurrent))) ||
+    (denominatorPrevious !== null &&
+      (!Number.isInteger(denominatorPrevious) ||
+        denominatorPrevious < 0 ||
+        !Number.isFinite(denominatorPrevious)))
+  ) {
+    context.addIssue({
+      code: "custom",
+      message: "rate denominators must be paired finite non-negative integers",
+    });
+  }
+}
 
 export const DataQualitySummarySchema = z.strictObject({
   hasAcceptedData: z.boolean(),
@@ -1589,11 +1667,27 @@ export type ProjectOverviewResource = z.infer<
  * adapter (slice 5) consume these same facts — dashboard and assistant
  * agree byte-for-byte for the same query context.
  */
-export const ProjectMetricsResourceSchema = z.strictObject({
-  queryContext: PublicQueryContextSchema,
-  queryContextToken: QueryContextTokenSchema,
-  facts: z.array(MetricFactSchema).max(27),
-});
+export const ProjectMetricsResourceSchema = z
+  .strictObject({
+    queryContext: PublicQueryContextSchema,
+    queryContextToken: QueryContextTokenSchema,
+    facts: z.array(MetricFactSchema).max(27),
+  })
+  .superRefine((resource, context) => {
+    // Fail-closed identity (R9-F3): duplicate fact IDs would merge
+    // distinct measurements under one persisted reference.
+    const seen = new Set<string>();
+    for (const fact of resource.facts) {
+      if (seen.has(fact.id)) {
+        context.addIssue({
+          code: "custom",
+          message: `duplicate fact ID ${fact.id}`,
+        });
+        return;
+      }
+      seen.add(fact.id);
+    }
+  });
 export type ProjectMetricsResource = z.infer<
   typeof ProjectMetricsResourceSchema
 >;
@@ -1731,6 +1825,72 @@ function checkOverviewConsistency(
         code: "custom",
         message: "activity total disagrees with accepted events",
       });
+      return;
+    }
+  }
+  // Fail-closed identity (R9-F3): duplicate or overlapping IDs would merge
+  // distinct facts, insights, or artifacts under one persisted reference
+  // once Slice 4 stores insight seeds. Pulse and supporting collections
+  // must be internally unique and mutually disjoint; insight and
+  // top-level artifact IDs must be unique; embedded fact copies survive
+  // only when they deep-equal the cited returned fact.
+  const returned = new Map<string, MetricFact>();
+  for (const fact of resource.pulse) {
+    if (returned.has(fact.id)) {
+      context.addIssue({
+        code: "custom",
+        message: `duplicate pulse fact ID ${fact.id}`,
+      });
+      return;
+    }
+    returned.set(fact.id, fact);
+  }
+  for (const fact of resource.supportingFacts ?? []) {
+    if (returned.has(fact.id)) {
+      context.addIssue({
+        code: "custom",
+        message: `supporting fact overlaps pulse ID ${fact.id}`,
+      });
+      return;
+    }
+    returned.set(fact.id, fact);
+  }
+  const insightIds = new Set<string>();
+  for (const insight of resource.insights) {
+    if (insightIds.has(insight.id)) {
+      context.addIssue({
+        code: "custom",
+        message: `duplicate insight ID ${insight.id}`,
+      });
+      return;
+    }
+    insightIds.add(insight.id);
+  }
+  const artifactIds = new Set<string>();
+  for (const artifact of artifacts) {
+    if (artifactIds.has(artifact.id)) {
+      context.addIssue({
+        code: "custom",
+        message: `duplicate artifact ID ${artifact.id}`,
+      });
+      return;
+    }
+    artifactIds.add(artifact.id);
+    const embedded: MetricFact[] =
+      artifact.kind === "metric"
+        ? [artifact.fact]
+        : artifact.kind === "comparison"
+          ? [artifact.current, artifact.previous]
+          : [];
+    for (const fact of embedded) {
+      const cited = returned.get(fact.id);
+      if (cited !== undefined && JSON.stringify(cited) !== JSON.stringify(fact)) {
+        context.addIssue({
+          code: "custom",
+          message: `embedded fact ${fact.id} disagrees with the returned fact`,
+        });
+        return;
+      }
     }
   }
 }

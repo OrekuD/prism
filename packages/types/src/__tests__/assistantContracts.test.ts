@@ -58,6 +58,7 @@ import {
   platformFamilyOf,
   PRISM_AI_ENV_NAMES,
   ProjectCapabilitiesSchema,
+  ProjectMetricsResourceSchema,
   ProjectOverviewResourceSchema,
   PublicQueryContextSchema,
   queryContextFingerprint,
@@ -117,7 +118,7 @@ const fact = (overrides: Partial<MetricFact> = {}): MetricFact => ({
   value: 120,
   formattedValue: "120",
   unit: null,
-  comparison: { kind: "percent", direction: "up", percent: 12.5 },
+  comparison: { kind: "percent", direction: "up", percent: 13.2 },
   comparisonBasis: {
     previousValue: 106,
     denominatorCurrent: null,
@@ -597,9 +598,82 @@ describe("artifact union (R1-F2, R1-F3)", () => {
 
   it("proves metric facts never encode infinity", () => {
     const parsed = MetricFactSchema.safeParse(
-      fact({ comparison: { kind: "new" } }),
+      fact({
+        comparison: { kind: "new" },
+        comparisonBasis: {
+          previousValue: 0,
+          denominatorCurrent: null,
+          denominatorPrevious: null,
+        },
+      }),
     );
     expect(parsed.success).toBe(true);
+  });
+
+  it("rejects comparisons disagreeing with value and basis either way (R9-F1)", () => {
+    // Display claims flat while the basis moved: reject.
+    expect(
+      MetricFactSchema.safeParse(
+        fact({
+          comparison: { kind: "percent", direction: "flat", percent: 0 },
+          comparisonBasis: {
+            previousValue: 10,
+            denominatorCurrent: null,
+            denominatorPrevious: null,
+          },
+        }),
+      ).success,
+    ).toBe(false);
+    // Display claims a move while the basis is flat: reject.
+    expect(
+      MetricFactSchema.safeParse(
+        fact({
+          comparison: { kind: "percent", direction: "up", percent: 50 },
+          comparisonBasis: {
+            previousValue: 120,
+            denominatorCurrent: null,
+            denominatorPrevious: null,
+          },
+        }),
+      ).success,
+    ).toBe(false);
+    // Unsupported metrics carry the null state even with real values.
+    expect(
+      MetricFactSchema.safeParse(
+        fact({
+          metricId: "web.excluded_bots",
+          comparison: { kind: "percent", direction: "flat", percent: 0 },
+        }),
+      ).success,
+    ).toBe(false);
+    expect(
+      MetricFactSchema.safeParse(
+        fact({
+          metricId: "web.excluded_bots",
+          comparison: null,
+          comparisonBasis: {
+            previousValue: null,
+            denominatorCurrent: null,
+            denominatorPrevious: null,
+          },
+        }),
+      ).success,
+    ).toBe(true);
+    // Denominators travel paired and finite.
+    expect(
+      MetricFactSchema.safeParse(
+        fact({
+          metricId: "web.bounce_rate",
+          value: 40,
+          comparison: { kind: "percent", direction: "up", percent: 100 },
+          comparisonBasis: {
+            previousValue: 20,
+            denominatorCurrent: 40,
+            denominatorPrevious: null,
+          },
+        }),
+      ).success,
+    ).toBe(false);
   });
 
   it("keeps fact coverage structured with a derived display note", () => {
@@ -1749,6 +1823,71 @@ describe("overview snapshot consistency (R2-F3)", () => {
       definitionLabel: null,
       warnings: [],
     },
+  });
+
+  it("rejects duplicate fact IDs in a metrics response (R9-F3)", () => {
+    const context = publicContext();
+    const base = {
+      queryContext: context,
+      queryContextToken: "opaque-server-issued-token",
+      facts: [fact({ id: "a" }), fact({ id: "a" })],
+    };
+    expect(ProjectMetricsResourceSchema.safeParse(base).success).toBe(false);
+    expect(
+      ProjectMetricsResourceSchema.safeParse({
+        ...base,
+        facts: [fact({ id: "a" }), fact({ id: "b" })],
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects every duplicate identity class in an overview (R9-F3)", () => {
+    const base = overviewResource();
+    // Duplicate pulse IDs.
+    expect(
+      ProjectOverviewResourceSchema.safeParse({
+        ...base,
+        pulse: [fact({ id: "a" }), fact({ id: "a" }), fact({ id: "c" })],
+      }).success,
+    ).toBe(false);
+    // Supporting/pulse overlap.
+    expect(
+      ProjectOverviewResourceSchema.safeParse({
+        ...base,
+        supportingFacts: [fact({ id: "a" })],
+      }).success,
+    ).toBe(false);
+    // Duplicate insight IDs.
+    const insight = {
+      id: "dup",
+      kind: "change" as const,
+      severity: "info" as const,
+      title: "t",
+      summary: "s",
+      factIds: [] as string[],
+      artifact: {
+        ...artifactBase,
+        factIds: ["a"],
+        kind: "empty" as const,
+        reason: "None.",
+      },
+      drilldown: drilldown(),
+      askPrompt: "Tell me more.",
+      observedAt: 1,
+    };
+    expect(
+      ProjectOverviewResourceSchema.safeParse({
+        ...base,
+        insights: [insight, { ...insight }],
+      }).success,
+    ).toBe(false);
+    // Duplicate top-level artifact IDs.
+    expect(
+      ProjectOverviewResourceSchema.safeParse({
+        ...base,
+        secondary: { ...base.secondary, id: base.activity.id },
+      }).success,
+    ).toBe(false);
   });
 
   it("requires the exact comparison basis on every fact (R8-F3)", () => {
