@@ -26,6 +26,69 @@ CREATE OR REPLACE FUNCTION assistant_canonical_term(name text) RETURNS text LANG
 -- ============================================================================
 DROP TRIGGER IF EXISTS assistant_memory_slot_term_trg ON "assistant_memory";--> statement-breakpoint
 CREATE TRIGGER assistant_memory_slot_term_trg BEFORE INSERT OR UPDATE ON "assistant_memory" FOR EACH ROW EXECUTE FUNCTION assistant_memory_slot_term_trigger();--> statement-breakpoint
+-- ============================================================================
+-- R16-F1: populated-upgrade healing. Policy v1 can merge two terms that
+-- were distinct confirmed slots before (e.g. `A B` vs `A<U+FEFF>B`), and
+-- can empty a legacy whitespace-only name — both would fail the backfill
+-- and final CHECK instead of healing. This is a pre-launch store with no
+-- production assistant memory, so the migration owns both branches:
+-- (a) degenerate blank-canonical business terms are DELETED with their
+-- dependent audit rows (cascades); a blank name can never confirm again,
+-- so nothing of value is lost;
+-- (b) each newly colliding confirmed group keeps ONE deterministic winner
+-- (earliest created_at, ties by id) while the rest are superseded with a
+-- migration-owned audit entry (NULL actor). Non-business keys cannot
+-- newly collide: their slot stays `''`, exactly as before.
+-- Atomicity: the real drizzle runner applies every pending statement in
+-- ONE transaction (pg-core dialect `session.transaction`), so any failure
+-- rolls the whole file back — a failed upgrade cannot strand new slots
+-- beside the old trigger, or the new CHECK beside unhealed rows.
+-- ============================================================================
+WITH doomed AS (
+  DELETE FROM assistant_memory
+  WHERE "key" = 'business-term'
+    AND COALESCE(assistant_canonical_term(payload ->> 'name'), '') = ''
+  RETURNING id
+)
+SELECT (SELECT COUNT(*) FROM doomed) AS blank_terms_deleted;--> statement-breakpoint
+WITH new_slots AS (
+  SELECT m.id, m.organization_id, m.scope, m."key", m.created_at,
+    COALESCE(m.project_id::text, '') AS proj,
+    COALESCE(m.subject_user_id, '') AS subj,
+    assistant_canonical_term(m.payload ->> 'name') AS canon
+  FROM assistant_memory m
+  WHERE m."key" = 'business-term' AND m.status = 'confirmed'
+    AND COALESCE(assistant_canonical_term(m.payload ->> 'name'), '') <> ''
+),
+ranked AS (
+  SELECT id, organization_id,
+    ROW_NUMBER() OVER (
+      PARTITION BY organization_id, scope, "key", proj, subj, canon
+      ORDER BY created_at ASC, id ASC
+    ) AS rn
+  FROM new_slots
+),
+losers AS (
+  UPDATE assistant_memory o
+  SET status = 'superseded',
+      updated_at = (EXTRACT(EPOCH FROM NOW()) * 1000)::bigint,
+      version = o.version + 1
+  FROM ranked r
+  WHERE o.id = r.id AND r.rn > 1
+  RETURNING o.id AS id, o.organization_id AS organization_id
+),
+audit AS (
+  INSERT INTO assistant_memory_audit
+    (id, memory_id, organization_id, action, from_status, to_status,
+     actor_id, created_at)
+  SELECT ('ma_' || md5(l.id || '0008-term-reconciliation')), l.id,
+    l.organization_id, 'superseded', 'confirmed', 'superseded', NULL,
+    (EXTRACT(EPOCH FROM NOW()) * 1000)::bigint
+  FROM losers l
+  RETURNING id
+)
+SELECT (SELECT COUNT(*) FROM losers) AS colliding_terms_superseded,
+       (SELECT COUNT(*) FROM audit) AS reconciliation_audits;--> statement-breakpoint
 -- Heal stored discriminators through the single implementation BEFORE the
 -- CHECK validates them (e.g. FEFF-era values canonicalize to spaces now).
 UPDATE "assistant_memory" SET "slot_term" = CASE WHEN "key" = 'business-term' THEN COALESCE(assistant_canonical_term(payload ->> 'name'), '') ELSE '' END;--> statement-breakpoint

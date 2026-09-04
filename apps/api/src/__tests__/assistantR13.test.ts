@@ -373,6 +373,38 @@ run("R13-F4 run message binding", () => {
   });
 });
 
+/**
+ * Frozen Canonical Term Policy v1 whitespace set (25 members, R15-F1).
+ * Single source for the equivalence matrix: explicit escapes only.
+ */
+const POLICY_V1_WHITESPACE: string[] = [
+  "\t",
+  "\n",
+  "\v",
+  "\f",
+  "\r",
+  " ",
+  "\u00a0",
+  "\u1680",
+  "\u2000",
+  "\u2001",
+  "\u2002",
+  "\u2003",
+  "\u2004",
+  "\u2005",
+  "\u2006",
+  "\u2007",
+  "\u2008",
+  "\u2009",
+  "\u200a",
+  "\u2028",
+  "\u2029",
+  "\u202f",
+  "\u205f",
+  "\u3000",
+  "\ufeff",
+];
+
 run("R13-F5 normalized business-term slots (R14-F1: database-owned)", () => {
   // R14-F1: exactly one Unicode implementation — the database trigger —
   // ever derives slot identity. These tests assert database behavior and
@@ -420,31 +452,14 @@ run("R13-F5 normalized business-term slots (R14-F1: database-owned)", () => {
 
   it("maps every ECMAScript whitespace variant to one slot (equivalence)", async () => {
     const tenant = await newTenant("ecmaws");
-    const whitespaces = [
-      "	",
-      "\n",
-      "\v",
-      "\f",
-      "\r",
-      " ",
-      " ",
-      " ",
-      " ",
-      " ",
-      " ",
-      " ",
-      " ",
-      " ",
-      " ",
-      " ",
-      " ",
-      " ",
-      " ",
-      " ",
-      " ",
-      "　",
-      "﻿",
-    ];
+    // Frozen Policy v1 set (25): explicit escapes so coverage is
+    // reviewable — invisible literals must never define this matrix.
+    const whitespaces = POLICY_V1_WHITESPACE;
+    // The matrix is the frozen 25-member policy list — including U+2028
+    // and U+2029 — so a future edit cannot silently reduce coverage.
+    expect(POLICY_V1_WHITESPACE).toHaveLength(25);
+    expect(POLICY_V1_WHITESPACE).toContain("\u2028");
+    expect(POLICY_V1_WHITESPACE).toContain("\u2029");
     const termValue = (name: string) => ({
       version: 1,
       label: "Rate",

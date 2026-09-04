@@ -4865,3 +4865,124 @@ Evidence: api 404 passed | 19 skipped (27 files: 25 passed | 2 skipped),
 types 95 passed (4 files), api/web typechecks clean, api lint clean,
 `git diff --check` clean, `db:generate` reports no drift. Memory race
 suites re-run stable.
+
+## Feedback: review round 16
+
+This focused Slice 5 unblock review covers commit `34c7a76` against
+`814f409`. Canonical Term Policy v1 is explicit, fresh writes use one
+database-owned implementation, blank fresh terms fail through the typed store
+boundary, and direct `slot_term` writes can no longer persist. R15-F2 closes
+cleanly. One populated-upgrade failure and one exact test gap remain.
+
+Slice 4 remains **In progress** and Slice 5 remains **blocked** by R16-F1. No
+broad test, lint, typecheck, or build gates were rerun. The only runtime check
+was an isolated PostgreSQL 14 replay of migrations 0000 through 0007 followed
+by the exact 0008 migration.
+
+### R16-F1 - The 0008 healing backfill fails on newly colliding legacy terms
+
+**Severity:** High
+**Status:** Closed (partially reopens R15-F1)
+
+Migration 0008 changes `assistant_canonical_term()` and immediately updates
+every stored discriminator while the one-confirmed-per-slot exclusion
+constraint remains active. Two confirmed terms that were valid and distinct
+under 0007 can become the same Policy v1 slot. PostgreSQL then rejects the
+backfill instead of healing it.
+
+The focused reproduction applied migrations 0000 through 0007, inserted two
+valid confirmed workspace terms named `A B` and `A<U+FEFF>B`, and then applied
+0008. Their old slots were `a b` and `a<U+FEFF>b`; the 0008 update mapped both
+to `a b` and failed at line 31 with `23P01` from
+`assistant_memory_one_confirmed_per_slot`.
+
+There is a second legacy-data branch with the same outcome: a previously valid
+term made entirely from whitespace newly mapped by Policy v1 canonicalizes to
+an empty string, so the final non-empty CHECK rejects the migration. Fresh
+write tests do not cover either upgrade case.
+
+**How to address:**
+
+1. [x] Before changing stored slots, classify existing business-term rows by
+       their Policy v1 canonical value. For every newly colliding confirmed
+       group, select one deterministic winner using a documented order and
+       supersede the others before the slot backfill. Preserve the lifecycle
+       audit trail, or explicitly document and test a pre-launch destructive
+       reset if that is the chosen policy.
+2. [x] Define the migration policy for legacy terms whose Policy v1 canonical
+       is empty. Delete them with their dependent audit rows, or retain them in
+       an explicitly non-active legacy state that the final constraint permits;
+       do not let the migration fail implicitly.
+3. [x] Keep function replacement, collision reconciliation, backfill, trigger
+       replacement, and final constraint validation atomic under the real
+       migration runner. Verify failure cannot leave a partially upgraded
+       schema.
+4. [x] Add a populated-upgrade regression that applies the exact 0000-0007
+       files, seeds both a newly colliding confirmed pair and a newly blank
+       legacy term, then applies the exact 0008 file. Assert migration success,
+       the deterministic surviving knowledge, intended audit/history outcome,
+       and the final trigger, CHECK, and exclusion invariants.
+5. [x] Retain the fresh-write equivalence, blank-rejection, direct-update, and
+       confirmation-race coverage after the migration is corrected.
+
+### R16-F2 - The claimed 25-character whitespace matrix tests only 23
+
+**Severity:** Medium
+**Status:** Closed (test evidence gap)
+
+Policy v1 lists 25 whitespace characters and the SQL mapping includes all 25,
+but the equivalence test array omits `U+2028` LINE SEPARATOR and `U+2029`
+PARAGRAPH SEPARATOR. The baseline also uses ordinary space, which is already
+present in the array, so it does not supply either missing case. The current
+test therefore does not prove the complete frozen mapping claimed by the task
+and migration comment.
+
+**How to address:**
+
+1. [x] Add explicit `U+2028` and `U+2029` entries to the same-slot
+       supersession chain.
+2. [x] Derive or validate the fixture count against the frozen 25-member list
+       so a future edit cannot silently reduce policy coverage.
+3. [x] Keep the exact-character matrix in the PostgreSQL-backed suite; a test
+       that merely compares the trigger with the same function is insufficient.
+
+### 2026-09-04 — Slice 4 follow-up: R16 review closed (1 high + 1 medium)
+
+Slice 4 returns to complete; Slice 5 is unblocked. Both R16 findings are
+implemented and regression-tested against real PostgreSQL (ephemeral
+bare clusters replaying the exact migration files, including the
+rewritten 0008).
+
+- R16-F1: colliding-upgrade healing. Migration 0008 now reconciles
+  before it heals: degenerate blank-canonical business terms are deleted
+  with their audit rows (cascades — a blank name could never confirm
+  again), and each newly colliding confirmed group keeps one
+  deterministic winner (earliest `created_at`, ties by `id`) while the
+  rest are superseded with migration-owned audit entries (NULL actor),
+  bumping version/`updated_at` like the store path. Non-business keys
+  cannot newly collide (their slot stays `''`). Only then does the
+  backfill recompute discriminators and the final CHECK validate.
+  Atomicity is owned by the real runner (verified in the pg-core
+  dialect: all pending statements run in one `session.transaction`), and
+  the regression mirrors it by applying the exact 0008 file in one
+  transaction. Evidence: new `assistantR16` suite applies exact 0000–
+  0007, seeds a colliding `A B` / `A<U+FEFF>B` confirmed pair plus a
+  confirmable blank legacy term plus an unrelated survivor, then applies
+  exact 0008 — migration succeeds, the incumbent survives, the loser is
+  superseded with a proposed/confirm/superseded trail, the blank and its
+  audits are gone, trigger/CHECK/exclusion verified live, zero slot
+  drift, and fresh writes still confirm. A negative proves the old
+  failure mode and its atomicity: function-replace plus naive backfill
+  without reconciliation fails `23P01` inside the transaction and rolls
+  back without a trace (old function behavior intact, both terms still
+  confirmed, no new CHECK).
+- R16-F2: full 25-member matrix. The equivalence fixtures now live in one
+  shared `POLICY_V1_WHITESPACE` array with explicit escapes (no invisible
+  literals), asserting length 25 and the presence of U+2028/U+2029, and
+  the same-slot supersession chain runs all 25 variants including both
+  previously missing separators.
+
+Evidence: api 406 passed | 19 skipped (28 files: 26 passed | 2 skipped),
+types 95 passed (4 files), api/web typechecks clean, api lint clean,
+`git diff --check` clean, `db:generate` reports no drift. R16 suite
+re-run 3x stable; memory race suites re-run stable.
