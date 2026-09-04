@@ -84,11 +84,17 @@ export default function MobileAnalyticsPage() {
 	const to = Date.now();
 	const from = to - RANGE_MS[rangeKey];
 
+	// Snapshot drill-down mode (R6-F1): the `ctx` token is authoritative
+	// server-side for range + sources. Any filter change clears it so a
+	// stale token never mixes with new filter state.
+	const snapshotCtx = searchParams.get("ctx") ?? undefined;
+
 	const query = useMobileAnalyticsQuery({
 		slug,
 		from,
 		to,
 		os: osFilter === "ios" || osFilter === "android" ? osFilter : null,
+		ctx: snapshotCtx ?? null,
 	});
 
 	const data: MobileAnalyticsResource | undefined = query.data;
@@ -96,8 +102,15 @@ export default function MobileAnalyticsPage() {
 
 	function setParam(key: string, value: string | null) {
 		const next = new URLSearchParams(searchParams);
+		next.delete("ctx");
 		if (value === null) next.delete(key);
 		else next.set(key, value);
+		setSearchParams(next, { replace: true });
+	}
+
+	function exitSnapshot() {
+		const next = new URLSearchParams(searchParams);
+		next.delete("ctx");
 		setSearchParams(next, { replace: true });
 	}
 
@@ -142,6 +155,25 @@ export default function MobileAnalyticsPage() {
 						))}
 					</div>
 				</div>
+
+				{snapshotCtx ? (
+					<div
+						role="status"
+						className="border-fd-border mb-4 flex flex-wrap items-center justify-between gap-2 rounded-[2px] border p-3"
+					>
+						<span className="text-fd-muted-foreground text-sm">
+							Viewing a shared snapshot — range and sources are fixed by the
+							link.
+						</span>
+						<button
+							type="button"
+							onClick={exitSnapshot}
+							className="border-fd-border rounded-[2px] border px-3 py-1 text-xs"
+						>
+							Exit snapshot
+						</button>
+					</div>
+				) : null}
 
 				{query.isPending ? <LoadingState /> : null}
 

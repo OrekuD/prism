@@ -8,6 +8,7 @@ import { ProjectsController } from "../controllers/ProjectsController";
 import {
   verifyQueryContextToken,
   resolveTokenKeyConfig,
+  issueQueryContextToken,
 } from "../utils/queryContextToken";
 import { measureMetrics, clearMetricSnapshotCache } from "../utils/projectMetrics";
 import { queryContextFingerprint } from "@prism-analytics/types";
@@ -465,6 +466,49 @@ describe("GET /projects/:slug/metrics", () => {
     ).toThrow();
   });
 
+  it("returns scoped unavailable facts instead of 400ing mixed requests (R6-F2)", async () => {
+    type Body = {
+      queryContext: { sourceScope: "all" | "selected"; sourceIds: string[] };
+      facts: Array<{ metricId: string; value: number | null }>;
+    };
+    // Unsupported metric alone under a selected scope: 200, not 400.
+    const single = (await ProjectsController.getMetrics(
+      ctxFor(USER_ID, { ids: "errors.new_issues", range: "7d", sourceId: "src_web_1" }),
+    )) as { __json?: Body; __status?: number };
+    expect(single.__status).toBeUndefined();
+    expect(single.__json?.queryContext.sourceScope).toBe("selected");
+    expect(
+      single.__json?.facts.find((fact) => fact.metricId === "errors.new_issues")?.value,
+    ).toBeNull();
+    // Mixed source-capable + unsupported: one context, scoped value + null.
+    const mixed = (await ProjectsController.getMetrics(
+      ctxFor(USER_ID, {
+        ids: "project.accepted_events,errors.new_issues",
+        range: "7d",
+        sourceId: "src_web_1",
+      }),
+    )) as { __json?: Body; __status?: number };
+    expect(mixed.__status).toBeUndefined();
+    expect(mixed.__json?.queryContext.sourceScope).toBe("selected");
+    expect(mixed.__json?.queryContext.sourceIds).toEqual(["src_web_1"]);
+    expect(
+      mixed.__json?.facts.find((fact) => fact.metricId === "project.accepted_events")?.value,
+    ).toBe(1);
+    expect(
+      mixed.__json?.facts.find((fact) => fact.metricId === "errors.new_issues")?.value,
+    ).toBeNull();
+    // Genuinely unsupported user filters still reject: release is not a
+    // project.sessions filter, with or without a source scope.
+    const bad = (await ProjectsController.getMetrics(
+      ctxFor(USER_ID, {
+        ids: "project.sessions",
+        range: "7d",
+        release: "2.4.1",
+      }),
+    )) as { __status?: number };
+    expect(bad.__status).toBe(400);
+  });
+
   describe("verified drill-down scope (R5-F1)", () => {
     async function metricsToken(
       query: Record<string, string>,
@@ -577,6 +621,75 @@ describe("GET /projects/:slug/metrics", () => {
         ctxFor(USER_ID, { ctx: "bad.token" }),
       )) as { __status?: number };
       expect(badRes.__status).toBe(400);
+    });
+
+    it("honors key rotation and reports key misconfiguration as 503 (R6-F5)", async () => {
+      const OLD = { kid: "k0", secret: "retiring-secret-0000000000" };
+      const NEW_SECRET = "active-secret-0000000000";
+      // Window for a hand-signed retiring-key token (scope all, no sources).
+      const meta = (await ProjectsController.getMetrics(
+        ctxFor(USER_ID, { ids: "project.accepted_events", range: "7d" }),
+      )) as {
+        __json?: {
+          queryContext: {
+            from: number;
+            to: number;
+            compareFrom: number;
+            compareTo: number;
+            asOf: number;
+          };
+        };
+      };
+      const window = meta.__json?.queryContext;
+      if (!window) throw new Error("missing metrics window");
+      const oldToken = await issueQueryContextToken(
+        {
+          projectId: PROJECT_ID,
+          organizationId: ORG_ID,
+          from: window.from,
+          to: window.to,
+          compareFrom: window.compareFrom,
+          compareTo: window.compareTo,
+          asOf: window.asOf,
+          sourceScope: "all",
+          sourceIds: [],
+        },
+        OLD,
+        window.asOf,
+      );
+      const rotationEnv = {
+        QUERY_CONTEXT_TOKEN_KEY: NEW_SECRET,
+        QUERY_CONTEXT_TOKEN_KID: "k1",
+        QUERY_CONTEXT_TOKEN_PREVIOUS_KID: OLD.kid,
+        QUERY_CONTEXT_TOKEN_PREVIOUS_KEY: OLD.secret,
+      };
+      // During rotation the retiring-key token still serves Events.
+      const during = (await ProjectsController.getProjectEvents(
+        ctxFor(USER_ID, { ctx: oldToken }, "member", rotationEnv),
+      )) as { __json?: unknown; __status?: number };
+      expect(during.__status).toBeUndefined();
+      expect(during.__json).toBeDefined();
+      // After retirement the same token is a non-disclosing 400.
+      const retired = (await ProjectsController.getProjectEvents(
+        ctxFor(
+          USER_ID,
+          { ctx: oldToken },
+          "member",
+          { QUERY_CONTEXT_TOKEN_KEY: NEW_SECRET },
+        ),
+      )) as { __status?: number };
+      expect(retired.__status).toBe(400);
+      // Missing/short deployment keys are operator 503s, not filter 400s.
+      const badEnvs: Array<Record<string, string>> = [
+        {},
+        { QUERY_CONTEXT_TOKEN_KEY: "short" },
+      ];
+      for (const env of badEnvs) {
+        const res = (await ProjectsController.getProjectEvents(
+          ctxFor(USER_ID, { ctx: oldToken }, "member", env),
+        )) as { __status?: number };
+        expect(res.__status).toBe(503);
+      }
     });
   });
 });

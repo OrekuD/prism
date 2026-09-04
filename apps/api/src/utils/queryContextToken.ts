@@ -184,18 +184,66 @@ export function resolveTokenKeyConfig(env: {
 }
 
 /**
- * Verify a drill-down `ctx` token for a destination API (R5-F1). Builds the
- * single-key record from bindings (no rotation set in v1), verifies HMAC +
- * scope + range + expiry + source membership against the project's current
- * source set, and returns the verified context. Returns `null` when no
- * token was supplied (caller falls back to URL params); returns
- * `{ ok: false }` when a supplied token is unusable so the caller can fail
- * closed instead of widening. The URL `scope` parameter is never trusted
- * as authority — only the signed context is.
+ * Resolve the full server-side verification keyring (R6-F5): the active
+ * key plus an explicitly configured retiring key. Every destination uses
+ * the same keyring so a normal rotation never invalidates still-live
+ * drill-down tokens. Retire the old key only after its maximum token
+ * lifetime (seven days) passes. Throws on any misconfiguration so callers
+ * fail closed with 503 instead of misreporting a deployment problem as a
+ * client filter error.
+ */
+export function resolveTokenKeyring(env: {
+  QUERY_CONTEXT_TOKEN_KEY?: string;
+  QUERY_CONTEXT_TOKEN_KID?: string;
+  QUERY_CONTEXT_TOKEN_PREVIOUS_KID?: string;
+  QUERY_CONTEXT_TOKEN_PREVIOUS_KEY?: string;
+}): { active: { kid: string; secret: string }; keys: Record<string, string> } {
+  const kid = env.QUERY_CONTEXT_TOKEN_KID ?? "k1";
+  const secret = env.QUERY_CONTEXT_TOKEN_KEY ?? "";
+  const prevKid = env.QUERY_CONTEXT_TOKEN_PREVIOUS_KID;
+  const prevSecret = env.QUERY_CONTEXT_TOKEN_PREVIOUS_KEY;
+  const keys: Record<string, string> = { [kid]: secret };
+  if (prevKid !== undefined || prevSecret !== undefined) {
+    if (!prevKid || !prevSecret) {
+      throw new TypeError(
+        "A retiring query-context key requires both a key ID and a secret",
+      );
+    }
+    if (prevKid === kid) {
+      throw new TypeError(
+        "The retiring query-context key ID must differ from the active key ID",
+      );
+    }
+    keys[prevKid] = prevSecret;
+  }
+  validateTokenKeys(keys);
+  return { active: { kid, secret }, keys };
+}
+
+/** Drill-down verification failure: token reasons plus config failures. */
+export type DrilldownVerifyFailure = TokenVerifyFailure | "signing-unavailable";
+
+/**
+ * Verify a drill-down `ctx` token for a destination API (R5-F1, R6-F5).
+ * Verifies against the full server keyring (active + retiring keys) plus
+ * HMAC + scope + range + expiry + source membership against the project's
+ * current source set, and returns the verified context. Returns
+ * `{ present: false }` when no token was supplied (caller falls back to
+ * URL params); `{ ok: false, reason: "signing-unavailable" }` when the
+ * deployment key configuration itself is invalid (caller reports the
+ * operator-facing 503); any other reason means a malformed, forged,
+ * expired, or out-of-scope client token (caller reports the
+ * non-disclosing 400). The URL `scope` parameter is never trusted as
+ * authority — only the signed context is.
  */
 export async function verifyDrilldownToken(input: {
   token: string | undefined;
-  env: { QUERY_CONTEXT_TOKEN_KEY?: string; QUERY_CONTEXT_TOKEN_KID?: string };
+  env: {
+    QUERY_CONTEXT_TOKEN_KEY?: string;
+    QUERY_CONTEXT_TOKEN_KID?: string;
+    QUERY_CONTEXT_TOKEN_PREVIOUS_KID?: string;
+    QUERY_CONTEXT_TOKEN_PREVIOUS_KEY?: string;
+  };
   projectId: string;
   organizationId: string;
   allowedSourceIds: readonly string[];
@@ -203,16 +251,17 @@ export async function verifyDrilldownToken(input: {
 }): Promise<
   | { present: false }
   | { present: true; ok: true; context: VerifiedQueryContext }
-  | { present: true; ok: false; reason: TokenVerifyFailure }
+  | { present: true; ok: false; reason: DrilldownVerifyFailure }
 > {
   if (!input.token) return { present: false };
-  const kid = input.env.QUERY_CONTEXT_TOKEN_KID ?? "k1";
-  const secret = input.env.QUERY_CONTEXT_TOKEN_KEY ?? "";
-  if (!kid || kid.length > 64 || !secret || secret.length < 16) {
-    return { present: true, ok: false, reason: "unknown-key" };
+  let keys: Record<string, string>;
+  try {
+    keys = resolveTokenKeyring(input.env).keys;
+  } catch {
+    return { present: true, ok: false, reason: "signing-unavailable" };
   }
   const result = await verifyQueryContextToken(input.token, {
-    keys: { [kid]: secret },
+    keys,
     now: input.now,
     projectId: input.projectId,
     organizationId: input.organizationId,

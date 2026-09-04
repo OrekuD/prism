@@ -121,8 +121,7 @@ describe("query context tokens", () => {
     ).toBe("k1");
   });
 
-  it("distinguishes all from selected-empty scopes (R4-F1)", async () => {
-    const all = await issueQueryContextToken(
+  it("distinguishes all from selected-empty scopes (R4-F1)", async () => {    const all = await issueQueryContextToken(
       { ...CONTEXT, sourceScope: "all", sourceIds: [] },
       KEY,
       NOW,
@@ -418,5 +417,92 @@ describe("query context tokens", () => {
       ok: false,
       reason: "duplicate-sources",
     });
+  });
+
+  it("resolves a rotation keyring and gates drill-down verification (R6-F5)", async () => {
+    const { resolveTokenKeyring, verifyDrilldownToken } = await import(
+      "../utils/queryContextToken"
+    );
+    const OLD = { kid: "k0", secret: "retiring-secret-0000000000" };
+    // Single active key.
+    expect(
+      resolveTokenKeyring({ QUERY_CONTEXT_TOKEN_KEY: KEYS.k1 }).keys,
+    ).toEqual({ k1: KEYS.k1 });
+    // Active + retiring pair.
+    const ring = resolveTokenKeyring({
+      QUERY_CONTEXT_TOKEN_KEY: "active-secret-0000000000",
+      QUERY_CONTEXT_TOKEN_KID: "k1",
+      QUERY_CONTEXT_TOKEN_PREVIOUS_KID: OLD.kid,
+      QUERY_CONTEXT_TOKEN_PREVIOUS_KEY: OLD.secret,
+    });
+    expect(ring.active.kid).toBe("k1");
+    expect(ring.keys[OLD.kid]).toBe(OLD.secret);
+    // Half-configured rotation, colliding kids, and short secrets throw.
+    expect(() =>
+      resolveTokenKeyring({
+        QUERY_CONTEXT_TOKEN_KEY: KEYS.k1,
+        QUERY_CONTEXT_TOKEN_PREVIOUS_KID: OLD.kid,
+      }),
+    ).toThrow();
+    expect(() =>
+      resolveTokenKeyring({
+        QUERY_CONTEXT_TOKEN_KEY: KEYS.k1,
+        QUERY_CONTEXT_TOKEN_PREVIOUS_KID: "k1",
+        QUERY_CONTEXT_TOKEN_PREVIOUS_KEY: OLD.secret,
+      }),
+    ).toThrow();
+    expect(() =>
+      resolveTokenKeyring({
+        QUERY_CONTEXT_TOKEN_KEY: KEYS.k1,
+        QUERY_CONTEXT_TOKEN_PREVIOUS_KID: OLD.kid,
+        QUERY_CONTEXT_TOKEN_PREVIOUS_KEY: "short",
+      }),
+    ).toThrow();
+    // A token signed with the retiring key verifies through the keyring.
+    const oldToken = await issueQueryContextToken(
+      { ...CONTEXT, sourceScope: "all", sourceIds: [] },
+      OLD,
+      NOW,
+    );
+    const during = await verifyDrilldownToken({
+      token: oldToken,
+      env: {
+        QUERY_CONTEXT_TOKEN_KEY: "active-secret-0000000000",
+        QUERY_CONTEXT_TOKEN_PREVIOUS_KID: OLD.kid,
+        QUERY_CONTEXT_TOKEN_PREVIOUS_KEY: OLD.secret,
+      },
+      projectId: "proj_1",
+      organizationId: "org_1",
+      allowedSourceIds: [],
+      now: NOW,
+    });
+    expect(during.present && during.ok).toBe(true);
+    // After retirement the same token is unknown-key, not a scope failure.
+    const after = await verifyDrilldownToken({
+      token: oldToken,
+      env: { QUERY_CONTEXT_TOKEN_KEY: "active-secret-0000000000" },
+      projectId: "proj_1",
+      organizationId: "org_1",
+      allowedSourceIds: [],
+      now: NOW,
+    });
+    expect(after).toEqual({
+      present: true,
+      ok: false,
+      reason: "unknown-key",
+    });
+    // Missing/short deployment keys report signing-unavailable (503).
+    for (const env of [{}, { QUERY_CONTEXT_TOKEN_KEY: "short" }]) {
+      expect(
+        await verifyDrilldownToken({
+          token: oldToken,
+          env,
+          projectId: "proj_1",
+          organizationId: "org_1",
+          allowedSourceIds: [],
+          now: NOW,
+        }),
+      ).toEqual({ present: true, ok: false, reason: "signing-unavailable" });
+    }
   });
 });

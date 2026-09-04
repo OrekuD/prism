@@ -109,12 +109,36 @@ export function ProjectWebAnalytics() {
 
   const setParam = (patch: Record<string, string | null>) => {
     const next = new URLSearchParams(params);
+    // Any filter change exits snapshot mode: a stale token must never mix
+    // with new filter state (R6-F1).
+    next.delete("ctx");
     for (const [k, v] of Object.entries(patch)) {
       if (v == null || v === "") next.delete(k);
       else next.set(k, v);
     }
     setParams(next, { replace: true });
   };
+
+  // View-only tabs (chart series/table tabs) don't change the request.
+  const setViewParam = (patch: Record<string, string | null>) => {
+    const next = new URLSearchParams(params);
+    for (const [k, v] of Object.entries(patch)) {
+      if (v == null || v === "") next.delete(k);
+      else next.set(k, v);
+    }
+    setParams(next, { replace: true });
+  };
+
+  const exitSnapshot = () => {
+    const next = new URLSearchParams(params);
+    next.delete("ctx");
+    setParams(next, { replace: true });
+  };
+
+  // Snapshot drill-down mode (R6-F1): the `ctx` token is authoritative
+  // server-side for range + sources. Local range/source values are not
+  // sent with the token and never override it.
+  const snapshotCtx = params.get("ctx") ?? undefined;
 
   // heal stale source/host
   const validSource =
@@ -149,10 +173,11 @@ export function ProjectWebAnalytics() {
     slug: slug ?? "",
     from,
     to,
-    sourceIds,
+    sourceIds: snapshotCtx ? undefined : sourceIds,
     host: effHost === "all" ? null : effHost,
     path: path || null,
     traffic,
+    ctx: snapshotCtx ?? null,
   });
   const prevQuery = useWebAnalyticsQuery({
     slug: slug ?? "",
@@ -162,7 +187,10 @@ export function ProjectWebAnalytics() {
     host: effHost === "all" ? null : effHost,
     path: path || null,
     traffic,
-    enabled: compare,
+    // Snapshot mode must not send the token as both current and previous
+    // (R6-F1): the snapshot response already carries the canonical
+    // comparison, and the previous-period overlay is disabled.
+    enabled: compare && !snapshotCtx,
   });
 
   const data = query.data;
@@ -215,6 +243,50 @@ export function ProjectWebAnalytics() {
   }
 
   const isEmpty = !loading && !!data && data.totals.pageViews === 0;
+
+  // Invalid/expired snapshot tokens fail closed at the API (400), which
+  // surfaces here instead of silently showing unscoped data (R6-F1).
+  if (query.isError && !loading) {
+    return (
+      <div className="w-full">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+          <h1 className="text-[26px] font-semibold leading-[1.18] tracking-[-0.025em]">
+            Web Analytics
+          </h1>
+        </div>
+        {snapshotCtx ? (
+          <div
+            role="status"
+            className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-[2px] border border-border bg-canvas px-3 py-2"
+          >
+            <span className="text-[13px] text-text-muted">
+              This snapshot link is invalid or expired.
+            </span>
+            <button
+              type="button"
+              onClick={exitSnapshot}
+              className="inline-flex h-8 items-center rounded-[2px] border border-border bg-canvas px-3 text-[13px] font-medium hover:bg-surface-hover"
+            >
+              Exit snapshot
+            </button>
+          </div>
+        ) : null}
+        <EmptyState
+          title="Could not load web analytics"
+          description="The report is temporarily unavailable. Retry or check your connection."
+          action={
+            <button
+              type="button"
+              onClick={() => query.refetch()}
+              className="inline-flex h-8 items-center rounded-[2px] border border-border bg-canvas px-3 text-[13px] font-medium hover:bg-surface-hover"
+            >
+              Retry
+            </button>
+          }
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="w-full">
@@ -342,6 +414,23 @@ export function ProjectWebAnalytics() {
       </div>
 
       {/* metrics — only marks on this strip */}
+      {snapshotCtx ? (
+        <div
+          role="status"
+          className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-[2px] border border-border bg-canvas px-3 py-2"
+        >
+          <span className="text-[13px] text-text-muted">
+            Viewing a shared snapshot — range and sources are fixed by the link.
+          </span>
+          <button
+            type="button"
+            onClick={exitSnapshot}
+            className="inline-flex h-8 items-center rounded-[2px] border border-border bg-canvas px-3 text-[13px] font-medium hover:bg-surface-hover"
+          >
+            Exit snapshot
+          </button>
+        </div>
+      ) : null}
       <Frame className="mb-3">
         <div className="grid grid-cols-1 gap-px bg-border sm:grid-cols-2 lg:grid-cols-5">
           {(
@@ -454,7 +543,7 @@ export function ProjectWebAnalytics() {
                 label="Trend series"
                 size="md"
                 value={series}
-                onChange={(s) => setParam({ series: s })}
+                onChange={(s) => setViewParam({ series: s })}
                 options={[
                   { key: "pageViews", label: "Page views" },
                   { key: "visitors", label: "Visitors" },
@@ -468,8 +557,8 @@ export function ProjectWebAnalytics() {
           ) : (
             <TrendChart
               points={data.trend.points}
-              prevPoints={prevQuery.data?.trend.points}
-              compare={compare}
+              prevPoints={snapshotCtx ? undefined : prevQuery.data?.trend.points}
+              compare={compare && !snapshotCtx}
               series={series as SeriesKey}
               bucket={data.trend.bucket}
             />
@@ -524,7 +613,7 @@ export function ProjectWebAnalytics() {
                     label="Pages tab"
                     size="md"
                     value={pagesTab}
-                    onChange={(t) => setParam({ ptab: t })}
+                    onChange={(t) => setViewParam({ ptab: t })}
                     options={[
                       { key: "all", label: "All pages" },
                       { key: "entry", label: "Entry" },
@@ -695,7 +784,7 @@ export function ProjectWebAnalytics() {
                     label="Acquisition dimension"
                     size="md"
                     value={acqDim}
-                    onChange={(d) => setParam({ acq: d })}
+                    onChange={(d) => setViewParam({ acq: d })}
                     options={[
                       { key: "referrers", label: "Referrers" },
                       { key: "source", label: "Source" },
@@ -925,7 +1014,7 @@ export function ProjectWebAnalytics() {
                     label="Technology tab"
                     size="md"
                     value={techDim}
-                    onChange={(d) => setParam({ tdim: d })}
+                    onChange={(d) => setViewParam({ tdim: d })}
                     options={[
                       { key: "browsers", label: "Browsers" },
                       { key: "operatingSystems", label: "OS" },
@@ -1006,7 +1095,7 @@ export function ProjectWebAnalytics() {
                   label="Pages tab"
                   size="md"
                   value={pagesTab}
-                  onChange={(t) => setParam({ ptab: t })}
+                  onChange={(t) => setViewParam({ ptab: t })}
                   options={[
                     { key: "all", label: "All pages" },
                     { key: "entry", label: "Entry" },
@@ -1137,7 +1226,7 @@ export function ProjectWebAnalytics() {
                   label="Acquisition dimension"
                   size="md"
                   value={acqDim}
-                  onChange={(d) => setParam({ acq: d })}
+                  onChange={(d) => setViewParam({ acq: d })}
                   options={[
                     { key: "referrers", label: "Referrers" },
                     { key: "source", label: "Source" },
@@ -1278,7 +1367,7 @@ export function ProjectWebAnalytics() {
                   label="Technology tab"
                   size="md"
                   value={techDim}
-                  onChange={(d) => setParam({ tdim: d })}
+                  onChange={(d) => setViewParam({ tdim: d })}
                   options={[
                     { key: "browsers", label: "Browsers" },
                     { key: "operatingSystems", label: "OS" },

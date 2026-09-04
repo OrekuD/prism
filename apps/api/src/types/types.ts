@@ -29,6 +29,14 @@ export type Bindings = {
    */
   QUERY_CONTEXT_TOKEN_KEY?: string;
   QUERY_CONTEXT_TOKEN_KID?: string;
+  /**
+   * Retiring signing key for drill-down verification during rotation
+   * (R6-F5). When present, both the previous KID and KEY are required;
+   * tokens signed with the retiring key stay valid until it is removed
+   * (only after its maximum seven-day token lifetime passes).
+   */
+  QUERY_CONTEXT_TOKEN_PREVIOUS_KID?: string;
+  QUERY_CONTEXT_TOKEN_PREVIOUS_KEY?: string;
 };
 
 export type HonoConfig = {

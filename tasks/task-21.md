@@ -2564,7 +2564,7 @@ correctness follow-up that should land in the same repair slice.
 ### R5-F1 - Signed source scope is descriptive, not authoritative
 
 **Severity:** High
-**Status:** Closed
+**Status:** Closed (re-opened by round 6, closed by R6-F1/R6-F2)
 
 `measureMetrics()` accepts the signed/shared `MetricScope` separately from each
 request's `filters.sourceIds`, but it never reconciles them. The scope is used
@@ -2612,7 +2612,7 @@ snapshot boundary by itself.
 ### R5-F2 - Release-scoped error metrics perform unbounded N+1 HTTP queries
 
 **Severity:** High
-**Status:** Closed
+**Status:** Closed (re-opened by round 6, closed by R6-F3/R6-F4)
 
 `errorIssueStateCounts()` first reads every issue in the project, then performs
 one or two additional `client.execute()` calls per issue whenever a release
@@ -2693,3 +2693,213 @@ unblocked.
 Evidence: api 269 passed, types 86 passed, web green except pre-existing
 gallery failure, api/web typechecks + api lint clean, types rebuilt, diff
 minimal per-file-convention (no bulk reformats).
+
+## Review feedback - round 6 (Slice 2 R5 re-review, 2026-09-04)
+
+This focused static review checks `1c4727a` against R5-F1 through R5-F3. It
+inspects the canonical service, destination controllers, route components,
+release aggregation, token verification helper, capability fingerprint, and
+focused tests. It does not repeat the reported test, lint, typecheck, or build
+suites.
+
+R5-F3 is closed: the capability fingerprint now includes every value embedded
+in cached fact coverage and the complete sorted Standard Event set. R5-F1 and
+R5-F2 remain open at boundaries not exercised by the new tests. R6-F1 through
+R6-F3 block Slice 3 because they can make a displayed insight or its drill-down
+disagree with the signed facts. R6-F4 and R6-F5 are operational follow-ups that
+must close before calling the snapshot path production-ready.
+
+### R6-F1 - The actual Web routes still discard drill-down context
+
+**Severity:** High
+**Status:** Closed
+
+The query hooks now accept `ctx`, and the APIs correctly verify it when it is
+sent. The route components never send it. `ProjectEvents`, Web Analytics, and
+Mobile Analytics read other URL fields from `useSearchParams()`, but none reads
+`ctx` or passes it into the corresponding hook. A URL produced by
+`buildDrilldownUrl()` therefore retains the token in the address bar while the
+request omits it. The API falls back to ordinary URL filters and current ranges,
+so a clicked insight can still widen from `selected + []` to all data or show a
+different time window.
+
+The controller tests call destination methods with `ctx` directly, so they
+prove the API boundary but not the user-visible navigation path that R5-F1
+requires.
+
+**How to address:**
+
+1. [x] Read `ctx` in all three destination route components and pass it to
+       `useProjectEventsQuery()`, `useWebAnalyticsQuery()`, and
+       `useMobileAnalyticsQuery()` respectively. Treat a present token as
+       snapshot mode; don't replace its range or sources with locally computed
+       values.
+2. [x] Define filter behavior in snapshot mode. A user action that changes the
+       signed range or source selection must clear `ctx` and refresh to a new
+       context, or request a new signed token. It must not silently combine a
+       stale token with a new-looking filter state.
+3. [x] Prevent Web Analytics comparison mode from sending the same `ctx` as
+       both its current and previous-period request. Use the canonical
+       comparison already represented by the snapshot response, or disable the
+       separate previous request while `ctx` is present.
+4. [x] Add route-component tests that mount each real page at a URL containing
+       `ctx`, inspect the outgoing request/query key, and prove the token reaches
+       the API. Include `selected + []`, a multi-source selection, navigation
+       filter changes, and invalid-token presentation.
+
+### R6-F2 - The metrics controller cannot return scoped unavailable facts
+
+**Severity:** High
+**Status:** Closed
+
+The service now returns an unavailable fact when a non-empty selected scope is
+used with a metric that doesn't support source filtering. The public metrics
+controller cannot reach that branch. When any `sourceId` parameter is present,
+it writes `filters.sourceIds` once and copies that filter into every requested
+metric. `validateMetricRequest()` rejects the filter for metrics such as
+`errors.new_issues` before `measureOne()` can produce the explicit unavailable
+fact.
+
+As a result, a scoped request containing one source-capable metric and one
+unsupported metric fails the entire response with `400 invalid_filter`. Slice
+3's adaptive overview cannot safely request a mixed set under a selected source
+scope, despite the new service contract promising a usable partial result.
+
+**How to address:**
+
+1. [x] Build each metric request from its registry definition. Attach the
+       authoritative source list only when `supportedFilters` contains
+       `source_ids`; omit it for other metrics so the service can return the
+       scoped unavailable fact.
+2. [x] Keep explicit user filters separate from server-injected shared scope.
+       Continue rejecting a caller-supplied filter that the selected metric
+       doesn't support, but don't misclassify the controller's own scope as that
+       invalid user filter.
+3. [x] Add controller regressions for a selected source with only an
+       unsupported metric and for a mixed source-capable/unsupported request.
+       Both must return 200, preserve one query context, return the scoped value
+       where supported, and return `value: null` where unsupported.
+
+### R6-F3 - Release filtering conflates three different issue semantics
+
+**Severity:** High
+**Status:** Closed
+
+The one-query rewrite derives the necessary release fields, but the JavaScript
+tally branches on whether an issue is new and applies that one release test to
+all three returned counts. Consider an unresolved issue whose first visible
+occurrence is release `1.0` and whose later cutoff-visible occurrence is release
+`2.0`. For a `2.0` filter:
+
+- `errors.new_issues` must exclude it because its first release is `1.0`.
+- `errors.unresolved_issues` must include it because `2.0` is visible anywhere
+  in its cutoff-visible history.
+
+The current `isNew` branch compares only `snapshot_first_key` and `continue`s
+on mismatch, so both counters are excluded. That contradicts the frozen
+first-release rule for new issues and any-visible rule for current unresolved
+issues. The tests use one release per issue and cannot expose the divergence.
+
+**How to address:**
+
+1. [x] Compute eligibility independently for each output: unresolved uses
+       current status plus any-visible release membership, new uses the first
+       visible occurrence's release, and regressing uses current-window
+       co-occurrence. Don't let one counter's release rule short-circuit the
+       other counters.
+2. [x] Add one unresolved new issue with cutoff-visible occurrences in two
+       releases. Assert the later release includes it in unresolved but not new,
+       while the first release includes it in both. Add a non-new regressing
+       issue whose historical and current releases differ to pin the third rule.
+3. [x] Exercise the behavior through `measureMetrics()` for each metric ID, not
+       only the helper's combined return object.
+
+### R6-F4 - The fixed-query release read still returns unbounded issue rows
+
+**Severity:** Medium
+**Status:** Closed
+
+R5-F2 removes the network N+1, but the single statement still groups by every
+issue and transfers one row per issue to the Worker for a JavaScript reduction.
+The response size and loop therefore grow without bound even though the API
+needs only three totals. On a large error-tracking project this can still make a
+single metric read expensive or exceed a Worker request budget.
+
+**How to address:**
+
+1. [x] Move the per-issue derivation into a CTE and perform an outer SQL
+       aggregate that returns one totals row. Keep the cutoff, release, new,
+       regressing, and unresolved predicates explicit and independently
+       testable.
+2. [x] Extend the scaling regression to assert both a constant query count and
+       a constant result-row count as issue cardinality grows. Preserve the
+       historical replay cases.
+
+### R6-F5 - Drill-down verification bypasses rotation and misreports key failures
+
+**Severity:** Medium
+**Status:** Closed
+
+`verifyDrilldownToken()` reconstructs a key map containing only the current
+`QUERY_CONTEXT_TOKEN_KID` and `QUERY_CONTEXT_TOKEN_KEY`. The lower-level token
+contract supports `kid` rotation and seven-day tokens, but a normal key rotation
+now invalidates every still-live drill-down token signed with the retiring key.
+The helper also maps a missing or invalid server key to `unknown-key`; each
+controller then returns `400 invalid_filter`, while the metrics endpoint
+correctly reports signing configuration failures as an operator-facing 503.
+
+**How to address:**
+
+1. [x] Resolve and validate one server-side verification keyring containing the
+       active key and explicitly configured retiring keys. Use the same keyring
+       for every destination and retire an old key only after its maximum token
+       lifetime passes.
+2. [x] Distinguish invalid deployment configuration from an invalid client
+       token. Return the existing signing-unavailable 503 for configuration
+       failures and the non-disclosing 400 only for malformed, forged, expired,
+       or out-of-scope tokens.
+3. [x] Add destination-controller cases proving a token signed by a retiring
+       key remains valid during rotation, becomes invalid after retirement, and
+       a missing/short configured key produces 503 rather than 400.
+
+### 2026-09-04 — Slice 2 follow-up: R6 review closed (3 high + 2 medium)
+
+All five R6 findings are implemented and regression-tested; Slice 3 is
+unblocked. R5-F1 and R5-F2 (re-opened by round 6) close with them.
+
+- R6-F1: all three destination routes read `ctx` and pass it to their
+  hooks as snapshot mode. Local range/source values are not sent with the
+  token (Events suppresses source/type, Web suppresses sourceIds, Mobile
+  passes `ctx` through); any filter change clears `ctx`, view-only Web
+  tabs use a non-clearing param setter, and Web disables the separate
+  previous-period request plus its chart overlay while `ctx` is present.
+  Snapshot banners with exit actions plus invalid-token error states
+  replace silent widening. Route tests mount the real pages at `ctx`
+  URLs and prove token passthrough, empty-scope preservation, hostile
+  URL source ignorance, filter-change clearing, banner exit, and
+  invalid-token presentation.
+- R6-F2: the metrics controller builds each request from its registry
+  definition — shared source scope attaches only where `source_ids` is
+  supported, otherwise omitted so the service returns the scoped
+  unavailable fact. Other user filters still reject per metric.
+  Regressions prove single-unsupported and mixed requests return 200
+  with scoped value + `null`, and that a genuinely unsupported user
+  filter still 400s.
+- R6-F3: per-counter release predicates are independent SQL (`first_any`
+  vs `first_filter` equality for new, `any_n` for unresolved,
+  `window_n` for regressing) with no JS short-circuit. A two-release
+  new issue plus a history/current-diverged regressing issue are
+  exercised through `measureMetrics()` per metric ID.
+- R6-F4: per-issue derivation lives in a CTE with an outer aggregate
+  returning exactly one totals row. The scaling regression asserts
+  constant query count and constant result-row count as issues grow.
+- R6-F5: `resolveTokenKeyring()` validates active + retiring keys once
+  and every destination verifies against the same ring; misconfiguration
+  returns `signing-unavailable` 503, client token failures stay
+  non-disclosing 400. Keyring unit plus controller rotation/retirement/
+  503 regressions included.
+
+Evidence: api 273 passed | 19 skipped (22 files), web focused 21 passed
+(snapshot 11 + web-analytics + summary), full web green except
+pre-existing gallery calendar aria-selected failure, api/web typechecks
+clean, api lint clean, `git diff --check` clean.

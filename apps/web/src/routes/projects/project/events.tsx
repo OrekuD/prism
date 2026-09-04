@@ -94,11 +94,16 @@ export function ProjectEvents() {
   const q = searchParams.get("q") ?? "";
   const type = (searchParams.get("type") ?? "all") as TypeFilter;
   const sourceId = searchParams.get("source") ?? "all";
+  // Snapshot drill-down mode (R6-F1): a `ctx` token carries the verified
+  // range + source scope. It reaches the API untouched; any user filter
+  // change clears it so a stale token never mixes with new filter state.
+  const snapshotCtx = searchParams.get("ctx") ?? undefined;
   const searchTimer = React.useRef<number | null>(null);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
 
   const updateFilter = (patch: Record<string, string | null>): void => {
     const next = new URLSearchParams(searchParams);
+    next.delete("ctx");
     for (const [key, value] of Object.entries(patch)) {
       if (value === null || value === "" || value === "all") {
         next.delete(key);
@@ -106,6 +111,12 @@ export function ProjectEvents() {
         next.set(key, value);
       }
     }
+    setSearchParams(next, { replace: true });
+  };
+
+  const exitSnapshot = (): void => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("ctx");
     setSearchParams(next, { replace: true });
   };
 
@@ -117,10 +128,10 @@ export function ProjectEvents() {
   const currentCursor = cursorStack[cursorStack.length - 1] ?? undefined;
   const pageIndex = cursorStack.length - 1;
 
-  // Reset to first page when filters or page size change.
+  // Reset to first page when filters, snapshot, or page size change.
   React.useEffect(() => {
     setCursorStack([null]);
-  }, [q, type, sourceId, limit]);
+  }, [q, type, sourceId, snapshotCtx, limit]);
 
   const platformFamilyParam = type === "all" ? undefined : type;
   const sourceIdParam = sourceId === "all" ? undefined : sourceId;
@@ -129,10 +140,13 @@ export function ProjectEvents() {
   const { data, isLoading, isError, isFetching, refetch } =
     useProjectEventsQuery(slug, {
       q: qParam,
-      sourceId: sourceIdParam,
-      platformFamily: platformFamilyParam,
+      // In snapshot mode the signed scope is authoritative server-side;
+      // local source/type selections are not sent with the token.
+      sourceId: snapshotCtx ? undefined : sourceIdParam,
+      platformFamily: snapshotCtx ? undefined : platformFamilyParam,
       cursor: currentCursor ?? undefined,
       limit,
+      ctx: snapshotCtx,
     });
 
   const sourcesQuery = useSourcesQuery(slug);
@@ -290,6 +304,19 @@ export function ProjectEvents() {
       />
 
       {/* Filters */}
+      {snapshotCtx ? (
+        <div
+          role="status"
+          className="mt-6 flex flex-wrap items-center justify-between gap-2 rounded-[2px] border border-border bg-surface px-3 py-2"
+        >
+          <span className="text-[13px] text-text-muted">
+            Viewing a shared snapshot — range and sources are fixed by the link.
+          </span>
+          <Button variant="ghost" size="sm" onClick={exitSnapshot} className="h-8 px-3 font-mono text-[13px]">
+            Exit snapshot
+          </Button>
+        </div>
+      ) : null}
       <div className="mt-6 flex flex-wrap items-center gap-2.5">
         <div className="relative min-w-[240px] flex-1">
           <Search

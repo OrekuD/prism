@@ -874,21 +874,23 @@ export type ErrorStateFilter = { platform?: string; release?: string };
 
 /**
  * Project issue-state aggregates (Task 15 semantics, canonical windows).
- * New = first observed inside the window; regressing = growing versus a
- * positive prior baseline and not new (the issueDelta rule applied over one
- * grouped read instead of row-by-row copies). Release narrows from the
- * SAME cutoff-visible occurrence set (R4-F4, R5-F2) — first-observed release
- * for new issues, current-window co-occurrence for regressing, any
- * cutoff-visible occurrence for current-state counts — never from the
- * mutable `first_release`/`last_release` projection that later receipts
- * keep updating. Co-occurrence only, never a causal claim.
  *
- * Fixed query count (R5-F2): exactly one `client.execute()` regardless of
- * issue count or release filtering. Release membership comes from
- * conditional aggregates in the same grouped read (any-visible count,
- * window-visible count, and a zero-padded composite MIN for the earliest
- * visible release) — never per-issue follow-ups, so hundreds of issues
- * cannot turn one metric into hundreds of libSQL round-trips.
+ * Release membership comes from the SAME cutoff-visible occurrence set
+ * (R4-F4, R5-F2) — never from the mutable `first_release`/`last_release`
+ * projection that later receipts keep updating. Co-occurrence only, never
+ * a causal claim.
+ *
+ * Each counter has its own independent release rule (R6-F3): unresolved
+ * uses current status plus any-visible release membership, new uses the
+ * first visible occurrence's release, and regressing uses current-window
+ * co-occurrence. One counter's rule never short-circuits another, so an
+ * issue first seen in `1.0` with later `2.0` activity counts for
+ * unresolved-under-`2.0` while correctly missing new-under-`2.0`.
+ *
+ * Bounded transfer (R6-F4): the per-issue derivation lives in a CTE and an
+ * outer aggregate returns exactly one totals row. Query count and result
+ * rows stay constant no matter how many issues a project holds, so a large
+ * error-tracking project cannot blow a Worker budget through this path.
  */
 export async function errorIssueStateCounts(
   client: CanonicalClient,
@@ -910,92 +912,91 @@ export async function errorIssueStateCounts(
     scopeArgs.push(filter.platform);
   }
   const release = filter.release ?? null;
-  const selectExtras: string[] = [];
-  const extraArgs: Array<string | number | null> = [];
+  // Ordering key for "earliest visible occurrence" (R5-F2): zero-padded
+  // occurred/received (lexical MIN == chronological MIN for equal-width
+  // integers) plus the id tie-break. An issue's first visible release is
+  // `filter` exactly when the MIN key over the release subset equals the
+  // MIN key over all visible occurrences — no release payload to parse.
+  const ORDER_KEY =
+    "printf('%020d|%020d|%s', o.occurred_at, o.received_at, o.id)";
+  const cteExtras: string[] = [];
+  const cteArgs: Array<string | number | null> = [];
   if (release !== null) {
-    // Earliest cutoff-visible release as a sortable composite: zero-padded
-    // occurred/received (lexical MIN == chronological MIN for equal-width
-    // integers) + id tie-break + release payload after the final pipe.
-    // Release values never contain pipes in practice; parsing rejoins any
-    // surplus segments so a hostile pipe cannot alias another release.
-    selectExtras.push(
-      `MIN(CASE WHEN o.received_at <= ? THEN printf('%020d|%020d|%s|%s', o.occurred_at, o.received_at, o.id, COALESCE(o.release, '')) END) AS snapshot_first_key`,
+    cteExtras.push(
+      `MIN(CASE WHEN o.received_at <= ? THEN ${ORDER_KEY} END) AS first_any`,
     );
-    extraArgs.push(asOf);
-    selectExtras.push(
-      "SUM(CASE WHEN o.received_at <= ? AND o.release = ? THEN 1 ELSE 0 END) AS any_release_n",
+    cteArgs.push(asOf);
+    cteExtras.push(
+      `MIN(CASE WHEN o.received_at <= ? AND o.release = ? THEN ${ORDER_KEY} END) AS first_filter`,
     );
-    extraArgs.push(asOf, release);
-    selectExtras.push(
-      "SUM(CASE WHEN o.occurred_at >= ? AND o.occurred_at < ? AND o.received_at <= ? AND o.release = ? THEN 1 ELSE 0 END) AS window_release_n",
+    cteArgs.push(asOf, release);
+    cteExtras.push(
+      "SUM(CASE WHEN o.received_at <= ? AND o.release = ? THEN 1 ELSE 0 END) AS any_n",
     );
-    extraArgs.push(from, to, asOf, release);
+    cteArgs.push(asOf, release);
+    cteExtras.push(
+      "SUM(CASE WHEN o.occurred_at >= ? AND o.occurred_at < ? AND o.received_at <= ? AND o.release = ? THEN 1 ELSE 0 END) AS window_n",
+    );
+    cteArgs.push(from, to, asOf, release);
   }
+  // Independent per-counter predicates (R6-F3): each outer SUM tests only
+  // its own release rule. Fresh needs a first-seen inside the window (and
+  // first-release match when filtered); regressing needs a non-new growing
+  // issue (and window co-occurrence when filtered); unresolved needs
+  // current status (and any-visible membership when filtered). One
+  // counter's rule never short-circuits another, so an issue first seen
+  // in `1.0` with later `2.0` activity counts for unresolved-under-`2.0`
+  // while correctly missing new-under-`2.0`.
+  const freshRelease =
+    release !== null
+      ? "AND first_filter IS NOT NULL AND first_filter = first_any"
+      : "";
+  const regressingRelease = release !== null ? "AND window_n > 0" : "";
+  const unresolvedRelease = release !== null ? "AND any_n > 0" : "";
+  // Bounded transfer (R6-F4): the per-issue derivation lives in the CTE and
+  // the outer aggregate returns exactly one totals row. Query count and
+  // result rows stay constant no matter how many issues a project holds.
   const { rows } = await client.execute({
-    sql: `SELECT
-            i.id AS issue_id,
-            i.status AS status,
-            SUM(CASE WHEN o.occurred_at >= ? AND o.occurred_at < ? AND o.received_at <= ? THEN 1 ELSE 0 END) AS current_n,
-            SUM(CASE WHEN o.occurred_at >= ? AND o.occurred_at < ? AND o.received_at <= ? THEN 1 ELSE 0 END) AS previous_n,
-            MIN(CASE WHEN o.received_at <= ? THEN o.occurred_at END) AS snapshot_first_seen
-            ${selectExtras.length > 0 ? `, ${selectExtras.join(", ")}` : ""}
-          FROM error_issues i
-          LEFT JOIN error_occurrences o
-            ON o.issue_id = i.id AND o.project_id = i.project_id
-          WHERE ${issueClauses.join(" AND ")}
-          GROUP BY i.id, i.status`,
-    args: [from, to, asOf, compareFrom, compareTo, asOf, asOf, ...extraArgs, ...scopeArgs],
+    sql: `WITH per_issue AS (
+            SELECT
+              i.status AS status,
+              SUM(CASE WHEN o.occurred_at >= ? AND o.occurred_at < ? AND o.received_at <= ? THEN 1 ELSE 0 END) AS current_n,
+              SUM(CASE WHEN o.occurred_at >= ? AND o.occurred_at < ? AND o.received_at <= ? THEN 1 ELSE 0 END) AS previous_n,
+              MIN(CASE WHEN o.received_at <= ? THEN o.occurred_at END) AS snapshot_first_seen
+              ${cteExtras.length > 0 ? `, ${cteExtras.join(", ")}` : ""}
+            FROM error_issues i
+            LEFT JOIN error_occurrences o
+              ON o.issue_id = i.id AND o.project_id = i.project_id
+            WHERE ${issueClauses.join(" AND ")}
+            GROUP BY i.id, i.status
+          )
+          SELECT
+            SUM(CASE WHEN status = 'unresolved' ${unresolvedRelease} THEN 1 ELSE 0 END) AS unresolved,
+            SUM(CASE WHEN snapshot_first_seen IS NOT NULL AND snapshot_first_seen >= ? AND snapshot_first_seen < ? ${freshRelease} THEN 1 ELSE 0 END) AS fresh,
+            SUM(CASE WHEN snapshot_first_seen IS NOT NULL AND NOT (snapshot_first_seen >= ? AND snapshot_first_seen < ?) AND previous_n > 0 AND current_n > previous_n ${regressingRelease} THEN 1 ELSE 0 END) AS regressing
+          FROM per_issue`,
+    args: [
+      from,
+      to,
+      asOf,
+      compareFrom,
+      compareTo,
+      asOf,
+      asOf,
+      ...cteArgs,
+      ...scopeArgs,
+      from,
+      to,
+      from,
+      to,
+    ],
   });
-  const firstReleaseOf = (key: unknown): string | null => {
-    if (key === null || key === undefined) return null;
-    const composite = String(key);
-    const segments = composite.split("|");
-    if (segments.length < 4) return null;
-    const value = segments.slice(3).join("|");
-    return value === "" ? null : value;
+  const row = rows[0] ?? {};
+  return {
+    unresolved: Number(row.unresolved ?? 0),
+    fresh: Number(row.fresh ?? 0),
+    regressing: Number(row.regressing ?? 0),
   };
-  let unresolved = 0;
-  let fresh = 0;
-  let regressing = 0;
-  for (const row of rows) {
-    const status = String(row.status ?? "");
-    const current = Number(row.current_n ?? 0);
-    const previous = Number(row.previous_n ?? 0);
-    // First observed AT THE SNAPSHOT (R3-F5): derived from cutoff-visible
-    // occurrences, never from the projection row that later arrivals keep
-    // updating. An issue with no occurrence visible at `asOf` (late first
-    // receipt, purged history) affects no new/regressing count.
-    const snapshotFirst =
-      row.snapshot_first_seen === null || row.snapshot_first_seen === undefined
-        ? null
-        : Number(row.snapshot_first_seen);
-    const isNew =
-      snapshotFirst !== null && snapshotFirst >= from && snapshotFirst < to;
-    const isRegressingCandidate =
-      snapshotFirst !== null && !isNew && previous > 0 && current > previous;
-    if (release !== null) {
-      if (isNew) {
-        if (firstReleaseOf(row.snapshot_first_key) !== release) continue;
-        // Match: fall through to the shared tally below.
-      } else {
-        const anyVisible = Number(row.any_release_n ?? 0) > 0;
-        const windowVisible = Number(row.window_release_n ?? 0) > 0;
-        if (status === "unresolved" && !anyVisible) continue;
-        if (status === "unresolved") unresolved += 1;
-        if (snapshotFirst === null) continue;
-        if (isRegressingCandidate && windowVisible) regressing += 1;
-        continue;
-      }
-    }
-    if (status === "unresolved") unresolved += 1;
-    if (snapshotFirst === null) continue;
-    if (isNew) {
-      fresh += 1;
-    } else if (previous > 0 && current > previous) {
-      regressing += 1;
-    }
-  }
-  return { unresolved, fresh, regressing };
 }
 
 export type MeasureDeps = {

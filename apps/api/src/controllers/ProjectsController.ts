@@ -317,6 +317,14 @@ export class ProjectsController {
         allowedSourceIds: idRows.map((row) => String(row.id)),
       });
       if (!verified.present || !verified.ok) {
+        // R6-F5: deployment misconfiguration is an operator 503, never a
+        // client filter error; anything else is a non-disclosing 400.
+        if (verified.present && !verified.ok && verified.reason === "signing-unavailable") {
+          return ctx.json(
+            new ErrorResponse("query_context_signing_unavailable").toJSON(),
+            503,
+          );
+        }
         return ctx.json(new ErrorResponse("invalid_filter").toJSON(), 400);
       }
       mobileCtx = {
@@ -484,6 +492,12 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
         allowedSourceIds: idRows.map((row) => String(row.id)),
       });
       if (!verified.present || !verified.ok) {
+        if (verified.present && !verified.ok && verified.reason === "signing-unavailable") {
+          return ctx.json(
+            new ErrorResponse("query_context_signing_unavailable").toJSON(),
+            503,
+          );
+        }
         return ctx.json(new ErrorResponse("invalid_filter").toJSON(), 400);
       }
       webCtx = {
@@ -683,6 +697,12 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
         allowedSourceIds: idRows.map((row) => String(row.id)),
       });
       if (!verified.present || !verified.ok) {
+        if (verified.present && !verified.ok && verified.reason === "signing-unavailable") {
+          return ctx.json(
+            new ErrorResponse("query_context_signing_unavailable").toJSON(),
+            503,
+          );
+        }
         return ctx.json(new ErrorResponse("invalid_filter").toJSON(), 400);
       }
       ctxScope = {
@@ -1077,6 +1097,12 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
 
     // The human-traffic default applies per metric, only where the
     // registry supports it — a shared default would poison non-web reads.
+    // R6-F2: the shared source scope is attached per metric definition.
+    // Source-capable metrics receive the authoritative list so the service
+    // can enforce scope/filter agreement; other metrics omit it so the
+    // service returns the scoped unavailable fact instead of 400ing the
+    // whole response. Other user filters stay per-metric and still 400
+    // when a single metric doesn't support them.
     let facts: MetricFact[];
     try {
       facts = await measureMetrics(
@@ -1087,6 +1113,12 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
         ids.map((metricId) => {
           const definition = METRIC_REGISTRY[metricId as keyof typeof METRIC_REGISTRY];
           const scoped: MetricFilters = { ...filters };
+          if (
+            !(definition &&
+              (definition.supportedFilters as readonly string[]).includes("source_ids"))
+          ) {
+            scoped.sourceIds = undefined;
+          }
           if (
             scoped.traffic === undefined &&
             definition &&

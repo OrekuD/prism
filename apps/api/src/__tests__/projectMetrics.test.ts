@@ -1839,14 +1839,16 @@ describe("bounded error release queries and capability cache (R5-F2, R5-F3)", ()
       );
     };
     for (let n = 0; n < 5; n += 1) await seedIssue(n);
-    const counting = (counter: { n: number }): CanonicalClient => ({
+    const counting = (counter: { n: number; rows: number }): CanonicalClient => ({
       execute: async (input) => {
         counter.n += 1;
-        return client.execute(input);
+        const result = await client.execute(input);
+        counter.rows = Math.max(counter.rows, result.rows.length);
+        return result;
       },
     });
     const window: MetricWindow = { ...WINDOW };
-    const first = { n: 0 };
+    const first = { n: 0, rows: 0 };
     const fresh5 = await errorIssueStateCounts(
       counting(first) as unknown as CanonicalClient,
       PX,
@@ -1859,8 +1861,9 @@ describe("bounded error release queries and capability cache (R5-F2, R5-F3)", ()
     );
     expect(fresh5.fresh).toBe(5);
     expect(first.n).toBe(1);
+    expect(first.rows).toBe(1);
     for (let n = 5; n < 20; n += 1) await seedIssue(n);
-    const second = { n: 0 };
+    const second = { n: 0, rows: 0 };
     const fresh20 = await errorIssueStateCounts(
       counting(second) as unknown as CanonicalClient,
       PX,
@@ -1873,8 +1876,9 @@ describe("bounded error release queries and capability cache (R5-F2, R5-F3)", ()
     );
     expect(fresh20.fresh).toBe(20);
     expect(second.n).toBe(1);
+    expect(second.rows).toBe(1);
     // Unfiltered states also stay single-query.
-    const plain = { n: 0 };
+    const plain = { n: 0, rows: 0 };
     await errorIssueStateCounts(
       counting(plain) as unknown as CanonicalClient,
       PX,
@@ -1934,6 +1938,61 @@ describe("bounded error release queries and capability cache (R5-F2, R5-F3)", ()
     )) as MetricFact[];
     expect(third[0]?.coverage.sourcesConfigured).toBe(1);
     expect(third).not.toEqual(second);
+    clearMetricSnapshotCache();
+  });
+});
+
+describe("independent release rules per counter (R6-F3)", () => {
+  it("separates first-release, any-visible, and window rules across two releases", async () => {
+    const PX = "proj_err_diverge";
+    const issue = async (id: string, status: string, firstSeen: number) =>
+      exec(
+        `INSERT INTO error_issues (id, project_id, platform, fingerprint_version, fingerprint, level, status, title, first_seen_at, last_seen_at, occurrence_count, users_affected, first_release, last_release)
+         VALUES (?, ?, 'web', 1, ?, 'error', ?, ?, ?, ?, 0, 0, NULL, NULL)`,
+        [id, PX, `fp-${id}`, status, `Title ${id}`, firstSeen, NOW],
+      );
+    const occ = async (
+      id: string,
+      issueId: string,
+      occurred: number,
+      release: string | null,
+    ) =>
+      exec(
+        `INSERT INTO error_occurrences (id, client_event_id, issue_id, project_id, source_id, platform, level, handled, occurred_at, received_at, release, environment, anonymous_id, payload)
+         VALUES (?, ?, ?, ?, 's', 'web', 'error', 0, ?, ?, ?, 'production', ?, '{}')`,
+        [id, `c-${id}`, issueId, PX, occurred, occurred, release, `u-${id}`],
+      );
+    // New issue visible in two releases: first seen in 1.0, later also 2.0.
+    await issue("iss_two", "unresolved", FROM + 100);
+    await occ("dv1", "iss_two", FROM + 100, "1.0");
+    await occ("dv2", "iss_two", FROM + 200, "2.0");
+    // Non-new regressing issue with differing historical/current releases:
+    // one previous-window 1.0 occurrence, two current-window 2.0.
+    await issue("iss_reg2", "unresolved", CFROM + 100);
+    await occ("dv0", "iss_reg2", CFROM + 100, "1.0");
+    await occ("dv3", "iss_reg2", FROM + 300, "2.0");
+    await occ("dv4", "iss_reg2", FROM + 400, "2.0");
+    const read = async (metricId: string, release?: string) =>
+      (await measureMetrics(
+        client as unknown as CanonicalClient,
+        PX,
+        WINDOW,
+        { sourceScope: "all" as const, sourceIds: [] },
+        release === undefined
+          ? [{ metricId }]
+          : [{ metricId, filters: { release } }],
+        { capabilities: CAPABILITIES, now: NOW },
+      )) as MetricFact[];
+    const valueOfFact = (facts: MetricFact[]) => facts[0]?.value;
+    // First release includes the two-release issue in both counters...
+    expect(valueOfFact(await read("errors.new_issues", "1.0"))).toBe(1);
+    // ...while the later release includes it in unresolved but not new.
+    expect(valueOfFact(await read("errors.new_issues", "2.0"))).toBe(0);
+    expect(valueOfFact(await read("errors.unresolved_issues", "2.0"))).toBe(2);
+    expect(valueOfFact(await read("errors.unresolved_issues", "1.0"))).toBe(2);
+    // Regressing follows current-window co-occurrence, not history.
+    expect(valueOfFact(await read("errors.regressing_issues", "2.0"))).toBe(1);
+    expect(valueOfFact(await read("errors.regressing_issues", "1.0"))).toBe(0);
     clearMetricSnapshotCache();
   });
 });
