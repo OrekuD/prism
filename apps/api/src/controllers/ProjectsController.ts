@@ -45,7 +45,7 @@ import {
 	MetricQueryError,
 	type MetricFilters,
 } from "../utils/projectMetrics";
-import { issueQueryContextToken } from "../utils/queryContextToken";
+import { issueQueryContextToken, resolveTokenKeyConfig } from "../utils/queryContextToken";
 import {
 	METRIC_REGISTRY,
 	ProjectMetricsResourceSchema,
@@ -711,6 +711,12 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
     if (sourceIdParams.length > 64) {
       return ctx.json(new ErrorResponse("invalid_filter").toJSON(), 400);
     }
+    // R4-F1: duplicate source IDs are a contract violation (the service
+    // strict schema rejects them) — fail with the same non-disclosing
+    // invalid_filter rather than silently deduping into a different scope.
+    if (new Set(sourceIdParams).size !== sourceIdParams.length) {
+      return ctx.json(new ErrorResponse("invalid_filter").toJSON(), 400);
+    }
     const standardEventKey = ctx.req.query("standardEventKey");
     if (standardEventKey !== undefined) {
       if (!StandardEventKeySchema.safeParse(standardEventKey).success) {
@@ -797,9 +803,15 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
     const knownSourceIds = new Set(sourceRows.map((row) => String(row.id)));
     // Unknown source IDs are ignored (never an existence oracle); an
     // explicit filter to nothing applicable yields honest empty facts.
+    // R4-F1: the signed scope distinguishes `all` (no filter) from
+    // `selected` (explicit list, possibly empty after narrowing). Both
+    // share `sourceIds: []` on the wire for the empty cases — the scope
+    // is the only distinction, and follow-ups must enforce it.
     const sourceIds = [...new Set(sourceIdParams)].filter((id) =>
       knownSourceIds.has(id),
     );
+    const sourceScope = sourceIdParams.length > 0 ? "selected" : "all";
+    const scope = { sourceScope, sourceIds } as const;
     if (sourceIdParams.length > 0) filters.sourceIds = sourceIds;
 
     const now = Date.now();
@@ -869,7 +881,7 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
         analytics,
         projectId,
         window,
-        sourceIds,
+        scope,
         ids.map((metricId) => {
           const definition = METRIC_REGISTRY[metricId as keyof typeof METRIC_REGISTRY];
           const scoped: MetricFilters = { ...filters };
@@ -897,29 +909,43 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
       throw error;
     }
 
-    const signingKey = ctx.env.QUERY_CONTEXT_TOKEN_KEY;
-    const kid = ctx.env.QUERY_CONTEXT_TOKEN_KID ?? "k1";
-    if (!signingKey) {
-      // Fail closed with an operator action — never an unsigned token.
+    // R4-F3: validate the effective key configuration on every request
+    // with the same 16-char policy as startup. Blank, short, or
+    // overlong kids fail closed with the operator-facing 503 — never an
+    // unsigned token, never a one-character HMAC. Only the validated
+    // configuration is used; no authorization decision is cached.
+    let keyConfig: { kid: string; secret: string };
+    try {
+      keyConfig = resolveTokenKeyConfig(ctx.env);
+    } catch {
       return ctx.json(
         new ErrorResponse("query_context_signing_unavailable").toJSON(),
         503,
       );
     }
-    const queryContextToken = await issueQueryContextToken(
-      {
-        projectId,
-        organizationId,
-        from: window.from,
-        to: window.to,
-        compareFrom: window.compareFrom,
-        compareTo: window.compareTo,
-        asOf: window.asOf,
-        sourceIds,
-      },
-      { kid, secret: signingKey },
-      window.asOf,
-    );
+    let queryContextToken: string;
+    try {
+      queryContextToken = await issueQueryContextToken(
+        {
+          projectId,
+          organizationId,
+          from: window.from,
+          to: window.to,
+          compareFrom: window.compareFrom,
+          compareTo: window.compareTo,
+          asOf: window.asOf,
+          sourceScope,
+          sourceIds,
+        },
+        keyConfig,
+        window.asOf,
+      );
+    } catch {
+      return ctx.json(
+        new ErrorResponse("query_context_signing_unavailable").toJSON(),
+        503,
+      );
+    }
     return ctx.json(
       ProjectMetricsResourceSchema.parse({
         queryContext: {
@@ -929,6 +955,7 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
           compareTo: window.compareTo,
           asOf: window.asOf,
           timezone: "UTC",
+          sourceScope,
           sourceIds,
           definitionVersion: 1,
         },

@@ -25,6 +25,7 @@ const CONTEXT = {
   compareFrom: 1_785_456_000_000,
   compareTo: 1_785_542_400_000,
   asOf: 1_785_628_800_000,
+  sourceScope: "selected" as const,
   sourceIds: ["src_1", "src_2"],
 };
 const KEYS = { k1: "test-secret-key-one" };
@@ -92,6 +93,69 @@ describe("query context tokens", () => {
       validateTokenKeys({ ["__proto__"]: "x".repeat(32) }),
     ).not.toThrow();
     expect(() => validateTokenKeys(KEYS)).not.toThrow();
+  });
+
+  it("enforces the key policy defensively at issuance (R4-F3)", async () => {
+    await expect(
+      issueQueryContextToken(CONTEXT, { kid: "k1", secret: "short" }, NOW),
+    ).rejects.toThrow(/at least 16/);
+    await expect(
+      issueQueryContextToken(CONTEXT, { kid: "", secret: KEYS.k1 }, NOW),
+    ).rejects.toThrow(/key IDs/);
+    await expect(
+      issueQueryContextToken(
+        CONTEXT,
+        { kid: "x".repeat(65), secret: KEYS.k1 },
+        NOW,
+      ),
+    ).rejects.toThrow(/key IDs/);
+    // resolveTokenKeyConfig mirrors the same boundary.
+    const { resolveTokenKeyConfig } = await import(
+      "../utils/queryContextToken"
+    );
+    expect(() =>
+      resolveTokenKeyConfig({ QUERY_CONTEXT_TOKEN_KEY: "short" }),
+    ).toThrow();
+    expect(
+      resolveTokenKeyConfig({ QUERY_CONTEXT_TOKEN_KEY: KEYS.k1 }).kid,
+    ).toBe("k1");
+  });
+
+  it("distinguishes all from selected-empty scopes (R4-F1)", async () => {
+    const all = await issueQueryContextToken(
+      { ...CONTEXT, sourceScope: "all", sourceIds: [] },
+      KEY,
+      NOW,
+    );
+    const selectedEmpty = await issueQueryContextToken(
+      { ...CONTEXT, sourceScope: "selected", sourceIds: [] },
+      KEY,
+      NOW,
+    );
+    expect(all).not.toBe(selectedEmpty);
+    const verifiedAll = await verifyQueryContextToken(all, {
+      ...OPTIONS,
+      allowedSourceIds: [],
+    });
+    const verifiedSelected = await verifyQueryContextToken(selectedEmpty, {
+      ...OPTIONS,
+      allowedSourceIds: [],
+    });
+    expect(verifiedAll.ok).toBe(true);
+    expect(verifiedSelected.ok).toBe(true);
+    if (verifiedAll.ok && verifiedSelected.ok) {
+      expect(verifiedAll.context.sourceScope).toBe("all");
+      expect(verifiedSelected.context.sourceScope).toBe("selected");
+    }
+    // all-scope with IDs refuses to issue; scope is signed (flipping it
+    // without re-signing fails as bad-signature, covered above).
+    await expect(
+      issueQueryContextToken(
+        { ...CONTEXT, sourceScope: "all", sourceIds: ["src_1"] },
+        KEY,
+        NOW,
+      ),
+    ).rejects.toThrow();
   });
 
   it("rejects a well-formed forged range (R1-F1 regression)", async () => {

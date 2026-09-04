@@ -141,6 +141,15 @@ export type StandardEventKeyCode = (typeof STANDARD_EVENT_KEYS)[number];
 export const StandardEventKeySchema = z.enum(STANDARD_EVENT_KEYS);
 
 /**
+ * Signed source-scope discriminator (R4-F1): `all` = no source filter,
+ * `selected` = the explicit ID list (possibly empty). Declared early so
+ * drill-down filters, the public context, and the token payload share one
+ * enum.
+ */
+export const SourceScopeSchema = z.enum(["all", "selected"]);
+export type SourceScope = z.infer<typeof SourceScopeSchema>;
+
+/**
  * Typed drill-down filter intent (R2-F4). Facts and artifacts carry the
  * resolved values that define them; the route builder encodes the same
  * values so a drill-down opens the filtered view behind the number — never
@@ -162,6 +171,13 @@ export const DrilldownFiltersSchema = z.strictObject({
   platform: z.enum(SOURCE_PLATFORMS).optional(),
   environment: z.string().min(1).max(64).optional(),
   sourceId: z.string().min(1).max(128).optional(),
+  /**
+   * Signed source scope echo (R4-F1): facts and drill-downs carry the same
+   * `all` | `selected` discriminator as their query context so an explicit
+   * empty intersection never renders as an unfiltered link. Optional for
+   * backward-compatible parsing; the service always sets it.
+   */
+  sourceScope: SourceScopeSchema.optional(),
 });
 export type DrilldownFilters = z.infer<typeof DrilldownFiltersSchema>;
 
@@ -171,14 +187,14 @@ const DRILLDOWN_FILTER_ALLOWLIST: Record<
   DrilldownDestinationId,
   readonly DrilldownFilterKey[]
 > = deepFreeze({
-  overview: [],
-  events: ["standardEventKey", "currency", "sourceId"],
-  people: [],
-  "web-analytics": ["path", "host", "traffic"],
-  "mobile-analytics": ["os", "release"],
-  errors: ["platform", "environment", "release", "sourceId"],
-  "errors-issue": [],
-  sources: [],
+  overview: ["sourceScope"],
+  events: ["standardEventKey", "currency", "sourceId", "sourceScope"],
+  people: ["sourceScope"],
+  "web-analytics": ["path", "host", "traffic", "sourceScope"],
+  "mobile-analytics": ["os", "release", "sourceScope"],
+  errors: ["platform", "environment", "release", "sourceId", "sourceScope"],
+  "errors-issue": ["sourceScope"],
+  sources: ["sourceScope"],
 });
 
 /**
@@ -304,6 +320,7 @@ export function buildDrilldownUrl(
     ["platform", "platform"],
     ["environment", "environment"],
     ["sourceId", "source"],
+    ["sourceScope", "scope"],
   ];
   for (const [key, param] of entries) {
     const value = filters[key];
@@ -424,6 +441,15 @@ export type MetricDefinition = {
   /** A metric that cannot be computed without this filter (e.g. event key). */
   requiresFilter?: FilterId;
   comparison: "supported" | "not-supported";
+  /**
+   * Temporal replay semantics (R4-F4): `replayable` facts are pure
+   * functions of the cutoff-visible store and return byte-identical values
+   * for the same signed snapshot; `current-only` facts read mutable
+   * projection state and must never feed deterministic insight selection
+   * or historical comparison. Only `errors.unresolved_issues` is
+   * current-only in v1.
+   */
+  snapshot: "replayable" | "current-only";
   drilldown: DrilldownDestination;
 };
 
@@ -442,6 +468,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     supportedFilters: ["source_ids"],
     sourceRequirements: [],
     comparison: "supported",
+    snapshot: "replayable",
     drilldown: { destination: "events", label: "Open Events" },
   }),
   "project.sessions": def({
@@ -455,6 +482,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     supportedFilters: ["source_ids"],
     sourceRequirements: [],
     comparison: "supported",
+    snapshot: "replayable",
     drilldown: { destination: "events", label: "Open Events" },
   }),
   "project.active_people": def({
@@ -468,6 +496,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     supportedFilters: ["source_ids"],
     sourceRequirements: [],
     comparison: "supported",
+    snapshot: "replayable",
     drilldown: { destination: "people", label: "Open People" },
   }),
   "project.new_people": def({
@@ -482,6 +511,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     supportedFilters: [],
     sourceRequirements: [],
     comparison: "supported",
+    snapshot: "replayable",
     drilldown: { destination: "people", label: "Open People" },
   }),
   "project.active_anonymous": def({
@@ -496,6 +526,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     supportedFilters: ["source_ids"],
     sourceRequirements: [],
     comparison: "supported",
+    snapshot: "replayable",
     drilldown: { destination: "people", label: "Open People" },
   }),
   "standard_event.occurrences": def({
@@ -511,6 +542,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     sourceRequirements: [],
     requiresFilter: "standard_event_key",
     comparison: "supported",
+    snapshot: "replayable",
     drilldown: { destination: "events", label: "Open Events" },
   }),
   "standard_event.people": def({
@@ -525,6 +557,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     sourceRequirements: [],
     requiresFilter: "standard_event_key",
     comparison: "supported",
+    snapshot: "replayable",
     drilldown: { destination: "people", label: "Open People" },
   }),
   "standard_event.value_by_currency": def({
@@ -540,6 +573,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     sourceRequirements: [],
     requiresFilter: "standard_event_key",
     comparison: "supported",
+    snapshot: "replayable",
     drilldown: { destination: "events", label: "Open Events" },
   }),
   "web.page_views": def({
@@ -567,6 +601,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     supportedFilters: ["source_ids", "host", "path", "traffic"],
     sourceRequirements: ["web_collection"],
     comparison: "supported",
+    snapshot: "replayable",
     drilldown: { destination: "web-analytics", label: "Open Web Analytics" },
   }),
   "web.visitors": def({
@@ -580,6 +615,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     supportedFilters: ["source_ids", "host", "path", "traffic"],
     sourceRequirements: ["web_collection"],
     comparison: "supported",
+    snapshot: "replayable",
     drilldown: { destination: "web-analytics", label: "Open Web Analytics" },
   }),
   "web.sessions": def({
@@ -593,6 +629,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     supportedFilters: ["source_ids", "host", "path", "traffic"],
     sourceRequirements: ["web_collection"],
     comparison: "supported",
+    snapshot: "replayable",
     drilldown: { destination: "web-analytics", label: "Open Web Analytics" },
   }),
   "web.views_per_session": def({
@@ -606,6 +643,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     supportedFilters: ["source_ids", "host", "path", "traffic"],
     sourceRequirements: ["web_collection"],
     comparison: "supported",
+    snapshot: "replayable",
     drilldown: { destination: "web-analytics", label: "Open Web Analytics" },
   }),
   "web.bounce_rate": def({
@@ -620,6 +658,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     supportedFilters: ["source_ids", "host", "path", "traffic"],
     sourceRequirements: ["web_collection"],
     comparison: "supported",
+    snapshot: "replayable",
     drilldown: { destination: "web-analytics", label: "Open Web Analytics" },
   }),
   "web.excluded_bots": def({
@@ -633,6 +672,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     supportedFilters: ["source_ids", "host", "path"],
     sourceRequirements: ["web_collection"],
     comparison: "not-supported",
+    snapshot: "replayable",
     drilldown: { destination: "web-analytics", label: "Open Web Analytics" },
   }),
   "mobile.app_opens": def({
@@ -646,6 +686,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     supportedFilters: ["source_ids", "os", "release"],
     sourceRequirements: ["mobile_collection"],
     comparison: "supported",
+    snapshot: "replayable",
     drilldown: {
       destination: "mobile-analytics",
       label: "Open Mobile Analytics",
@@ -662,6 +703,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     supportedFilters: ["source_ids", "os", "release"],
     sourceRequirements: ["mobile_collection"],
     comparison: "supported",
+    snapshot: "replayable",
     drilldown: {
       destination: "mobile-analytics",
       label: "Open Mobile Analytics",
@@ -678,6 +720,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     supportedFilters: ["source_ids", "os", "release"],
     sourceRequirements: ["mobile_collection"],
     comparison: "supported",
+    snapshot: "replayable",
     drilldown: {
       destination: "mobile-analytics",
       label: "Open Mobile Analytics",
@@ -694,6 +737,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     supportedFilters: ["source_ids", "os", "release"],
     sourceRequirements: ["mobile_collection"],
     comparison: "supported",
+    snapshot: "replayable",
     drilldown: {
       destination: "mobile-analytics",
       label: "Open Mobile Analytics",
@@ -711,6 +755,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     supportedFilters: ["source_ids", "os", "release"],
     sourceRequirements: ["mobile_collection"],
     comparison: "supported",
+    snapshot: "replayable",
     drilldown: {
       destination: "mobile-analytics",
       label: "Open Mobile Analytics",
@@ -728,6 +773,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     supportedFilters: ["source_ids", "os", "release"],
     sourceRequirements: ["mobile_collection"],
     comparison: "supported",
+    snapshot: "replayable",
     drilldown: {
       destination: "mobile-analytics",
       label: "Open Mobile Analytics",
@@ -750,6 +796,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     supportedFilters: ["source_ids", "platform", "environment", "release"],
     sourceRequirements: ["error_collection"],
     comparison: "supported",
+    snapshot: "replayable",
     drilldown: { destination: "errors", label: "Open Errors" },
   }),
   "errors.unresolved_issues": def({
@@ -763,6 +810,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     supportedFilters: ["platform", "release"],
     sourceRequirements: ["error_collection"],
     comparison: "not-supported",
+    snapshot: "current-only",
     drilldown: { destination: "errors", label: "Open Errors" },
   }),
   "errors.new_issues": def({
@@ -776,6 +824,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     supportedFilters: ["platform", "release"],
     sourceRequirements: ["error_collection"],
     comparison: "not-supported",
+    snapshot: "replayable",
     drilldown: { destination: "errors", label: "Open Errors" },
   }),
   "errors.regressing_issues": def({
@@ -789,6 +838,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     supportedFilters: ["platform", "release"],
     sourceRequirements: ["error_collection"],
     comparison: "not-supported",
+    snapshot: "replayable",
     drilldown: { destination: "errors", label: "Open Errors" },
   }),
   "errors.affected_identities": def({
@@ -803,6 +853,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     supportedFilters: ["source_ids", "platform", "release"],
     sourceRequirements: ["error_collection"],
     comparison: "supported",
+    snapshot: "replayable",
     drilldown: { destination: "errors", label: "Open Errors" },
   }),
   "errors.handled": def({
@@ -816,6 +867,7 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     supportedFilters: ["source_ids", "platform", "release"],
     sourceRequirements: ["error_collection"],
     comparison: "supported",
+    snapshot: "replayable",
     drilldown: { destination: "errors", label: "Open Errors" },
   }),
   "errors.unhandled": def({
@@ -829,9 +881,21 @@ export const METRIC_REGISTRY: Record<MetricId, MetricDefinition> = deepFreeze({
     supportedFilters: ["source_ids", "platform", "release"],
     sourceRequirements: ["error_collection"],
     comparison: "supported",
+    snapshot: "replayable",
     drilldown: { destination: "errors", label: "Open Errors" },
   }),
 });
+
+/**
+ * Machine-readable temporal boundary (R4-F4): deterministic insight
+ * selection (Slice 3) and the future agent must consult this before
+ * comparing or replaying a fact. `current-only` facts (only
+ * `errors.unresolved_issues` in v1) are valid at fresh snapshots and
+ * unavailable for historical ones — never compared across time.
+ */
+export function isSnapshotReplayable(metricId: MetricId): boolean {
+  return METRIC_REGISTRY[metricId].snapshot === "replayable";
+}
 
 // ---------------------------------------------------------------------------
 // Source platform family (future-native proof lives here)
@@ -854,6 +918,7 @@ export type ProjectQueryContext = {
   compareTo: number;
   asOf: number;
   timezone: "UTC";
+  sourceScope: SourceScope;
   sourceIds: readonly string[];
   definitionVersion: number;
 };
@@ -867,6 +932,15 @@ export const PublicQueryContextSchema = z
     compareTo: z.number().int().nonnegative(),
     asOf: z.number().int().nonnegative(),
     timezone: z.literal("UTC"),
+    /**
+     * Signed source-scope discriminator (R4-F1): `all` means no source
+     * filter (every project source), `selected` means the explicit ID list
+     * — which may itself be empty for an explicit empty intersection.
+     * Both scopes share `sourceIds: []` on the wire for the empty cases,
+     * so the scope is the only machine-readable distinction. Old tokens
+     * without a scope fail as malformed and never verify as `all`.
+     */
+    sourceScope: SourceScopeSchema,
     sourceIds: z.array(z.string().min(1).max(128)).max(64).readonly(),
     definitionVersion: z.literal(DEFINITION_VERSION),
   })
@@ -875,6 +949,12 @@ export const PublicQueryContextSchema = z
       context.addIssue({
         code: "custom",
         message: "sourceIds must not contain duplicates",
+      });
+    }
+    if (value.sourceScope === "all" && value.sourceIds.length > 0) {
+      context.addIssue({
+        code: "custom",
+        message: "sourceScope all must carry an empty sourceIds list",
       });
     }
   });
@@ -905,8 +985,10 @@ export function hasDuplicateStrings(values: readonly string[]): boolean {
 }
 
 /**
- * Canonical context fingerprint (R2-F3): deterministic source-ID order so
- * the same scope always hashes identically regardless of input order.
+ * Canonical context fingerprint (R2-F3, R4-F1): deterministic source-ID
+ * order so the same scope always hashes identically regardless of input
+ * order. The signed `sourceScope` joins the fingerprint so `all` (`[]`)
+ * and `selected` (`[]`, explicit empty intersection) never alias.
  * Duplicate source IDs are a contract violation, not a distinct snapshot.
  */
 export function queryContextFingerprint(context: PublicQueryContext): string {
@@ -919,6 +1001,7 @@ export function queryContextFingerprint(context: PublicQueryContext): string {
     context.asOf,
     context.timezone,
     context.definitionVersion,
+    context.sourceScope,
     sources,
   ].join("|");
 }

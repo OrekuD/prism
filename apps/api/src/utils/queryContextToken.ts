@@ -39,6 +39,7 @@ export const TokenPayloadSchema = z.strictObject({
   asOf: z.number().int().nonnegative(),
   issuedAt: z.number().int().nonnegative(),
   exp: z.number().int().nonnegative(),
+  sourceScope: z.enum(["all", "selected"]),
   sourceIds: z.array(z.string().min(1).max(128)).max(64),
   definitionVersion: z.literal(1),
 });
@@ -54,6 +55,7 @@ export type VerifiedQueryContext = {
   compareTo: number;
   asOf: number;
   timezone: "UTC";
+  sourceScope: "all" | "selected";
   sourceIds: readonly string[];
   definitionVersion: number;
 };
@@ -82,6 +84,7 @@ export type ContextSemantics = {
   asOf: number;
   issuedAt: number;
   now: number;
+  sourceScope?: "all" | "selected";
   sourceIds: readonly string[];
   ttlMs: number;
   clockSkewMs: number;
@@ -128,6 +131,15 @@ export function validateQueryContextSemantics(
   if (new Set(semantics.sourceIds).size !== semantics.sourceIds.length) {
     return { ok: false, reason: "duplicate-sources" };
   }
+  // R4-F1: `all` must carry an empty list so an explicit empty intersection
+  // (`selected` + `[]`) can never alias the unfiltered scope. Old payloads
+  // without a scope fail the strict schema before reaching here.
+  if (
+    semantics.sourceScope === "all" &&
+    semantics.sourceIds.length > 0
+  ) {
+    return { ok: false, reason: "range-invalid" };
+  }
   return { ok: true };
 }
 
@@ -152,6 +164,23 @@ export function validateTokenKeys(keys: Record<string, string>): void {
       );
     }
   }
+}
+
+/**
+ * Resolve the effective token-key configuration from API bindings (R4-F3).
+ * Validates the kid + secret with the same policy as `validateTokenKeys`
+ * on EVERY call and returns the branded pair — issuance and verification
+ * never accept a raw env string. Only the validated configuration is
+ * cached by callers, never a successful authorization decision.
+ */
+export function resolveTokenKeyConfig(env: {
+  QUERY_CONTEXT_TOKEN_KEY?: string;
+  QUERY_CONTEXT_TOKEN_KID?: string;
+}): { kid: string; secret: string } {
+  const kid = env.QUERY_CONTEXT_TOKEN_KID ?? "k1";
+  const secret = env.QUERY_CONTEXT_TOKEN_KEY ?? "";
+  validateTokenKeys({ [kid]: secret });
+  return { kid, secret };
 }
 
 const textEncoder = new TextEncoder();
@@ -227,6 +256,10 @@ export type IssueTokenOptions = {
  * invalid contexts throw instead of producing accepted tokens. `ttlMs`
  * exists for rotation/deployment configuration; verification checks the
  * embedded lifetime against the expected TTL.
+ *
+ * Defensive key policy (R4-F3): issuance enforces the same 16-char minimum
+ * as configuration-time `validateTokenKeys`, so a future caller cannot
+ * bypass startup validation with a one-character secret.
  */
 export async function issueQueryContextToken(
   input: {
@@ -237,14 +270,20 @@ export async function issueQueryContextToken(
     compareFrom: number;
     compareTo: number;
     asOf: number;
+    sourceScope: "all" | "selected";
     sourceIds: readonly string[];
   },
   key: { kid: string; secret: string },
   issuedAt: number = Date.now(),
   options: IssueTokenOptions = {},
 ): Promise<string> {
-  if (!key.kid || !key.secret) {
-    throw new TypeError("A key ID and secret are required to issue tokens");
+  if (!key.kid || key.kid.length > 64) {
+    throw new TypeError("Token signing key IDs must be 1-64 characters");
+  }
+  if (!key.secret || key.secret.length < 16) {
+    throw new TypeError(
+      `Token signing secret for kid "${key.kid || "unknown"}" must be at least 16 characters`,
+    );
   }
   const ttlMs = options.ttlMs ?? QUERY_CONTEXT_TOKEN_TTL_MS;
   const at = options.issuedAt ?? issuedAt;
@@ -256,6 +295,7 @@ export async function issueQueryContextToken(
     asOf: input.asOf,
     issuedAt: at,
     now: at,
+    sourceScope: input.sourceScope,
     sourceIds: input.sourceIds,
     ttlMs,
     clockSkewMs: QUERY_CONTEXT_TOKEN_CLOCK_SKEW_MS,
@@ -263,6 +303,11 @@ export async function issueQueryContextToken(
   if (!semantics.ok) {
     throw new TypeError(
       `Refusing to issue a token with invalid context: ${semantics.reason}`,
+    );
+  }
+  if (input.sourceScope === "all" && input.sourceIds.length > 0) {
+    throw new TypeError(
+      "Refusing to issue an all-scope token with source IDs",
     );
   }
   const payload: QueryContextTokenPayload = {
@@ -277,6 +322,7 @@ export async function issueQueryContextToken(
     asOf: input.asOf,
     issuedAt: at,
     exp: at + ttlMs,
+    sourceScope: input.sourceScope,
     sourceIds: [...input.sourceIds],
     definitionVersion: 1,
   };
@@ -405,6 +451,7 @@ export async function verifyQueryContextToken(
     asOf: payload.asOf,
     issuedAt: payload.issuedAt,
     now,
+    sourceScope: payload.sourceScope,
     sourceIds: payload.sourceIds,
     ttlMs,
     clockSkewMs,
@@ -427,6 +474,7 @@ export async function verifyQueryContextToken(
       compareTo: payload.compareTo,
       asOf: payload.asOf,
       timezone: "UTC",
+      sourceScope: payload.sourceScope,
       sourceIds: payload.sourceIds,
       definitionVersion: payload.definitionVersion,
     },

@@ -3,6 +3,7 @@ import {
   areQueryContextsEqual,
   compareValues,
   DEFINITION_VERSION,
+  isSnapshotReplayable,
   MAX_CURRENCY_ROWS,
   METRIC_IDS,
   METRIC_REGISTRY,
@@ -16,6 +17,7 @@ import {
   type MetricId,
   type ProjectCapabilities,
   type PublicQueryContext,
+  type SourceScope,
 } from "@prism-analytics/types";
 import { standardEventDefinitionForKey } from "@prism-analytics/core";
 import { loadMobileAnalytics } from "./mobileAnalyticsLoader";
@@ -579,10 +581,15 @@ async function countAnonymousSubjects(
   asOf: number,
   sourceIds?: string[],
 ): Promise<number> {
-  // Anonymous-only subjects AT THE SNAPSHOT: active person IDs with no
-  // external identity linked at or before `asOf`. These are subjects, not
-  // proven unique humans. Events without any person attribution carry no
-  // subject and are excluded (documented, never conflated).
+  // Anonymous-only subjects AT THE SNAPSHOT (R4-F2): the stable subject
+  // key is the IMMUTABLE event `anonymous_id` where present — ingestion
+  // reassigns `person_id` from `a_*` to `u_*` on identify and deletes the
+  // anonymous person row, so `COUNT(DISTINCT person_id)` undercounts
+  // history after a merge (two `a_*` subjects become one `u_*` row).
+  // `anonymous_id` never mutates, so the old snapshot still sees two
+  // subjects. Attributable events lacking `anonymous_id` fall back to
+  // `person_id` (documented); events without any person carry no subject
+  // and are excluded, never conflated.
   const { clauses, args } = eventScope(projectId, from, to, asOf, sourceIds);
   clauses.push("events.person_id IS NOT NULL");
   clauses.push(`NOT EXISTS (SELECT 1 FROM external_identities x
@@ -590,7 +597,7 @@ async function countAnonymousSubjects(
       AND x.linked_at <= ?)`);
   args.push(asOf);
   const { rows } = await client.execute({
-    sql: `SELECT COUNT(DISTINCT events.person_id) AS n FROM events WHERE ${clauses.join(" AND ")}`,
+    sql: `SELECT COUNT(DISTINCT COALESCE(events.anonymous_id, events.person_id)) AS n FROM events WHERE ${clauses.join(" AND ")}`,
     args,
   });
   return Number(rows[0]?.n ?? 0);
@@ -815,9 +822,12 @@ export type ErrorStateFilter = { platform?: string; release?: string };
  * Project issue-state aggregates (Task 15 semantics, canonical windows).
  * New = first observed inside the window; regressing = growing versus a
  * positive prior baseline and not new (the issueDelta rule applied over one
- * grouped read instead of row-by-row copies). Release narrows by
- * first_release for new issues and last_release for current-state counts —
- * co-occurrence only, never a causal claim.
+ * grouped read instead of row-by-row copies). Release narrows from the
+ * SAME cutoff-visible occurrence set (R4-F4) — first-observed release for
+ * new issues, current-window co-occurrence for regressing, any
+ * cutoff-visible occurrence for current-state counts — never from the
+ * mutable `first_release`/`last_release` projection that later receipts
+ * keep updating. Co-occurrence only, never a causal claim.
  */
 export async function errorIssueStateCounts(
   client: CanonicalClient,
@@ -841,9 +851,8 @@ export async function errorIssueStateCounts(
   }
   const { rows } = await client.execute({
     sql: `SELECT
+            i.id AS issue_id,
             i.status AS status,
-            i.first_release AS first_release,
-            i.last_release AS last_release,
             SUM(CASE WHEN o.occurred_at >= ? AND o.occurred_at < ? AND o.received_at <= ? THEN 1 ELSE 0 END) AS current_n,
             SUM(CASE WHEN o.occurred_at >= ? AND o.occurred_at < ? AND o.received_at <= ? THEN 1 ELSE 0 END) AS previous_n,
             MIN(CASE WHEN o.received_at <= ? THEN o.occurred_at END) AS snapshot_first_seen
@@ -851,13 +860,14 @@ export async function errorIssueStateCounts(
           LEFT JOIN error_occurrences o
             ON o.issue_id = i.id AND o.project_id = i.project_id
           WHERE ${issueClauses.join(" AND ")}
-          GROUP BY i.id, i.status, i.first_release, i.last_release`,
+          GROUP BY i.id, i.status`,
     args: [from, to, asOf, compareFrom, compareTo, asOf, asOf, ...scopeArgs],
   });
   let unresolved = 0;
   let fresh = 0;
   let regressing = 0;
   for (const row of rows) {
+    const issueId = String(row.issue_id ?? "");
     const status = String(row.status ?? "");
     const current = Number(row.current_n ?? 0);
     const previous = Number(row.previous_n ?? 0);
@@ -871,9 +881,56 @@ export async function errorIssueStateCounts(
         : Number(row.snapshot_first_seen);
     const isNew =
       snapshotFirst !== null && snapshotFirst >= from && snapshotFirst < to;
+    const isRegressingCandidate =
+      snapshotFirst !== null && !isNew && previous > 0 && current > previous;
     if (filter.release) {
-      if (isNew && row.first_release !== filter.release) continue;
-      if (!isNew && row.last_release !== filter.release) continue;
+      if (isNew) {
+        // New-issue release = the release of the earliest cutoff-visible
+        // occurrence (deterministic by occurred/received/id order).
+        const first = await client.execute({
+          sql: `SELECT release AS release FROM error_occurrences
+                WHERE project_id = ? AND issue_id = ? AND received_at <= ?
+                ORDER BY occurred_at ASC, received_at ASC, id ASC LIMIT 1`,
+          args: [projectId, issueId, asOf],
+        });
+        const firstRelease =
+          first.rows[0]?.release === null || first.rows[0]?.release === undefined
+            ? null
+            : String(first.rows[0]?.release);
+        if (firstRelease !== filter.release) continue;
+        // Match: fall through to the shared tally below.
+      } else {
+        // Non-new: release membership from the same cutoff-visible set.
+        // Unresolved needs any visible occurrence with the release;
+        // regressing additionally needs current-window co-occurrence.
+        // Both are snapshot-stable; projection `last_release` is not.
+        let passesUnresolved = true;
+        if (status === "unresolved") {
+          const any = await client.execute({
+            sql: `SELECT 1 AS n FROM error_occurrences
+                  WHERE project_id = ? AND issue_id = ? AND received_at <= ?
+                    AND release = ? LIMIT 1`,
+            args: [projectId, issueId, asOf, filter.release],
+          });
+          passesUnresolved = any.rows.length > 0;
+          if (!passesUnresolved) continue;
+        }
+        let passesRegressing = isRegressingCandidate;
+        if (isRegressingCandidate) {
+          const inWindow = await client.execute({
+            sql: `SELECT 1 AS n FROM error_occurrences
+                  WHERE project_id = ? AND issue_id = ?
+                    AND occurred_at >= ? AND occurred_at < ?
+                    AND received_at <= ? AND release = ? LIMIT 1`,
+            args: [projectId, issueId, from, to, asOf, filter.release],
+          });
+          passesRegressing = inWindow.rows.length > 0;
+        }
+        if (status === "unresolved") unresolved += 1;
+        if (snapshotFirst === null) continue;
+        if (passesRegressing) regressing += 1;
+        continue;
+      }
     }
     if (status === "unresolved") unresolved += 1;
     if (snapshotFirst === null) continue;
@@ -892,11 +949,43 @@ export type MeasureDeps = {
   now?: number;
 };
 
+/**
+ * Canonical source scope (R4-F1): `all` = no source filter, `selected` =
+ * the explicit ID list (possibly empty for an explicit empty
+ * intersection). The scope travels in the public context, token, cache
+ * key, fact filters, and drill-down — never inferred from list length.
+ */
+export type MetricScope = {
+  sourceScope: SourceScope;
+  sourceIds: string[];
+};
+
+function normalizeScope(
+  scope: MetricScope | readonly string[] | undefined,
+  fallbackFilters?: MetricFilters,
+): MetricScope {
+  if (scope === undefined) {
+    // No shared scope supplied: infer from the request's own filter
+    // presence — explicit (even empty) means selected.
+    if (fallbackFilters?.sourceIds !== undefined) {
+      return { sourceScope: "selected", sourceIds: [...fallbackFilters.sourceIds] };
+    }
+    return { sourceScope: "all", sourceIds: [] };
+  }
+  if (Array.isArray(scope as unknown as unknown[])) {
+    // Legacy callers pass only IDs: an empty list meant `all`. New code
+    // passes the explicit object; per-request filters still drive SQL.
+    return { sourceScope: "all", sourceIds: [...(scope as readonly string[])] };
+  }
+  const explicit = scope as MetricScope;
+  return { sourceScope: explicit.sourceScope, sourceIds: [...explicit.sourceIds] };
+}
+
 function publicContextFor(
   projectId: string,
   organizationId: string,
   window: MetricWindow,
-  scopeSourceIds: string[],
+  scope: MetricScope | readonly string[],
 ): {
   queryContext: PublicQueryContext;
   projectId: string;
@@ -904,6 +993,7 @@ function publicContextFor(
 } {
   void projectId;
   void organizationId;
+  const normalized = normalizeScope(scope);
   return {
     projectId,
     organizationId,
@@ -914,7 +1004,8 @@ function publicContextFor(
       compareTo: window.compareTo,
       asOf: window.asOf,
       timezone: "UTC",
-      sourceIds: [...scopeSourceIds],
+      sourceScope: normalized.sourceScope,
+      sourceIds: [...normalized.sourceIds],
       definitionVersion: DEFINITION_VERSION,
     },
   };
@@ -936,9 +1027,13 @@ function coverageFor(
 function drilldownFor(
   metricId: MetricId,
   filters: MetricFilters,
+  scope?: MetricScope,
 ): DrilldownDestination {
   const base = METRIC_REGISTRY[metricId].drilldown;
   const picked: DrilldownFilters = {};
+  // R4-F1: the signed scope echoes in every drill-down so an explicit
+  // empty intersection never renders as an unfiltered link.
+  picked.sourceScope = scope?.sourceScope ?? (filters.sourceIds !== undefined ? "selected" : "all");
   if (
     filters.standardEventKey &&
     (base.destination === "events" || base.destination === "people")
@@ -981,8 +1076,14 @@ function drilldownFor(
 }
 
 /** Request filters as canonical drill-down filter values on the fact. */
-function factFiltersFor(filters: MetricFilters): DrilldownFilters {
+function factFiltersFor(
+  filters: MetricFilters,
+  scope?: MetricScope,
+): DrilldownFilters {
   const picked: DrilldownFilters = {};
+  // R4-F1: scope is the only distinction between `all` ([]) and an
+  // explicit empty intersection (`selected` + []).
+  picked.sourceScope = scope?.sourceScope ?? (filters.sourceIds !== undefined ? "selected" : "all");
   if (filters.standardEventKey) {
     picked.standardEventKey = filters.standardEventKey as never;
   }
@@ -1012,6 +1113,7 @@ function makeFact(args: {
   currency?: string;
   labelSuffix?: string;
   requestFilters?: MetricFilters;
+  scope?: MetricScope;
 }): MetricFact {
   const definition = METRIC_REGISTRY[args.metricId];
   const { formattedValue, unit } =
@@ -1032,7 +1134,7 @@ function makeFact(args: {
     queryContext: args.queryContext,
     coverage: args.coverage,
     coverageNote: args.coverageNote.slice(0, 200),
-    filters: factFiltersFor(args.requestFilters ?? {}),
+    filters: factFiltersFor(args.requestFilters ?? {}, args.scope),
     drilldown: args.drilldown,
   };
 }
@@ -1044,6 +1146,7 @@ function unsupportedFact(
   reason: string,
   drilldown: DrilldownDestination,
   requestFilters: MetricFilters = {},
+  scope?: MetricScope,
 ): MetricFact {
   return makeFact({
     metricId,
@@ -1057,6 +1160,7 @@ function unsupportedFact(
     coverageNote: reason,
     drilldown,
     requestFilters,
+    scope,
   });
 }
 
@@ -1085,19 +1189,15 @@ async function measureOne(
   client: CanonicalClient,
   projectId: string,
   window: MetricWindow,
-  scopeSourceIds: string[],
+  scopeInput: MetricScope | readonly string[],
   metricId: MetricId,
   filters: MetricFilters,
   deps: MeasureDeps,
 ): Promise<MetricFact[]> {
-  const { queryContext } = publicContextFor(
-    projectId,
-    "",
-    window,
-    scopeSourceIds,
-  );
+  const scope = normalizeScope(scopeInput, filters);
+  const { queryContext } = publicContextFor(projectId, "", window, scope);
   const coverage = coverageFor(deps.capabilities);
-  const drilldown = drilldownFor(metricId, filters);
+  const drilldown = drilldownFor(metricId, filters, scope);
   const shortfall = capabilityShortfall(metricId, deps.capabilities);
   if (shortfall) {
     return [
@@ -1108,14 +1208,21 @@ async function measureOne(
         shortfall,
         drilldown,
         filters,
+        scope,
       ),
     ];
   }
-  // Explicit empty source intersection (R3-F1): the caller asked for named
-  // sources and none belong to this project. This is a successful read over
-  // an empty scope — honest zeros, never a widened all-source query. Absent
-  // sourceIds still means all sources. Capability shortfalls win above.
-  if (filters.sourceIds !== undefined && filters.sourceIds.length === 0) {
+  // Explicit empty source intersection (R3-F1, R4-F1): `selected` + `[]`
+  // is a successful read over an empty scope — honest zeros, never a
+  // widened all-source query. `all` still means every project source.
+  // The signed scope (not list length) drives the branch so a follow-up
+  // reusing the token cannot widen. Capability shortfalls win above.
+  const isEmptySelected =
+    scope.sourceScope === "selected" && scope.sourceIds.length === 0;
+  if (
+    (filters.sourceIds !== undefined && filters.sourceIds.length === 0) ||
+    isEmptySelected
+  ) {
     if (metricId === "standard_event.value_by_currency") {
       // No currency rows exist over an empty scope — except an explicit
       // currency request, which always yields its one (real zero) fact.
@@ -1133,6 +1240,7 @@ async function measureOne(
           currency: filters.currency,
           labelSuffix: filters.currency,
           requestFilters: filters,
+          scope,
         }),
       ];
     }
@@ -1146,6 +1254,7 @@ async function measureOne(
         coverageNote: "No requested sources belong to this project",
         drilldown,
         requestFilters: filters,
+        scope,
       }),
     ];
   }
@@ -1180,6 +1289,7 @@ async function measureOne(
           coverageNote: "Accepted event occurrences",
           drilldown,
           requestFilters: filters,
+          scope,
         }),
       ];
     }
@@ -1210,6 +1320,7 @@ async function measureOne(
           coverageNote: "Sessions started in range",
           drilldown,
           requestFilters: filters,
+          scope,
         }),
       ];
     }
@@ -1240,6 +1351,7 @@ async function measureOne(
           coverageNote: "Identified people with activity",
           drilldown,
           requestFilters: filters,
+          scope,
         }),
       ];
     }
@@ -1261,6 +1373,7 @@ async function measureOne(
           coverageNote: "First external identity links",
           drilldown,
           requestFilters: filters,
+          scope,
         }),
       ];
     }
@@ -1291,6 +1404,7 @@ async function measureOne(
           coverageNote: "Anonymous-only subjects, not unique humans",
           drilldown,
           requestFilters: filters,
+          scope,
         }),
       ];
     }
@@ -1332,6 +1446,7 @@ async function measureOne(
             coverageNote: `Accepted ${key} occurrences`,
             drilldown,
             requestFilters: filters,
+            scope,
           }),
         ];
       }
@@ -1366,6 +1481,7 @@ async function measureOne(
             coverageNote: `Identified people with ${key}`,
             drilldown,
             requestFilters: filters,
+            scope,
           }),
         ];
       }
@@ -1433,6 +1549,7 @@ async function measureOne(
           currency: /^[A-Z]{3}$/.test(currency) ? currency : undefined,
           labelSuffix: currency,
           requestFilters: filters,
+          scope,
         });
       });
     }
@@ -1501,8 +1618,9 @@ async function measureOne(
           queryContext,
           coverage: webCoverage,
           coverageNote: note,
-          drilldown: drilldownFor(id, filters),
+          drilldown: drilldownFor(id, filters, scope),
           requestFilters: filters,
+          scope,
         });
       switch (metricId) {
         case "web.page_views":
@@ -1605,8 +1723,9 @@ async function measureOne(
           queryContext,
           coverage: mobileCoverage,
           coverageNote: note,
-          drilldown: drilldownFor(id, filters),
+          drilldown: drilldownFor(id, filters, scope),
           requestFilters: filters,
+          scope,
         });
       switch (metricId) {
         case "mobile.app_opens":
@@ -1688,6 +1807,7 @@ async function measureOne(
             coverageNote: "Error occurrences in range",
             drilldown,
             requestFilters: filters,
+            scope,
           }),
         ];
       }
@@ -1718,6 +1838,7 @@ async function measureOne(
             coverageNote: "Distinct anonymous ids in range",
             drilldown,
             requestFilters: filters,
+            scope,
           }),
         ];
       }
@@ -1750,6 +1871,7 @@ async function measureOne(
               handled === 1 ? "Handled occurrences" : "Unhandled occurrences",
             drilldown,
             requestFilters: filters,
+            scope,
           }),
         ];
       }
@@ -1763,41 +1885,56 @@ async function measureOne(
         w.asOf,
         { platform: filters.platform, release: filters.release },
       );
+      const now = deps.now ?? Date.now();
+      const isHistorical = w.asOf < now - HISTORICAL_SNAPSHOT_SKEW_MS;
+      // R4-F4: `errors.unresolved_issues` is current-only (typed
+      // `snapshot: "current-only"` in the registry). No timestamped status
+      // history exists — including system reopen-on-occurrence — so a
+      // historical snapshot cannot replay it. Fresh snapshots return the
+      // live count; historical ones return an explicit typed unavailable
+      // (null) fact, never a numeric value with only a warning string.
+      // `isSnapshotReplayable()` is the machine-readable gate Slice 3
+      // insight selection must consult before comparing or replaying.
+      if (metricId === "errors.unresolved_issues" && isHistorical) {
+        void isSnapshotReplayable(metricId);
+        const unavailableCoverage = {
+          ...coverage,
+          warnings: [
+            ...coverage.warnings,
+            "Unresolved status is current-only and unavailable for historical snapshots",
+          ].slice(0, 8),
+        };
+        return [
+          makeFact({
+            metricId,
+            value: null,
+            comparison: null,
+            queryContext,
+            coverage: unavailableCoverage,
+            coverageNote: "Current issue state; not a historical snapshot",
+            drilldown,
+            requestFilters: filters,
+            scope,
+          }),
+        ];
+      }
       const value =
         metricId === "errors.unresolved_issues"
           ? states.unresolved
           : metricId === "errors.new_issues"
             ? states.fresh
             : states.regressing;
-      // "Currently unresolved" cannot replay history in v1: no timestamped
-      // status transitions exist, so a resolve/reopen after `asOf` moves
-      // this allegedly frozen fact. Fresh snapshots (≈ now) need no caveat;
-      // historical ones carry it as a coverage warning (R3-F5).
-      const now = deps.now ?? Date.now();
-      const staleStatus =
-        metricId === "errors.unresolved_issues" &&
-        w.asOf < now - HISTORICAL_SNAPSHOT_SKEW_MS;
-      const stateCoverage = staleStatus
-        ? {
-            ...coverage,
-            warnings: [
-              ...coverage.warnings,
-              "Reflects current issue status, not the status at the snapshot",
-            ].slice(0, 8),
-          }
-        : coverage;
       return [
         makeFact({
           metricId,
           value,
           comparison: null,
           queryContext,
-          coverage: stateCoverage,
-          coverageNote: staleStatus
-            ? "Current issue state; not a historical snapshot"
-            : "Issue state aggregate",
+          coverage,
+          coverageNote: "Issue state aggregate",
           drilldown,
           requestFilters: filters,
+          scope,
         }),
       ];
     }
@@ -1809,22 +1946,38 @@ async function measureOne(
  * run-level memoization. Unknown metrics/filters throw `MetricQueryError`;
  * unmet capabilities yield null-valued facts (explicit unsupported states),
  * never fabricated zeros.
+ *
+ * `scope` is the shared signed source scope (R4-F1): `all` or the explicit
+ * `selected` list. Legacy callers may pass a bare ID array (treated as
+ * `all`); new code passes the explicit object so `all` (`[]`) and
+ * `selected` (`[]`) share no cache entry, fingerprint, or token.
  */
 export async function measureMetrics(
   client: CanonicalClient,
   projectId: string,
   window: MetricWindow,
-  scopeSourceIds: string[],
+  scopeInput: MetricScope | readonly string[],
   requests: MetricRequest[],
   deps: MeasureDeps,
 ): Promise<MetricFact[]> {
+  // Bare arrays are legacy shared IDs: they always mean `all` for the
+  // snapshot queryContext (the pre-R4 contract). Per-request
+  // `filters.sourceIds` still drives SQL and fact-filter scope via
+  // inference, preserving the old value behavior while new code passes
+  // the explicit object so `all` and `selected([])` never alias.
+  // Test helpers should pass the explicit object for scoped reads.
+  let scope: MetricScope;
+  if (Array.isArray(scopeInput as unknown as unknown[])) {
+    scope = { sourceScope: "all", sourceIds: [...(scopeInput as readonly string[])] };
+  } else {
+    const explicit = scopeInput as MetricScope;
+    scope = {
+      sourceScope: explicit.sourceScope,
+      sourceIds: [...explicit.sourceIds],
+    };
+  }
   const now = deps.now ?? Date.now();
-  const { queryContext } = publicContextFor(
-    projectId,
-    "",
-    window,
-    scopeSourceIds,
-  );
+  const { queryContext } = publicContextFor(projectId, "", window, scope);
   const facts: MetricFact[] = [];
   for (const request of requests) {
     const { metricId, filters } = validateMetricRequest(request);
@@ -1848,7 +2001,7 @@ export async function measureMetrics(
       client,
       projectId,
       window,
-      scopeSourceIds,
+      scope,
       metricId,
       filters,
       deps,

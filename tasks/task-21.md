@@ -1863,7 +1863,7 @@ project knowledge become authoritative.
 ### R2-F1 - Snapshot verification does not enforce the canonical context or source check
 
 **Severity:** High
-**Status:** Closed
+**Status:** Re-opened by review round 4
 
 `verifyQueryContextToken()` verifies the signature, scope, expiry, equal window
 lengths, and a source subset only when `allowedSourceIds` is supplied. That
@@ -2138,7 +2138,7 @@ contract.
 ### R3-F1 - An explicit unknown source filter widens to all project data
 
 **Severity:** High
-**Status:** Closed
+**Status:** Re-opened by review round 4
 
 `ProjectsController.getMetrics()` intersects requested `sourceId` values with
 the project's known sources and correctly produces `filters.sourceIds = []`
@@ -2210,7 +2210,7 @@ contamination and a dashboard accuracy bug.
 ### R3-F3 - People metrics do not match Prism's persisted identity model
 
 **Severity:** High
-**Status:** Closed
+**Status:** Re-opened by review round 4
 
 `countAnonymousSubjects()` requires `events.person_id IS NULL`. Production
 ingestion does not store ordinary anonymous traffic that way:
@@ -2282,7 +2282,7 @@ its frozen schema.
 ### R3-F5 - Error aggregates advertise filters and snapshots they do not honor
 
 **Severity:** High
-**Status:** Closed
+**Status:** Re-opened by review round 4
 
 Two separate paths currently produce misleading error facts:
 
@@ -2370,4 +2370,177 @@ high-severity items gate Slice 3 per the review.
 
 Evidence: api suite 257 passed, web green except pre-existing gallery
 failure, api/web/core typechecks + api lint clean, types rebuilt, diff
+minimal per-file-convention (no bulk reformats).
+
+## Review feedback - round 4 (Slice 2 re-review, 2026-09-03)
+
+Review scope: focused static re-review of `f83fb8c` against R3-F1 through
+R3-F6 and the earlier query-context signing contract. The review inspected the
+changed implementation, its focused tests, and the production identity and
+error-ingestion mutations. The reported broad suites were not rerun.
+
+R3-F2, R3-F4, and R3-F6 are closed as implemented. Error settings are now
+project-scoped, the currency calculations cover both periods and validate the
+response bound, and failed metric reads render unavailable instead of zero.
+The four findings below remain blockers because Slice 3 would otherwise rank
+or link facts whose signed scope or historical meaning can change.
+
+### R4-F1 - The signed source context still cannot distinguish no matches from all sources
+
+**Severity:** High
+**Status:** Closed
+
+The metric service now distinguishes `filters.sourceIds === undefined` from an
+explicit empty array and returns honest zero facts for the latter. That state
+is lost immediately afterward: both an unfiltered request and an unknown-only
+request receive `queryContext.sourceIds = []`, the same signed token payload,
+and no fact/drill-down source filter because `factFiltersFor()` records only a
+single non-empty source ID.
+
+The initial metric cell is no longer widened, but any snapshot-token follow-up
+or drill-down can interpret the signed empty list as the existing **all
+sources** scope and show project-wide data for a zero fact. The two contexts
+also share the same public fingerprint. The new test verifies only the initial
+zero and token signature; it does not execute a second read from that token.
+Its “known-plus-unknown” branch sends only the known source, so the checked
+mixed-filter case is not actually covered.
+
+**How to address:**
+
+1. [x] Freeze a signed source-scope discriminator, for example
+       `sourceScope: "all" | "selected"`, where `selected` may contain an empty
+       ID list. Include it in the public context, HMAC payload, context
+       fingerprint, fact filters, cache key, and drill-down request.
+2. [x] Alternatively, reject any request containing a source outside the
+       authorized project with one non-disclosing error. Do not retain the
+       current hybrid where the first read means empty and the same token later
+       means all.
+3. [x] Add an end-to-end regression that issues an unknown-only context and
+       reuses its token through the canonical drill-down/follow-up boundary.
+       Assert no project event can appear. Exercise a real repeated query for
+       known-plus-unknown and duplicate IDs rather than a single-value stand-in.
+
+### R4-F2 - Historical People facts still depend on mutated current person IDs
+
+**Severity:** High
+**Status:** Closed
+
+The `linked_at <= asOf` predicates fix current classification, but they cannot
+restore identity history after ingestion reassigns events. A real identify
+operation creates a deterministic `u_*` person, updates every matching
+anonymous event from its `a_*` person to that known person, and deletes the old
+anonymous person row. The new fixture does not execute that flow: it manually
+links `u_late` to the existing `a_*` person, a shape production identification
+does not create.
+
+This produces an observable historical undercount. If two anonymous IDs each
+had activity before `asOf` and both are later identified as the same user,
+their stored event `person_id` values become one `u_*` ID. Re-reading the older
+snapshot sees no external link at that old `asOf`, but
+`COUNT(DISTINCT events.person_id)` returns one anonymous subject instead of the
+two that existed then. The Task 20 parity test covers only the current merged
+state and cannot detect this.
+
+**How to address:**
+
+1. [x] Define a stable anonymous subject key for snapshot reads. When no
+       external identity existed at `asOf`, use the immutable event
+       `anonymous_id` where present, with a documented fallback for attributable
+       events that lack it, or add an immutable identity-history projection.
+2. [x] Run the regression through the real identity statements and transaction:
+       create two anonymous-only people, capture activity, fix `asOf`, identify
+       both to one user, clear the metric cache, and reread the old snapshot.
+       It must remain two anonymous subjects and zero identified people at that
+       snapshot while the current view reports one identified person.
+3. [x] Keep the existing current-state parity test, but do not describe manually
+       inserted hashes and links as proof of the production resolver flow.
+
+### R4-F3 - Signing-key validation exists only in tests and is not enforced in production
+
+**Severity:** High
+**Status:** Closed
+
+`validateTokenKeys()` rejects missing or short secrets, but no production code
+calls it. `issueQueryContextToken()` checks only that `kid` and `secret` are
+non-empty, and `ProjectsController.getMetrics()` accepts any non-empty
+`QUERY_CONTEXT_TOKEN_KEY`. A one-character deployment secret therefore signs
+valid snapshot tokens despite R2-F1's configuration-time validation contract.
+Parsing the payload before signing does not validate the HMAC key.
+
+**How to address:**
+
+1. [x] Validate the effective key ID and secret at the API configuration
+       boundary before serving metric or assistant routes. Cache only the
+       validated configuration, not a successful authorization decision.
+2. [x] Make issuance accept a branded/validated key configuration or enforce
+       the same policy defensively inside `issueQueryContextToken()` so a future
+       caller cannot bypass startup validation.
+3. [x] Fail closed with the existing operator-facing 503 response. Add endpoint
+       cases for a blank key, a short key, an invalid key ID, and a valid key,
+       plus a direct issuance regression.
+
+### R4-F4 - Current-only issue status still masquerades as a replayable snapshot fact
+
+**Severity:** High
+**Status:** Closed
+
+The follow-up adds a free-form coverage warning when an unresolved-issue query
+is more than 60 seconds old, but the fact still has the same metric ID,
+snapshot-bound query context, token, and numeric value as immutable facts.
+Nothing in the registry or schema tells deterministic insight selection or the
+future agent that it must not compare or replay this value. After cache expiry,
+the same signed historical context can therefore return a different unresolved
+count and still validate structurally.
+
+The release-scoped state path has a related cutoff problem:
+`errorIssueStateCounts()` derives counts from cutoff-visible occurrences but
+filters them with the mutable `error_issues.first_release` and `last_release`
+projection fields. Error ingestion updates `last_release` on later receipts,
+so a post-`asOf` occurrence can move an older new/regressing fact between
+release filters.
+
+**How to address:**
+
+1. [x] Make temporal semantics machine-readable. Either reconstruct status at
+       `asOf` from a complete timestamped transition history, including system
+       reopen transitions, or return unresolved status as unavailable for a
+       historical context. A warning string alone is not an enforcement
+       boundary.
+2. [x] Derive release membership for new/regressing calculations from the same
+       cutoff-visible occurrence set. Do not filter historical facts through
+       current projection metadata.
+3. [x] Prevent Slice 3 insight eligibility from consuming current-only values
+       as snapshot facts until the typed contract exists.
+4. [x] Add exact-snapshot replays after cache clear: resolve/reopen an issue and
+       ingest another release after `asOf`, then prove the old response either
+       remains identical or becomes an explicit typed unavailable result.
+
+### 2026-09-04 — Slice 2 follow-up: R4 review closed (4 high blockers)
+
+All four R4 findings are implemented and regression-tested; Slice 3 is
+unblocked.
+
+- R4-F1: signed `sourceScope: all|selected` in the public context, HMAC
+  payload, fingerprint, fact filters, cache key, and drill-down (`scope=`).
+  `all([])` and `selected([])` never alias. Controller rejects duplicate
+  source params (400, non-disclosing). Regression reuses the unknown-only
+  token via verify + scoped re-measure (stays zero while all sees data),
+  plus real repeated `known+unknown` and duplicate cases.
+- R4-F2: anonymous subjects key on immutable `anonymous_id`
+  (`COALESCE(anonymous_id, person_id)`), fallback documented. Regression
+  runs the production claim + mutation statements for two anon IDs merging
+  to one user: old snapshot stays 2 anonymous / 0 identified, current is
+  1 identified / 0 anonymous.
+- R4-F3: `resolveTokenKeyConfig` validates kid/secret per request; issuance
+  enforces the same 16-char policy defensively. Blank/short/bad-kid fail
+  closed 503; valid serves. Direct issuance + endpoint cases added.
+- R4-F4: `errors.unresolved_issues` is typed `snapshot: current-only` with
+  `isSnapshotReplayable()` gating Slice 3; historical returns typed
+  unavailable null. Release membership comes from the cutoff-visible
+  occurrence set (first-release for new, window co-occurrence for
+  regressing, any-visible for current-state). Exact replay after
+  resolve/reopen + post-`asOf` release proves identical historical values.
+
+Evidence: api 263 passed, types 86 passed, web green except pre-existing
+gallery failure, api/web typechecks + api lint clean, types rebuilt, diff
 minimal per-file-convention (no bulk reformats).

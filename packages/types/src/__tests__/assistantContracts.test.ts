@@ -91,6 +91,7 @@ const publicContext = () => ({
   compareTo: 1_785_542_400_000,
   asOf: 1_785_628_800_000,
   timezone: "UTC" as const,
+  sourceScope: "all" as const,
   sourceIds: [] as string[],
   definitionVersion: DEFINITION_VERSION as 1,
 });
@@ -1578,8 +1579,16 @@ describe("frozen protocol names (R1-F6)", () => {
 describe("query context fingerprints (R2-F3)", () => {
   it("treats source order as identical but duplicates as a violation", () => {
     const base = publicContext();
-    const reordered = { ...base, sourceIds: ["b", "a"] };
-    const ordered = { ...base, sourceIds: ["a", "b"] };
+    const reordered = {
+      ...base,
+      sourceScope: "selected" as const,
+      sourceIds: ["b", "a"],
+    };
+    const ordered = {
+      ...base,
+      sourceScope: "selected" as const,
+      sourceIds: ["a", "b"],
+    };
     expect(areQueryContextsEqual(reordered, ordered)).toBe(true);
     expect(queryContextFingerprint(reordered)).toBe(
       queryContextFingerprint(ordered),
@@ -1591,9 +1600,19 @@ describe("query context fingerprints (R2-F3)", () => {
         .success,
     ).toBe(false);
     expect(
-      PublicQueryContextSchema.safeParse({ ...base, sourceIds: ["a", "b"] })
-        .success,
+      PublicQueryContextSchema.safeParse({
+        ...base,
+        sourceScope: "selected" as const,
+        sourceIds: ["a", "b"],
+      }).success,
     ).toBe(true);
+    expect(
+      PublicQueryContextSchema.safeParse({
+        ...base,
+        sourceScope: "all" as const,
+        sourceIds: ["a"],
+      }).success,
+    ).toBe(false);
   });
 
   it("distinguishes every snapshot dimension", () => {
@@ -1601,11 +1620,34 @@ describe("query context fingerprints (R2-F3)", () => {
     for (const variant of [
       { ...base, from: base.from + 1 },
       { ...base, asOf: base.asOf + 1 },
-      { ...base, sourceIds: ["src_1"] },
+      {
+        ...base,
+        sourceScope: "selected" as const,
+        sourceIds: ["src_1"],
+      },
+      // R4-F1: `all([])` and `selected([])` never alias.
+      {
+        ...base,
+        sourceScope: "selected" as const,
+        sourceIds: [],
+      },
       { ...base, definitionVersion: 2 },
     ]) {
       expect(areQueryContextsEqual(base, variant as typeof base)).toBe(false);
     }
+  });
+
+  it("distinguishes all from selected-empty (R4-F1)", () => {
+    const all = publicContext();
+    const selectedEmpty = {
+      ...publicContext(),
+      sourceScope: "selected" as const,
+      sourceIds: [] as string[],
+    };
+    expect(areQueryContextsEqual(all, selectedEmpty)).toBe(false);
+    expect(queryContextFingerprint(all)).not.toBe(
+      queryContextFingerprint(selectedEmpty),
+    );
   });
 });
 
@@ -1728,7 +1770,11 @@ describe("overview snapshot consistency (R2-F3)", () => {
           ...overviewResource(),
           secondary: {
             ...overviewResource().secondary,
-            queryContext: { ...publicContext(), sourceIds: ["src_9"] },
+            queryContext: {
+              ...publicContext(),
+              sourceScope: "selected" as const,
+              sourceIds: ["src_9"],
+            },
           },
         }),
       ],

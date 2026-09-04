@@ -5,7 +5,12 @@ import {
   readMigrationFiles,
 } from "../../../analytics-api/src/database/migrations";
 import { ProjectsController } from "../controllers/ProjectsController";
-import { verifyQueryContextToken } from "../utils/queryContextToken";
+import {
+  verifyQueryContextToken,
+  resolveTokenKeyConfig,
+} from "../utils/queryContextToken";
+import { measureMetrics, clearMetricSnapshotCache } from "../utils/projectMetrics";
+import { queryContextFingerprint } from "@prism-analytics/types";
 import { makeMockDb, makeCtx } from "./helpers";
 
 vi.mock("../managers/DatabaseManager", () => ({
@@ -188,11 +193,25 @@ describe("GET /projects/:slug/metrics", () => {
     expect(result.__status).toBe(503);
   });
 
-  it("never widens an unknown-only source filter to all data (R3-F1)", async () => {
+  it("never widens an unknown-only source filter to all data (R3-F1, R4-F1)", async () => {
     type Body = {
       queryContextToken: string;
-      queryContext: { sourceIds: string[] };
-      facts: Array<{ metricId: string; value: number | null }>;
+      queryContext: {
+        sourceScope: "all" | "selected";
+        sourceIds: string[];
+        from: number;
+        to: number;
+        compareFrom: number;
+        compareTo: number;
+        asOf: number;
+      };
+      facts: Array<{
+        metricId: string;
+        value: number | null;
+        filters: Record<string, unknown>;
+        drilldown: { filters?: Record<string, unknown> };
+        queryContext: { sourceScope: "all" | "selected"; sourceIds: string[] };
+      }>;
     };
     const call = async (query: Record<string, string>) =>
       (
@@ -201,9 +220,26 @@ describe("GET /projects/:slug/metrics", () => {
           __status?: number;
         }
       ).__json;
-    // Unknown-only: successful zeros over the empty scope, with a token
-    // bound to that same empty scope (indistinguishable from nothing —
-    // because the scope really is nothing).
+    const callMulti = async (
+      base: Record<string, string>,
+      sourceIds: string[],
+    ) => {
+      const ctx = ctxFor(USER_ID, base);
+      const queries = (ctx as unknown as { req: { queries: unknown } }).req
+        .queries as unknown as ReturnType<typeof vi.fn>;
+      const baseQueries = queries.getMockImplementation();
+      queries.mockImplementation((key: string) => {
+        if (key === "sourceId") return sourceIds;
+        return baseQueries ? baseQueries(key) : [];
+      });
+      return (
+        (await ProjectsController.getMetrics(ctx)) as {
+          __json?: Body;
+          __status?: number;
+        }
+      ).__json;
+    };
+    // Unknown-only: successful zeros over an explicit empty intersection.
     const narrowed = await call({
       ids: "project.accepted_events",
       range: "7d",
@@ -215,6 +251,15 @@ describe("GET /projects/:slug/metrics", () => {
       )?.value,
     ).toBe(0);
     expect(narrowed?.queryContext.sourceIds).toEqual([]);
+    expect(narrowed?.queryContext.sourceScope).toBe("selected");
+    const fact = narrowed?.facts.find(
+      (entry) => entry.metricId === "project.accepted_events",
+    );
+    expect(fact?.filters).toMatchObject({ sourceScope: "selected" });
+    expect(fact?.drilldown.filters).toMatchObject({
+      sourceScope: "selected",
+    });
+    expect(fact?.queryContext.sourceScope).toBe("selected");
     const verified = await verifyQueryContextToken(
       narrowed?.queryContextToken ?? "",
       {
@@ -225,16 +270,100 @@ describe("GET /projects/:slug/metrics", () => {
       },
     );
     expect(verified.ok).toBe(true);
-    // Known-plus-unknown narrows to the known source.
-    const mixed = await call({
+    if (verified.ok) {
+      expect(verified.context.sourceScope).toBe("selected");
+      expect(verified.context.sourceIds).toEqual([]);
+    }
+    // Unfiltered all-scope shares `[]` but never aliases: fingerprints
+    // differ and the token scopes differ.
+    const unfiltered = await call({
       ids: "project.accepted_events",
       range: "7d",
-      sourceId: "src_web_1",
     });
+    expect(unfiltered?.queryContext.sourceScope).toBe("all");
     expect(
-      mixed?.facts.find((fact) => fact.metricId === "project.accepted_events")
+      queryContextFingerprint({
+        ...(unfiltered?.queryContext as Body["queryContext"]),
+        timezone: "UTC",
+        definitionVersion: 1,
+      } as never),
+    ).not.toBe(
+      queryContextFingerprint({
+        ...(narrowed?.queryContext as Body["queryContext"]),
+        timezone: "UTC",
+        definitionVersion: 1,
+      } as never),
+    );
+    // Canonical follow-up: reusing the unknown-only token through verify
+    // plus a scoped re-measure stays empty, while the all-scope re-measure
+    // over the same IDs sees the seeded event.
+    if (verified.ok) {
+      clearMetricSnapshotCache();
+      const window = {
+        from: verified.context.from,
+        to: verified.context.to,
+        compareFrom: verified.context.compareFrom,
+        compareTo: verified.context.compareTo,
+        asOf: verified.context.asOf,
+      };
+      const caps = {
+        web: true,
+        mobile: false,
+        server: false,
+        errorCollection: { configured: false, observed: false },
+        standardEventsObserved: [],
+        sources: { total: 1, active: 1, lastReceivedAt: null },
+        trafficPolicy: "human" as const,
+      };
+      const emptyFollowup = await measureMetrics(
+        analytics as never,
+        PROJECT_ID,
+        window,
+        {
+          sourceScope: verified.context.sourceScope,
+          sourceIds: [...verified.context.sourceIds],
+        },
+        [{ metricId: "project.accepted_events", filters: { sourceIds: [] } }],
+        { capabilities: caps, now: verified.context.asOf },
+      );
+      expect(emptyFollowup[0]?.value).toBe(0);
+      const allFollowup = await measureMetrics(
+        analytics as never,
+        PROJECT_ID,
+        window,
+        { sourceScope: "all", sourceIds: [] },
+        [{ metricId: "project.accepted_events" }],
+        { capabilities: caps, now: verified.context.asOf },
+      );
+      expect(allFollowup[0]?.value).toBe(1);
+      clearMetricSnapshotCache();
+    }
+    // Real repeated query: known-plus-unknown narrows to the known source
+    // (not a single-value stand-in).
+    const mixed = await callMulti(
+      { ids: "project.accepted_events", range: "7d" },
+      ["src_web_1", "src_unknown"],
+    );
+    expect(
+      mixed?.facts.find((entry) => entry.metricId === "project.accepted_events")
         ?.value,
     ).toBe(1);
+    expect(mixed?.queryContext.sourceScope).toBe("selected");
+    expect(mixed?.queryContext.sourceIds).toEqual(["src_web_1"]);
+    // Duplicate source IDs fail with the same non-disclosing filter error.
+    const dupCtx = ctxFor(USER_ID, {
+      ids: "project.accepted_events",
+      range: "7d",
+    });
+    const dupQueries = (dupCtx as unknown as { req: { queries: unknown } })
+      .req.queries as unknown as ReturnType<typeof vi.fn>;
+    dupQueries.mockImplementation((key: string) =>
+      key === "sourceId" ? ["src_web_1", "src_web_1"] : [],
+    );
+    expect(
+      ((await ProjectsController.getMetrics(dupCtx)) as { __status?: number })
+        .__status,
+    ).toBe(400);
   });
 
   it("rejects unbounded source requests (R3-F1)", async () => {
@@ -297,5 +426,42 @@ describe("GET /projects/:slug/metrics", () => {
       args: [],
     });
     expect(await errorValue()).toBe(0);
+  });
+
+  it("fails closed on blank, short, and invalid signing keys (R4-F3)", async () => {
+    const base = { ids: "project.accepted_events", range: "7d" };
+    const statusFor = async (env: Record<string, string>) =>
+      (
+        (await ProjectsController.getMetrics(
+          ctxFor(USER_ID, base, "member", env),
+        )) as { __status?: number }
+      ).__status;
+    // Blank key, short secret, and overlong kid all fail closed.
+    expect(await statusFor({})).toBe(503);
+    expect(await statusFor({ QUERY_CONTEXT_TOKEN_KEY: "" })).toBe(503);
+    expect(await statusFor({ QUERY_CONTEXT_TOKEN_KEY: "short" })).toBe(503);
+    expect(
+      await statusFor({
+        QUERY_CONTEXT_TOKEN_KEY: "valid-secret-000000",
+        QUERY_CONTEXT_TOKEN_KID: "x".repeat(65),
+      }),
+    ).toBe(503);
+    expect(
+      await statusFor({
+        QUERY_CONTEXT_TOKEN_KEY: "valid-secret-000000",
+        QUERY_CONTEXT_TOKEN_KID: "",
+      }),
+    ).toBe(503);
+    // A valid configuration serves.
+    const ok = (await ProjectsController.getMetrics(
+      ctxFor(USER_ID, base, "member", {
+        QUERY_CONTEXT_TOKEN_KEY: "valid-secret-000000",
+      }),
+    )) as { __json?: { queryContextToken: string } };
+    expect(typeof ok.__json?.queryContextToken).toBe("string");
+    // The validated-config resolver enforces the same policy directly.
+    expect(() =>
+      resolveTokenKeyConfig({ QUERY_CONTEXT_TOKEN_KEY: "short" }),
+    ).toThrow();
   });
 });

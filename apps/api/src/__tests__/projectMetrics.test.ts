@@ -7,10 +7,13 @@ import {
 import {
   personIdForAnonymous,
   personIdForUser,
+  identityClaimStatement,
+  identityMutationStatements,
 } from "../../../analytics-api/src/utils/identityResolution";
 import { peopleList } from "../utils/peopleStore";
 import {
   MetricFactSchema,
+  isSnapshotReplayable,
   type MetricFact,
   type ProjectCapabilities,
 } from "@prism-analytics/types";
@@ -131,11 +134,26 @@ async function measure(
   capabilities: ProjectCapabilities = CAPABILITIES,
   memo?: Map<string, unknown>,
 ) {
+  // R4-F1: the shared snapshot scope is explicit. Derive it from the
+  // batch's own filters so scoped reads carry `selected` (even when the
+  // narrowed list is empty) and unfiltered reads carry `all`.
+  const firstExplicit = requests.find(
+    (request) =>
+      (request as { filters?: { sourceIds?: unknown } }).filters?.sourceIds !==
+      undefined,
+  ) as { filters?: { sourceIds?: string[] } } | undefined;
+  const scope =
+    firstExplicit?.filters?.sourceIds !== undefined
+      ? {
+          sourceScope: "selected" as const,
+          sourceIds: [...(firstExplicit.filters.sourceIds ?? [])],
+        }
+      : { sourceScope: "all" as const, sourceIds: [] as string[] };
   return measureMetrics(
     client as unknown as CanonicalClient,
     P,
     window,
-    [],
+    scope,
     requests as never,
     { capabilities, memo, now: NOW },
   );
@@ -571,7 +589,9 @@ describe("canonical event and session aggregates", () => {
     const fact = factById(facts, "project.accepted_events");
     // excludes e7/e11 (server) and se1..se3 (mobile): 19 - 2 - 3 = 14.
     expect(fact.value).toBe(14);
-    expect(fact.filters).toEqual({ sourceId: W });
+    expect(fact.filters).toEqual({ sourceId: W, sourceScope: "selected" });
+    expect(fact.queryContext.sourceScope).toBe("selected");
+    expect(fact.queryContext.sourceIds).toEqual([W]);
   });
 
   it("counts sessions started in range from sessions_v2", async () => {
@@ -760,7 +780,10 @@ describe("canonical mobile facts reuse task-18 definitions", () => {
       { metricId: "mobile.app_opens", filters: { os: "ios" } },
     ]);
     expect(factById(facts, "mobile.app_opens").value).toBe(1);
-    expect(factById(facts, "mobile.app_opens").filters).toEqual({ os: "ios" });
+    expect(factById(facts, "mobile.app_opens").filters).toEqual({
+      os: "ios",
+      sourceScope: "all",
+    });
   });
 });
 
@@ -1392,6 +1415,7 @@ describe("currency overflow and response bounds (R3-F4)", () => {
         compareTo: FROM,
         asOf: NOW,
         timezone: "UTC",
+        sourceScope: "all",
         sourceIds: [],
         definitionVersion: 1,
       },
@@ -1501,13 +1525,14 @@ describe("error snapshot semantics (R3-F5)", () => {
     expect(
       (await scoped("errors.regressing_issues")).map((fact) => fact.value),
     ).toEqual([0]);
-    // Unresolved reflects CURRENT status (iss_late + iss_hist) with an
-    // explicit historical-snapshot warning — never silent history.
+    // R4-F4: unresolved is current-only — historical snapshots return a
+    // typed unavailable (null), never a numeric value with only a warning.
     const unresolved = await scoped("errors.unresolved_issues");
-    expect(unresolved.map((fact) => fact.value)).toEqual([2]);
+    expect(unresolved.map((fact) => fact.value)).toEqual([null]);
+    expect(unresolved[0]?.formattedValue).toBe("—");
     expect(
       unresolved[0]?.coverage.warnings.some((warning) =>
-        warning.includes("current issue status"),
+        warning.includes("current-only"),
       ),
     ).toBe(true);
     expect(unresolved[0]?.coverageNote).toMatch(/not a historical snapshot/);
@@ -1532,5 +1557,200 @@ describe("error snapshot semantics (R3-F5)", () => {
       ]).then((facts) => factById(facts, "errors.affected_identities").value);
     expect(await scoped("2.4.1")).toBe(2); // e_a1, e_a2
     expect(await scoped("2.3.0")).toBe(1); // e_a4
+  });
+});
+
+describe("stable anonymous subjects across real identify merges (R4-F2)", () => {
+  it("keeps two historical subjects after both identify to one user", async () => {
+    const PX = "proj_ident_hist";
+    const anonA = "histA";
+    const anonB = "histB";
+    const user = "u_merge";
+    const aA = personIdForAnonymous(PX, anonA);
+    const aB = personIdForAnonymous(PX, anonB);
+    const u = personIdForUser(PX, user);
+    const tA = FROM + 1000;
+    const tB = FROM + 2000;
+    const asOfHist = FROM + 5000;
+    const receivedIdentify = NOW;
+    // Two anonymous-only people with one event each (immutable anon IDs).
+    await exec(
+      "INSERT INTO people (person_id, project_id, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?)",
+      [aA, PX, tA, tA],
+    );
+    await exec(
+      "INSERT INTO people (person_id, project_id, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?)",
+      [aB, PX, tB, tB],
+    );
+    const seedHist = async (id: string, anon: string, person: string, at: number) =>
+      exec(
+        `INSERT INTO events (id, project_id, type, name, schema_version, occurred_at,
+          received_at, session_id, anonymous_id, user_id, person_id, properties,
+          context, sdk_name, sdk_version, source_id, platform)
+         VALUES (?, ?, 'track', 'click', 1, ?, ?, NULL, ?, NULL, ?, '{}', NULL, NULL, NULL, 's', 'web')`,
+        [id, PX, at, at, anon, person],
+      );
+    await seedHist("hA", anonA, aA, tA);
+    await seedHist("hB", anonB, aB, tB);
+    const snapHist: MetricWindow = {
+      from: FROM,
+      to: NOW,
+      compareFrom: CFROM,
+      compareTo: FROM,
+      asOf: asOfHist,
+    };
+    const caps: ProjectCapabilities = {
+      ...CAPABILITIES,
+      standardEventsObserved: [],
+    };
+    const readHist = (metricId: string) =>
+      measureMetrics(
+        client as unknown as CanonicalClient,
+        PX,
+        snapHist,
+        { sourceScope: "all", sourceIds: [] },
+        [{ metricId }],
+        { capabilities: caps, now: NOW },
+      ).then((facts) => (facts as MetricFact[])[0]?.value);
+    expect(await readHist("project.active_anonymous")).toBe(2);
+    expect(await readHist("project.active_people")).toBe(0);
+    // Real production identify flow: claim + mutations per op, sequential.
+    for (const [opId, anon] of [
+      ["opA", anonA],
+      ["opB", anonB],
+    ] as const) {
+      const op = {
+        opId,
+        userId: user,
+        anonymousId: anon,
+        occurredAt: asOfHist + 100,
+      };
+      const claim = identityClaimStatement(PX, op, receivedIdentify, u);
+      const claimed = await client.execute({
+        sql: claim.sql,
+        args: claim.args as Array<string | number | null>,
+      });
+      expect(Number(claimed.rowsAffected ?? 0)).toBe(1);
+      for (const statement of identityMutationStatements(
+        PX,
+        op,
+        receivedIdentify,
+        u,
+      )) {
+        await client.execute({
+          sql: statement.sql,
+          args: statement.args as Array<string | number | null>,
+        });
+      }
+    }
+    clearMetricSnapshotCache();
+    // Old snapshot is immutable: still two anonymous subjects, zero identified.
+    expect(await readHist("project.active_anonymous")).toBe(2);
+    expect(await readHist("project.active_people")).toBe(0);
+    // Current view reflects the merge: one identified person, no anonymous.
+    const snapNow: MetricWindow = { ...snapHist, asOf: NOW };
+    const readNow = (metricId: string) =>
+      measureMetrics(
+        client as unknown as CanonicalClient,
+        PX,
+        snapNow,
+        { sourceScope: "all", sourceIds: [] },
+        [{ metricId }],
+        { capabilities: caps, now: NOW },
+      ).then((facts) => (facts as MetricFact[])[0]?.value);
+    expect(await readNow("project.active_people")).toBe(1);
+    expect(await readNow("project.active_anonymous")).toBe(0);
+    clearMetricSnapshotCache();
+  });
+});
+
+describe("current-only status and release cutoffs (R4-F4)", () => {
+  it("marks unresolved historical facts unavailable and gates insights", () => {
+    expect(isSnapshotReplayable("errors.unresolved_issues")).toBe(false);
+    expect(isSnapshotReplayable("errors.new_issues")).toBe(true);
+    expect(isSnapshotReplayable("errors.regressing_issues")).toBe(true);
+    expect(isSnapshotReplayable("project.accepted_events")).toBe(true);
+  });
+
+  it("replays the exact historical response after resolve/reopen and a new release", async () => {
+    const PX = "proj_err_replay";
+    const issueId = "iss_r1";
+    await exec(
+      `INSERT INTO error_issues (id, project_id, platform, fingerprint_version, fingerprint, level, status, title, first_seen_at, last_seen_at, occurrence_count, users_affected, first_release, last_release)
+       VALUES (?, ?, 'web', 1, ?, 'error', 'unresolved', ?, ?, ?, 0, 0, ?, ?)`,
+      [issueId, PX, `fp-${issueId}`, `Title ${issueId}`, FROM + 100, NOW, "2.4.1", "2.4.1"],
+    );
+    await exec(
+      `INSERT INTO error_occurrences (id, client_event_id, issue_id, project_id, source_id, platform, level, handled, occurred_at, received_at, release, environment, anonymous_id, payload)
+       VALUES (?, ?, ?, ?, 's', 'web', 'error', 0, ?, ?, ?, 'production', 'r1', '{}')`,
+      ["rr1", "c-rr1", issueId, PX, FROM + 100, FROM + 100, "2.4.1"],
+    );
+    const asOfHist = FROM + 1000;
+    const snapHist: MetricWindow = {
+      from: FROM,
+      to: NOW,
+      compareFrom: CFROM,
+      compareTo: FROM,
+      asOf: asOfHist,
+    };
+    const readHist = async () =>
+      (await measureMetrics(
+        client as unknown as CanonicalClient,
+        PX,
+        snapHist,
+        { sourceScope: "all", sourceIds: [] },
+        [
+          { metricId: "errors.new_issues" },
+          { metricId: "errors.regressing_issues" },
+          { metricId: "errors.unresolved_issues" },
+          {
+            metricId: "errors.new_issues",
+            filters: { release: "2.4.1" },
+          },
+          {
+            metricId: "errors.new_issues",
+            filters: { release: "9.9" },
+          },
+        ],
+        { capabilities: CAPABILITIES, now: NOW },
+      )) as MetricFact[];
+    const before = await readHist();
+    const factValue = (facts: MetricFact[], id: string, release?: string) =>
+      facts.find(
+        (fact) =>
+          fact.metricId === id &&
+          (release === undefined
+            ? fact.filters.release === undefined
+            : fact.filters.release === release),
+      )?.value;
+    expect(factValue(before, "errors.new_issues")).toBe(1);
+    expect(factValue(before, "errors.new_issues", "2.4.1")).toBe(1);
+    expect(factValue(before, "errors.new_issues", "9.9")).toBe(0);
+    expect(factValue(before, "errors.unresolved_issues")).toBeNull();
+    // Post-snapshot mutations: user resolves, then a later receipt in a new
+    // release reopens (mutable projection moves to 9.9 + resolved→unresolved).
+    await exec("UPDATE error_issues SET status = 'resolved' WHERE id = ?", [
+      issueId,
+    ]);
+    await exec(
+      `INSERT INTO error_occurrences (id, client_event_id, issue_id, project_id, source_id, platform, level, handled, occurred_at, received_at, release, environment, anonymous_id, payload)
+       VALUES (?, ?, ?, ?, 's', 'web', 'error', 0, ?, ?, ?, 'production', 'r2', '{}')`,
+      ["rr2", "c-rr2", issueId, PX, FROM + 200, NOW + 9000, "9.9"],
+    );
+    await exec(
+      "UPDATE error_issues SET status = 'unresolved', last_release = '9.9', last_seen_at = ? WHERE id = ?",
+      [FROM + 200, issueId],
+    );
+    clearMetricSnapshotCache();
+    const after = await readHist();
+    // Exact replay: identical values, with historical unresolved still an
+    // explicit unavailable — never a moved numeric.
+    expect(after.map((fact) => [fact.id, fact.value])).toEqual(
+      before.map((fact) => [fact.id, fact.value]),
+    );
+    expect(factValue(after, "errors.new_issues", "2.4.1")).toBe(1);
+    expect(factValue(after, "errors.new_issues", "9.9")).toBe(0);
+    expect(factValue(after, "errors.unresolved_issues")).toBeNull();
+    clearMetricSnapshotCache();
   });
 });

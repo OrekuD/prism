@@ -43,6 +43,7 @@ function metricFact(metricId: string, value: number | null) {
       compareTo: 1,
       asOf: 2,
       timezone: "UTC",
+      sourceScope: "all",
       sourceIds: [],
       definitionVersion: 1,
     },
