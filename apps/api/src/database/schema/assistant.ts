@@ -1,5 +1,5 @@
 /**
- * Assistant control-plane tables (Task 21 slice 4, hardened per R12).
+ * Assistant control-plane tables (Task 21 slice 4, hardened per R12+R13).
  *
  * Durable foundation for conversations, messages, runs, typed memory, and
  * audit history — without invoking any model. All assistant reads/writes
@@ -7,25 +7,33 @@
  * multi-statement transactions), so the same code runs on Neon HTTP
  * (Cloudflare Worker) and postgres-js (Node).
  *
- * Tenant binding (R12-F3): single-column existence FKs live here; the
- * COMPOSITE (project, organization) pairing constraints live in
- * migration 0005 as raw SQL (this drizzle-kit version cannot snapshot
- * table-level composite foreign keys). Together they guarantee a project
- * row can never pair with another workspace's organization. Run rows
- * additionally derive project/user from their conversation at insert
- * time (see the store).
+ * Tenant binding (R12-F3, R13-F4): single-column existence FKs live here;
+ * the COMPOSITE (project, organization) pairing constraints and the
+ * run message/conversation binding live in migrations 0005/0006 as raw SQL
+ * (this drizzle-kit version cannot snapshot table-level composite foreign
+ * keys). Together they guarantee a project row can never pair with another
+ * workspace's organization, and a run row can never borrow a message from
+ * another conversation. Run rows additionally derive project/user from
+ * their conversation at insert time (see the store).
  *
- * Slot invariant (R12-F2): at most one `confirmed` record per canonical
- * slot lives in migration 0005 as a DEFERRABLE exclusion constraint
- * (also raw SQL — drizzle cannot express it).
+ * Slot invariant (R12-F2, R13-F5): at most one `confirmed` record per
+ * canonical slot lives in migration 0006 as a DEFERRABLE exclusion
+ * constraint over `slot_term` (also raw SQL — drizzle cannot express it).
+ * `slot_term` is the normalized business-term discriminator
+ * (`canonicalBusinessTermName`); every other key stores `''`. Display
+ * spelling stays verbatim in `payload.name`.
  *
  * Durable checks (R12-F5): enums, non-negative times, step bounds, the
- * frozen definition version, running/completed timestamp rules, and the
- * idempotency-key/digest pairing below.
+ * frozen definition version, running/completed timestamp rules, the
+ * idempotency-key/digest pairing, digest format (SHA-256 or the single
+ * `legacy-0004-unverifiable` sentinel from the 0005 backfill), and the
+ * slot-term shape below.
  *
- * Idempotency digests (R12-F6): every idempotency key travels with a
- * SHA-256 digest of the request content. A reused key with different
- * content is a conflict, never a silent alias.
+ * Idempotency digests (R12-F6, R13-F1): every idempotency key travels with
+ * a SHA-256 digest of the request content. A reused key with different
+ * content is a conflict, never a silent alias. Pre-digest 0004 rows carry
+ * the backfilled sentinel and are treated as unverifiable — never as
+ * verified retries.
  *
  * Conventions:
  * - IDs are opaque prefixed text (`conv_`, `msg_`, `run_`, `mem_`, `ma_`).
@@ -106,6 +114,10 @@ export const assistantConversations = pgTable(
       "assistant_conversations_digest_check",
       sql`("client_request_id" IS NULL) = ("request_digest" IS NULL)`,
     ),
+    check(
+      "assistant_conversations_digest_format_check",
+      sql`"request_digest" IS NULL OR "request_digest" ~ '^[0-9a-f]{64}$' OR "request_digest" = 'legacy-0004-unverifiable'`,
+    ),
   ],
 );
 
@@ -145,6 +157,13 @@ export const assistantMessages = pgTable(
     uniqueIndex("assistant_messages_request_uidx")
       .on(table.conversationId, table.clientRequestId)
       .where(sql`"client_request_id" IS NOT NULL`),
+    // R13-F4 backstop: the composite run FK targets (id, conversation_id),
+    // so the pair needs its own unique constraint (the PK on id alone is
+    // not a composite FK target).
+    unique("assistant_messages_identity_uidx").on(
+      table.id,
+      table.conversationId,
+    ),
     check(
       "assistant_messages_shape_check",
       sql`"role" IN ('user', 'assistant') AND "status" IN ('pending', 'streaming', 'complete', 'cancelled', 'failed') AND "seq" >= 0 AND "created_at" >= 0 AND ("completed_at" IS NULL OR "completed_at" >= 0) AND ((("status" IN ('complete', 'cancelled', 'failed')) AND "completed_at" IS NOT NULL) OR (("status" IN ('pending', 'streaming')) AND "completed_at" IS NULL))`,
@@ -152,6 +171,10 @@ export const assistantMessages = pgTable(
     check(
       "assistant_messages_digest_check",
       sql`("client_request_id" IS NULL) = ("request_digest" IS NULL)`,
+    ),
+    check(
+      "assistant_messages_digest_format_check",
+      sql`"request_digest" IS NULL OR "request_digest" ~ '^[0-9a-f]{64}$' OR "request_digest" = 'legacy-0004-unverifiable'`,
     ),
   ],
 );
@@ -206,9 +229,12 @@ export const assistantRuns = pgTable(
 /**
  * Typed memory across project/workspace/member scopes. Proposals are
  * `proposed`-status records — no separate proposals table; the
- * one-confirmed-per-slot exclusion constraint (migration 0005) plus
- * conditional `UPDATE ... WHERE status='proposed'` resolve confirmation
- * races. Member preferences persist directly as `confirmed` (R12-F7).
+ * one-confirmed-per-slot exclusion constraint (migration 0006, over
+ * `slot_term`) plus conditional `UPDATE ... WHERE status='proposed'`
+ * resolve confirmation races. Member preferences persist directly as
+ * `confirmed` (R12-F7). `slot_term` is the normalized business-term slot
+ * (`canonicalBusinessTermName`); all other keys store `''`, enforced by
+ * `assistant_memory_slot_term_check`. Display spelling stays in payload.
  */
 export const assistantMemory = pgTable(
   DatabaseTables.ASSISTANT_MEMORY,
@@ -236,6 +262,11 @@ export const assistantMemory = pgTable(
     confirmerId: text("confirmer_id"),
     createdAt: bigint("created_at", { mode: "number" }).notNull(),
     updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
+    /**
+     * Normalized business-term slot (R13-F5). `canonicalBusinessTermName`
+     * of `payload.name` when `key = 'business-term'`, else `''`.
+     */
+    slotTerm: text("slot_term").notNull().default(""),
   },
   (table) => [
     index("assistant_memory_project_idx").on(
@@ -253,6 +284,10 @@ export const assistantMemory = pgTable(
     check(
       "assistant_memory_shape_check",
       sql`"scope" IN ('project', 'workspace', 'member') AND "status" IN ('proposed', 'confirmed', 'superseded', 'rejected') AND "created_at" >= 0 AND "updated_at" >= 0 AND "version" >= 0`,
+    ),
+    check(
+      "assistant_memory_slot_term_check",
+      sql`(("key" <> 'business-term') AND ("slot_term" = '')) OR (("key" = 'business-term') AND ("slot_term" = assistant_canonical_term("payload" ->> 'name')))`,
     ),
   ],
 );

@@ -43,6 +43,13 @@
       "when": 1788494443381,
       "tag": "0005_strange_iron_man",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788496439046,
+      "tag": "0006_tiny_guardsmen",
+      "breakpoints": true
     }
   ]
 }

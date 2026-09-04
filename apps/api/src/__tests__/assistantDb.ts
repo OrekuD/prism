@@ -143,3 +143,100 @@ export async function startEphemeralPostgres(
   await migrate(drizzle(sql), { migrationsFolder });
   return { sql, stop };
 }
+
+/**
+ * Bare cluster without any migrations (R13-F1 upgrade tests). The caller
+ * applies selected migration files via `applyMigrationFile` to simulate a
+ * populated 0004 database upgrading through 0005/0006.
+ */
+export async function startEphemeralPostgresBare(
+  dbName = "assistant_test",
+): Promise<EphemeralPostgres> {
+  const dir = binDir();
+  if (!dir) throw new Error("local postgres binaries not found");
+  const root = await mkdtemp(path.join(os.tmpdir(), "prism-assistant-pg-"));
+  const data = path.join(root, "data");
+  const sock = path.join(root, "sock");
+  await run(path.join(dir, "initdb"), [
+    "-D",
+    data,
+    "-U",
+    "postgres",
+    "--auth=trust",
+    "-E",
+    "UTF8",
+  ]);
+  await mkdir(sock, { recursive: true });
+  const port = await freePort();
+  await run(path.join(dir, "pg_ctl"), [
+    "-D",
+    data,
+    "-l",
+    path.join(root, "log"),
+    "-o",
+    `-p ${port} -k ${sock} -c listen_addresses='127.0.0.1' -c max_connections='20' -c log_min_messages='FATAL'`,
+    "start",
+  ]);
+  let stopped = false;
+  const stop = async (): Promise<void> => {
+    if (stopped) return;
+    stopped = true;
+    try {
+      await sql.end({ timeout: 2 });
+    } catch {
+      // Client may already be closed.
+    }
+    try {
+      await run(path.join(dir, "pg_ctl"), ["-D", data, "stop", "-m", "fast"]);
+    } catch {
+      // Best effort; the tmpdir is removed regardless.
+    }
+    await rm(root, { recursive: true, force: true });
+  };
+  const admin = postgres({
+    host: "127.0.0.1",
+    port,
+    user: "postgres",
+    database: "postgres",
+    max: 1,
+  });
+  await admin.unsafe(`CREATE DATABASE "${dbName}"`);
+  await admin.end();
+  const sql = postgres({
+    host: "127.0.0.1",
+    port,
+    user: "postgres",
+    database: dbName,
+    max: 10,
+  });
+  // Match the migrated path: wrapping with drizzle() registers the
+  // postgres-js JSON parsers the store relies on (bare clients otherwise
+  // return jsonb as strings).
+  void drizzle(sql);
+  return { sql, stop };
+}
+
+/**
+ * Apply one Drizzle SQL file statement-by-statement (split on the
+ * `-->` statement-breakpoint marker, comments preserved per-statement).
+ * Used to replay exact migration files in upgrade tests.
+ */
+export async function applyMigrationFile(
+  sql: ReturnType<typeof postgres>,
+  filePath: string,
+): Promise<void> {
+  const { readFileSync } = await import("node:fs");
+  const text = readFileSync(filePath, "utf8");
+  const statements = text
+    .split("--> statement-breakpoint")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+  for (const stmt of statements) {
+    await sql.unsafe(stmt);
+  }
+}
+
+export function drizzleFolder(): string {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  return path.resolve(here, "../../drizzle");
+}

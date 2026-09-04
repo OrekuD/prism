@@ -1,5 +1,15 @@
 ALTER TABLE "assistant_conversations" ADD COLUMN "request_digest" text;--> statement-breakpoint
 ALTER TABLE "assistant_messages" ADD COLUMN "request_digest" text;--> statement-breakpoint
+-- ============================================================================
+-- R13-F1: legacy backfill BEFORE the key/digest pairing checks. Populated
+-- 0004 databases hold conversations/messages with a non-null
+-- client_request_id and a NULL digest (the column did not exist). The new
+-- CHECKs validate existing rows, so they must see an explicit legacy
+-- representation — never a NULL. New rows always write verified SHA-256
+-- (see assistantStore.ts); only this sentinel is treated as unverifiable.
+-- ============================================================================
+UPDATE "assistant_conversations" SET "request_digest" = 'legacy-0004-unverifiable' WHERE "client_request_id" IS NOT NULL AND "request_digest" IS NULL;--> statement-breakpoint
+UPDATE "assistant_messages" SET "request_digest" = 'legacy-0004-unverifiable' WHERE "client_request_id" IS NOT NULL AND "request_digest" IS NULL;--> statement-breakpoint
 CREATE UNIQUE INDEX "project_tenant_uidx" ON "projects" USING btree ("id","organization_id");--> statement-breakpoint
 ALTER TABLE "assistant_conversations" ADD CONSTRAINT "assistant_conversations_identity_uidx" UNIQUE("id","project_id","user_id");--> statement-breakpoint
 ALTER TABLE "assistant_conversations" ADD CONSTRAINT "assistant_conversations_times_check" CHECK ("created_at" >= 0 AND "updated_at" >= 0 AND ("last_message_at" IS NULL OR "last_message_at" >= 0));--> statement-breakpoint
@@ -28,5 +38,7 @@ ALTER TABLE "assistant_runs" ADD CONSTRAINT "assistant_runs_conversation_tenant_
 -- statement) commits, while concurrent same-slot confirms serialize at
 -- commit: exactly one wins, the loser rolls back entirely.
 -- Exclusion-violation code is 23P01 (handle beside 23505 in the store).
+-- NOTE (R13-F5): 0006 replaces this exact-match term discriminator with
+-- the normalized `slot_term` column. Do not add new term logic here.
 -- ============================================================================
 ALTER TABLE "assistant_memory" ADD CONSTRAINT "assistant_memory_one_confirmed_per_slot" EXCLUDE USING btree ("organization_id" WITH =, "scope" WITH =, "key" WITH =, COALESCE("project_id"::text, '') WITH =, COALESCE("subject_user_id", '') WITH =, COALESCE("payload"->>'name', '') WITH =) WHERE ("status" = 'confirmed') DEFERRABLE INITIALLY DEFERRED;

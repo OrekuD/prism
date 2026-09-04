@@ -4390,3 +4390,219 @@ Evidence: api 390 passed | 19 skipped (27 files: 25 passed | 2 skipped),
 types 95 passed (4 files), web green except pre-existing gallery
 calendar failure, api/web typechecks clean, api lint clean,
 `git diff --check` clean. Race-sensitive suites re-run 3x stable.
+
+## Feedback: review round 13
+
+This focused re-review covers commit `f28ec6a` against `052674f`. Atomic
+conversation creation and the competing-proposal slot race are materially
+improved. Five remaining gaps prevent all R12 invariants from being considered
+closed, including two failure modes that the fresh-database tests cannot see.
+
+Slice 4 remains **In progress**. Resolve the two high-severity findings and the
+member-memory applicability issue before Slice 5 reads this state into an agent
+run. No broad test, lint, typecheck, or build gates were rerun.
+
+### R13-F1 - Migration 0005 rejects populated 0004 idempotency rows
+
+**Severity:** High
+**Status:** Closed (reopens R12-F5/R12-F6)
+
+Migration `0005_strange_iron_man.sql` adds nullable `request_digest` columns
+and then immediately adds checks requiring `client_request_id` and
+`request_digest` to be null or non-null together. Every conversation and
+message created by the Slice 4 implementation has a non-null client request ID,
+but receives a null digest when the column is added. PostgreSQL validates a new
+`CHECK` against existing rows by default, so the migration fails on the first
+such row.
+
+`checkDigestMatch()` says pre-digest null rows are grandfathered, but those rows
+can never survive the migration that is supposed to grandfather them. The
+ephemeral tests apply all migrations to empty databases and therefore do not
+exercise an upgrade from a populated 0004 database.
+
+**How to address:**
+
+1. [x] Define an explicit legacy representation before enabling the check. For
+       example, backfill a versioned legacy sentinel and teach digest matching
+       to treat only that sentinel as unverifiable. Do not treat arbitrary null
+       digests created after migration as valid retries.
+2. [x] Add the final key/digest constraint only after the backfill is complete.
+       Keep new rows on the verified SHA-256 path.
+3. [x] Add a migration-upgrade regression that applies through 0004, inserts
+       conversations and messages with idempotency keys, applies 0005, and
+       proves the rows remain readable while new mismatched retries fail.
+4. [x] Cover both populated and empty upgrades. A fresh-schema migration test
+       alone is insufficient evidence for this finding.
+
+### R13-F2 - User purge modifies the same rows from competing CTEs
+
+**Severity:** High
+**Status:** Closed (reopens R12-F4)
+
+`purgeAssistantUserData()` is one SQL statement, but its data-modifying CTEs
+are not a safe atomic algorithm. `m` deletes member-memory rows while `t1` can
+update those same rows through `proposer_id`. A shared record for which the
+deleted user both proposed and confirmed is targeted independently by `t1` and
+`t2`. Audit rows deleted by the memory cascade may also be targeted by `t3`.
+
+PostgreSQL executes sibling data-modifying CTEs with the same snapshot and does
+not provide a predictable order. Modifying the same row twice in one statement
+has an unspecified winner. The result can retain a member preference or leave
+one of `proposer_id` and `confirmer_id` equal to the deleted user even though
+the helper returns successfully.
+
+The success test deletes one member preference and checks only
+`proposerId` on one unconfirmed shared record. It does not cover a record with
+both provenance fields, surviving audit attribution, or repeated executions
+that expose the overlapping target sets. The fault test throws before the SQL
+statement runs, so it proves statement-level rollback but not correct success
+semantics.
+
+**How to address:**
+
+1. [x] Make the mutation target sets disjoint. Exclude member records being
+       deleted from surviving-memory updates, and combine proposer/confirmer
+       tombstoning into one `UPDATE` with two `CASE` expressions.
+2. [x] Exclude audits belonging to deleted memory from the audit update and
+       let their cascade own deletion. Add explicit data dependencies where
+       later CTEs rely on earlier result sets.
+3. [x] Add a confirmed shared record where the same user is proposer,
+       confirmer, and audit actor, alongside a member preference. After purge,
+       the preference and its audit must be absent, and every surviving user
+       reference must equal the tombstone.
+4. [x] Assert the owning account-deletion integration invokes this operation
+       in the same transaction once that route exists; the helper alone is not
+       yet account-deletion coverage.
+
+### R13-F3 - Project-scoped member preferences leak into every project read
+
+**Severity:** Medium
+**Status:** Closed
+
+The frozen member-memory contract permits `projectId` to be either a concrete
+project or null, and the slot constraint correctly treats those as different
+preference slots. `readConfirmedKnowledge()` ignores `project_id` in its member
+query, however. A preference saved specifically for project A is therefore
+returned while building project B's agent context. If both a workspace-wide
+member preference and a project-specific override exist, both rows are
+returned with the same key and no defined precedence.
+
+The isolation test only creates a null-project preference and intentionally
+observes it from a sibling project. It does not cover the concrete-project form
+allowed by `MemoryRecordSchema`.
+
+**How to address:**
+
+1. [x] Freeze the intended applicability rule. If project-specific preferences
+       are supported, read only null-project defaults plus the requested
+       project and give the project-specific value deterministic precedence.
+       Return one effective value per key to the agent.
+2. [x] If comparison range is meant to follow a member across the workspace,
+       simplify the contract by requiring `projectId: null` for member memory
+       and reject concrete project IDs at write time.
+3. [x] Add two-project regressions for the selected rule, including simultaneous
+       global and project-specific values. Project B must never receive project
+       A's preference.
+
+### R13-F4 - A run's message is not bound to its conversation by the database
+
+**Severity:** Medium
+**Status:** Closed (partially reopens R12-F3)
+
+`startRun()` now joins the message to the conversation before inserting, which
+protects the current store path. The durable schema still has only independent
+foreign keys from `assistant_runs.conversation_id` and `message_id`. Raw SQL, a
+future migration, or another repository path can persist a run whose message
+belongs to a different conversation while satisfying every current database
+constraint.
+
+The R12 remediation explicitly required the selected message to belong to the
+same conversation through a composite relationship. The new negative test
+proves only that `startRun()` inserts no row; the raw-SQL FK probe does not
+prove the message/conversation pairing.
+
+**How to address:**
+
+1. [x] Add a unique key on `(assistant_messages.id, conversation_id)` and a
+       composite foreign key from
+       `(assistant_runs.message_id, conversation_id)` to that key.
+2. [x] Keep the `INSERT ... SELECT` join as defense in depth.
+3. [x] Add a raw-SQL regression proving two individually valid IDs from
+       different conversations are rejected by PostgreSQL itself.
+
+### R13-F5 - Business-term slot identity is not normalized
+
+**Severity:** Medium
+**Status:** Closed (partially reopens R12-F2)
+
+The exclusion constraint uses the exact `payload ->> 'name'` value as the
+business-term slot discriminator. The contract accepts leading/trailing
+whitespace and mixed case, so `MRR`, `mrr`, and ` MRR ` are three independent
+confirmed slots. This does not satisfy the requested normalized-term identity
+and can inject contradictory definitions for what a user considers one term.
+
+The existing coexistence test proves genuinely different terms can coexist but
+does not cover spelling variants of the same logical name.
+
+**How to address:**
+
+1. [x] Freeze a canonical term-name function, including at least Unicode-safe
+       whitespace normalization and the intended case policy.
+2. [x] Persist the canonical slot discriminator in a constrained column or use
+       the identical immutable SQL expression in the exclusion constraint.
+       The application and database must not derive different slot identities.
+3. [x] Preserve the user's display spelling separately from the canonical
+       value.
+4. [x] Add sequential and concurrent tests showing spelling variants
+       supersede or conflict within one slot while genuinely different terms
+       still coexist.
+
+### 2026-09-04 — Slice 4 follow-up: R13 review closed (2 high + 3 medium)
+
+Slice 4 returns to complete. All five R13 findings are implemented and
+regression-tested against real PostgreSQL (ephemeral per-file clusters
+with full Drizzle migrations, including the new 0006); the
+high-severity items no longer block Slice 5.
+
+- R13-F1: populated upgrades migrate. 0005 now backfills the versioned,
+  non-hex sentinel `legacy-0004-unverifiable` onto every 0004 row holding
+  an idempotency key BEFORE the pairing CHECKs, and the store grandfathers
+  only that sentinel (post-migration NULLs fail closed as conflicts; new
+  rows stay on verified SHA-256, additionally owned by new format CHECKs).
+  Evidence: upgrade regression applies 0000-0004, inserts keyed legacy
+  rows, applies the exact 0005+0006 files, proves sentinel backfill,
+  store readability, new-key mismatch conflicts, and NULL-digest CHECK
+  rejection — plus an empty-upgrade test proving fresh writes carry
+  verified digests.
+- R13-F2: user purge is disjoint and deterministic. Surviving-memory
+  tombstoning is one UPDATE with two CASEs excluding deleted member rows;
+  audit tombstoning excludes audits of deleted memory (cascade owns them);
+  later CTEs reference `m` explicitly. Evidence: shared project term with
+  the same user as proposer+confirmer+actor plus a member preference —
+  after purge the preference and its audit are absent, every surviving
+  reference equals the tombstone, no raw user ID survives, and a repeat
+  purge is a stable no-op.
+- R13-F3: member applicability frozen with precedence. A preference
+  applies when its project is NULL (workspace-wide default) or the
+  requested project; project-specific wins deterministically and exactly
+  one effective value per key reaches the agent. Evidence: simultaneous
+  global (7d) + project-A override (30d) — A receives only the override,
+  B receives only the default, never A's value.
+- R13-F4: run/message binding owned by the database. 0006 adds
+  UNIQUE(messages.id, conversation_id) plus composite FK
+  runs(message_id, conversation_id) -> messages(id, conversation_id);
+  the INSERT...SELECT join stays as defense in depth. Evidence: raw-SQL
+  regression with two individually valid IDs from different conversations
+  rejected by PostgreSQL, plus the store mismatch inserting nothing.
+- R13-F5: business-term slots normalized. Frozen
+  `canonicalBusinessTermName` (NFKC, Unicode-whitespace collapse, trim,
+  lowercase) persisted to `slot_term` and owned by a CHECK recomputing
+  `assistant_canonical_term(payload->>name)` — app and DB cannot diverge;
+  display spelling stays verbatim; the exclusion now keys on slot_term.
+  Evidence: unit tests, 8-variant DB-function agreement, sequential
+  variant-supersedes + distinct-term-coexists, and concurrent
+  variant-confirm invariant tests.
+
+Evidence: api 398 passed | 19 skipped (27 files: 25 passed | 2 skipped),
+types 96 passed (4 files), api/web typechecks clean, api lint clean,
+`git diff --check` clean. Upgrade + race suites re-run stable.

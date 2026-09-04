@@ -35,6 +35,7 @@ import {
   AssistantMessageSchema,
   AssistantRunSchema,
   canConfirmMemory,
+  canonicalBusinessTermName,
   ConversationSchema,
   decodeConversationCursor,
   DEFINITION_VERSION,
@@ -199,14 +200,47 @@ function checkDigestMatch(
   existingDigest: string | null,
   expectedDigest: string,
 ): void {
-  // Legacy rows predate digests (NULL): grandfather them as matching —
-  // they cannot be verified, but they must not start failing.
-  if (existingDigest !== null && existingDigest !== expectedDigest) {
+  // R13-F1: only the explicit 0005 backfill sentinel is unverifiable.
+  // Pre-digest 0004 rows carry it after migration; a NULL digest beside a
+  // non-null key can only be created after migration by bypassing the
+  // pairing CHECK, so it fails closed as a conflict — never as a silent
+  // alias. New rows always carry verified SHA-256.
+  if (existingDigest === LEGACY_REQUEST_DIGEST) return;
+  if (existingDigest !== expectedDigest) {
     throw new AssistantStoreError(
       "idempotency-conflict",
       "Idempotency key was already used with different content",
     );
   }
+}
+
+/**
+ * Explicit legacy representation (R13-F1): backfilled by migration 0005
+ * onto every 0004 row that already held an idempotency key. Versioned and
+ * non-hex so it can never collide with a verified SHA-256 digest.
+ */
+export const LEGACY_REQUEST_DIGEST = "legacy-0004-unverifiable";
+
+/**
+ * Normalized slot discriminator (R13-F5): `canonicalBusinessTermName`
+ * of the term name for `business-term`, `''` for every other key. The
+ * same value is persisted to `assistant_memory.slot_term` and owned by
+ * the 0006 exclusion constraint — display spelling stays verbatim in
+ * `payload.name`.
+ */
+export function slotTermFor(key: string, payload: unknown): string {
+  if (key !== "business-term") return "";
+  if (
+    typeof payload === "object" &&
+    payload !== null &&
+    "name" in payload &&
+    typeof (payload as { name: unknown }).name === "string"
+  ) {
+    return canonicalBusinessTermName(
+      (payload as { name: string }).name,
+    );
+  }
+  return "";
 }
 
 /* ------------------------------------------------------------------ */
@@ -1433,6 +1467,7 @@ export async function proposeMemory(
   );
 
   async function proposeOnce(): Promise<MemoryRecord> {
+    const slotTerm = slotTermFor(input.key, input.value.payload);
     let rows: Array<Record<string, unknown>>;
     try {
       rows = await db`
@@ -1441,16 +1476,14 @@ export async function proposeMemory(
         -- preferences lock the slot before writing, ordered by id like
         -- every confirm statement. Proposed shared knowledge takes no
         -- slot lock (it cannot conflict with the confirmed invariant).
+        -- R13-F5: slot identity uses the normalized slot_term column.
         SELECT o.id FROM assistant_memory o
         WHERE ${storedStatus} = 'confirmed'
           AND o.organization_id = ${input.organizationId}
           AND o.scope = ${input.scope} AND o."key" = ${input.key}
           AND COALESCE(o.project_id::text, '') = COALESCE(${projectId}::text, '')
           AND COALESCE(o.subject_user_id, '') = COALESCE(${subjectUserId}::text, '')
-          AND (
-            ${input.key} <> 'business-term'
-            OR (o.payload ->> 'name') = ((${JSON.stringify(input.value.payload)}::jsonb) ->> 'name')
-          )
+          AND o.slot_term = ${slotTerm}
           AND o.status = 'confirmed'
         ORDER BY o.id
         FOR UPDATE
@@ -1458,12 +1491,13 @@ export async function proposeMemory(
       m AS (
         INSERT INTO assistant_memory
           (id, organization_id, scope, "key", project_id, subject_user_id,
-           status, version, label, description, payload, proposer_id,
-           confirmer_id, created_at, updated_at)
+           status, version, label, description, payload, slot_term,
+           proposer_id, confirmer_id, created_at, updated_at)
         SELECT ${id}, ${input.organizationId}, ${input.scope}, ${input.key},
           ${projectId}, ${subjectUserId}, ${storedStatus},
           ${input.value.version}, ${input.value.label},
           ${input.value.description}, ${JSON.stringify(input.value.payload)}::jsonb,
+          ${slotTerm},
           ${input.proposerId},
           ${input.scope === "member" ? input.authenticatedUserId : null},
           ${input.now}, ${input.now}
@@ -1481,10 +1515,7 @@ export async function proposeMemory(
           AND o.id <> m.id AND o.status = 'confirmed'
           AND COALESCE(o.project_id::text, '') = COALESCE(m.project_id::text, '')
           AND COALESCE(o.subject_user_id, '') = COALESCE(m.subject_user_id, '')
-          AND (
-            m."key" <> 'business-term'
-            OR (o.payload ->> 'name') = (m.payload ->> 'name')
-          )
+          AND o.slot_term = m.slot_term
         RETURNING o.id AS id
       ),
       a AS (
@@ -1537,6 +1568,13 @@ export type ConfirmedKnowledge = {
  * workspace terms, and the member's applicable preferences — never
  * proposals, never another member's preferences, never another
  * project/workspace's rows.
+ *
+ * Member applicability (R13-F3, frozen): a member preference applies to
+ * the requested project when its `project_id` is NULL (workspace-wide
+ * default) or equals the requested project. When both exist for one key,
+ * the project-specific value wins deterministically and exactly one
+ * effective value per key reaches the agent — project B never receives
+ * project A's preference.
  */
 export async function readConfirmedKnowledge(
   db: AssistantDb,
@@ -1565,11 +1603,30 @@ export async function readConfirmedKnowledge(
     WHERE organization_id = ${input.organizationId}
       AND scope = 'member' AND subject_user_id = ${input.subjectUserId}
       AND status = 'confirmed'
+      AND (project_id IS NULL OR project_id = ${input.projectId})
     ORDER BY "key" ASC, updated_at DESC`;
+  const memberByKey = new Map<string, MemoryRecord>();
+  for (const row of memberRows.map(mapMemory)) {
+    const existing = memberByKey.get(row.key);
+    if (!existing) {
+      memberByKey.set(row.key, row);
+      continue;
+    }
+    // Deterministic precedence: a project-specific value replaces the
+    // workspace-wide default; same-specificity ties keep the latest
+    // (query already orders updated_at DESC, so first wins).
+    const rowSpecific =
+      row.scope === "member" && row.projectId !== null;
+    const existingSpecific =
+      existing.scope === "member" && existing.projectId !== null;
+    if (rowSpecific && !existingSpecific) {
+      memberByKey.set(row.key, row);
+    }
+  }
   return {
     project: projectRows.map(mapMemory),
     workspace: workspaceRows.map(mapMemory),
-    member: memberRows.map(mapMemory),
+    member: [...memberByKey.values()],
   };
 }
 
@@ -1690,6 +1747,7 @@ async function confirmOnce(
         -- plus the COUNT cross-join below forces lock-before-write: the
         -- updater cannot create a conflicting uncommitted entry while
         -- blocked. Re-reads after a wait see the winner's outcome.
+        -- R13-F5: slot identity uses normalized slot_term.
         SELECT o.id FROM assistant_memory o, assistant_memory t
         WHERE t.id = ${input.recordId}
           AND t.organization_id = ${input.organizationId}
@@ -1697,8 +1755,7 @@ async function confirmOnce(
           AND o.scope = t.scope AND o."key" = t."key"
           AND COALESCE(o.project_id::text, '') = COALESCE(t.project_id::text, '')
           AND COALESCE(o.subject_user_id, '') = COALESCE(t.subject_user_id, '')
-          AND (t."key" <> 'business-term'
-            OR (o.payload ->> 'name') = (t.payload ->> 'name'))
+          AND o.slot_term = t.slot_term
           AND o.status = 'confirmed'
         ORDER BY o.id
         FOR UPDATE
@@ -1724,10 +1781,7 @@ async function confirmOnce(
           AND o.id <> u.id AND o.status = 'confirmed'
           AND COALESCE(o.project_id::text, '') = COALESCE(u.project_id::text, '')
           AND COALESCE(o.subject_user_id, '') = COALESCE(u.subject_user_id, '')
-          AND (
-            u."key" <> 'business-term'
-            OR (o.payload ->> 'name') = (u.payload ->> 'name')
-          )
+          AND o.slot_term = u.slot_term
         RETURNING o.id AS id
       ),
       a1 AS (
@@ -1912,12 +1966,21 @@ export async function purgeAssistantWorkspaceData(
 }
 
 /**
- * Account-deletion path in ONE statement (R12-F4): removes the user's
- * chats (messages and runs cascade) and member preferences, and replaces
- * the deleted user's attribution with an explicit tombstone on the
- * shared records and audit entries that survive for remaining members —
- * raw user IDs leave with the account while the provenance-required
+ * Account-deletion path in ONE statement (R12-F4, R13-F2): removes the
+ * user's chats (messages and runs cascade) and member preferences, and
+ * replaces the deleted user's attribution with an explicit tombstone on
+ * the shared records and audit entries that survive for remaining members
+ * — raw user IDs leave with the account while the provenance-required
  * shapes stay valid. A failure leaves all pre-operation data intact.
+ *
+ * Disjoint targets (R13-F2): sibling data-modifying CTEs share one
+ * snapshot with no defined order, so the same row must never be reachable
+ * from two of them. Member rows being deleted (`m`) are excluded from the
+ * surviving-memory tombstone; proposer/confirmer tombstoning is a single
+ * `UPDATE` with two `CASE`s (one row, one writer); audit rows whose memory
+ * dies in `m` are excluded from the audit update and left to their
+ * cascade. Later CTEs reference `m` explicitly so the dependencies are
+ * visible in the statement.
  */
 export const DELETED_USER_ATTRIBUTION = "deleted-user";
 
@@ -1936,19 +1999,20 @@ export async function purgeAssistantUserData(
       WHERE scope = 'member' AND subject_user_id = ${userId}
       RETURNING id
     ),
-    t1 AS (
-      UPDATE assistant_memory SET proposer_id = ${DELETED_USER_ATTRIBUTION}
-      WHERE proposer_id = ${userId}
-      RETURNING id
-    ),
-    t2 AS (
-      UPDATE assistant_memory SET confirmer_id = ${DELETED_USER_ATTRIBUTION}
-      WHERE confirmer_id = ${userId}
+    t AS (
+      UPDATE assistant_memory SET
+        proposer_id = CASE WHEN proposer_id = ${userId}
+          THEN ${DELETED_USER_ATTRIBUTION} ELSE proposer_id END,
+        confirmer_id = CASE WHEN confirmer_id = ${userId}
+          THEN ${DELETED_USER_ATTRIBUTION} ELSE confirmer_id END
+      WHERE (proposer_id = ${userId} OR confirmer_id = ${userId})
+        AND NOT EXISTS (SELECT 1 FROM m WHERE m.id = assistant_memory.id)
       RETURNING id
     ),
     t3 AS (
-      UPDATE assistant_memory_audit SET actor_id = ${DELETED_USER_ATTRIBUTION}
-      WHERE actor_id = ${userId}
+      UPDATE assistant_memory_audit a SET actor_id = ${DELETED_USER_ATTRIBUTION}
+      WHERE a.actor_id = ${userId}
+        AND NOT EXISTS (SELECT 1 FROM m WHERE m.id = a.memory_id)
       RETURNING id
     )
     SELECT (SELECT COUNT(*) FROM c) AS convs,
