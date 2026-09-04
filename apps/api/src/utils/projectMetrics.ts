@@ -11,6 +11,7 @@ import {
   METRIC_REGISTRY,
   queryContextFingerprint,
   StandardEventKeySchema,
+  type AuthorizedProjectContext,
   type ComparisonBasis,
   type ComparisonValue,
   type CoverageSummary,
@@ -1072,6 +1073,14 @@ export type MeasureDeps = {
   capabilities: ProjectCapabilities;
   memo?: Map<string, unknown>;
   now?: number;
+  /**
+   * Server-owned tenant provenance (R11-F1): the organization that owns
+   * `projectId`. Threaded into `publicContextFor` so the internal
+   * measurement envelope binds the IDs actually used for SQL — never the
+   * `""` placeholder. The controller passes the membership-verified
+   * organization; tests may omit it (defaults to `""` for back-compat).
+   */
+  organizationId?: string;
 };
 
 function normalizeScope(
@@ -1323,7 +1332,12 @@ async function measureOne(
   deps: MeasureDeps,
 ): Promise<MetricFact[]> {
   const scope = normalizeScope(scopeInput, filters);
-  const { queryContext } = publicContextFor(projectId, "", window, scope);
+  const { queryContext } = publicContextFor(
+    projectId,
+    deps.organizationId ?? "",
+    window,
+    scope,
+  );
   const coverage = coverageFor(deps.capabilities);
   const drilldown = drilldownFor(metricId, filters, scope);
   const shortfall = capabilityShortfall(metricId, deps.capabilities);
@@ -2215,7 +2229,12 @@ export async function measureMetrics(
     scope = parseMetricScope(scopeInput as MetricScope);
   }
   const now = deps.now ?? Date.now();
-  const { queryContext } = publicContextFor(projectId, "", window, scope);
+  const { queryContext } = publicContextFor(
+    projectId,
+    deps.organizationId ?? "",
+    window,
+    scope,
+  );
   const facts: MetricFact[] = [];
   for (const request of requests) {
     const { metricId, filters } = validateMetricRequest(request);
@@ -2280,28 +2299,48 @@ export async function measureMetrics(
 }
 
 /**
- * Response-level fact bound (R3-F4): the frozen resource caps at 27 facts
- * while one value metric can emit up to MAX_CURRENCY_ROWS. Only currency
- * rows are ever truncated — request order otherwise — deterministically by
- * currency ASC with the overflow recorded on the kept rows' coverage.
+ * Response-level fact bound (R3-F4, R11-F2): the frozen resource caps at 27
+ * facts while one value metric can emit up to MAX_CURRENCY_ROWS per
+ * request. ONLY `standard_event.value_by_currency` rows may be truncated —
+ * identified by `metricId`, never by ID syntax (filtered Standard Event,
+ * Web, Mobile, and Errors facts also carry colon/digest IDs but each
+ * request produces exactly one fact). Order is preserved: every
+ * single-row fact is retained in request order plus the allowed number of
+ * currency rows in original order. If single-row requests alone exceed the
+ * ceiling, the batch is rejected at its validated boundary instead of
+ * silently omitting facts. The omission warning derives from the dropped
+ * currency facts only and keeps their complete key/currency identity.
  */
 export function capResponseFacts(facts: MetricFact[]): MetricFact[] {
   if (facts.length <= 27) return facts;
-  // Only one metric (per-currency values) emits multi-row facts, and
-  // single-row metrics are bounded by the 27 request IDs — so truncation
-  // only ever touches currency rows. Deterministic by request order, with
-  // the overflow recorded on the kept rows' coverage.
-  const singles = facts.filter((fact) => !fact.id.includes(":"));
-  const multis = facts.filter((fact) => fact.id.includes(":"));
-  const room = Math.max(0, 27 - singles.length);
-  const kept = [...singles, ...multis.slice(0, room)];
-  const dropped = multis
-    .slice(room)
-    .map((fact) => fact.id.split(":").slice(1).join(":"));
+  const isCurrencyRow = (fact: MetricFact): boolean =>
+    fact.metricId === "standard_event.value_by_currency";
+  const singles = facts.filter((fact) => !isCurrencyRow(fact));
+  if (singles.length > 27) {
+    throw new MetricQueryError(
+      "invalid-filter",
+      `Too many single-row facts (${singles.length}) for the 27-fact response bound; narrow the batch`,
+    );
+  }
+  const room = 27 - singles.length;
+  const kept: MetricFact[] = [];
+  const dropped: MetricFact[] = [];
+  let keptCurrency = 0;
+  for (const fact of facts) {
+    if (!isCurrencyRow(fact)) {
+      kept.push(fact);
+    } else if (keptCurrency < room) {
+      kept.push(fact);
+      keptCurrency += 1;
+    } else {
+      dropped.push(fact);
+    }
+  }
   if (dropped.length === 0) return kept;
-  const note = `Currency rows capped for the 27-fact response bound; omitted ${dropped.sort().join(", ")}`;
+  const omitted = dropped.map((fact) => fact.id).sort();
+  const note = `Currency rows capped for the 27-fact response bound; omitted ${omitted.join(", ")}`;
   return kept.map((fact) =>
-    fact.metricId === "standard_event.value_by_currency"
+    isCurrencyRow(fact)
       ? {
           ...fact,
           coverage: {
@@ -2311,4 +2350,154 @@ export function capResponseFacts(facts: MetricFact[]): MetricFact[] {
         }
       : fact,
   );
+}
+
+/**
+ * Internal measurement envelope (R11-F1): binds the server-owned tenant
+ * provenance (`projectId`, `organizationId`) to the public query context
+ * and the facts measured for exactly those IDs. Project and organization
+ * IDs stay server-private — they never enter `PublicQueryContext`, the
+ * browser bundle, or the signed token payload shape beyond what
+ * `issueQueryContextToken` already signs. The envelope is the unit Slice 5
+ * validates before issuing a token, returning an artifact, or persisting
+ * evidence, so a future adapter cannot measure project B and attach those
+ * facts to project A's run: the public contexts may be identical while
+ * the envelope provenance differs.
+ */
+export type MeasurementEnvelope = {
+  projectId: string;
+  organizationId: string;
+  queryContext: PublicQueryContext;
+  facts: MetricFact[];
+};
+
+/**
+ * Bind facts to the tenant IDs they were measured for. Rejects empty IDs
+ * and any fact whose public context differs from the envelope context
+ * (same canonical equality as the response schemas). Callers must pass
+ * the SAME IDs used for SQL — prefer `measureForAuthorizedContext`, which
+ * binds internally, over manual construction.
+ */
+export function bindMeasurementEnvelope(input: {
+  projectId: string;
+  organizationId: string;
+  queryContext: PublicQueryContext;
+  facts: MetricFact[];
+}): MeasurementEnvelope {
+  if (!input.projectId || !input.organizationId) {
+    throw new MetricQueryError(
+      "invalid-filter",
+      "Measurement envelope requires project and organization provenance",
+    );
+  }
+  for (const fact of input.facts) {
+    if (!areQueryContextsEqual(fact.queryContext, input.queryContext)) {
+      throw new MetricQueryError(
+        "invalid-filter",
+        `Fact ${fact.id} does not share the envelope query context`,
+      );
+    }
+  }
+  return {
+    projectId: input.projectId,
+    organizationId: input.organizationId,
+    queryContext: { ...input.queryContext, sourceIds: [...input.queryContext.sourceIds] },
+    facts: [...input.facts],
+  };
+}
+
+/**
+ * Validate an envelope against the run's immutable authorized context.
+ * Non-disclosing `invalid-filter` on mismatch: a cross-tenant attach
+ * fails the same way as any malformed scope, revealing nothing about the
+ * other tenant's existence or shape.
+ */
+export function assertEnvelopeForAuthorizedContext(
+  envelope: MeasurementEnvelope,
+  authorized: Pick<AuthorizedProjectContext, "projectId" | "organizationId">,
+): void {
+  if (
+    envelope.projectId !== authorized.projectId ||
+    envelope.organizationId !== authorized.organizationId
+  ) {
+    throw new MetricQueryError(
+      "invalid-filter",
+      "Measurement envelope does not match the authorized project context",
+    );
+  }
+}
+
+/**
+ * Canonical Slice 5 entry point (R11-F1): the tool adapter accepts the
+ * run's frozen `AuthorizedProjectContext` — never independent
+ * project/window arguments — plus the public window/scope/requests. The
+ * same authorized IDs drive SQL (via `projectId`), scope allow-listing,
+ * the envelope binding, and the pre-return provenance check, so measuring
+ * project B with project A's run is structurally impossible: there is no
+ * second project argument to confuse.
+ */
+export async function measureForAuthorizedContext(
+  client: CanonicalClient,
+  authorized: Pick<
+    AuthorizedProjectContext,
+    "projectId" | "organizationId" | "allowedSourceIds"
+  >,
+  window: MetricWindow,
+  scopeInput: MetricScope | readonly string[],
+  requests: MetricRequest[],
+  deps: MeasureDeps,
+): Promise<MeasurementEnvelope> {
+  if (!authorized.projectId || !authorized.organizationId) {
+    throw new MetricQueryError(
+      "invalid-filter",
+      "Authorized project context requires project and organization provenance",
+    );
+  }
+  // Parse the scope once with the same rules as `measureMetrics` (bare
+  // arrays are legacy all-scope only when empty) so the allow-list check
+  // and the measurement below can never diverge.
+  let scope: MetricScope;
+  if (Array.isArray(scopeInput as unknown as unknown[])) {
+    const ids = [...(scopeInput as readonly string[])];
+    if (ids.length > 0) {
+      throw new MetricQueryError(
+        "invalid-filter",
+        "Bare source ID arrays are legacy all-scope only; pass an explicit MetricScope",
+      );
+    }
+    scope = parseMetricScope({ sourceScope: "all", sourceIds: ids });
+  } else {
+    scope = parseMetricScope(scopeInput as MetricScope);
+  }
+  // Scope allow-listing against the frozen run context: a `selected` scope
+  // may only narrow within the authorized source set. `all` means every
+  // project source by definition. Unknown IDs were already narrowed by the
+  // caller; anything outside the authorized set rejects here.
+  if (scope.sourceScope === "selected") {
+    const allowed = new Set(authorized.allowedSourceIds);
+    if (!scope.sourceIds.every((id) => allowed.has(id))) {
+      throw new MetricQueryError(
+        "invalid-filter",
+        "Source scope is not within the authorized source set",
+      );
+    }
+  }
+  const facts = await measureMetrics(client, authorized.projectId, window, scope, requests, {
+    ...deps,
+    organizationId: authorized.organizationId,
+  });
+  const { queryContext } = publicContextFor(
+    authorized.projectId,
+    authorized.organizationId,
+    window,
+    scope,
+  );
+  const envelope = bindMeasurementEnvelope({
+    projectId: authorized.projectId,
+    organizationId: authorized.organizationId,
+    queryContext,
+    facts,
+  });
+  assertEnvelopeForAuthorizedContext(envelope, authorized);
+  return envelope;
 }

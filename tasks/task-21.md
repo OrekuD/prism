@@ -3932,3 +3932,131 @@ Evidence: api 331 passed | 19 skipped (24 files), types 95 passed
 (4 files), web mobile-label + overview-key + snapshot-drilldown green
 (full web green except pre-existing gallery calendar failure), api/web
 typechecks clean, api lint clean, `git diff --check` clean.
+
+## Feedback: review round 11
+
+This focused re-review covers commit `cf78127` against `67dcbd1`. R10-F1,
+R10-F3, R10-F4, and R10-F5 close cleanly at the reviewed boundaries. R10-F2
+now enforces the complete browser-safe time and source snapshot, but it does
+not enforce the server-private project and workspace scope requested by the
+finding. One additional response-capping defect can also omit valid filtered
+facts before the agent consumes them.
+
+These findings do not block storage-only Slice 4. They must be resolved before
+Slice 5 exposes the canonical metric service through agent tools. No broad
+test, lint, or build gates were rerun.
+
+### R11-F1 - Snapshot equality still omits tenant provenance
+
+**Severity:** High
+**Status:** Closed (re-closes R10-F2 fully)
+
+`ProjectMetricsResourceSchema` now requires each fact's
+`PublicQueryContext` to equal the response-level public context. That proves
+range, cutoff, definition version, and source-scope equality. It cannot prove
+project or workspace equality because `PublicQueryContext` deliberately omits
+`projectId` and `organizationId`, and `areQueryContextsEqual()` therefore does
+not include them.
+
+The current controller is safe because it resolves membership, passes the
+same server-owned project ID into `measureMetrics()`, keys the cache by that
+project ID, and signs the token with the project and organization. However, a
+future agent adapter can accidentally measure project B with the same public
+window and attach those facts to project A's token. The shared schema will
+accept that resource because the public contexts are identical. This is the
+exact adapter-regression boundary the R10 finding intended to close.
+
+The new contract tests cover every public field but cannot cover the requested
+project/workspace mismatch because neither identifier exists in the validated
+fact provenance.
+
+**How to address:**
+
+1. [x] Keep project and organization IDs server-private, but introduce a
+       runtime-validated internal measurement envelope that binds
+       `projectId`, `organizationId`, the public query context, and the facts.
+2. [x] Make the Slice 5 tool adapter accept the run's authorized project
+       context rather than independent project/window arguments. Validate the
+       internal envelope against that immutable context before issuing a
+       token, returning an artifact, or persisting evidence.
+3. [x] Add a regression with two projects in different workspaces using the
+       same range and source-scope shape. Facts measured for project B must be
+       rejected when attached to project A's authorized run or token.
+4. [x] Retain the new public-context refinement as defense in depth; it is
+       necessary, but it is not tenant provenance.
+
+### R11-F2 - The 27-fact cap mistakes every filtered fact for a currency row
+
+**Severity:** High
+**Status:** Closed
+
+`capResponseFacts()` classifies rows with `fact.id.includes(":")` as
+multi-row currency facts. `factIdFor()` also uses colons for every readable or
+hashed filter identity. Standard Event counts and filtered Web, Mobile, and
+Errors facts are therefore classified as currency rows even though each
+request produces exactly one fact.
+
+When a batch exceeds 27 facts, the function can reorder these facts behind
+unfiltered facts and silently discard them according to input position. For
+example, placing a multi-currency value request before filtered single-row
+requests can retain the currency rows and drop later filtered metrics. The
+warning is added only to retained currency facts, so the response does not
+report the omitted non-currency measurements.
+
+This violates the function's documented rule that only currency rows may be
+truncated and breaks the request-to-fact contract an agent tool will depend on.
+
+**How to address:**
+
+1. [x] Identify expandable rows by
+       `metricId === "standard_event.value_by_currency"`, not by ID syntax.
+2. [x] Preserve the original order while retaining every single-row fact and
+       only the allowed number of currency rows. If single-row requests alone
+       can exceed the resource ceiling, reject the batch at its validated
+       boundary instead of silently omitting facts.
+3. [x] Derive the omission warning from the dropped currency facts only, and
+       keep the complete Standard Event key/currency identity in diagnostics.
+4. [x] Add a regression with the currency request first, followed by filtered
+       Standard Event, Web, Mobile, and Errors facts whose IDs contain colons.
+       Assert that all single-row facts remain present and in request order,
+       only excess currency rows are removed, and the response still passes
+       `ProjectMetricsResourceSchema`.
+
+### 2026-09-04 — Slice 3 follow-up: R11 review closed (2 high)
+
+Both R11 findings are implemented and regression-tested. Storage-only
+Slice 4 was already unblocked and remains so; Slice 5 agent tools are now
+unblocked as well. This re-closes R10-F2 fully (public-context refinement
+retained as defense in depth beneath tenant provenance).
+
+- R11-F1: tenant provenance is runtime-bound. `MeasureDeps` carries the
+  server-owned `organizationId` into `publicContextFor` (no more `""`
+  placeholder), and the new internal `MeasurementEnvelope` binds
+  `projectId`, `organizationId`, the public query context, and the facts.
+  `bindMeasurementEnvelope` rejects empty provenance and any fact whose
+  public context differs; `assertEnvelopeForAuthorizedContext` rejects
+  cross-tenant attach with a non-disclosing `invalid-filter`. The new
+  canonical Slice 5 entry point `measureForAuthorizedContext` accepts the
+  run's frozen `AuthorizedProjectContext` — never independent
+  project/window arguments — allow-lists `selected` scopes against
+  `allowedSourceIds`, measures with the same authorized IDs, binds, and
+  re-validates before returning. `getMetrics` passes the verified
+  organization, binds, and validates before signing the token. Regression
+  covers two projects in different workspaces with the same range/shape:
+  identical public contexts, isolated values, cross-attach throws,
+  same-tenant passes, plus bind mismatch/empty-provenance and
+  out-of-allowed-scope negatives.
+- R11-F2: the 27-fact cap identifies expandable rows by
+  `metricId === "standard_event.value_by_currency"`, never by ID syntax.
+  Every single-row fact (including colon/digest filtered IDs) is retained
+  in request order plus the allowed number of currency rows in original
+  order; single-row overflow rejects the batch instead of silently
+  omitting. The warning derives from dropped currency facts only and names
+  their complete key/currency identities. Regression places the currency
+  request first followed by filtered Standard Event/Web/Mobile/Errors
+  facts, asserting order, retention, warning identity, and schema passage.
+
+Evidence: api 336 passed | 19 skipped (24 files), api lint clean,
+api/web typechecks clean, `git diff --check` clean. Types/web suites
+unchanged by this slice (no contract-shape change; envelope is
+server-internal).

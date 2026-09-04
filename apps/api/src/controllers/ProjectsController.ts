@@ -39,6 +39,8 @@ import {
 } from "../utils/mobilePurge";
 import {
 	measureMetrics,
+	assertEnvelopeForAuthorizedContext,
+	bindMeasurementEnvelope,
 	parseMetricRange,
 	parseReleaseFilter,
 	resolveMetricWindow,
@@ -1147,7 +1149,7 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
           }
           return { metricId, filters: scoped };
         }),
-        { capabilities, now },
+        { capabilities, now, organizationId },
       );
     } catch (error) {
       if (error instanceof MetricQueryError) {
@@ -1158,6 +1160,37 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
               ? "invalid_range"
               : "invalid_filter";
         return ctx.json(new ErrorResponse(code).toJSON(), 400);
+      }
+      throw error;
+    }
+
+    // R11-F1: bind tenant provenance before signing. The envelope carries
+    // the SAME server-owned IDs used for SQL above, and is validated
+    // against the membership-verified run context before any token is
+    // issued — so measuring project B can never attach to project A's
+    // token even when the public window/shape is identical.
+    const queryContext = {
+      from: window.from,
+      to: window.to,
+      compareFrom: window.compareFrom,
+      compareTo: window.compareTo,
+      asOf: window.asOf,
+      timezone: "UTC",
+      sourceScope,
+      sourceIds,
+      definitionVersion: 1,
+    } as const;
+    try {
+      const envelope = bindMeasurementEnvelope({
+        projectId,
+        organizationId,
+        queryContext: { ...queryContext, sourceIds: [...sourceIds] },
+        facts,
+      });
+      assertEnvelopeForAuthorizedContext(envelope, { projectId, organizationId });
+    } catch (error) {
+      if (error instanceof MetricQueryError) {
+        return ctx.json(new ErrorResponse("invalid_filter").toJSON(), 400);
       }
       throw error;
     }
@@ -1201,17 +1234,7 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
     }
     return ctx.json(
       ProjectMetricsResourceSchema.parse({
-        queryContext: {
-          from: window.from,
-          to: window.to,
-          compareFrom: window.compareFrom,
-          compareTo: window.compareTo,
-          asOf: window.asOf,
-          timezone: "UTC",
-          sourceScope,
-          sourceIds,
-          definitionVersion: 1,
-        },
+        queryContext: { ...queryContext, sourceIds: [...sourceIds] },
         queryContextToken,
         facts,
       }),

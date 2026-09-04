@@ -1748,6 +1748,269 @@ describe("currency overflow and response bounds (R3-F4)", () => {
     // Deterministic: same input, same output.
     expect(capResponseFacts([...singles, ...multis] as never)).toEqual(capped);
   });
+
+  it("keeps colon-ID single-row facts while capping only currency rows (R11-F2)", async () => {
+    const { capResponseFacts: cap } = await import("../utils/projectMetrics");
+    const { ProjectMetricsResourceSchema } = await import(
+      "@prism-analytics/types"
+    );
+    const validBase = {
+      definitionVersion: 1,
+      label: "L",
+      value: 1,
+      formattedValue: "1",
+      unit: null,
+      comparison: { kind: "new" as const },
+      comparisonBasis: {
+        previousValue: 0,
+        denominatorCurrent: null,
+        denominatorPrevious: null,
+      },
+      queryContext: {
+        from: FROM,
+        to: NOW,
+        compareFrom: CFROM,
+        compareTo: FROM,
+        asOf: NOW,
+        timezone: "UTC",
+        sourceScope: "all",
+        sourceIds: [],
+        definitionVersion: 1,
+      },
+      coverage: {
+        sourcesConfigured: 1,
+        sourcesActive: 1,
+        enrichments: [],
+        warnings: [],
+      },
+      coverageNote: "",
+      filters: {},
+      drilldown: { destination: "events", label: "Open Events" },
+    } as const;
+    // Currency request first (10 rows), then filtered single-row facts
+    // whose IDs all contain colons — exactly the misclassified shape.
+    const currencies = ["AUD", "CAD", "CHF", "EUR", "GBP", "JPY", "MXN", "NOK", "NZD", "SEK"].map(
+      (currency) => ({
+        ...validBase,
+        id: `standard_event.value_by_currency:purchase:${currency}`,
+        metricId: "standard_event.value_by_currency",
+      }),
+    );
+    const colonSingles: Array<{ id: string; metricId: string }> = [
+      { id: "standard_event.occurrences:sign_up", metricId: "standard_event.occurrences" },
+      { id: "standard_event.occurrences:purchase", metricId: "standard_event.occurrences" },
+      { id: "web.page_views:f0123456789abcdef0123456789abcdef", metricId: "web.page_views" },
+      { id: "web.sessions:f0123456789abcdef0123456789abcdef", metricId: "web.sessions" },
+      { id: "mobile.app_opens:f0123456789abcdef0123456789abcdef", metricId: "mobile.app_opens" },
+      { id: "mobile.sessions:f0123456789abcdef0123456789abcdef", metricId: "mobile.sessions" },
+      { id: "errors.occurrences:f0123456789abcdef0123456789abcdef", metricId: "errors.occurrences" },
+      { id: "project.accepted_events", metricId: "project.accepted_events" },
+      { id: "project.sessions", metricId: "project.sessions" },
+      { id: "web.visitors:f0123456789abcdef0123456789abcdef", metricId: "web.visitors" },
+      { id: "web.views_per_session:f0123456789abcdef0123456789abcdef", metricId: "web.views_per_session" },
+      { id: "mobile.screens_per_session:f0123456789abcdef0123456789abcdef", metricId: "mobile.screens_per_session" },
+      { id: "errors.affected_identities:f0123456789abcdef0123456789abcdef", metricId: "errors.affected_identities" },
+      { id: "errors.handled:f0123456789abcdef0123456789abcdef", metricId: "errors.handled" },
+      { id: "standard_event.people:sign_up", metricId: "standard_event.people" },
+      { id: "project.active_anonymous:f0123456789abcdef0123456789abcdef", metricId: "project.active_anonymous" },
+      { id: "project.active_people", metricId: "project.active_people" },
+      { id: "project.new_people", metricId: "project.new_people" },
+      { id: "errors.occurrences:f1123456789abcdef0123456789abcdef", metricId: "errors.occurrences" },
+      { id: "errors.affected_identities:f1123456789abcdef0123456789abcdef", metricId: "errors.affected_identities" },
+    ];
+    const singleFacts = colonSingles.map((row) => ({
+      ...validBase,
+      id: row.id,
+      metricId: row.metricId,
+    }));
+    const input = [...currencies, ...singleFacts] as never[];
+    expect(input).toHaveLength(30);
+    const capped = cap(input) as Array<{
+      id: string;
+      metricId: string;
+      coverage: { warnings: string[] };
+    }>;
+    // Every single-row fact survives in request order; only excess
+    // currency rows are removed (20 singles + 7 currency = 27).
+    expect(capped).toHaveLength(27);
+    expect(capped.map((fact) => fact.id)).toEqual([
+      ...currencies.slice(0, 7).map((fact) => fact.id),
+      ...singleFacts.map((fact) => fact.id),
+    ]);
+    const warning = capped
+      .find((fact) => fact.metricId === "standard_event.value_by_currency")
+      ?.coverage.warnings.find((entry) => entry.includes("27-fact"));
+    expect(warning).toBeDefined();
+    // The omission names complete currency identities, not stripped fragments.
+    expect(warning).toContain("standard_event.value_by_currency:purchase:NZD");
+    // The capped response still passes the shared contract.
+    const parsed = ProjectMetricsResourceSchema.safeParse({
+      queryContext: validBase.queryContext,
+      queryContextToken: "opaque-server-issued-token",
+      facts: capped,
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects batches whose single-row facts alone exceed the bound (R11-F2)", async () => {
+    const { capResponseFacts: cap } = await import("../utils/projectMetrics");
+    const base = {
+      metricId: "project.accepted_events",
+      definitionVersion: 1,
+      label: "Accepted events",
+      value: 1,
+      formattedValue: "1",
+      unit: null,
+      comparison: null,
+      queryContext: {
+        from: FROM,
+        to: NOW,
+        compareFrom: CFROM,
+        compareTo: FROM,
+        asOf: NOW,
+        timezone: "UTC",
+        sourceScope: "all",
+        sourceIds: [],
+        definitionVersion: 1,
+      },
+      coverage: {
+        sourcesConfigured: 1,
+        sourcesActive: 1,
+        enrichments: [],
+        warnings: [],
+      },
+      coverageNote: "",
+      filters: {},
+      drilldown: { destination: "events", label: "Open Events" },
+    } as const;
+    const singles = new Array(28)
+      .fill(0)
+      .map((_, index) => ({ ...base, id: `m${index}` }));
+    expect(() => cap(singles as never)).toThrow(MetricQueryError);
+  });
+});
+
+describe("tenant measurement envelope (R11-F1)", () => {
+  it("rejects project B facts attached to project A's run", async () => {
+    const {
+      measureForAuthorizedContext,
+      assertEnvelopeForAuthorizedContext,
+      bindMeasurementEnvelope,
+    } = await import("../utils/projectMetrics");
+    const scope = { sourceScope: "all" as const, sourceIds: [] as string[] };
+    const requests = [{ metricId: "project.accepted_events" }] as never[];
+    // Two projects in different workspaces, same range and source shape.
+    const authA = {
+      projectId: P,
+      organizationId: "org-a",
+      allowedSourceIds: [] as string[],
+    };
+    const authB = {
+      projectId: PX,
+      organizationId: "org-b",
+      allowedSourceIds: [] as string[],
+    };
+    const envelopeB = await measureForAuthorizedContext(
+      client as unknown as CanonicalClient,
+      authB,
+      WINDOW,
+      scope,
+      requests,
+      { capabilities: CAPABILITIES, now: NOW },
+    );
+    const envelopeA = await measureForAuthorizedContext(
+      client as unknown as CanonicalClient,
+      authA,
+      WINDOW,
+      scope,
+      requests,
+      { capabilities: CAPABILITIES, now: NOW },
+    );
+    // Same public window/shape: public contexts are identical and cannot
+    // prove provenance on their own.
+    expect(envelopeB.queryContext).toEqual(envelopeA.queryContext);
+    // Tenant-isolated values: P has many events, PX has one (e6).
+    expect(envelopeA.facts[0]?.value).not.toBe(envelopeB.facts[0]?.value);
+    // Cross-tenant attach rejects; same-tenant validates.
+    expect(() =>
+      assertEnvelopeForAuthorizedContext(envelopeB, authA),
+    ).toThrow(MetricQueryError);
+    expect(() =>
+      assertEnvelopeForAuthorizedContext(envelopeB, authB),
+    ).not.toThrow();
+    // A manual rebind under A's IDs still validates publicly (contexts
+    // match) but the provenance check against B's run rejects.
+    const rebound = bindMeasurementEnvelope({
+      projectId: P,
+      organizationId: "org-a",
+      queryContext: envelopeB.queryContext,
+      facts: envelopeB.facts,
+    });
+    expect(() =>
+      assertEnvelopeForAuthorizedContext(rebound, authB),
+    ).toThrow(MetricQueryError);
+    clearMetricSnapshotCache();
+  });
+
+  it("bind rejects facts from another snapshot and empty provenance", async () => {
+    const { bindMeasurementEnvelope } = await import("../utils/projectMetrics");
+    const [fact] = await measure(
+      [{ metricId: "project.accepted_events" }],
+      WINDOW,
+    );
+    if (!fact) throw new Error("expected a fact");
+    const queryContext = { ...fact.queryContext };
+    expect(() =>
+      bindMeasurementEnvelope({
+        projectId: "",
+        organizationId: "org-a",
+        queryContext,
+        facts: [fact],
+      }),
+    ).toThrow(MetricQueryError);
+    expect(() =>
+      bindMeasurementEnvelope({
+        projectId: P,
+        organizationId: "",
+        queryContext,
+        facts: [fact],
+      }),
+    ).toThrow(MetricQueryError);
+    const drifted = {
+      ...fact,
+      queryContext: { ...queryContext, asOf: queryContext.asOf - 1 },
+    };
+    expect(() =>
+      bindMeasurementEnvelope({
+        projectId: P,
+        organizationId: "org-a",
+        queryContext,
+        facts: [drifted as never],
+      }),
+    ).toThrow(MetricQueryError);
+  });
+
+  it("rejects selected scopes outside the authorized source set", async () => {
+    const { measureForAuthorizedContext } = await import(
+      "../utils/projectMetrics"
+    );
+    const authorized = {
+      projectId: P,
+      organizationId: "org-a",
+      allowedSourceIds: ["src_allowed"],
+    };
+    await expect(
+      measureForAuthorizedContext(
+        client as unknown as CanonicalClient,
+        authorized,
+        WINDOW,
+        { sourceScope: "selected", sourceIds: ["src_outside"] },
+        [{ metricId: "project.accepted_events" }] as never[],
+        { capabilities: CAPABILITIES, now: NOW },
+      ),
+    ).rejects.toThrow(MetricQueryError);
+    clearMetricSnapshotCache();
+  });
 });
 
 describe("error snapshot semantics (R3-F5)", () => {
