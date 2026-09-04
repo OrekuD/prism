@@ -1044,12 +1044,19 @@ describe("request validation and capability gating", () => {
         filters: { sourceIds: ["x".repeat(129)] },
       }),
     ).toThrowError(MetricQueryError);
+    // Release bound aligned with ingestion (R7-F6, max 128).
     expect(() =>
       validateMetricRequest({
         metricId: "errors.occurrences",
-        filters: { release: "x".repeat(65) },
+        filters: { release: "x".repeat(129) },
       }),
     ).toThrowError(MetricQueryError);
+    expect(() =>
+      validateMetricRequest({
+        metricId: "errors.occurrences",
+        filters: { release: "x".repeat(128) },
+      }),
+    ).not.toThrow();
     // 64 unique IDs are the documented maximum and validate cleanly.
     expect(() =>
       validateMetricRequest({

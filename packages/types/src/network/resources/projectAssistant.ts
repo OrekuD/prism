@@ -167,7 +167,14 @@ export const DrilldownFiltersSchema = z.strictObject({
   host: z.string().min(1).max(253).optional(),
   traffic: z.enum(["human", "all"]).optional(),
   os: z.enum(["ios", "android"]).optional(),
-  release: z.string().min(1).max(64).optional(),
+  /**
+   * Release filter bound (R7-F6): aligned with the error-ingestion
+   * contract (`maxReleaseLength: 128`). Truncating here would make an
+   * overview drill-down query a different release than the displayed
+   * count, so the full identifier travels in filter semantics and only
+   * display copy is ever shortened.
+   */
+  release: z.string().min(1).max(128).optional(),
   platform: z.enum(SOURCE_PLATFORMS).optional(),
   environment: z.string().min(1).max(64).optional(),
   sourceId: z.string().min(1).max(128).optional(),
@@ -1535,6 +1542,15 @@ export const ProjectOverviewResourceSchema = z
       .max(INSIGHT_THRESHOLDS.maxInsights),
     /** Exactly three adaptive pulse metrics in v1. */
     pulse: z.array(MetricFactSchema).length(3),
+    /**
+     * Bounded evidence grounding (R7-F7): detection facts referenced by
+     * activity/insights that are not among the three pulse cards (for
+     * example the canonical `project.accepted_events` fact behind the
+     * activity chart). Every referenced ID must resolve here, in pulse,
+     * or in an embedded metric/comparison fact — never to an unreturned
+     * metric.
+     */
+    supportingFacts: z.array(MetricFactSchema).max(8).default([]),
     /** The complete primary trend payload (never a kind pointer). */
     activity: ActivityArtifactSchema,
     /** The complete secondary panel payload (ranking, release, or issues). */
@@ -1567,11 +1583,17 @@ export type ProjectMetricsResource = z.infer<
  * binds the token to that same context at issuance (HMAC + scope checks),
  * so equality here plus token verification there closes the mixed-snapshot
  * hole end to end.
+ *
+ * Referential grounding (R7-F7): every fact ID cited by activity, secondary,
+ * or insight artifacts must resolve to a returned pulse fact, a bounded
+ * supporting fact, or an embedded metric/comparison fact — so a chart can
+ * never cite whichever metric happens to occupy a pulse slot.
  */
 function checkOverviewConsistency(
   resource: {
     queryContext: PublicQueryContext;
     pulse: readonly MetricFact[];
+    supportingFacts?: readonly MetricFact[];
     activity: ActivityArtifact;
     secondary: SecondaryArtifact;
     insights: readonly InsightCandidate[];
@@ -1583,11 +1605,15 @@ function checkOverviewConsistency(
   for (const fact of resource.pulse) {
     nested.push({ where: "pulse fact", context: fact.queryContext });
   }
-  for (const artifact of [
+  for (const fact of resource.supportingFacts ?? []) {
+    nested.push({ where: "supporting fact", context: fact.queryContext });
+  }
+  const artifacts = [
     resource.activity,
     resource.secondary,
     ...resource.insights.map((insight) => insight.artifact),
-  ]) {
+  ];
+  for (const artifact of artifacts) {
     nested.push({ where: "artifact", context: artifact.queryContext });
     if (artifact.kind === "metric") {
       nested.push({
@@ -1607,6 +1633,36 @@ function checkOverviewConsistency(
       context.addIssue({
         code: "custom",
         message: `${where} must share the overview query context`,
+      });
+      return;
+    }
+  }
+  const resolvable = new Set<string>();
+  for (const fact of resource.pulse) resolvable.add(fact.id);
+  for (const fact of resource.supportingFacts ?? []) resolvable.add(fact.id);
+  for (const artifact of artifacts) {
+    if (artifact.kind === "metric") {
+      resolvable.add(artifact.fact.id);
+    } else if (artifact.kind === "comparison") {
+      resolvable.add(artifact.current.id);
+      resolvable.add(artifact.previous.id);
+    }
+  }
+  const cited: { where: string; id: string }[] = [];
+  const collect = (where: string, factIds: readonly string[]): void => {
+    for (const id of factIds) cited.push({ where, id });
+  };
+  collect("activity", resource.activity.factIds);
+  collect("secondary", resource.secondary.factIds);
+  for (const insight of resource.insights) {
+    collect(`insight ${insight.id}`, insight.factIds);
+    collect(`insight ${insight.id} artifact`, insight.artifact.factIds);
+  }
+  for (const { where, id } of cited) {
+    if (!resolvable.has(id)) {
+      context.addIssue({
+        code: "custom",
+        message: `${where} cites unreturned fact ${id}`,
       });
       return;
     }

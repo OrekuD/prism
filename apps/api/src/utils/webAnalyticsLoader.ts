@@ -13,6 +13,7 @@ import {
 	type WebAnalyticsRawAggregates,
 	assembleWebAnalytics,
 	bucketMsFor,
+	foldEntrySessions,
 } from "./webAnalyticsStore";
 
 /**
@@ -107,8 +108,82 @@ async function totalsFor(
 	};
 }
 
-export async function loadWebAnalytics(
+/**
+ * Exact bounce-rate denominators for deterministic insight detection
+ * (R7-F2): completed entry sessions for an arbitrary window under the
+ * same filters, join, snapshot cutoff, and completion predicate as the
+ * read model. Reuses `buildWhere` and `foldEntrySessions` so the
+ * denominator can never drift from the rate it grounds.
+ */
+export async function webBounceDenominators(
+	client: WebAnalyticsExecuteClient,
 	params: WebAnalyticsQueryParams,
+	from: number,
+	to: number,
+	nowMs: number,
+): Promise<{ rate: number | null; denominator: number }> {
+	const scoped = { ...params, from, to };
+	const { clauses, args } = buildWhere(scoped, {
+		time: "w.occurred_at",
+		source: "e.source_id",
+	});
+	const baseJoin = `FROM web_page_views w
+		JOIN events e ON e.project_id = w.project_id AND e.id = w.event_id`;
+	const result = await client.execute({
+		sql: `SELECT e.session_id AS session_id,
+					w.referrer_host AS referrer_host,
+					w.host AS page_host,
+					w.campaign_source AS campaign_source,
+					w.campaign_medium AS campaign_medium,
+					w.campaign_name AS campaign_name,
+					e.person_id AS person_id,
+					MIN(w.occurred_at) AS first_seen,
+					MAX(w.occurred_at) AS last_activity
+				${baseJoin}
+				WHERE ${clauses.join(" AND ")}
+				GROUP BY e.session_id`,
+		args: args as Array<string | number | null>,
+	});
+	const rows = (
+		Array.isArray((result as { rows?: unknown }).rows)
+			? (result as { rows: Array<Record<string, unknown>> }).rows
+			: []
+	).map(
+		(row): SessionEntryRow => ({
+			session_id:
+				row.session_id === null || row.session_id === undefined
+					? null
+					: String(row.session_id),
+			referrer_host:
+				row.referrer_host === null || row.referrer_host === undefined
+					? null
+					: String(row.referrer_host),
+			page_host: String(row.page_host ?? ""),
+			campaign_source:
+				row.campaign_source === null || row.campaign_source === undefined
+					? null
+					: String(row.campaign_source),
+			campaign_medium:
+				row.campaign_medium === null || row.campaign_medium === undefined
+					? null
+					: String(row.campaign_medium),
+			campaign_name:
+				row.campaign_name === null || row.campaign_name === undefined
+					? null
+					: String(row.campaign_name),
+			person_id:
+				row.person_id === null || row.person_id === undefined
+					? null
+					: String(row.person_id),
+			first_seen: Number(row.first_seen ?? 0),
+			last_activity: Number(row.last_activity ?? 0),
+		}),
+	);
+	const folded = foldEntrySessions(rows, nowMs);
+	return { rate: folded.bounceRate, denominator: folded.completedEntrySessions };
+}
+
+export async function loadWebAnalytics(	params: WebAnalyticsQueryParams,
 	nowMs: number,
 	client: WebAnalyticsExecuteClient,
 ): Promise<WebAnalyticsResource> {

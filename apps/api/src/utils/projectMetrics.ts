@@ -214,7 +214,7 @@ const MetricFiltersSchema = z.strictObject({
   standardEventKey: StandardEventKeySchema.optional(),
   traffic: z.enum(["human", "all"]).optional(),
   os: z.enum(["ios", "android"]).optional(),
-  release: z.string().min(1).max(64).optional(),
+  release: z.string().min(1).max(128).optional(),
   host: z.string().min(1).max(253).optional(),
   path: z.string().min(1).max(2048).optional(),
   platform: z

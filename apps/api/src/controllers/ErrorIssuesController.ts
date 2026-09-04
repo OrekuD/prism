@@ -159,7 +159,7 @@ export class ErrorIssuesController {
 			q("platform"),
 			PLATFORM_VALUES,
 		) as ErrorIssuePlatform | undefined;
-		const release = clampFilter(q("release"));
+		const release = clampFilter(q("release"), 128);
 		const search = clampFilter(q("q"));
 		const limit = issueListLimit(q("limit"));
 		const cursor = decodeIssueCursor(q("cursor"));

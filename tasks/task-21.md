@@ -2950,3 +2950,249 @@ Evidence: api 299 passed | 19 skipped (24 files incl. 20 overview
 service + 6 controller), web overview-key 2 passed, full web green
 except pre-existing gallery calendar failure, api/web typechecks clean,
 api lint clean, `git diff --check` clean.
+
+## Feedback: review round 7
+
+**Review target:** `d94f6bc`
+**Status:** Slice 3 reopened. Resolve the accuracy findings below before
+starting Slice 4. This was a focused code and contract review; no broad test,
+lint, or build gates were rerun.
+
+### R7-F1 - Change insights invent an exact previous value from a rounded percentage
+
+**Severity:** High
+**Status:** Closed
+
+`MetricFact.comparison.percent` is rounded to one decimal place by
+`compareValues()`. `previousOfFact()` reverses that rounded percentage and
+rounds again, then the insight says the metric moved from that reconstructed
+number. The transformation is lossy. For example, current `1,000,000` and
+previous `900,000` produce `11.1%`; reversing it produces `900,090`. Prism can
+therefore state a previous value that disagrees with the dashboard or a direct
+metric query. It can also feed that approximation into eligibility and
+severity.
+
+**How to address:**
+
+1. [x] Carry the exact comparison inputs across the canonical fact boundary,
+       for example an exact `previousValue`/comparison basis validated by the
+       shared schema. Do not reverse a formatted or rounded percentage.
+2. [x] Use the exact current and previous values for eligibility, severity,
+       templates, and artifacts. Keep the rounded percentage for presentation
+       only.
+3. [x] Add large-count and awkward-ratio regressions proving the insight's
+       previous value is byte-equivalent to the canonical metric result.
+
+### R7-F2 - Detection only examines the three pulse facts and cannot emit rate insights
+
+**Severity:** High
+**Status:** Closed
+
+`buildOverviewResource()` passes only the three facts selected for `pulse` to
+`selectInsights()`, and `selectInsights()` rejects every metric whose
+`valueKind` is not `count`. A real change in a supported non-pulse metric is
+invisible. The frozen rate rule is also dead code: `isRateChangeEligible()` is
+never called and the fact supplied to the detector has no current/previous
+denominators. A Web project can therefore have a qualifying bounce-rate change
+or a major sessions change while the overview reports no significant change.
+
+**How to address:**
+
+1. [x] Define a bounded, capability-driven **detection fact set** separately
+       from the three display pulse slots. Measure it through the canonical
+       metric service under the same context; do not turn every registry metric
+       into a dashboard card.
+2. [x] Add exact rate comparison bases/denominators to the canonical boundary
+       needed by `isRateChangeEligible()`, then implement the frozen 30/30
+       denominator and five-point rule.
+3. [x] Keep response and query work bounded. Expose only facts actually needed
+       to ground returned artifacts/insights, and continue running libSQL reads
+       sequentially.
+4. [x] Add cases where all pulse facts are flat but a non-pulse count changes,
+       and where bounce rate qualifies or is suppressed solely by its exact
+       denominators.
+
+### R7-F3 - A Standard Event reaching zero still changes the pulse slots
+
+**Severity:** High
+**Status:** Closed
+
+The selector is stable only when given the same `ProjectCapabilities`, which is
+all the current test proves. The endpoint builds `standardEventsObserved` from
+events inside the selected `[from, to)` range. When a previously observed
+signup or purchase has zero occurrences in the new range, it disappears from
+capabilities and the first pulse slot changes. That directly contradicts the
+requirement that a temporary zero must not rearrange the overview.
+
+**How to address:**
+
+1. [x] Select the key outcome from confirmed project memory once Slice 4 owns
+       that definition. Until then, make the observed-event fallback a stable
+       project-level observation bounded by `received_at <= asOf`, not a value
+       inferred only from the active display range.
+2. [x] Keep the actual range-specific occurrence fact at zero while retaining
+       the same selected metric and exact Standard Event key.
+3. [x] Replace the same-object selector test with an endpoint/service
+       regression using controlled time: observe the event historically, move
+       to a range with zero occurrences, and prove all three slots remain
+       unchanged.
+
+### R7-F4 - Source coverage claims contradict the data the overview counts
+
+**Severity:** High
+**Status:** Closed
+
+`sources.active` is currently derived from whether a source has a non-revoked
+key. The overview then says only active sources contribute data and that
+inactive sources contribute no data. The all-source metric and activity SQL do
+not apply that filter; previously accepted events from a revoked/inactive
+source remain part of historical analytics. The displayed warning and insight
+can therefore contradict the numbers beside them. The ratio of active source
+records is configuration/ingestion readiness, not measured event-dimension
+coverage.
+
+**How to address:**
+
+1. [x] Decide and name the signal accurately. If it represents current ingest
+       readiness, say that some sources cannot currently accept new data and
+       explicitly state that retained historical data remains included.
+2. [x] If the product wants data coverage, calculate it from accepted events in
+       the same range/snapshot and report the measured numerator, denominator,
+       and dimension. Do not substitute active-key count.
+3. [x] Add a revoked/inactive source with retained in-range events and prove the
+       pulse, chart, coverage artifact, and warning tell one consistent story.
+
+### R7-F5 - Historical zero-occurrence issues permanently take over the secondary panel
+
+**Severity:** High
+**Status:** Closed
+
+`readIssueRows()` left-joins every issue in the project and has no `HAVING`
+condition for the selected period. Once error collection is present, any old
+issue makes `issues.length > 0`, even when every returned `current_n` is zero.
+The overview then renders `Top issues` and claims those rows are issues by
+occurrences in this period, while suppressing the useful event or release
+ranking. The release-secondary test bypasses this by supplying capabilities
+that say error collection is absent despite seeding a real error occurrence,
+so it does not exercise a consistent production state.
+
+**How to address:**
+
+1. [x] Restrict the bounded issue result to issues with current-period
+       occurrences (and the same snapshot/source scope). Keep prior counts only
+       as comparison data for those current issues.
+2. [x] Define the fallback order for a period with historical issues but no
+       current issues, then allow the event/release ranking or an honest empty
+       state to render.
+3. [x] Add a production-consistent case with error capability enabled, an issue
+       outside the current range, and current normal events. Assert no zero-row
+       `Top issues` panel appears.
+
+### R7-F6 - Valid error metadata can fail overview schema parsing or change a drill-down
+
+**Severity:** High
+**Status:** Closed
+
+The error SDK/ingestion contract accepts release values up to 128 characters,
+but assistant drill-down filters allow only 64. The overview slices the release
+to 64 for the Errors link, so the link no longer identifies the release whose
+count was displayed. The unsliced release is also embedded in candidate and
+artifact IDs and in a title capped at 140 characters, which can make
+`ProjectOverviewResourceSchema.parse()` throw for otherwise valid telemetry.
+There is a similar issue-title boundary: ingestion can derive a title longer
+than 200 characters, while the secondary issue list passes it unsliced into a
+200-character field.
+
+**How to address:**
+
+1. [x] Align release filter limits with the accepted error contract and retain
+       the complete identifier in filter semantics. Truncate only display copy,
+       never the filter value.
+2. [x] Derive bounded stable artifact/candidate IDs from a digest or another
+       collision-resistant encoding instead of interpolating raw telemetry.
+3. [x] Bound issue and release display strings before constructing the strict
+       resource, while preserving the full value wherever it is used as an
+       exact query key.
+4. [x] Add endpoint tests at the maximum accepted release, exception type, and
+       message lengths. The response must parse, and the drill-down must query
+       the exact release.
+
+### R7-F7 - The activity chart cites whichever metric happens to occupy pulse slot one
+
+**Severity:** Medium
+**Status:** Closed
+
+The activity series always counts all accepted events, but its `factIds` is
+always `[head.id]`. `head` may be signup, login, Web page views, or Mobile app
+opens. The artifact therefore claims evidence from a different metric, and the
+current schema consistency check cannot catch it because it verifies context
+equality but not fact meaning or reference existence.
+
+**How to address:**
+
+1. [x] Ground the chart with the canonical `project.accepted_events` fact under
+       the same context, whether or not that fact is one of the three pulse
+       cards. Include the supporting fact in a bounded response collection so
+       every referenced ID resolves.
+2. [x] Add referential validation that every artifact/insight fact ID resolves
+       to a returned fact and that the activity total agrees with its zero-filled
+       series.
+3. [x] Add Web, Mobile, and observed-Standard-Event cases proving the chart never
+       cites page views, app opens, or an outcome event as total accepted-event
+       evidence.
+
+### 2026-09-04 — Slice 3 follow-up: R7 review closed (6 high + 1 medium)
+
+All seven R7 findings are implemented and regression-tested; Slice 4 is
+unblocked. This also re-closes the reopened Slice 3 checklist items.
+
+- R7-F1: change/rate insights use an exact canonical basis. The detection
+  set is measured for the current window and again with the previous
+  window as its own current window through `measureMetrics`
+  (`previousWindowOf`, same cutoff/scope); the previous value is that
+  second measurement keyed by `basisKeyForFact` (metric + exact event
+  filter, so two keys never alias). `previousOfFact` reversal is gone;
+  rounded percentages are presentation only. Regressions: awkward-ratio
+  exactness (1,000,000 vs 700,000) and byte-equivalence with a direct
+  previous-window metric read.
+- R7-F2: bounded capability-driven detection set (`selectDetectionPlans`:
+  pulse union plus audience counts, exact rate bases, reliability, key
+  outcome) measured twice under one context each; memoized loaders share
+  work within a window and reads stay sequential. Rate insights implement
+  the frozen 30/30 + five-point rule via `isRateChangeEligible` with
+  exact denominators (sessions facts for per-session means;
+  `webBounceDenominators` reusing the loader's own `buildWhere` +
+  `foldEntrySessions` for bounce). Referenced non-pulse facts travel in
+  bounded `supportingFacts` (max 8). Regressions: flat-pulse/non-pulse
+  headline, bounce qualify/suppress by denominators, bounce e2e over real
+  projections.
+- R7-F3: `standardEventsObserved` is now project-level (`received_at <=
+  asOf`, no display-range bounds) in both metrics and overview capability
+  builds, so a range-local zero keeps its slot with a zero fact.
+  Regression: historical signup outside the range retains the outcome
+  slot at the endpoint.
+- R7-F4: readiness is named as readiness — warnings/insights state which
+  sources can currently accept new data and that retained historical data
+  remains included. Regressions: inactive source with retained in-range
+  events counted in totals with consistent warning/insight wording.
+- R7-F5: issue rows carry `HAVING current_n > 0` (same snapshot/scope);
+  fallback is issues → releases → events. Regressions use consistent
+  capabilities: historical-only issues render the event ranking, and the
+  release fallback renders from real occurrence metadata.
+- R7-F6: release filter bound aligned to the ingestion 128 chars
+  (`DrilldownFiltersSchema`, metric schema, metrics/mobile/errors
+  controllers); full identifiers in filter semantics, sliced display
+  only; digest (`stableDigest`) IDs for release candidates/artifacts;
+  issue/release display strings bounded with exact keys preserved.
+  Regression: 128-char release + 300-char title parse with an exact
+  drill-down at the endpoint.
+- R7-F7: the chart cites the canonical `project.accepted_events`
+  detection fact (pulse or supporting, never the head card);
+  `supportingFacts` (max 8) grounds every cited ID; schema
+  `checkOverviewConsistency` enforces context equality plus reference
+  resolution; `validateOverviewReferences` additionally pins chart-total
+  agreement. Regressions cover web/mobile/outcome heads.
+
+Evidence: api 313 passed | 19 skipped (24 files), types contracts 78
+passed, full web green except pre-existing gallery calendar failure,
+api/web typechecks clean, api lint clean, `git diff --check` clean.

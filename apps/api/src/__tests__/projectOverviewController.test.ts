@@ -140,4 +140,131 @@ describe("GET /projects/:slug/overview", () => {
     const span = (result.__json?.queryContext?.to ?? 0) - (result.__json?.queryContext?.from ?? 0);
     expect(span).toBe(7 * 86_400_000);
   });
+
+  it("keeps the outcome slot on a range-local zero (R7-F3)", async () => {
+    // Observed 100 days ago: outside every v1 range but inside the
+    // snapshot. Project-level observation must retain the slot.
+    const longAgo = Date.now() - 100 * 86_400_000;
+    await analytics.execute({
+      sql: `INSERT INTO events (id, project_id, type, name, schema_version, occurred_at,
+        received_at, session_id, anonymous_id, user_id, person_id, properties,
+        context, sdk_name, sdk_version, source_id, platform)
+       VALUES ('hist-signup', ?, 'track', '$prism_sign_up', 1, ?, ?, 'sh', 'ah', NULL, NULL, ?, NULL, NULL, NULL, 'src_web_1', 'web')`,
+      args: [
+        PROJECT_ID,
+        longAgo,
+        longAgo,
+        JSON.stringify({ $standard: { schemaVersion: 1, key: "sign_up", data: {} } }),
+      ],
+    });
+    const result = (await ProjectsController.getOverview(
+      ctxFor(USER_ID, { range: "7d" }),
+    )) as { __json?: { pulse?: Array<{ metricId?: string; value?: number | null }> }; __status?: number };
+    expect(result.__status).toBeUndefined();
+    expect(result.__json?.pulse?.[0]?.metricId).toBe("standard_event.occurrences");
+    expect(result.__json?.pulse?.[0]?.value).toBe(0);
+  });
+
+  it("counts retained events from inactive sources with readiness wording (R7-F4)", async () => {
+    const at = Date.now() - 1000;
+    await analytics.execute({
+      sql: `INSERT INTO events (id, project_id, type, name, schema_version, occurred_at,
+        received_at, session_id, anonymous_id, user_id, person_id, properties,
+        context, sdk_name, sdk_version, source_id, platform)
+       VALUES ('retained-1', ?, 'track', 'click', 1, ?, ?, 'sr', 'ar', NULL, NULL, '{}', NULL, NULL, NULL, 'src_retired', 'web')`,
+      args: [PROJECT_ID, at, at],
+    });
+    // Override AFTER ctxFor: ctxFor resets the product mock to its default
+    // single active source, while this case needs a retired sibling.
+    const ctx = ctxFor(USER_ID, { range: "7d" });
+    getInstance.mockReturnValue(
+      makeMockDb((sql) => {
+        if (sql.includes("SELECT role FROM member")) return [{ role: "member" }];
+        if (sql.includes("FROM projects")) {
+          return [{ id: PROJECT_ID, organization_id: ORG_ID, slug: SLUG, name: "Alpha" }];
+        }
+        if (sql.includes("FROM project_sources")) {
+          return [
+            { id: "src_web_1", platform: "web", active: true },
+            { id: "src_retired", platform: "web", active: false },
+          ];
+        }
+        return [];
+      }) as never,
+    );
+    getTursoInstance.mockReturnValue(analytics);
+    const result = (await ProjectsController.getOverview(ctx)) as {
+      __json?: {
+        pulse?: Array<{ metricId?: string; value?: number | null }>;
+        supportingFacts?: Array<{ metricId?: string; value?: number | null }>;
+        dataQuality?: { warnings?: string[] };
+      };
+      __status?: number;
+    };
+    expect(result.__status).toBeUndefined();
+    const accepted = [
+      ...(result.__json?.pulse ?? []),
+      ...(result.__json?.supportingFacts ?? []),
+    ].find((fact) => fact.metricId === "project.accepted_events");
+    // e1 + retained-1 (+ any earlier seeds): the retired source's retained
+    // row stays included.
+    expect((accepted?.value ?? 0) >= 2).toBe(true);
+    expect((result.__json?.dataQuality?.warnings ?? []).join(" ")).toMatch(
+      /accept new data/,
+    );
+    expect((result.__json?.dataQuality?.warnings ?? []).join(" ")).toMatch(
+      /remains included/,
+    );
+  });
+
+  it("parses maximum-length release and title metadata with exact drill-downs (R7-F6)", async () => {
+    const longRelease = `rel-${"r".repeat(124)}`;
+    expect(longRelease).toHaveLength(128);
+    const longTitle = `T${"i".repeat(299)}`;
+    await analytics.execute({
+      sql: `INSERT INTO error_issues (id, project_id, platform, fingerprint_version, fingerprint, level, status, title, first_seen_at, last_seen_at, occurrence_count, users_affected, first_release, last_release)
+       VALUES ('iss-long', ?, 'web', 1, 'fp-long', 'error', 'unresolved', ?, ?, ?, 0, 0, NULL, NULL)`,
+      args: [PROJECT_ID, longTitle, Date.now() - 2000, Date.now() - 1000],
+    });
+    const at = Date.now() - 1000;
+    await analytics.execute({
+      sql: `INSERT INTO error_occurrences (id, client_event_id, issue_id, project_id, source_id, platform, level, handled, occurred_at, received_at, release, environment, anonymous_id, payload)
+       VALUES ('occ-long', 'c-long', 'iss-long', ?, 'src_web_1', 'web', 'error', 0, ?, ?, ?, 'production', 'u-long', '{}')`,
+      args: [PROJECT_ID, at, at, longRelease],
+    });
+    const result = (await ProjectsController.getOverview(
+      ctxFor(USER_ID, { range: "7d" }),
+    )) as { __json?: Record<string, unknown>; __status?: number };
+    expect(result.__status).toBeUndefined();
+    const parsed = ProjectOverviewResourceSchema.safeParse(result.__json);
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+    const releaseInsight = parsed.data.insights.find((insight) => insight.kind === "release");
+    expect(releaseInsight).toBeDefined();
+    expect(releaseInsight?.id.length).toBeLessThanOrEqual(128);
+    const filters = releaseInsight?.drilldown.filters as { release?: string } | undefined;
+    expect(filters?.release).toBe(longRelease);
+  });
+
+  it("grounds the chart in accepted events, not the pulse head (R7-F7)", async () => {
+    const result = (await ProjectsController.getOverview(
+      ctxFor(USER_ID, { range: "7d" }),
+    )) as {
+      __json?: {
+        pulse?: Array<{ id?: string; metricId?: string }>;
+        supportingFacts?: Array<{ id?: string; metricId?: string }>;
+        activity?: { kind?: string; factIds?: string[] };
+      };
+      __status?: number;
+    };
+    expect(result.__status).toBeUndefined();
+    const facts = [
+      ...(result.__json?.pulse ?? []),
+      ...(result.__json?.supportingFacts ?? []),
+    ];
+    const cited = (result.__json?.activity?.factIds ?? [])
+      .map((id) => facts.find((fact) => fact.id === id))
+      .find((fact) => fact?.metricId === "project.accepted_events");
+    expect(cited?.metricId).toBe("project.accepted_events");
+  });
 });

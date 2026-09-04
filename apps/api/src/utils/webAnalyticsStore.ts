@@ -135,6 +135,12 @@ export function foldEntrySessions(
 	directSessions: number;
 	totalEntrySessions: number;
 	campaignEntrySessions: number;
+	/**
+	 * Eligible bounce denominator (R7-F2): completed entry sessions under
+	 * the same cutoff that gates the rate. Rate insights must use this —
+	 * never total sessions — for the frozen 30/30 denominator rule.
+	 */
+	completedEntrySessions: number;
 } {
 	type NarrowedEntry = SessionEntryRow & { session_id: string };
 	const bySession = new Map<string, NarrowedEntry>();
@@ -258,6 +264,7 @@ export function foldEntrySessions(
 		directSessions: direct,
 		totalEntrySessions,
 		campaignEntrySessions: campaignEntries,
+		completedEntrySessions: completed,
 	};
 }
 

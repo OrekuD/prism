@@ -358,7 +358,9 @@ export class ProjectsController {
     let os: "ios" | "android" | null = null;
     const osParam = ctx.req.query("os");
     if (osParam === "ios" || osParam === "android") os = osParam;
-    const release = ctx.req.query("release")?.slice(0, 32) || null;
+    // Release bound aligned with ingestion (R7-F6, max 128): the full
+    // identifier travels in filter semantics; only display copy shortens.
+    const release = ctx.req.query("release")?.slice(0, 128) || null;
     if (mobileCtx !== null && mobileCtx.sourceScope === "selected") {
       const rows = (await db`
         SELECT id FROM project_sources
@@ -964,7 +966,7 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
     }
     const release = ctx.req.query("release");
     if (release !== undefined) {
-      if (release.length === 0 || release.length > 64) {
+      if (release.length === 0 || release.length > 128) {
         return ctx.json(new ErrorResponse("invalid_filter").toJSON(), 400);
       }
       filters.release = release;
@@ -1080,11 +1082,14 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
       args: [projectId],
     });
     const standardRows = await analytics.execute({
+      // Stable project-level observation (R7-F3): every Standard Event key
+      // ever accepted at or before the snapshot cutoff — never inferred
+      // from the active display range — so a temporary zero in one range
+      // keeps the same pulse slot instead of rearranging the overview.
       sql: `SELECT DISTINCT json_extract(properties, '$."$standard".key') AS k
             FROM events
-            WHERE project_id = ? AND occurred_at >= ? AND occurred_at < ?
-              AND received_at <= ? AND name LIKE '$prism_%'`,
-      args: [projectId, window.from, window.to, window.asOf],
+            WHERE project_id = ? AND received_at <= ? AND name LIKE '$prism_%'`,
+      args: [projectId, window.asOf],
     });
     const capabilities = resolveProjectCapabilities({
       sources: sourceRows.map((row) => ({
@@ -1291,11 +1296,14 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
       args: [projectId],
     });
     const standardRows = await analytics.execute({
+      // Stable project-level observation (R7-F3): every Standard Event key
+      // ever accepted at or before the snapshot cutoff — never inferred
+      // from the active display range — so a temporary zero in one range
+      // keeps the same pulse slot instead of rearranging the overview.
       sql: `SELECT DISTINCT json_extract(properties, '$."$standard".key') AS k
             FROM events
-            WHERE project_id = ? AND occurred_at >= ? AND occurred_at < ?
-              AND received_at <= ? AND name LIKE '$prism_%'`,
-      args: [projectId, window.from, window.to, window.asOf],
+            WHERE project_id = ? AND received_at <= ? AND name LIKE '$prism_%'`,
+      args: [projectId, window.asOf],
     });
     const capabilities = resolveProjectCapabilities({
       sources: sourceRows.map((row) => ({

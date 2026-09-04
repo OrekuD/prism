@@ -1312,6 +1312,7 @@ describe("overview resource (R1-F2)", () => {
     ...artifactBase,
     id: "art_activity",
     kind: "timeseries" as const,
+    factIds: ["a"],
     bucket: "daily" as const,
     series: [{ name: "Events", points: [{ t: 1, value: 5 }] }],
   };
@@ -1319,6 +1320,7 @@ describe("overview resource (R1-F2)", () => {
     ...artifactBase,
     id: "art_secondary",
     kind: "ranked-list" as const,
+    factIds: ["a"],
     entity: "release" as const,
     rows: [{ key: "2.4.1", label: "2.4.1", value: 40, sharePercent: 80 }],
   };
@@ -1721,6 +1723,7 @@ describe("overview snapshot consistency (R2-F3)", () => {
       ...artifactBase,
       id: "art_activity",
       kind: "timeseries" as const,
+      factIds: ["a"],
       bucket: "daily" as const,
       series: [{ name: "Events", points: [{ t: 1, value: 5 }] }],
     },
@@ -1728,6 +1731,7 @@ describe("overview snapshot consistency (R2-F3)", () => {
       ...artifactBase,
       id: "art_secondary",
       kind: "ranked-list" as const,
+      factIds: ["a"],
       entity: "release" as const,
       rows: [{ key: "2.4.1", label: "2.4.1", value: 40, sharePercent: 80 }],
     },
@@ -1737,6 +1741,28 @@ describe("overview snapshot consistency (R2-F3)", () => {
       definitionLabel: null,
       warnings: [],
     },
+  });
+
+  it("rejects fact IDs that resolve to no returned fact (R7-F7)", () => {
+    expect(
+      ProjectOverviewResourceSchema.safeParse({
+        ...overviewResource(),
+        activity: {
+          ...overviewResource().activity,
+          factIds: ["ghost-fact"],
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      ProjectOverviewResourceSchema.safeParse({
+        ...overviewResource(),
+        supportingFacts: [fact({ id: "s1" })],
+        activity: {
+          ...overviewResource().activity,
+          factIds: ["s1"],
+        },
+      }).success,
+    ).toBe(true);
   });
 
   it("rejects a nested range, asOf, source, version, or reference change", () => {
