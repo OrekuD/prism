@@ -35,7 +35,6 @@ import {
   AssistantMessageSchema,
   AssistantRunSchema,
   canConfirmMemory,
-  canonicalBusinessTermName,
   ConversationSchema,
   decodeConversationCursor,
   DEFINITION_VERSION,
@@ -200,16 +199,21 @@ function checkDigestMatch(
   existingDigest: string | null,
   expectedDigest: string,
 ): void {
-  // R13-F1: only the explicit 0005 backfill sentinel is unverifiable.
-  // Pre-digest 0004 rows carry it after migration; a NULL digest beside a
-  // non-null key can only be created after migration by bypassing the
-  // pairing CHECK, so it fails closed as a conflict — never as a silent
-  // alias. New rows always carry verified SHA-256.
-  if (existingDigest === LEGACY_REQUEST_DIGEST) return;
+  // R13-F1 + R14-F2: the explicit 0005 backfill sentinel is UNVERIFIABLE.
+  // Legacy rows stay readable through normal history reads (which never
+  // call this helper), but an idempotent retry encountering the sentinel
+  // fails closed as a conflict — it is never acknowledged as a verified
+  // replay, even when the retried content looks identical, because the
+  // original digest inputs (e.g. the query-context token) are
+  // unrecoverable. Callers must retry with a new request ID. A NULL digest
+  // beside a non-null key likewise fails closed. New rows always carry
+  // verified SHA-256.
   if (existingDigest !== expectedDigest) {
     throw new AssistantStoreError(
       "idempotency-conflict",
-      "Idempotency key was already used with different content",
+      existingDigest === LEGACY_REQUEST_DIGEST
+        ? "Idempotency key predates digest verification; retry with a new request ID"
+        : "Idempotency key was already used with different content",
     );
   }
 }
@@ -221,26 +225,13 @@ function checkDigestMatch(
  */
 export const LEGACY_REQUEST_DIGEST = "legacy-0004-unverifiable";
 
-/**
- * Normalized slot discriminator (R13-F5): `canonicalBusinessTermName`
- * of the term name for `business-term`, `''` for every other key. The
- * same value is persisted to `assistant_memory.slot_term` and owned by
- * the 0006 exclusion constraint — display spelling stays verbatim in
- * `payload.name`.
- */
-export function slotTermFor(key: string, payload: unknown): string {
-  if (key !== "business-term") return "";
-  if (
-    typeof payload === "object" &&
-    payload !== null &&
-    "name" in payload &&
-    typeof (payload as { name: unknown }).name === "string"
-  ) {
-    return canonicalBusinessTermName(
-      (payload as { name: string }).name,
-    );
-  }
-  return "";
+/** PostgreSQL CHECK-violation code (never surfaces raw; see below). */
+function isCheckViolation(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: unknown }).code === "23514"
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -1467,7 +1458,7 @@ export async function proposeMemory(
   );
 
   async function proposeOnce(): Promise<MemoryRecord> {
-    const slotTerm = slotTermFor(input.key, input.value.payload);
+    const payloadJson = JSON.stringify(input.value.payload);
     let rows: Array<Record<string, unknown>>;
     try {
       rows = await db`
@@ -1476,28 +1467,36 @@ export async function proposeMemory(
         -- preferences lock the slot before writing, ordered by id like
         -- every confirm statement. Proposed shared knowledge takes no
         -- slot lock (it cannot conflict with the confirmed invariant).
-        -- R13-F5: slot identity uses the normalized slot_term column.
+        -- R14-F1: the incoming slot identity is derived by the DATABASE
+        -- function over the incoming payload — never by a JavaScript
+        -- reimplementation — so lock, insert, and exclusion agree.
         SELECT o.id FROM assistant_memory o
         WHERE ${storedStatus} = 'confirmed'
           AND o.organization_id = ${input.organizationId}
           AND o.scope = ${input.scope} AND o."key" = ${input.key}
           AND COALESCE(o.project_id::text, '') = COALESCE(${projectId}::text, '')
           AND COALESCE(o.subject_user_id, '') = COALESCE(${subjectUserId}::text, '')
-          AND o.slot_term = ${slotTerm}
+          AND o.slot_term = (
+            CASE WHEN ${input.key} = 'business-term'
+              THEN assistant_canonical_term((${payloadJson}::jsonb) ->> 'name')
+              ELSE '' END
+          )
           AND o.status = 'confirmed'
         ORDER BY o.id
         FOR UPDATE
       ),
       m AS (
+        -- R14-F1: slot_term is database-generated (BEFORE trigger over
+        -- key/payload) and deliberately omitted here. Display spelling
+        -- stays verbatim in payload.
         INSERT INTO assistant_memory
           (id, organization_id, scope, "key", project_id, subject_user_id,
-           status, version, label, description, payload, slot_term,
+           status, version, label, description, payload,
            proposer_id, confirmer_id, created_at, updated_at)
         SELECT ${id}, ${input.organizationId}, ${input.scope}, ${input.key},
           ${projectId}, ${subjectUserId}, ${storedStatus},
           ${input.value.version}, ${input.value.label},
-          ${input.value.description}, ${JSON.stringify(input.value.payload)}::jsonb,
-          ${slotTerm},
+          ${input.value.description}, ${payloadJson}::jsonb,
           ${input.proposerId},
           ${input.scope === "member" ? input.authenticatedUserId : null},
           ${input.now}, ${input.now}
@@ -1543,6 +1542,14 @@ export async function proposeMemory(
         throw new AssistantStoreError(
           "not-found",
           "Memory scope target not found",
+        );
+      }
+      // R14-F1.5: normalization/shape rejections surface as stable typed
+      // errors, never raw PostgreSQL 23514.
+      if (isCheckViolation(error)) {
+        throw new AssistantStoreError(
+          "invalid-input",
+          "Memory record failed validation",
         );
       }
       throw error;

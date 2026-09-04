@@ -16,12 +16,14 @@
  * another conversation. Run rows additionally derive project/user from
  * their conversation at insert time (see the store).
  *
- * Slot invariant (R12-F2, R13-F5): at most one `confirmed` record per
- * canonical slot lives in migration 0006 as a DEFERRABLE exclusion
- * constraint over `slot_term` (also raw SQL — drizzle cannot express it).
- * `slot_term` is the normalized business-term discriminator
- * (`canonicalBusinessTermName`); every other key stores `''`. Display
- * spelling stays verbatim in `payload.name`.
+ * Slot invariant (R12-F2, R13-F5, R14-F1): at most one `confirmed`
+ * record per canonical slot lives in migration 0006 as a DEFERRABLE
+ * exclusion constraint over `slot_term` (also raw SQL — drizzle cannot
+ * express it). `slot_term` is DATABASE-generated: migration 0007 owns it
+ * with a BEFORE trigger over key/payload (`assistant_canonical_term`),
+ * so exactly one Unicode implementation ever derives slot identity —
+ * JavaScript never computes it. Display spelling stays verbatim in
+ * `payload.name`.
  *
  * Durable checks (R12-F5): enums, non-negative times, step bounds, the
  * frozen definition version, running/completed timestamp rules, the
@@ -263,8 +265,10 @@ export const assistantMemory = pgTable(
     createdAt: bigint("created_at", { mode: "number" }).notNull(),
     updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
     /**
-     * Normalized business-term slot (R13-F5). `canonicalBusinessTermName`
-     * of `payload.name` when `key = 'business-term'`, else `''`.
+     * Database-generated slot discriminator (R14-F1): owned by the 0007
+     * BEFORE trigger, never written by application code. Business terms
+     * carry the trigger-computed canonical value; all other keys store
+     * `''`.
      */
     slotTerm: text("slot_term").notNull().default(""),
   },
@@ -284,10 +288,6 @@ export const assistantMemory = pgTable(
     check(
       "assistant_memory_shape_check",
       sql`"scope" IN ('project', 'workspace', 'member') AND "status" IN ('proposed', 'confirmed', 'superseded', 'rejected') AND "created_at" >= 0 AND "updated_at" >= 0 AND "version" >= 0`,
-    ),
-    check(
-      "assistant_memory_slot_term_check",
-      sql`(("key" <> 'business-term') AND ("slot_term" = '')) OR (("key" = 'business-term') AND ("slot_term" = assistant_canonical_term("payload" ->> 'name')))`,
     ),
   ],
 );

@@ -53,7 +53,6 @@ import {
   MemoryRecordSchema,
   ModelSummarySchema,
   NON_CAUSAL_PHRASES,
-  canonicalBusinessTermName,
   OpenRouterRoutingPolicySchema,
   OVERVIEW_RANGES,
   platformFamilyOf,
@@ -1339,14 +1338,6 @@ describe("memory permissions (R1-F4)", () => {
     expect(
       MemoryRecordSchema.safeParse({ ...member, subjectUserId: null }).success,
     ).toBe(false);
-  });
-
-  it("normalizes business-term slots canonically (R13-F5)", () => {
-    expect(canonicalBusinessTermName("MRR")).toBe("mrr");
-    expect(canonicalBusinessTermName("mrr")).toBe("mrr");
-    expect(canonicalBusinessTermName("  MRR ")).toBe("mrr");
-    expect(canonicalBusinessTermName("My  Term")).toBe("my term");
-    expect(canonicalBusinessTermName("ﬁnance")).toBe("finance");
   });
 
   it("enforces scope, key, payload, and provenance invariants", () => {

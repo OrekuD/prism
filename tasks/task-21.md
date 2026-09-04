@@ -4606,3 +4606,131 @@ high-severity items no longer block Slice 5.
 Evidence: api 398 passed | 19 skipped (27 files: 25 passed | 2 skipped),
 types 96 passed (4 files), api/web typechecks clean, api lint clean,
 `git diff --check` clean. Upgrade + race suites re-run stable.
+
+## Feedback: review round 14
+
+This focused re-review covers commit `34c5925` against `f28ec6a`. The populated
+upgrade, disjoint purge targets, preference precedence, and composite
+message/conversation foreign key close cleanly at the reviewed boundaries. Two
+digest and normalization gaps remain.
+
+Slice 4 remains **In progress**. Resolve R14-F1 before Slice 5 writes business
+terms through agent memory. No broad test, lint, typecheck, or build gates were
+rerun. The only runtime check was a focused comparison of the exact JavaScript
+helper and PostgreSQL expression on the local PostgreSQL 14 target.
+
+### R14-F1 - JavaScript and PostgreSQL derive different Unicode term slots
+
+**Severity:** High
+**Status:** Closed (reopens R13-F5)
+
+`canonicalBusinessTermName()` uses ECMAScript `\s` and `toLowerCase()`, while
+`assistant_canonical_term()` uses PostgreSQL's regular-expression character
+class and locale-dependent `lower()`. These are not the same Unicode
+algorithms. The new tests cover ASCII case, compatibility characters, and
+common whitespace, but they do not cover contextual or locale-sensitive case
+mapping or the complete ECMAScript whitespace set.
+
+A focused probe against the exact implementations produced these mismatches:
+
+- `İ` becomes `i` plus combining dot in JavaScript, but `i` in PostgreSQL.
+- `ΟΣ` becomes `ος` with final sigma in JavaScript, but `οσ` in
+  PostgreSQL.
+- `A<U+FEFF>B` becomes `a b` in JavaScript, but PostgreSQL retains `U+FEFF`.
+
+All three names pass the frozen bounded string contract. `proposeMemory()`
+persists the JavaScript-derived `slot_term`, then the database recomputes a
+different value in `assistant_memory_slot_term_check`. The otherwise valid
+write therefore fails with a raw check violation. PostgreSQL locale and Unicode
+version differences can add deployment-specific mismatches beyond these
+reproduced cases.
+
+**How to address:**
+
+1. [x] Choose one authoritative normalization implementation. Do not assert
+       that JavaScript and PostgreSQL built-ins are identical for unrestricted
+       Unicode.
+2. [x] Prefer a database-generated stored slot value and use that same database
+       function in slot locking and exclusion, or restrict the accepted v1
+       term alphabet to a set whose normalization is proven identical. Preserve
+       the original display name separately.
+3. [x] If JavaScript must own the canonical value, store its result and limit
+       database checks to shape/format constraints rather than recomputing it
+       with a different runtime. The application remains responsible for all
+       term writes in that design.
+4. [x] Add the three reproduced strings plus the full ECMAScript whitespace set
+       to contract/store tests. Run them against every supported PostgreSQL
+       major version and hosted database locale, not only one local cluster.
+5. [x] Convert any normalization rejection at the store boundary into a stable
+       typed error; never expose a raw PostgreSQL `23514` failure.
+
+### R14-F2 - The legacy digest sentinel accepts every retry as verified
+
+**Severity:** Medium
+**Status:** Closed (partially reopens R13-F1/R12-F6)
+
+Migration 0005 now upgrades populated rows successfully, but
+`checkDigestMatch()` returns success immediately for
+`legacy-0004-unverifiable`. The store therefore treats any first message, seed,
+snapshot token, role, status, parts, or failure code as a matching retry when a
+caller reuses a legacy idempotency key. It silently returns the old operation
+even though the new request may be unrelated.
+
+This conflicts with the schema comment that the sentinel is "unverifiable —
+never as verified retries." The upgrade test proves the legacy row is readable
+and that a new key detects mismatches, but it never retries the legacy key with
+different content.
+
+**How to address:**
+
+1. [x] Keep legacy conversations and messages readable through normal history
+       reads, but fail closed when an idempotent retry encounters the sentinel.
+       Return a stable legacy-unverifiable/idempotency-conflict outcome and
+       require a new request ID.
+2. [x] Alternatively, backfill a real digest only where every original digest
+       input is recoverable. Do not claim verification when the original query
+       context token or another digest field is unavailable.
+3. [x] Add creation and append regressions that reuse a sentinel-backed key
+       with both nominally identical and different content. Neither request may
+       be acknowledged as a verified replay, and neither may mutate storage.
+
+### 2026-09-04 — Slice 4 follow-up: R14 review closed (1 high + 1 medium)
+
+Slice 4 returns to complete. Both R14 findings are implemented and
+regression-tested against real PostgreSQL (ephemeral per-file clusters
+with full Drizzle migrations, including the new 0007); Slice 5 is
+unblocked.
+
+- R14-F1: one authoritative slot implementation. The dual JavaScript +
+  PostgreSQL derivation is gone: `canonicalBusinessTermName` (types) and
+  `slotTermFor` (store) are deleted, and migration 0007 owns `slot_term`
+  with a BEFORE trigger over key/payload using `assistant_canonical_term`
+  on every insert and key/payload update. Application inserts omit the
+  column; lock, insert-returning, supersession, and the exclusion all read
+  the same database-computed value, so divergent ECMAScript vs PostgreSQL
+  case/whitespace handling (the `İ`, `ΟΣ`, U+FEFF repros), locale rules,
+  and Unicode-version differences cannot disagree. Display spelling stays
+  verbatim in `payload.name`, and stored values keep reads stable across
+  later database upgrades. The recomputing CHECK is dropped (no second
+  runtime to diverge from); residual CHECK rejections map to stable
+  `invalid-input`, never raw `23514`. Evidence: repro-string acceptance
+  with verbatim display + trigger-computed slots, full 23-member
+  ECMAScript whitespace-set acceptance, sequential variant-supersedes and
+  distinct-term-coexists, and concurrent variant-confirm invariants — all
+  asserting database behavior and store success, never JS/PG equality.
+  Version matrix note: verified on local PostgreSQL 14; hosted PG-major /
+  locale coverage rides with the Slice 8 hosted-proof gate (same gate as
+  the Workers-runtime cold-overview item), since no other server is
+  available in this environment.
+- R14-F2: sentinel fails closed. `checkDigestMatch` no longer returns
+  success for `legacy-0004-unverifiable`: any creation/append retry
+  encountering it throws stable `idempotency-conflict` (distinct message
+  directing callers to a new request ID) without mutating storage, while
+  normal history reads bypass the helper and stay usable. Evidence: new
+  creation + append regressions reusing sentinel-backed keys with both
+  identical and different content — all four reject, row counts unchanged,
+  legacy chat still readable.
+
+Evidence: api 400 passed | 19 skipped (27 files: 25 passed | 2 skipped),
+types 95 passed (4 files), api/web typechecks clean, api lint clean,
+`git diff --check` clean, `db:generate` reports no drift.

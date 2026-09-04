@@ -2925,22 +2925,6 @@ const checkProvenance = (
   }
 };
 
-/**
- * Canonical business-term slot identity (R13-F5, frozen).
- *
- * Display spelling in `payload.name` is preserved verbatim; this value
- * owns slot equality only. Normalization is Unicode-safe:
- * NFKC compatibility composition, collapse every Unicode whitespace run
- * to one ASCII space, trim, then full-Unicode lowercase. `MRR`, `mrr`,
- * and `  MRR\t` are one slot; genuinely different names stay distinct.
- * The database exclusion uses the identical immutable SQL expression
- * (`assistant_canonical_term()` in migration 0006) over the same steps,
- * so application and database never derive different slots.
- */
-export function canonicalBusinessTermName(name: string): string {
-  return name.normalize("NFKC").replace(/\s+/gu, " ").trim().toLowerCase();
-}
-
 export const MemoryRecordSchema = z
   .discriminatedUnion("scope", [
     MemoryBaseSchema.extend({

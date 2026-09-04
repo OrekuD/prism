@@ -20,6 +20,7 @@ import {
 } from "./assistantDb";
 import {
   LEGACY_REQUEST_DIGEST,
+  appendMessage,
   confirmMemoryProposal,
   createConversationWithFirstMessage,
   getConversation,
@@ -27,14 +28,9 @@ import {
   purgeAssistantUserData,
   readConfirmedKnowledge,
   readMemoryAudit,
-  slotTermFor,
   startRun,
   type AssistantDb,
 } from "../utils/assistantStore";
-import {
-  canonicalBusinessTermName,
-  canonicalBusinessTermName as canonicalFromTypes,
-} from "@prism-analytics/types";
 
 const run = hasLocalPostgres() ? describe : describe.skip;
 
@@ -97,8 +93,8 @@ run("R13-F1 populated and empty upgrades", () => {
       };
       // Apply through 0004 only (0000..0004).
       for (const entry of entries) {
-        if (entry.tag.startsWith("0005") || entry.tag.startsWith("0006")) continue;
         const idx = entry.tag.split("_")[0];
+        if (idx >= "0005") continue;
         const names = (await readdir(folder)).filter(
           (name) => name.startsWith(idx) && name.endsWith(".sql"),
         );
@@ -117,14 +113,15 @@ run("R13-F1 populated and empty upgrades", () => {
         VALUES ('conv_leg', 'org_leg', ${projectId}, 'u_leg', 'Legacy chat', 'req_leg', 1000, 1000, 1000)`;
       await raw`INSERT INTO assistant_messages (id, conversation_id, seq, role, status, parts, client_request_id, created_at, completed_at)
         VALUES ('msg_leg', 'conv_leg', 0, 'user', 'complete', '[{"type":"text","text":"hi"}]', 'req_leg', 1000, 1000)`;
-      // Apply the exact 0005 + 0006 files under test.
+      // Apply every post-0004 migration file under test, in order.
       const allFiles = await import("node:fs/promises").then((fs) => fs.readdir(folder));
-      const file0005 = allFiles.find((n) => n.startsWith("0005") && n.endsWith(".sql"));
-      const file0006 = allFiles.find((n) => n.startsWith("0006") && n.endsWith(".sql"));
-      expect(file0005).toBeTruthy();
-      expect(file0006).toBeTruthy();
-      await applyMigrationFile(bare.sql as never, path.join(folder, file0005 as string));
-      await applyMigrationFile(bare.sql as never, path.join(folder, file0006 as string));
+      const pending = allFiles
+        .filter((n) => n.endsWith(".sql") && n.split("_")[0] >= "0005")
+        .sort();
+      expect(pending.length).toBeGreaterThan(0);
+      for (const file of pending) {
+        await applyMigrationFile(bare.sql as never, path.join(folder, file));
+      }
       // Legacy rows carry the explicit sentinel — never NULL.
       const convs = (await raw`SELECT client_request_id AS k, request_digest AS d FROM assistant_conversations WHERE id = 'conv_leg'`) as Array<{ k: unknown; d: unknown }>;
       expect(convs[0]?.k).toBe("req_leg");
@@ -376,23 +373,93 @@ run("R13-F4 run message binding", () => {
   });
 });
 
-run("R13-F5 normalized business-term slots", () => {
-  it("freezes the canonical function (unit)", () => {
-    expect(canonicalBusinessTermName("MRR")).toBe("mrr");
-    expect(canonicalBusinessTermName("  MRR\t")).toBe("mrr");
-    expect(canonicalBusinessTermName("My  Term")).toBe("my term");
-    expect(canonicalBusinessTermName("ﬁnance")).toBe("finance");
-    expect(canonicalFromTypes(" MRR ")).toBe("mrr");
-    expect(slotTermFor("business-term", { name: " MRR ", description: "x" })).toBe("mrr");
-    expect(slotTermFor("signup-definition", { kind: "standard-event", eventKey: "sign_up" })).toBe("");
+run("R13-F5 normalized business-term slots (R14-F1: database-owned)", () => {
+  // R14-F1: exactly one Unicode implementation — the database trigger —
+  // ever derives slot identity. These tests assert database behavior and
+  // store success (never raw 23514), never JavaScript/database equality.
+  const dbCanon = async (name: string): Promise<string> => {
+    const rows = (await db`SELECT assistant_canonical_term(${name}) AS v`) as Array<{
+      v: unknown;
+    }>;
+    return String(rows[0]?.v);
+  };
+
+  it("accepts the R14 repro strings with display spelling preserved", async () => {
+    const tenant = await newTenant("reproslots");
+    // The three strings whose JavaScript and PostgreSQL derivations
+    // disagreed under the removed dual implementation.
+    for (const name of ["İ", "ΟΣ", "A﻿B"]) {
+      const proposal = await proposeMemory(db, {
+        organizationId: tenant.orgId,
+        scope: "workspace",
+        key: "business-term",
+        value: { version: 1, label: "R", description: "r", payload: { name, description: "r" } },
+        proposerId: tenant.userId,
+        authenticatedUserId: tenant.userId,
+        now: tick(),
+      });
+      const stored = (await db`SELECT slot_term AS s, payload AS p FROM assistant_memory WHERE id = ${proposal.id}`) as Array<{
+        s: unknown;
+        p: unknown;
+      }>;
+      // Stored slot equals the single database derivation...
+      expect(String(stored[0]?.s)).toBe(await dbCanon(name));
+      // ...while display spelling stays verbatim.
+      expect((stored[0]?.p as { name?: unknown })?.name).toBe(name);
+      const confirmed = await confirmMemoryProposal(db, {
+        organizationId: tenant.orgId,
+        recordId: proposal.id,
+        confirmerId: tenant.userId,
+        role: "owner",
+        now: tick(),
+        action: "confirm",
+      });
+      expect(confirmed.ok).toBe(true);
+    }
   });
 
-  it("matches the database function on spelling variants", async () => {
-    const variants = ["MRR", "mrr", " MRR ", "MRR\t", "My  Term", "MY TERM", "ﬁnance", "ＡＢＣ"];
-    for (const variant of variants) {
-      const expected = canonicalBusinessTermName(variant);
-      const rows = (await db`SELECT assistant_canonical_term(${variant}) AS v`) as Array<{ v: unknown }>;
-      expect(String(rows[0]?.v)).toBe(expected);
+  it("accepts the full ECMAScript whitespace set without raw errors", async () => {
+    const tenant = await newTenant("ecmaws");
+    const whitespaces = [
+      "	",
+      "\n",
+      "\v",
+      "\f",
+      "\r",
+      " ",
+      " ",
+      " ",
+      " ",
+      " ",
+      " ",
+      " ",
+      " ",
+      " ",
+      " ",
+      " ",
+      " ",
+      " ",
+      " ",
+      " ",
+      " ",
+      "　",
+      "﻿",
+    ];
+    for (const ws of whitespaces) {
+      const name = `A${ws}B`;
+      const proposal = await proposeMemory(db, {
+        organizationId: tenant.orgId,
+        scope: "workspace",
+        key: "business-term",
+        value: { version: 1, label: "R", description: "r", payload: { name, description: "r" } },
+        proposerId: tenant.userId,
+        authenticatedUserId: tenant.userId,
+        now: tick(),
+      });
+      const stored = (await db`SELECT slot_term AS s FROM assistant_memory WHERE id = ${proposal.id}`) as Array<{
+        s: unknown;
+      }>;
+      expect(String(stored[0]?.s)).toBe(await dbCanon(name));
     }
   });
 
@@ -533,5 +600,139 @@ run("R13-F5 normalized business-term slots", () => {
       status: unknown;
     }>;
     expect(rows.filter((entry) => entry.status === "confirmed")).toHaveLength(1);
+  });
+});
+
+run("R14-F2 legacy sentinel fails closed", () => {
+  it("rejects creation retries on sentinel-backed keys without mutating storage", async () => {
+    const owner = await newTenant("legacyclosed");
+    const created = await createConversationWithFirstMessage(db, {
+      organizationId: owner.orgId,
+      projectId: owner.projectId,
+      userId: owner.userId,
+      clientRequestId: `req_legacyclosed_${seq}`,
+      firstMessage: "Original question",
+      seed: null,
+      queryContextToken: "opaque-server-issued-token",
+      now: tick(),
+    });
+    // Simulate a 0004-era row: backfilled sentinel, original inputs gone.
+    await db`UPDATE assistant_conversations SET request_digest = ${LEGACY_REQUEST_DIGEST} WHERE id = ${created.conversation.id}`;
+    await db`UPDATE assistant_messages SET request_digest = ${LEGACY_REQUEST_DIGEST} WHERE conversation_id = ${created.conversation.id}`;
+    const countConvs = async (): Promise<number> =>
+      Number(
+        (
+          (await db`SELECT COUNT(*) AS n FROM assistant_conversations WHERE project_id = ${owner.projectId} AND user_id = ${owner.userId}`) as Array<{
+            n: unknown;
+          }>
+        )[0]?.n,
+      );
+    const countMsgs = async (): Promise<number> =>
+      Number(
+        (
+          (await db`SELECT COUNT(*) AS n FROM assistant_messages WHERE conversation_id = ${created.conversation.id}`) as Array<{
+            n: unknown;
+          }>
+        )[0]?.n,
+      );
+    expect(await countConvs()).toBe(1);
+    expect(await countMsgs()).toBe(1);
+    // Nominally identical retry: still not a verified replay.
+    await expect(
+      createConversationWithFirstMessage(db, {
+        organizationId: owner.orgId,
+        projectId: owner.projectId,
+        userId: owner.userId,
+        clientRequestId: created.message.clientRequestId as string,
+        firstMessage: "Original question",
+        seed: null,
+        queryContextToken: "opaque-server-issued-token",
+        now: tick(),
+      }),
+    ).rejects.toMatchObject({ code: "idempotency-conflict" });
+    // Different content: also a conflict, never a silent alias.
+    await expect(
+      createConversationWithFirstMessage(db, {
+        organizationId: owner.orgId,
+        projectId: owner.projectId,
+        userId: owner.userId,
+        clientRequestId: created.message.clientRequestId as string,
+        firstMessage: "Unrelated question",
+        seed: null,
+        queryContextToken: "opaque-server-issued-token",
+        now: tick(),
+      }),
+    ).rejects.toMatchObject({ code: "idempotency-conflict" });
+    // Neither attempt mutated storage.
+    expect(await countConvs()).toBe(1);
+    expect(await countMsgs()).toBe(1);
+    // History reads stay usable: the legacy chat is still readable.
+    const fetched = await getConversation(db, {
+      projectId: owner.projectId,
+      userId: owner.userId,
+      conversationId: created.conversation.id,
+    });
+    expect(fetched?.messages).toHaveLength(1);
+  });
+
+  it("rejects message-append retries on sentinel-backed keys", async () => {
+    const owner = await newTenant("legacyappend");
+    const chat = await createConversationWithFirstMessage(db, {
+      organizationId: owner.orgId,
+      projectId: owner.projectId,
+      userId: owner.userId,
+      clientRequestId: `req_legacyappend_${seq}`,
+      firstMessage: "hello",
+      seed: null,
+      queryContextToken: "opaque-server-issued-token",
+      now: tick(),
+    });
+    const appended = await appendMessage(db, {
+      projectId: owner.projectId,
+      userId: owner.userId,
+      conversationId: chat.conversation.id,
+      role: "user",
+      status: "complete",
+      parts: [{ type: "text" as const, text: "follow-up" }],
+      clientRequestId: `req_legacyappend_msg_${seq}`,
+      now: tick(),
+    });
+    expect(appended.created).toBe(true);
+    const msgKey = appended.message.clientRequestId as string;
+    await db`UPDATE assistant_messages SET request_digest = ${LEGACY_REQUEST_DIGEST} WHERE conversation_id = ${chat.conversation.id} AND client_request_id = ${msgKey}`;
+    const countMsgs = async (): Promise<number> =>
+      Number(
+        (
+          (await db`SELECT COUNT(*) AS n FROM assistant_messages WHERE conversation_id = ${chat.conversation.id}`) as Array<{
+            n: unknown;
+          }>
+        )[0]?.n,
+      );
+    expect(await countMsgs()).toBe(2);
+    await expect(
+      appendMessage(db, {
+        projectId: owner.projectId,
+        userId: owner.userId,
+        conversationId: chat.conversation.id,
+        role: "user",
+        status: "complete",
+        parts: [{ type: "text" as const, text: "follow-up" }],
+        clientRequestId: msgKey,
+        now: tick(),
+      }),
+    ).rejects.toMatchObject({ code: "idempotency-conflict" });
+    await expect(
+      appendMessage(db, {
+        projectId: owner.projectId,
+        userId: owner.userId,
+        conversationId: chat.conversation.id,
+        role: "user",
+        status: "complete",
+        parts: [{ type: "text" as const, text: "different" }],
+        clientRequestId: msgKey,
+        now: tick(),
+      }),
+    ).rejects.toMatchObject({ code: "idempotency-conflict" });
+    expect(await countMsgs()).toBe(2);
   });
 });
