@@ -4108,3 +4108,285 @@ Evidence: api 374 passed | 19 skipped (26 files: 24 passed | 2 skipped),
 types 95 passed (4 files), web green except pre-existing gallery
 calendar failure, api/web typechecks clean, api lint clean,
 `git diff --check` clean.
+
+## Feedback: review round 12
+
+This focused review covers Slice 4 commit `052674f` against `76292b2`.
+The schema and store establish useful foundations, but several operations
+described as atomic are multiple independent Neon HTTP statements. The current
+race tests do not exercise those failure windows or competing records in the
+same memory slot.
+
+Slice 4 should return to **In progress**. Resolve the high-severity findings
+before Slice 5 makes this store the durable authority for paid model runs. No
+broad test, lint, typecheck, or build gates were rerun during this review.
+
+### R12-F1 - Conversation creation does not atomically persist its first message
+
+**Severity:** High
+**Status:** Closed
+
+`createConversationWithFirstMessage()` first commits an
+`assistant_conversations` insert and only then issues a separate
+`assistant_messages` insert. A process termination, network failure, or second
+statement rejection leaves a visible empty conversation even though the Slice
+4 contract says no chat exists before its first message is durable.
+
+The documented retry repair is useful recovery behavior, but it is not
+atomicity: repair depends on that client retrying successfully. The test named
+`lazy-creates a chat with its first message atomically` only observes a
+successful call and cannot detect the gap. The file-level claim that every
+operation is one SQL statement is therefore also false.
+
+**How to address:**
+
+1. [x] Insert or recover the idempotent conversation and insert the first
+       message in one database statement, for example with writable CTEs and
+       a bounded whole-statement retry for a concurrent conflict. A stored
+       database function is also acceptable if it remains compatible with the
+       hosted driver.
+2. [x] Return the conversation and message from that same statement. Do not
+       publish an empty conversation and rely on a later repair query.
+3. [x] Bind the idempotency key to a digest of the first message, seed, and
+       relevant snapshot context. The same key with a different payload must
+       return a conflict instead of silently returning the earlier request.
+4. [x] Add failing-first fault-injection evidence proving a failure at the
+       message stage leaves neither row, plus concurrent duplicate and
+       mismatched-payload cases.
+
+### R12-F2 - Memory confirmation, supersession, and audit are not atomic
+
+**Severity:** High
+**Status:** Closed
+
+`confirmMemoryProposal()` uses separate statements to update the proposal,
+append its audit entry, supersede existing records, and append one audit row per
+superseded record. A failure after any one of those calls can leave confirmed
+memory without audit, multiple confirmed values, or superseded values without
+their required audit history.
+
+The current concurrency test submits two confirmations for the same proposal.
+It proves only the `WHERE status = 'proposed'` guard. If two different proposed
+records for the same logical slot are confirmed concurrently, both can first
+become confirmed. Their later supersession statements can then supersede each
+other, producing a nondeterministic winner or even no confirmed record. There
+is no database constraint that owns the one-confirmed-value-per-slot invariant.
+
+**How to address:**
+
+1. [x] Define a canonical stored slot identity. It must include organization,
+       scope, key, nullable project/member owner, and normalized business-term
+       name where that key permits multiple independent terms.
+2. [x] Enforce at most one confirmed record per canonical slot with a partial
+       unique index or an equivalent database-owned invariant.
+3. [x] Perform proposal transition, old-value supersession, and every audit
+       insert in one statement or one real transaction. Lock or serialize the
+       slot, not just the proposal row.
+4. [x] Add a race test that confirms two distinct proposals for the same slot
+       concurrently. Exactly one value must remain confirmed, the other result
+       must be deterministic, and all committed transitions must have audits.
+5. [x] Add fault injection between transition stages and prove the operation
+       rolls back completely.
+
+### R12-F3 - Tenant provenance is not enforced by the stored relationships
+
+**Severity:** High
+**Status:** Closed
+
+Conversation and project-memory rows carry both `organization_id` and
+`project_id`, but each column has an independent foreign key. Neither the
+schema nor the insert verifies that the project belongs to that organization.
+`createConversationWithFirstMessage()` and `proposeMemory()` therefore accept
+an existing organization A together with an existing project B. Those rows can
+then pass organization-scoped or project-scoped reads under a false tenant
+identity.
+
+The same issue exists in `assistant_runs`: `project_id` and `user_id` are
+copied independently from input and are not constrained to match the owning
+conversation, while `message_id` is not constrained to belong to that
+conversation. Controller authorization in a later slice is necessary, but it
+does not make these durable claims true "by construction" or protect against
+a future adapter error.
+
+**How to address:**
+
+1. [x] Bind project and organization together in the database, using a
+       composite project key/foreign key where practical, or derive the
+       organization through an `INSERT ... SELECT` from the verified project.
+2. [x] Derive run project/user provenance from the conversation inside the
+       insert. Add composite relationships so the selected message must belong
+       to that same conversation.
+3. [x] For member memory, require the subject to be the authenticated member
+       represented by the fresh authorization context. Shared-memory writes
+       must likewise derive their organization/project pair from that context.
+4. [x] Add negative real-store cases for organization A plus project B, a run
+       with mismatched project/user provenance, and a message from another
+       conversation. Each must fail without inserting a row.
+
+### R12-F4 - Destructive purge paths can commit only part of a deletion
+
+**Severity:** High
+**Status:** Closed
+
+`purgeAssistantProjectData()` deletes conversations and project memory in two
+independent statements. `ProjectsController.deleteProject()` then deletes the
+project in a third statement. If the memory purge or project delete fails, the
+project can remain while some or all of its assistant history has already been
+permanently removed. Calling this "the SAME privacy operation" and saying a
+failure fails deletion closed is inaccurate.
+
+Workspace purge has the same two-statement window. User purge is broader: it
+can delete chats and preferences, then fail between three independent
+attribution-tombstone updates. This can leave an account deletion boundary with
+partially retained raw user IDs.
+
+**How to address:**
+
+1. [x] For project/workspace rows already protected by cascade foreign keys,
+       make the owning product-row deletion the single transactional boundary
+       instead of pre-deleting the assistant rows.
+2. [x] If explicit counts are required, combine the assistant and owner-row
+       deletes in one statement/transaction and return counts from that unit.
+3. [x] Make account deletion and attribution tombstoning one atomic operation,
+       including the owning user deletion when this path is integrated.
+4. [x] Add fault-injection tests at every former statement boundary. A failed
+       delete must leave all pre-operation data intact; a successful delete
+       must leave none of the scoped data or raw attribution behind.
+
+### R12-F5 - Invalid message and run rows can be committed before validation
+
+**Severity:** Medium
+**Status:** Closed
+
+The store validates only selected input fields before writing and relies on
+`mapMessage()` or `mapRun()` to parse the returned row afterward. For example,
+a negative/non-integer `now`, invalid `completedAt`, negative `latencyMs`, or
+empty/oversized fact and artifact IDs can reach SQL. The insert/update commits,
+then the mapper throws `invalid-output`. An invalid running row is especially
+harmful because it can continue occupying the one-active-run constraint while
+the caller believes the operation failed.
+
+The migration also has no checks for the contract enums, non-negative times,
+step ceiling, or valid status/timestamp relationships, so malformed rows are
+not rejected at the durable boundary.
+
+**How to address:**
+
+1. [x] Construct the complete candidate message/run and validate it with the
+       frozen schema before issuing SQL. Validate every reference string,
+       timestamp, latency, and status-dependent field.
+2. [x] Add database checks for cheap durable invariants: enums, non-negative
+       integers, step bounds, and running-versus-completed timestamp rules.
+3. [x] Add regression cases for each malformed field and assert that the
+       function rejects with `invalid-input`, storage is unchanged, and no
+       active-run slot is consumed.
+
+### R12-F6 - Message idempotency keys are not bound to request content
+
+**Severity:** Medium
+**Status:** Closed
+
+`appendMessage()` returns the existing row whenever
+`(conversation_id, client_request_id)` matches, without verifying that role,
+status, parts, or relevant completion fields match the original submission.
+Creation has the same issue for first-message text and insight seed. An
+accidentally reused client request ID can therefore acknowledge the wrong user
+question or assistant result as a successful retry.
+
+**How to address:**
+
+1. [x] Persist a canonical request digest beside each idempotency key. Include
+       every field whose semantic change would make it a different operation.
+2. [x] On conflict, return the existing result only when the digest matches;
+       otherwise return a stable `idempotency-conflict` error.
+3. [x] Add sequential and concurrent same-key/different-payload tests for both
+       lazy creation and appended messages.
+
+### R12-F7 - Member preferences contradict the no-confirmation contract
+
+**Severity:** Medium
+**Status:** Closed
+
+The frozen contract says a member-scoped `preferred-comparison-range` never
+needs confirmation. `proposeMemory()` nevertheless stores every member
+preference as `proposed`, and `readConfirmedKnowledge()` ignores it until a
+second `confirmMemoryProposal()` call. The new test codifies that two-step
+behavior instead of the frozen contract, so Slice 5 would either omit a saved
+preference or expose a pointless confirmation interaction.
+
+**How to address:**
+
+1. [x] Persist valid member-scoped preferences directly as `confirmed`, with
+       the member as the subject and actor, in the same statement as the audit
+       entry. Do not route them through shared-knowledge approval UI.
+2. [x] Supersede the prior preference for the same member/key atomically using
+       the canonical slot invariant from R12-F2.
+3. [x] Retain proposal/owner-admin confirmation only for project and workspace
+       knowledge, and update the current permission test to assert immediate
+       member-preference availability.
+
+### 2026-09-04 — Slice 4 follow-up: R12 review closed (4 high + 3 medium)
+
+Slice 4 returns to complete. All seven R12 findings are implemented and
+regression-tested against real PostgreSQL (ephemeral per-file clusters
+with full Drizzle migrations, including the new 0005); the high-severity
+items no longer block Slice 5.
+
+- R12-F1: creation is one statement. `createConversationWithFirstMessage`
+  inserts (or recovers) the idempotent conversation AND its `seq: 0`
+  message in a single writable-CTE statement, deriving the organization
+  from the verified project row (a mismatched caller org fails closed
+  before any write). A bounded whole-statement retry covers the
+  concurrent-duplicate snapshot window. Evidence: fault injection on the
+  write leaves neither row; sequential/concurrent duplicate and
+  mismatched-payload cases covered.
+- R12-F2: one-confirmed-per-slot is database-owned. Migration 0005 adds a
+  DEFERRABLE exclusion constraint over the canonical slot
+  (organization, scope, key, nullable project/member owner,
+  business-term name); legitimate succession commits atomically while
+  overlapping same-slot confirms serialize at commit with exactly one
+  winner. Confirm/transition/supersede/every-audit is one CTE statement
+  with a MATERIALIZED slot-lock sub-statement ordered before all writes
+  (lock-before-write, id-ordered, so no lock cycle is possible) plus a
+  deadlock-abort retry backstop. Evidence: forced-overlap race via
+  lock-wait orchestration (winner ok, loser `slot-conflict`, exactly one
+  confirmed, complete audit chains), timing-independent invariant tests,
+  and fault injection proving full rollback.
+- R12-F3: tenant pairing is stored, not trusted. 0005 adds composite FKs
+  (conversations and project memory keyed by project+organization;
+  runs keyed by conversation+project+user with a matching unique), and
+  writes derive provenance inside the statement (org from project;
+  run project/user/message from the joined conversation, requiring the
+  message to belong to it). `proposeMemory` takes `authenticatedUserId`:
+  the proposer is always that user and member subjects must equal them.
+  Evidence: org-A/project-B, mismatched run scope, and foreign-message
+  negatives, each asserting zero rows inserted (plus a raw-SQL FK probe).
+- R12-F4: deletions are single boundaries. The project-row delete owns
+  project deletion via cascade FKs (`deleteProject` issues no assistant
+  pre-deletes; asserted at the controller level and proven by a real-DB
+  cascade test); workspace and user purges (incl. tombstoning) are each
+  one CTE statement. Evidence: fault injection on every purge leaves all
+  data intact; success leaves none of the scoped data or raw attribution.
+- R12-F5: candidates validate pre-write against the frozen schemas
+  (message/run/proposal inputs, timestamps, latency, reference IDs), and
+  0005 adds CHECKs for enums, non-negative times, step bounds,
+  definition version 1, running/completed timestamp rules, and the
+  key/digest pairing. Evidence: per-field regressions assert
+  `invalid-input`, unchanged storage, and unconsumed run slots, plus a
+  raw-SQL CHECK probe below the store.
+- R12-F6: digests bind idempotency keys. `request_digest` columns (with
+  key-null ⟺ digest-null CHECKs) store SHA-256 over creation
+  (message/seed/token) and append (role/status/parts/failureCode)
+  preimages; mismatches throw stable `idempotency-conflict` on fast,
+  raced, and recovered paths. Evidence: sequential and concurrent
+  same-key/different-payload tests for creation and appends.
+- R12-F7: member preferences persist immediately as `confirmed` (subject
+  = actor = authenticated member) with atomic same-slot supersession and
+  a `confirmed` audit entry — no proposal round-trip. Proposals and
+  owner/admin confirmation remain for project/workspace knowledge only;
+  permission tests assert immediate availability.
+
+Evidence: api 390 passed | 19 skipped (27 files: 25 passed | 2 skipped),
+types 95 passed (4 files), web green except pre-existing gallery
+calendar failure, api/web typechecks clean, api lint clean,
+`git diff --check` clean. Race-sensitive suites re-run 3x stable.

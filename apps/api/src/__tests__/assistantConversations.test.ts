@@ -22,7 +22,6 @@ import {
   getConversation,
   listConversations,
   proposeMemory,
-  purgeAssistantProjectData,
   purgeAssistantRetention,
   readConfirmedKnowledge,
   selectRecentTurns,
@@ -100,6 +99,19 @@ async function rejectsWithCode(
     return;
   }
   throw new Error(`expected rejection with code ${code}`);
+}
+
+/** Wrap the store so the Nth database call throws (fault injection). */
+function failingDb(db: AssistantDb, failOnCalls: number[]): AssistantDb {
+  let calls = 0;
+  return (async (
+    strings: TemplateStringsArray,
+    ...values: unknown[]
+  ) => {
+    calls += 1;
+    if (failOnCalls.includes(calls)) throw new Error("injected fault");
+    return db(strings, ...values);
+  }) as AssistantDb;
 }
 
 run("conversation lifecycle", () => {
@@ -477,8 +489,7 @@ run("history listing and cursors", () => {
       now: tick(),
     });
     const started = await startRun(db, {
-      organizationId: tenant.orgId,
-      projectId: tenant.projectId,
+            projectId: tenant.projectId,
       userId: tenant.userId,
       conversationId: chat.conversation.id,
       messageId: chat.message.id,
@@ -505,8 +516,7 @@ run("one active run", () => {
     const first = await newChat(tenant, "first");
     const second = await newChat(tenant, "second");
     const started = await startRun(db, {
-      organizationId: tenant.orgId,
-      projectId: tenant.projectId,
+            projectId: tenant.projectId,
       userId: tenant.userId,
       conversationId: first.conversation.id,
       messageId: first.message.id,
@@ -516,8 +526,7 @@ run("one active run", () => {
     });
     if (!started.ok) throw new Error("expected run to start");
     const blocked = await startRun(db, {
-      organizationId: tenant.orgId,
-      projectId: tenant.projectId,
+            projectId: tenant.projectId,
       userId: tenant.userId,
       conversationId: second.conversation.id,
       messageId: second.message.id,
@@ -545,8 +554,7 @@ run("one active run", () => {
     expect(done.finished).toBe(true);
     expect(done.run.status).toBe("complete");
     const retry = await startRun(db, {
-      organizationId: tenant.orgId,
-      projectId: tenant.projectId,
+            projectId: tenant.projectId,
       userId: tenant.userId,
       conversationId: second.conversation.id,
       messageId: second.message.id,
@@ -563,8 +571,7 @@ run("one active run", () => {
     const attempts = await Promise.all(
       [1, 2, 3].map((index) =>
         startRun(db, {
-          organizationId: tenant.orgId,
-          projectId: tenant.projectId,
+                    projectId: tenant.projectId,
           userId: tenant.userId,
           conversationId: chat.conversation.id,
           messageId: chat.message.id,
@@ -583,8 +590,7 @@ run("one active run", () => {
     const stranger = await newTenant("refinstranger");
     const chat = await newChat(tenant);
     const started = await startRun(db, {
-      organizationId: tenant.orgId,
-      projectId: tenant.projectId,
+            projectId: tenant.projectId,
       userId: tenant.userId,
       conversationId: chat.conversation.id,
       messageId: chat.message.id,
@@ -626,8 +632,7 @@ run("one active run", () => {
     const tenant = await newTenant("runbad");
     const chat = await newChat(tenant);
     const base = {
-      organizationId: tenant.orgId,
-      projectId: tenant.projectId,
+            projectId: tenant.projectId,
       userId: tenant.userId,
       conversationId: chat.conversation.id,
       messageId: chat.message.id,
@@ -675,8 +680,7 @@ run("chat deletion", () => {
     const tenant = await newTenant("delchat");
     const chat = await newChat(tenant);
     const started = await startRun(db, {
-      organizationId: tenant.orgId,
-      projectId: tenant.projectId,
+            projectId: tenant.projectId,
       userId: tenant.userId,
       conversationId: chat.conversation.id,
       messageId: chat.message.id,
@@ -697,6 +701,7 @@ run("chat deletion", () => {
         payload: { name: "Churn", description: "Cancelled subscriptions" },
       },
       proposerId: tenant.userId,
+      authenticatedUserId: tenant.userId,
       now: tick(),
     });
     const confirmed = await confirmMemoryProposal(db, {
@@ -726,8 +731,7 @@ run("chat deletion", () => {
     // A new run can start: the aborted run holds no slot.
     const fresh = await newChat(tenant, "after deletion");
     const restart = await startRun(db, {
-      organizationId: tenant.orgId,
-      projectId: tenant.projectId,
+            projectId: tenant.projectId,
       userId: tenant.userId,
       conversationId: fresh.conversation.id,
       messageId: fresh.message.id,
@@ -840,8 +844,7 @@ run("retention and project purge", () => {
     const mkRun = async (status: "complete" | "running", at: number) => {
       const chat = await newChat(tenant, `retention ${status} ${at}`);
       const started = await startRun(db, {
-        organizationId: tenant.orgId,
-        projectId: tenant.projectId,
+                projectId: tenant.projectId,
         userId: tenant.userId,
         conversationId: chat.conversation.id,
         messageId: chat.message.id,
@@ -865,8 +868,7 @@ run("retention and project purge", () => {
     await mkRun("complete", NOW);
     const chat = await newChat(tenant, "retention running");
     const running = await startRun(db, {
-      organizationId: tenant.orgId,
-      projectId: tenant.projectId,
+            projectId: tenant.projectId,
       userId: tenant.userId,
       conversationId: chat.conversation.id,
       messageId: chat.message.id,
@@ -887,7 +889,7 @@ run("retention and project purge", () => {
     expect(getAssistantRetentionConfig({ PRISM_ASSISTANT_RUN_RETENTION_DAYS: "0" }).runRetentionDays).toBe(90);
   });
 
-  it("purges project chats and project memory but keeps shared knowledge", async () => {
+  it("cascades project chats and project memory with the project row (R12-F4)", async () => {
     const tenant = await newTenant("projpurge");
     const chat = await newChat(tenant);
     const projectTerm = await proposeMemory(db, {
@@ -902,6 +904,7 @@ run("retention and project purge", () => {
         payload: { name: "MRR", description: "Monthly recurring revenue" },
       },
       proposerId: tenant.userId,
+      authenticatedUserId: tenant.userId,
       now: tick(),
     });
     expect(
@@ -925,6 +928,7 @@ run("retention and project purge", () => {
         payload: { name: "ARR", description: "Annual recurring revenue" },
       },
       proposerId: tenant.userId,
+      authenticatedUserId: tenant.userId,
       now: tick(),
     });
     await confirmMemoryProposal(db, {
@@ -935,8 +939,10 @@ run("retention and project purge", () => {
       now: tick(),
       action: "confirm",
     });
-    const purged = await purgeAssistantProjectData(db, tenant.projectId);
-    expect(purged).toEqual({ conversationsDeleted: 1, memoriesDeleted: 1 });
+    // The owning product-row deletion is the single boundary: one
+    // statement removes the project, its chats (messages/runs cascade),
+    // and its project memory (audit cascades).
+    await db`DELETE FROM projects WHERE id = ${tenant.projectId}`;
     expect(
       await getConversation(db, {
         projectId: tenant.projectId,
@@ -944,6 +950,10 @@ run("retention and project purge", () => {
         conversationId: chat.conversation.id,
       }),
     ).toBeNull();
+    const leftoverRuns = await db`SELECT id FROM assistant_runs WHERE user_id = ${tenant.userId}`;
+    expect(leftoverRuns).toHaveLength(0);
+    const leftoverMem = await db`SELECT id FROM assistant_memory WHERE organization_id = ${tenant.orgId}`;
+    expect(leftoverMem.map((entry) => String(entry.id))).toEqual([shared.id]);
     const knowledge = await readConfirmedKnowledge(db, {
       organizationId: tenant.orgId,
       projectId: tenant.projectId,
@@ -951,5 +961,340 @@ run("retention and project purge", () => {
     });
     expect(knowledge.project).toHaveLength(0);
     expect(knowledge.workspace.map((entry) => entry.id)).toContain(shared.id);
+  });
+});
+
+run("atomic creation evidence (R12-F1)", () => {
+  it("leaves neither row when the single write statement fails", async () => {
+    const tenant = await newTenant("faultcreate");
+    const input = {
+      organizationId: tenant.orgId,
+      projectId: tenant.projectId,
+      userId: tenant.userId,
+      clientRequestId: "req_faultcreate",
+      firstMessage: "Will this persist halfway?",
+      seed: null,
+      queryContextToken: TOKEN,
+      now: tick(),
+    };
+    // Call 1 is the project ownership read; call 2 is the atomic
+    // create-with-first-message statement. Failing it must persist
+    // nothing: there is no second statement to strand an empty chat.
+    await expect(
+      createConversationWithFirstMessage(failingDb(db, [2]), input),
+    ).rejects.toThrow("injected fault");
+    const convs = await db`SELECT id FROM assistant_conversations
+      WHERE project_id = ${tenant.projectId} AND user_id = ${tenant.userId}`;
+    expect(convs).toHaveLength(0);
+    // The operation still succeeds once the fault clears.
+    const healed = await createConversationWithFirstMessage(db, input);
+    expect(healed.createdConversation).toBe(true);
+    expect(healed.message.seq).toBe(0);
+  });
+
+  it("rejects a reused creation key with different content (R12-F6)", async () => {
+    const tenant = await newTenant("digestcreate");
+    const base = {
+      organizationId: tenant.orgId,
+      projectId: tenant.projectId,
+      userId: tenant.userId,
+      clientRequestId: "req_digestcreate",
+      seed: null,
+      queryContextToken: TOKEN,
+      now: tick(),
+    };
+    const first = await createConversationWithFirstMessage(db, {
+      ...base,
+      firstMessage: "Original question",
+    });
+    expect(first.createdConversation).toBe(true);
+    await rejectsWithCode(
+      createConversationWithFirstMessage(db, {
+        ...base,
+        firstMessage: "Different question, same key",
+        now: tick(),
+      }),
+      "idempotency-conflict",
+    );
+    await rejectsWithCode(
+      createConversationWithFirstMessage(db, {
+        ...base,
+        firstMessage: "Original question",
+        seed: { type: "insight", insightId: "other" },
+        now: tick(),
+      }),
+      "idempotency-conflict",
+    );
+    // Exactly one conversation and one message exist.
+    const convs = await db`SELECT id FROM assistant_conversations
+      WHERE project_id = ${tenant.projectId} AND user_id = ${tenant.userId}`;
+    expect(convs).toHaveLength(1);
+    const msgs = await db`SELECT id FROM assistant_messages
+      WHERE conversation_id = ${first.conversation.id}`;
+    expect(msgs).toHaveLength(1);
+  });
+
+  it("resolves concurrent same-key/different-payload creates deterministically", async () => {
+    const tenant = await newTenant("digestrace");
+    const base = {
+      organizationId: tenant.orgId,
+      projectId: tenant.projectId,
+      userId: tenant.userId,
+      clientRequestId: "req_digestrace",
+      seed: null,
+      queryContextToken: TOKEN,
+      now: tick(),
+    };
+    const outcomes = await Promise.allSettled([
+      createConversationWithFirstMessage(db, {
+        ...base,
+        firstMessage: "Tab A question",
+      }),
+      createConversationWithFirstMessage(db, {
+        ...base,
+        firstMessage: "Tab B question",
+      }),
+    ]);
+    const fulfilled = outcomes.filter(
+      (entry) => entry.status === "fulfilled",
+    );
+    const rejected = outcomes.filter((entry) => entry.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(
+      (rejected[0] as PromiseRejectedResult).reason?.code,
+    ).toBe("idempotency-conflict");
+    const convs = await db`SELECT id FROM assistant_conversations
+      WHERE project_id = ${tenant.projectId} AND user_id = ${tenant.userId}`;
+    expect(convs).toHaveLength(1);
+  });
+});
+
+run("message digest conflicts (R12-F6)", () => {
+  it("rejects reused message keys with different content", async () => {
+    const tenant = await newTenant("digestmsg");
+    const chat = await newChat(tenant);
+    const base = {
+      projectId: tenant.projectId,
+      userId: tenant.userId,
+      conversationId: chat.conversation.id,
+      role: "user" as const,
+      status: "complete" as const,
+      clientRequestId: "req_digestmsg",
+      now: tick(),
+    };
+    const first = await appendMessage(db, {
+      ...base,
+      parts: [{ type: "text" as const, text: "Original" }],
+    });
+    expect(first.created).toBe(true);
+    await rejectsWithCode(
+      appendMessage(db, {
+        ...base,
+        parts: [{ type: "text" as const, text: "Different" }],
+        now: tick(),
+      }),
+      "idempotency-conflict",
+    );
+    await rejectsWithCode(
+      appendMessage(db, {
+        ...base,
+        role: "assistant",
+        parts: [{ type: "text" as const, text: "Original" }],
+        now: tick(),
+      }),
+      "idempotency-conflict",
+    );
+    const fetched = await getConversation(db, {
+      projectId: tenant.projectId,
+      userId: tenant.userId,
+      conversationId: chat.conversation.id,
+    });
+    expect(fetched?.messages).toHaveLength(2);
+  });
+
+  it("resolves concurrent same-key/different-payload appends", async () => {
+    const tenant = await newTenant("digestmsgrace");
+    const chat = await newChat(tenant);
+    const base = {
+      projectId: tenant.projectId,
+      userId: tenant.userId,
+      conversationId: chat.conversation.id,
+      role: "user" as const,
+      status: "complete" as const,
+      clientRequestId: "req_digestmsgrace",
+      now: tick(),
+    };
+    const outcomes = await Promise.allSettled([
+      appendMessage(db, {
+        ...base,
+        parts: [{ type: "text" as const, text: "Tab A" }],
+      }),
+      appendMessage(db, {
+        ...base,
+        parts: [{ type: "text" as const, text: "Tab B" }],
+      }),
+    ]);
+    expect(
+      outcomes.filter((entry) => entry.status === "fulfilled"),
+    ).toHaveLength(1);
+    const rejected = outcomes.filter(
+      (entry) => entry.status === "rejected",
+    );
+    expect(rejected).toHaveLength(1);
+    expect(
+      (rejected[0] as PromiseRejectedResult).reason?.code,
+    ).toBe("idempotency-conflict");
+  });
+});
+
+run("tenant write isolation (R12-F3)", () => {
+  it("fails cross-tenant writes without inserting a row", async () => {
+    const orgA = await newTenant("tena");
+    const orgB = await newTenant("tenb");
+    // Organization A paired with project B.
+    await rejectsWithCode(
+      createConversationWithFirstMessage(db, {
+        organizationId: orgA.orgId,
+        projectId: orgB.projectId,
+        userId: orgA.userId,
+        clientRequestId: "req_tenantmix",
+        firstMessage: "Mixed tenant write",
+        seed: null,
+        queryContextToken: TOKEN,
+        now: tick(),
+      }),
+      "invalid-input",
+    );
+    const mixed = await db`SELECT id FROM assistant_conversations
+      WHERE project_id = ${orgB.projectId}`;
+    expect(mixed).toHaveLength(0);
+    // A run scoped to A over B's chat inserts nothing.
+    const chatB = await newChat(orgB);
+    await rejectsWithCode(
+      startRun(db, {
+        projectId: orgA.projectId,
+        userId: orgA.userId,
+        conversationId: chatB.conversation.id,
+        messageId: chatB.message.id,
+        queryContextHash: "hash_tenantmix",
+        model: "model-a",
+        now: tick(),
+      }),
+      "not-found",
+    );
+    const runsB = await db`SELECT id FROM assistant_runs
+      WHERE conversation_id = ${chatB.conversation.id}`;
+    expect(runsB).toHaveLength(0);
+    // A message from another conversation cannot back a run.
+    const chatA = await newChat(orgA);
+    await rejectsWithCode(
+      startRun(db, {
+        projectId: orgA.projectId,
+        userId: orgA.userId,
+        conversationId: chatA.conversation.id,
+        messageId: chatB.message.id,
+        queryContextHash: "hash_msgmix",
+        model: "model-a",
+        now: tick(),
+      }),
+      "not-found",
+    );
+    const runsA = await db`SELECT id FROM assistant_runs
+      WHERE conversation_id = ${chatA.conversation.id}`;
+    expect(runsA).toHaveLength(0);
+  });
+});
+
+run("pre-write validation (R12-F5)", () => {
+  it("rejects malformed writes before committing anything", async () => {
+    const tenant = await newTenant("malformed");
+    const chat = await newChat(tenant);
+    const base = {
+      projectId: tenant.projectId,
+      userId: tenant.userId,
+      conversationId: chat.conversation.id,
+      role: "user" as const,
+      status: "complete" as const,
+      parts: [{ type: "text" as const, text: "ok" }],
+      now: tick(),
+    };
+    const messageCount = async (): Promise<number> =>
+      Number(
+        (
+          await db`SELECT COUNT(*) AS n FROM assistant_messages
+            WHERE conversation_id = ${chat.conversation.id}`
+        )[0]?.n,
+      );
+    await rejectsWithCode(
+      appendMessage(db, { ...base, now: -1 }),
+      "invalid-input",
+    );
+    await rejectsWithCode(
+      appendMessage(db, { ...base, completedAt: -5 }),
+      "invalid-input",
+    );
+    expect(await messageCount()).toBe(1);
+    const started = await startRun(db, {
+      projectId: tenant.projectId,
+      userId: tenant.userId,
+      conversationId: chat.conversation.id,
+      messageId: chat.message.id,
+      queryContextHash: "hash_malformed",
+      model: "model-a",
+      now: tick(),
+    });
+    if (!started.ok) throw new Error("expected run to start");
+    await rejectsWithCode(
+      finishRun(db, {
+        projectId: tenant.projectId,
+        userId: tenant.userId,
+        runId: started.run.id,
+        status: "complete",
+        latencyMs: -1,
+        now: tick(),
+      }),
+      "invalid-input",
+    );
+    await rejectsWithCode(
+      finishRun(db, {
+        projectId: tenant.projectId,
+        userId: tenant.userId,
+        runId: started.run.id,
+        status: "complete",
+        factIds: [""],
+        now: tick(),
+      }),
+      "invalid-input",
+    );
+    // The run is still running: malformed finishes consume nothing.
+    const fetched = await getConversation(db, {
+      projectId: tenant.projectId,
+      userId: tenant.userId,
+      conversationId: chat.conversation.id,
+    });
+    expect(fetched?.activeRun?.status).toBe("running");
+    await rejectsWithCode(
+      startRun(db, {
+        projectId: tenant.projectId,
+        userId: tenant.userId,
+        conversationId: chat.conversation.id,
+        messageId: chat.message.id,
+        queryContextHash: "hash_malformed2",
+        model: "",
+        now: tick(),
+      }),
+      "invalid-input",
+    );
+  });
+
+  it("enforces durable checks below the store", async () => {
+    // Raw SQL violating the contract-shaped CHECKs fails at the
+    // database boundary even if a future caller bypasses validation.
+    await expect(
+      db`INSERT INTO assistant_messages
+        (id, conversation_id, seq, role, status, parts, created_at, completed_at)
+        VALUES ('msg_raw_bad', 'conv_missing', -1, 'system', 'complete', '[]', -5, NULL)`,
+    ).rejects.toThrow();
   });
 });

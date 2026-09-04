@@ -57,7 +57,6 @@ import {
 	type MetricFact,
 } from "@prism-analytics/types";
 import { buildOverviewResource } from "../utils/projectOverview";
-import { purgeAssistantProjectData } from "../utils/assistantStore";
 
 export class ProjectsController {
   /**
@@ -215,12 +214,12 @@ export class ProjectsController {
       TursoDatabaseManager.getInstance(ctx),
       purgeMobileProjectStatements(projectId),
     );
-    // Task 21 slice 4: assistant chats (messages and runs cascade) and
-    // project-scoped memory die with the project in the SAME privacy
-    // operation, BEFORE the product row disappears — a purge failure fails
-    // the deletion closed. Workspace memory and member preferences
-    // survive: shared knowledge outlives any single project.
-    await purgeAssistantProjectData(DatabaseManager.getInstance(ctx), projectId);
+    // Task 21 slice 4 (R12-F4): assistant chats (messages and runs
+    // cascade) and project-scoped memory (audit cascades) die with the
+    // project row itself — the cascade FKs make `DELETE FROM projects`
+    // below the single transactional boundary. No assistant pre-delete
+    // runs here: a failed delete leaves everything intact, and shared
+    // workspace memory plus member preferences survive by design.
     await DatabaseManager.getInstance(
       ctx,
     )`DELETE FROM projects WHERE id = ${projectId}`;

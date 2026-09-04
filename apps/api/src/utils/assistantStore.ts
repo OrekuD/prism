@@ -1,5 +1,5 @@
 /**
- * Assistant control-plane store (Task 21 slice 4).
+ * Assistant control-plane store (Task 21 slice 4, hardened per R12).
  *
  * Durable foundation for conversations, messages, runs, typed memory, and
  * audit history — without invoking any model. Every function takes
@@ -9,19 +9,24 @@
  * (slice 6); the store additionally scopes by the verified IDs it is
  * given, which is what the authorization tests prove.
  *
- * Neon-HTTP compatibility: every operation is one SQL statement (CTEs
- * where several rows must change atomically). There are deliberately NO
- * multi-statement transactions — the Cloudflare Worker driver is
- * stateless. Races resolve through constraints:
- * - duplicate creation/submission converges via idempotency uniques,
+ * Neon-HTTP compatibility: every WRITE is one SQL statement (writable
+ * CTEs where several rows must change atomically). There are deliberately
+ * NO multi-statement write transactions — the Cloudflare Worker driver is
+ * stateless. Races resolve through database-owned invariants:
+ * - duplicate creation/submission converges via idempotency uniques
+ *   bound to request digests (a reused key with different content is a
+ *   conflict, never a silent alias),
  * - message sequencing retries on the `(conversation_id, seq)` conflict,
  * - the one-active-run rule is a partial unique index,
- * - proposal confirmation is `UPDATE ... WHERE status = 'proposed'`.
+ * - one-confirmed-per-slot is a deferrable exclusion constraint, and
+ *   proposal confirmation is `UPDATE ... WHERE status = 'proposed'`.
+ * Reads may fan out across statements; only writes carry atomicity
+ * requirements, and fault-injection tests prove every write unit.
  *
  * Timestamps are millisecond epochs supplied by the caller (`now`) so
  * tests are deterministic.
  */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
   AGENT_LIMITS,
@@ -60,7 +65,11 @@ export type AssistantDb = (
 ) => Promise<Array<Record<string, unknown>>>;
 
 export class AssistantStoreError extends Error {
-  readonly code: "not-found" | "invalid-input" | "invalid-output";
+  readonly code:
+    | "not-found"
+    | "invalid-input"
+    | "invalid-output"
+    | "idempotency-conflict";
   constructor(
     code: AssistantStoreError["code"],
     message: string,
@@ -117,6 +126,15 @@ function isUniqueViolation(error: unknown): boolean {
   );
 }
 
+/** Exclusion-violation (R12-F2 slot invariant) alongside unique violations. */
+function isExclusionViolation(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: unknown }).code === "23P01"
+  );
+}
+
 function isForeignKeyViolation(error: unknown): boolean {
   return (
     typeof error === "object" &&
@@ -128,6 +146,66 @@ function isForeignKeyViolation(error: unknown): boolean {
 function requireId(name: string, value: string): void {
   if (!value || value.length > 128) {
     throw new AssistantStoreError("invalid-input", `${name} is required`);
+  }
+}
+
+function requireNow(now: number): void {
+  if (!Number.isInteger(now) || now < 0) {
+    throw new AssistantStoreError("invalid-input", "now must be a valid time");
+  }
+}
+
+/**
+ * Canonical request digest (R12-F6): SHA-256 over the JSON-serialized
+ * content that makes an operation what it is. Persisted beside every
+ * idempotency key; a reused key with different content is a stable
+ * `idempotency-conflict`, never a silent alias of the earlier request.
+ */
+function requestDigest(value: unknown): string {
+  return createHash("sha256")
+    .update(JSON.stringify(value), "utf8")
+    .digest("hex");
+}
+
+/** Digest preimage for lazy creation: first message, seed, snapshot token. */
+export function createConversationDigest(input: {
+  firstMessage: string;
+  seedInsightId: string | null;
+  queryContextToken: string;
+}): string {
+  return requestDigest([
+    input.firstMessage,
+    input.seedInsightId,
+    input.queryContextToken,
+  ]);
+}
+
+/** Digest preimage for an appended message: everything semantic. */
+export function messageRequestDigest(input: {
+  role: string;
+  status: string;
+  parts: unknown;
+  failureCode: string | null;
+}): string {
+  return requestDigest([
+    input.role,
+    input.status,
+    input.parts,
+    input.failureCode,
+  ]);
+}
+
+function checkDigestMatch(
+  existingDigest: string | null,
+  expectedDigest: string,
+): void {
+  // Legacy rows predate digests (NULL): grandfather them as matching —
+  // they cannot be verified, but they must not start failing.
+  if (existingDigest !== null && existingDigest !== expectedDigest) {
+    throw new AssistantStoreError(
+      "idempotency-conflict",
+      "Idempotency key was already used with different content",
+    );
   }
 }
 
@@ -322,13 +400,17 @@ function validateCreateInput(input: CreateConversationInput): void {
 }
 
 /**
- * Lazy chat creation with atomic first-message persistence. No chat row
- * exists until the member actually submits: this call inserts the
- * conversation and its `seq: 0` user message, converging idempotently on
- * `clientRequestId` — duplicate submissions (double-click, retry, two
- * tabs) return the same conversation and message instead of doubling
- * them. A crash between the two inserts heals on retry: the existing
- * conversation is reused and the missing first message is inserted.
+ * Lazy chat creation with atomic first-message persistence (R12-F1). No
+ * chat row exists until the member actually submits: ONE database
+ * statement inserts (or recovers) the idempotent conversation AND its
+ * `seq: 0` user message, deriving the organization from the verified
+ * project row — so organization A can never pair with project B
+ * (R12-F3), and a failure at the message stage leaves neither row. A
+ * bounded whole-statement retry covers the concurrent-duplicate window
+ * (the loser's snapshot predates the winner's commit). The idempotency
+ * key is bound to a digest of first message, seed, and snapshot token: a
+ * reused key with different content is an `idempotency-conflict`
+ * (R12-F6), never a silent alias.
  */
 export async function createConversationWithFirstMessage(
   db: AssistantDb,
@@ -340,97 +422,166 @@ export async function createConversationWithFirstMessage(
   createdMessage: boolean;
 }> {
   validateCreateInput(input);
+  requireNow(input.now);
   const {
-    organizationId,
     projectId,
     userId,
     clientRequestId,
     firstMessage,
     seed,
+    queryContextToken,
     now,
   } = input;
   const title = deriveChatTitle(firstMessage);
   const parts: AssistantMessagePart[] = [{ type: "text", text: firstMessage }];
+  const digest = createConversationDigest({
+    firstMessage,
+    seedInsightId: seed?.insightId ?? null,
+    queryContextToken,
+  });
+  // Pre-write validation (R12-F5): the complete candidate first message
+  // must satisfy the frozen schema before any SQL runs.
+  const candidateMessage = {
+    id: "msg_candidate",
+    conversationId: "conv_candidate",
+    seq: 0,
+    role: "user",
+    status: "complete",
+    parts,
+    failureCode: null,
+    clientRequestId,
+    createdAt: now,
+    completedAt: now,
+  };
+  if (!AssistantMessageSchema.safeParse(candidateMessage).success) {
+    throw new AssistantStoreError(
+      "invalid-input",
+      "First message failed contract validation",
+    );
+  }
+  const partsJson = JSON.stringify(parts);
 
-  let inserted: Array<Record<string, unknown>>;
-  try {
-    inserted = await db`
-      INSERT INTO assistant_conversations
-        (id, organization_id, project_id, user_id, title, seed_insight_id,
-         client_request_id, created_at, updated_at, last_message_at)
-      VALUES (${newId("conv")}, ${organizationId}, ${projectId}, ${userId},
-        ${title}, ${seed?.insightId ?? null}, ${clientRequestId}, ${now},
-        ${now}, ${now})
-      ON CONFLICT (project_id, user_id, client_request_id)
-        WHERE client_request_id IS NOT NULL
-      DO NOTHING
-      RETURNING *`;
-  } catch (error) {
-    if (isForeignKeyViolation(error)) {
+  // Tenant binding (R12-F3): the organization is derived from the
+  // verified project row — but a mismatched caller-supplied organization
+  // fails closed BEFORE any write, so adapter confusion never inserts.
+  const owner = await db`
+    SELECT organization_id AS organization_id FROM projects
+    WHERE id = ${projectId}`;
+  if (!owner[0]) {
+    throw new AssistantStoreError("not-found", "Project not found");
+  }
+  if (asString(owner[0].organization_id) !== input.organizationId) {
+    throw new AssistantStoreError(
+      "invalid-input",
+      "Project does not belong to the organization",
+    );
+  }
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const rows = await db`
+      WITH target AS (
+        SELECT p.id AS project_id, p.organization_id AS organization_id
+        FROM projects p WHERE p.id = ${projectId}
+      ),
+      conv AS (
+        INSERT INTO assistant_conversations
+          (id, organization_id, project_id, user_id, title,
+           seed_insight_id, client_request_id, request_digest,
+           created_at, updated_at, last_message_at)
+        SELECT ${newId("conv")}, t.organization_id, t.project_id,
+          ${userId}, ${title}, ${seed?.insightId ?? null},
+          ${clientRequestId}, ${digest}, ${now}, ${now}, ${now}
+        FROM target t
+        ON CONFLICT (project_id, user_id, client_request_id)
+          WHERE client_request_id IS NOT NULL
+        DO NOTHING
+        RETURNING *, TRUE AS created
+      ),
+      existing AS (
+        SELECT *, FALSE AS created FROM assistant_conversations
+        WHERE project_id = ${projectId} AND user_id = ${userId}
+          AND client_request_id = ${clientRequestId}
+          AND NOT EXISTS (SELECT 1 FROM conv)
+      ),
+      picked AS (
+        SELECT * FROM conv UNION ALL SELECT * FROM existing
+      ),
+      msg AS (
+        INSERT INTO assistant_messages
+          (id, conversation_id, seq, role, status, parts, failure_code,
+           client_request_id, request_digest, created_at, completed_at)
+        SELECT ${newId("msg")}, picked.id, 0, 'user', 'complete',
+          ${partsJson}::jsonb, NULL, ${clientRequestId}, ${digest},
+          ${now}, ${now}
+        FROM picked
+        ON CONFLICT (conversation_id, client_request_id)
+          WHERE client_request_id IS NOT NULL
+        DO NOTHING
+        RETURNING *
+      ),
+      emsg AS (
+        SELECT * FROM assistant_messages
+        WHERE conversation_id = (SELECT id FROM picked)
+          AND client_request_id = ${clientRequestId}
+          AND NOT EXISTS (SELECT 1 FROM msg)
+      )
+      SELECT (SELECT row_to_json(p) FROM picked p) AS conv,
+             (SELECT row_to_json(m) FROM msg m) AS msg,
+             (SELECT row_to_json(e) FROM emsg e) AS existing_msg,
+             (SELECT created FROM picked) AS conv_created,
+             (SELECT COUNT(*) FROM target) AS target_count`;
+    const row = rows[0] as
+      | {
+          conv: Record<string, unknown> | null;
+          msg: Record<string, unknown> | null;
+          existing_msg: Record<string, unknown> | null;
+          conv_created: boolean | null;
+          target_count: unknown;
+        }
+      | undefined;
+    if (!row || Number(row.target_count) === 0 || row.conv === null) {
+      if (row && Number(row.target_count) > 0 && attempt + 1 < 4) {
+        // Concurrent-duplicate window: our snapshot predates the
+        // winner's commit. Retry once with a fresh snapshot.
+        continue;
+      }
       throw new AssistantStoreError("not-found", "Project not found");
     }
-    throw error;
-  }
-  const createdConversation = inserted.length > 0;
-  let convRow = inserted[0];
-  if (!convRow) {
-    const existing = await db`
-      SELECT * FROM assistant_conversations
-      WHERE project_id = ${projectId} AND user_id = ${userId}
-        AND client_request_id = ${clientRequestId}`;
-    convRow = existing[0];
-    if (!convRow) {
+    const messageRow = row.msg ?? row.existing_msg;
+    if (!messageRow) {
+      if (attempt + 1 < 4) continue;
       throw new AssistantStoreError(
         "invalid-output",
-        "Conversation conflict converged on no row",
+        "Creation converged on no message",
       );
     }
-  }
-  const conversationId = asString(convRow.id);
-
-  const msgInserted = await db`
-    INSERT INTO assistant_messages
-      (id, conversation_id, seq, role, status, parts, failure_code,
-       client_request_id, created_at, completed_at)
-    VALUES (${newId("msg")}, ${conversationId}, 0, 'user', 'complete',
-      ${JSON.stringify(parts)}::jsonb, NULL, ${clientRequestId}, ${now},
-      ${now})
-    ON CONFLICT (conversation_id, client_request_id)
-      WHERE client_request_id IS NOT NULL
-    DO NOTHING
-    RETURNING *`;
-  const createdMessage = msgInserted.length > 0;
-  let msgRow = msgInserted[0];
-  if (!msgRow) {
-    const existing = await db`
-      SELECT * FROM assistant_messages
-      WHERE conversation_id = ${conversationId}
-        AND client_request_id = ${clientRequestId}
-      ORDER BY seq ASC LIMIT 1`;
-    msgRow = existing[0];
-    if (!msgRow) {
-      throw new AssistantStoreError(
-        "invalid-output",
-        "Message conflict converged on no row",
+    // Digest binding (R12-F6): nothing was written on the recovery path,
+    // so a mismatch safely throws before returning.
+    if (row.conv_created === false) {
+      checkDigestMatch(
+        typeof row.conv.request_digest === "string"
+          ? (row.conv.request_digest as string)
+          : null,
+        digest,
       );
     }
-  } else if (!createdConversation) {
-    // Retry healed a crash between the inserts: align the chat clock.
-    await db`
-      UPDATE assistant_conversations
-      SET last_message_at = ${now}, updated_at = ${now}
-      WHERE id = ${conversationId}`;
-    const refreshed = await db`
-      SELECT * FROM assistant_conversations WHERE id = ${conversationId}`;
-    if (refreshed[0]) convRow = refreshed[0];
+    checkDigestMatch(
+      typeof messageRow.request_digest === "string"
+        ? (messageRow.request_digest as string)
+        : null,
+      digest,
+    );
+    return {
+      conversation: mapConversation(row.conv),
+      message: mapMessage(messageRow),
+      createdConversation: row.conv_created === true,
+      createdMessage: row.msg !== null,
+    };
   }
-
-  return {
-    conversation: mapConversation(convRow),
-    message: mapMessage(msgRow),
-    createdConversation,
-    createdMessage,
-  };
+  throw new AssistantStoreError(
+    "invalid-output",
+    "Creation did not converge",
+  );
 }
 
 export type ConversationScope = {
@@ -587,18 +738,23 @@ export type AppendMessageInput = ConversationScope & {
 const MAX_SEQ_ATTEMPTS = 6;
 
 /**
- * Atomic message sequencing. The next `seq` is `MAX(seq) + 1` computed in
- * the insert statement itself, and the conversation clock moves in the
- * same statement — so concurrent appends from two tabs serialize on the
- * `(conversation_id, seq)` unique constraint and the loser retries
- * against the new max. Retried submissions carrying `clientRequestId`
- * converge on the existing row instead of doubling.
+ * Atomic message sequencing (R12-F5/F6). The next `seq` is `MAX(seq) + 1`
+ * computed in the insert statement itself, and the conversation clock
+ * moves in the same statement — so concurrent appends from two tabs
+ * serialize on the `(conversation_id, seq)` unique constraint and the
+ * loser retries against the new max. The complete candidate is validated
+ * against the frozen schema BEFORE any SQL runs, so malformed rows never
+ * commit (and never occupy constraints). Retried submissions carrying
+ * `clientRequestId` converge on the existing row only when the request
+ * digest matches; a reused key with different content is an
+ * `idempotency-conflict`.
  */
 export async function appendMessage(
   db: AssistantDb,
   input: AppendMessageInput,
 ): Promise<{ message: AssistantMessage; created: boolean }> {
   requireId("conversationId", input.conversationId);
+  requireNow(input.now);
   if (!(MESSAGE_ROLES as readonly string[]).includes(input.role)) {
     throw new AssistantStoreError("invalid-input", "Invalid message role");
   }
@@ -624,6 +780,48 @@ export async function appendMessage(
   if (clientRequestId !== null && clientRequestId.length > 128) {
     throw new AssistantStoreError("invalid-input", "clientRequestId too long");
   }
+  const failureCode = input.failureCode ?? null;
+  // Finished messages complete at write time unless the caller says
+  // otherwise; pending/streaming messages stay open. Timestamps are
+  // transport, not identity — the digest covers content only (R12-F6), so
+  // a retry with a fresh clock still converges.
+  const finished =
+    input.status === "complete" ||
+    input.status === "cancelled" ||
+    input.status === "failed";
+  const completedAt = input.completedAt ?? (finished ? input.now : null);
+  if (completedAt !== null && (!Number.isInteger(completedAt) || completedAt < 0)) {
+    throw new AssistantStoreError("invalid-input", "Invalid completedAt");
+  }
+  // Pre-write validation (R12-F5): the full candidate row must satisfy
+  // the frozen contract before it can commit.
+  const candidate = {
+    id: "msg_candidate",
+    conversationId: input.conversationId,
+    seq: 0,
+    role: input.role,
+    status: input.status,
+    parts,
+    failureCode,
+    clientRequestId,
+    createdAt: input.now,
+    completedAt,
+  };
+  if (!AssistantMessageSchema.safeParse(candidate).success) {
+    throw new AssistantStoreError(
+      "invalid-input",
+      "Message failed contract validation",
+    );
+  }
+  const digest =
+    clientRequestId === null
+      ? null
+      : messageRequestDigest({
+          role: input.role,
+          status: input.status,
+          parts,
+          failureCode,
+        });
 
   const owned = await db`
     SELECT id FROM assistant_conversations
@@ -641,12 +839,14 @@ export async function appendMessage(
         AND client_request_id = ${clientRequestId}
       ORDER BY seq ASC LIMIT 1`;
     if (existing[0]) {
+      checkDigestMatch(
+        asNullableString(existing[0].request_digest),
+        digest as string,
+      );
       return { message: mapMessage(existing[0]), created: false };
     }
   }
 
-  const failureCode = input.failureCode ?? null;
-  const completedAt = input.completedAt ?? null;
   const partsJson = JSON.stringify(parts);
   for (let attempt = 0; attempt < MAX_SEQ_ATTEMPTS; attempt += 1) {
     try {
@@ -657,12 +857,13 @@ export async function appendMessage(
           WITH m AS (
             INSERT INTO assistant_messages
               (id, conversation_id, seq, role, status, parts, failure_code,
-               client_request_id, created_at, completed_at)
+               client_request_id, request_digest, created_at, completed_at)
             SELECT ${id}, ${input.conversationId},
               COALESCE((SELECT MAX(seq) FROM assistant_messages
                 WHERE conversation_id = ${input.conversationId}), -1) + 1,
               ${input.role}, ${input.status}, ${partsJson}::jsonb,
-              ${failureCode}, ${clientRequestId}, ${input.now}, ${completedAt}
+              ${failureCode}, ${clientRequestId}, ${digest}, ${input.now},
+              ${completedAt}
             ON CONFLICT (conversation_id, client_request_id)
               WHERE client_request_id IS NOT NULL
             DO NOTHING
@@ -682,12 +883,12 @@ export async function appendMessage(
           WITH m AS (
             INSERT INTO assistant_messages
               (id, conversation_id, seq, role, status, parts, failure_code,
-               client_request_id, created_at, completed_at)
+               client_request_id, request_digest, created_at, completed_at)
             SELECT ${id}, ${input.conversationId},
               COALESCE((SELECT MAX(seq) FROM assistant_messages
                 WHERE conversation_id = ${input.conversationId}), -1) + 1,
               ${input.role}, ${input.status}, ${partsJson}::jsonb,
-              ${failureCode}, NULL, ${input.now}, ${completedAt}
+              ${failureCode}, NULL, NULL, ${input.now}, ${completedAt}
             RETURNING *
           ),
           u AS (
@@ -704,7 +905,7 @@ export async function appendMessage(
         return { message: mapMessage(rows[0]), created: true };
       }
       // Idempotent retry won the conflict race after our pre-check missed:
-      // converge on the existing row.
+      // converge on the existing row (digest-bound).
       if (clientRequestId !== null) {
         const existing = await db`
           SELECT * FROM assistant_messages
@@ -712,6 +913,10 @@ export async function appendMessage(
             AND client_request_id = ${clientRequestId}
           ORDER BY seq ASC LIMIT 1`;
         if (existing[0]) {
+          checkDigestMatch(
+            asNullableString(existing[0].request_digest),
+            digest as string,
+          );
           return { message: mapMessage(existing[0]), created: false };
         }
       }
@@ -720,6 +925,12 @@ export async function appendMessage(
         "Message insert converged on no row",
       );
     } catch (error) {
+      if (
+        error instanceof AssistantStoreError &&
+        error.code === "idempotency-conflict"
+      ) {
+        throw error;
+      }
       if (isUniqueViolation(error) && attempt + 1 < MAX_SEQ_ATTEMPTS) {
         continue;
       }
@@ -739,8 +950,10 @@ export async function appendMessage(
 /* Runs                                                                */
 /* ------------------------------------------------------------------ */
 
-export type StartRunInput = ConversationScope & {
-  organizationId: string;
+export type StartRunInput = {
+  /** Verified run scope: scoping only — row values derive from the chat. */
+  projectId: string;
+  userId: string;
   conversationId: string;
   messageId: string;
   queryContextHash: string;
@@ -749,59 +962,94 @@ export type StartRunInput = ConversationScope & {
 };
 
 /**
- * Start one agent run. The database owns the one-active-run-per-
+ * Start one agent run. Project/user provenance derives from the owning
+ * conversation INSIDE the insert (R12-F3): the statement joins the
+ * verified conversation and requires the message to belong to that same
+ * conversation, so a run can never carry mismatched provenance — a
+ * foreign chat, a foreign message, or a message from another conversation
+ * inserts nothing. The database owns the one-active-run-per-
  * `(project, user)` rule through the partial unique index: a concurrent
  * second start loses the insert and receives the winner's run identity
  * (`active-run-exists`) instead of running twice. Browsing or retaining
  * other chats is unaffected — only a second *running* run is refused.
+ * The complete candidate is validated pre-write (R12-F5).
  */
 export async function startRun(
   db: AssistantDb,
   input: StartRunInput,
 ): Promise<{ ok: true; run: AssistantRun } | { ok: false; conflict: RunConflict }> {
-  requireId("organizationId", input.organizationId);
   requireId("conversationId", input.conversationId);
   requireId("messageId", input.messageId);
   requireId("model", input.model);
+  requireNow(input.now);
   if (!input.queryContextHash || input.queryContextHash.length > 128) {
     throw new AssistantStoreError(
       "invalid-input",
       "queryContextHash is required",
     );
   }
-  const convRows = await db`
-    SELECT id FROM assistant_conversations
-    WHERE id = ${input.conversationId}
-      AND project_id = ${input.projectId}
-      AND user_id = ${input.userId}`;
-  if (!convRows[0]) {
-    throw new AssistantStoreError("not-found", "Conversation not found");
-  }
-  const msgRows = await db`
-    SELECT id FROM assistant_messages
-    WHERE id = ${input.messageId}
-      AND conversation_id = ${input.conversationId}`;
-  if (!msgRows[0]) {
-    throw new AssistantStoreError("not-found", "Message not found");
+  // Pre-write validation (R12-F5): the complete candidate run must
+  // satisfy the frozen schema before any SQL runs.
+  const candidate = {
+    id: "run_candidate",
+    conversationId: input.conversationId,
+    messageId: input.messageId,
+    projectId: input.projectId,
+    userId: input.userId,
+    queryContextHash: input.queryContextHash,
+    definitionVersion: DEFINITION_VERSION,
+    model: input.model,
+    provider: "openrouter",
+    status: "running",
+    stepCount: 0,
+    toolIds: [],
+    usage: null,
+    factIds: [],
+    artifactIds: [],
+    latencyMs: null,
+    startedAt: input.now,
+    completedAt: null,
+    failureCode: null,
+  };
+  if (!AssistantRunSchema.safeParse(candidate).success) {
+    throw new AssistantStoreError(
+      "invalid-input",
+      "Run failed contract validation",
+    );
   }
 
-  const inserted = await db`
-    INSERT INTO assistant_runs
-      (id, conversation_id, message_id, project_id, user_id,
-       query_context_hash, definition_version, model, provider, status,
-       step_count, tool_ids, usage, fact_ids, artifact_ids, latency_ms,
-       started_at, completed_at, failure_code)
-    VALUES (${newId("run")}, ${input.conversationId}, ${input.messageId},
-      ${input.projectId}, ${input.userId}, ${input.queryContextHash},
-      ${DEFINITION_VERSION}, ${input.model}, 'openrouter', 'running',
-      0, '[]'::jsonb, NULL, '[]'::jsonb, '[]'::jsonb, NULL, ${input.now},
-      NULL, NULL)
-    ON CONFLICT (project_id, user_id) WHERE status = 'running'
-    DO NOTHING
-    RETURNING *`;
+  let inserted: Array<Record<string, unknown>>;
+  try {
+    inserted = await db`
+      INSERT INTO assistant_runs
+        (id, conversation_id, message_id, project_id, user_id,
+         query_context_hash, definition_version, model, provider, status,
+         step_count, tool_ids, usage, fact_ids, artifact_ids, latency_ms,
+         started_at, completed_at, failure_code)
+      SELECT ${newId("run")}, c.id, m.id, c.project_id, c.user_id,
+        ${input.queryContextHash}, ${DEFINITION_VERSION}, ${input.model},
+        'openrouter', 'running', 0, '[]'::jsonb, NULL, '[]'::jsonb,
+        '[]'::jsonb, NULL, ${input.now}, NULL, NULL
+      FROM assistant_conversations c
+      JOIN assistant_messages m
+        ON m.id = ${input.messageId} AND m.conversation_id = c.id
+      WHERE c.id = ${input.conversationId}
+        AND c.project_id = ${input.projectId}
+        AND c.user_id = ${input.userId}
+      ON CONFLICT (project_id, user_id) WHERE status = 'running'
+      DO NOTHING
+      RETURNING *`;
+  } catch (error) {
+    if (isForeignKeyViolation(error)) {
+      throw new AssistantStoreError("not-found", "Conversation not found");
+    }
+    throw error;
+  }
   if (inserted[0]) {
     return { ok: true, run: mapRun(inserted[0]) };
   }
+  // No row: either a scoping mismatch (foreign chat/message) or a lost
+  // active-run race. Distinguish without disclosing which.
   const active = await db`
     SELECT * FROM assistant_runs
     WHERE project_id = ${input.projectId} AND user_id = ${input.userId}
@@ -809,10 +1057,7 @@ export async function startRun(
     ORDER BY started_at DESC LIMIT 1`;
   const row = active[0];
   if (!row) {
-    throw new AssistantStoreError(
-      "invalid-output",
-      "Run conflict converged on no row",
-    );
+    throw new AssistantStoreError("not-found", "Conversation not found");
   }
   return {
     ok: false,
@@ -848,6 +1093,7 @@ export async function finishRun(
   input: FinishRunInput,
 ): Promise<{ finished: boolean; run: AssistantRun }> {
   requireId("runId", input.runId);
+  requireNow(input.now);
   if (!(RUN_FINISH_STATUSES as readonly string[]).includes(input.status)) {
     throw new AssistantStoreError("invalid-input", "Invalid run status");
   }
@@ -870,8 +1116,20 @@ export async function finishRun(
   }
   const factIds = input.factIds ?? [];
   const artifactIds = input.artifactIds ?? [];
-  if (factIds.length > 64 || artifactIds.length > 16) {
-    throw new AssistantStoreError("invalid-input", "Too many references");
+  if (
+    factIds.length > 64 ||
+    artifactIds.length > 16 ||
+    factIds.some((id) => !id || id.length > 128) ||
+    artifactIds.some((id) => !id || id.length > 128)
+  ) {
+    throw new AssistantStoreError("invalid-input", "Invalid references");
+  }
+  if (
+    input.latencyMs !== undefined &&
+    input.latencyMs !== null &&
+    (!Number.isInteger(input.latencyMs) || input.latencyMs < 0)
+  ) {
+    throw new AssistantStoreError("invalid-input", "Invalid latency");
   }
   if (
     input.failureCode !== undefined &&
@@ -999,6 +1257,13 @@ export type ProposeMemoryInput = {
     payload: unknown;
   };
   proposerId: string;
+  /**
+   * Fresh authenticated user (Slice 6 passes the session user). The
+   * proposer is always that user, and a member preference's subject must
+   * be them too (R12-F3) — preferences can never be written for someone
+   * else.
+   */
+  authenticatedUserId: string;
   now: number;
 };
 
@@ -1056,18 +1321,38 @@ function validateMemoryCandidate(input: {
 }
 
 /**
- * Propose typed memory. Any member may propose; the record starts
- * `proposed` and takes effect only after confirmation (or immediately
- * for member scope, which needs none). The proposal and its audit entry
- * persist in one statement.
+ * Propose typed memory (R12-F7). Any member may propose project or
+ * workspace knowledge; those records start `proposed` and take effect
+ * only after owner/admin confirmation. Member-scoped preferences NEVER
+ * need confirmation (frozen contract): a valid preference persists
+ * directly as `confirmed`, superseding the member's prior preference for
+ * the same key in the same statement — no approval UI involved. The
+ * proposal (or preference) and its audit entry persist in one statement.
  */
 export async function proposeMemory(
   db: AssistantDb,
   input: ProposeMemoryInput,
 ): Promise<MemoryRecord> {
   requireId("proposerId", input.proposerId);
+  requireId("authenticatedUserId", input.authenticatedUserId);
+  requireNow(input.now);
+  if (input.proposerId !== input.authenticatedUserId) {
+    throw new AssistantStoreError(
+      "invalid-input",
+      "Proposer must be the authenticated user",
+    );
+  }
   const projectId = input.projectId ?? null;
-  const subjectUserId = input.subjectUserId ?? null;
+  const subjectUserId =
+    input.scope === "member"
+      ? (input.subjectUserId ?? input.authenticatedUserId)
+      : (input.subjectUserId ?? null);
+  if (input.scope === "member" && subjectUserId !== input.authenticatedUserId) {
+    throw new AssistantStoreError(
+      "invalid-input",
+      "Member preferences belong to the authenticated member",
+    );
+  }
   validateMemoryCandidate({
     organizationId: input.organizationId,
     scope: input.scope,
@@ -1080,6 +1365,8 @@ export async function proposeMemory(
     confirmerId: null,
   });
   // Contract validation first: key/payload and provenance rules.
+  // Member preferences validate as `confirmed` (their stored status).
+  const storedStatus = input.scope === "member" ? "confirmed" : "proposed";
   const candidate = {
     id: "mem_candidate",
     organizationId: input.organizationId,
@@ -1087,10 +1374,10 @@ export async function proposeMemory(
     key: input.key,
     projectId,
     subjectUserId,
-    status: "proposed",
+    status: storedStatus,
     value: input.value,
     proposerId: input.proposerId,
-    confirmerId: null,
+    confirmerId: input.scope === "member" ? input.authenticatedUserId : null,
     createdAt: input.now,
     updatedAt: input.now,
   };
@@ -1100,49 +1387,143 @@ export async function proposeMemory(
       "Memory record failed contract validation",
     );
   }
+  // Tenant binding (R12-F3): a project-scoped write must name a project
+  // of the same organization — verified here so a mismatch fails without
+  // inserting, with the composite FK as the durable backstop.
+  if (projectId !== null) {
+    const owner = await db`
+      SELECT organization_id AS organization_id FROM projects
+      WHERE id = ${projectId}`;
+    if (!owner[0]) {
+      throw new AssistantStoreError("not-found", "Project not found");
+    }
+    if (asString(owner[0].organization_id) !== input.organizationId) {
+      throw new AssistantStoreError(
+        "invalid-input",
+        "Project does not belong to the organization",
+      );
+    }
+  }
   const id = newId("mem");
   const auditId = newId("ma");
-  let rows: Array<Record<string, unknown>>;
-  try {
-    rows = await db`
-      WITH m AS (
+  const auditAction = storedStatus === "confirmed" ? "confirmed" : "proposed";
+  // Member preferences save last-writer-wins: a concurrent duplicate
+  // rolls back on the slot invariant and retries once, superseding the
+  // winner it just lost to.
+  const attempts = input.scope === "member" ? 2 : 1;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await proposeOnce();
+    } catch (error) {
+      if (
+        input.scope === "member" &&
+        (isExclusionViolation(error) ||
+          isUniqueViolation(error) ||
+          isDeadlock(error)) &&
+        attempt + 1 < attempts
+      ) {
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new AssistantStoreError(
+    "invalid-output",
+    "Memory proposal did not converge",
+  );
+
+  async function proposeOnce(): Promise<MemoryRecord> {
+    let rows: Array<Record<string, unknown>>;
+    try {
+      rows = await db`
+      WITH slot AS MATERIALIZED (
+        -- Slot serialization (R12-F2): immediately-confirmed member
+        -- preferences lock the slot before writing, ordered by id like
+        -- every confirm statement. Proposed shared knowledge takes no
+        -- slot lock (it cannot conflict with the confirmed invariant).
+        SELECT o.id FROM assistant_memory o
+        WHERE ${storedStatus} = 'confirmed'
+          AND o.organization_id = ${input.organizationId}
+          AND o.scope = ${input.scope} AND o."key" = ${input.key}
+          AND COALESCE(o.project_id::text, '') = COALESCE(${projectId}::text, '')
+          AND COALESCE(o.subject_user_id, '') = COALESCE(${subjectUserId}::text, '')
+          AND (
+            ${input.key} <> 'business-term'
+            OR (o.payload ->> 'name') = ((${JSON.stringify(input.value.payload)}::jsonb) ->> 'name')
+          )
+          AND o.status = 'confirmed'
+        ORDER BY o.id
+        FOR UPDATE
+      ),
+      m AS (
         INSERT INTO assistant_memory
           (id, organization_id, scope, "key", project_id, subject_user_id,
            status, version, label, description, payload, proposer_id,
            confirmer_id, created_at, updated_at)
-        VALUES (${id}, ${input.organizationId}, ${input.scope}, ${input.key},
-          ${projectId}, ${subjectUserId}, 'proposed',
+        SELECT ${id}, ${input.organizationId}, ${input.scope}, ${input.key},
+          ${projectId}, ${subjectUserId}, ${storedStatus},
           ${input.value.version}, ${input.value.label},
           ${input.value.description}, ${JSON.stringify(input.value.payload)}::jsonb,
-          ${input.proposerId}, NULL, ${input.now}, ${input.now})
+          ${input.proposerId},
+          ${input.scope === "member" ? input.authenticatedUserId : null},
+          ${input.now}, ${input.now}
+        FROM (SELECT COUNT(*) FROM slot) AS _s
         RETURNING *
+      ),
+      sup AS (
+        UPDATE assistant_memory o
+        SET status = 'superseded', updated_at = ${input.now},
+            version = o.version + 1
+        FROM m
+        WHERE m.status = 'confirmed'
+          AND o.organization_id = m.organization_id
+          AND o.scope = m.scope AND o."key" = m."key"
+          AND o.id <> m.id AND o.status = 'confirmed'
+          AND COALESCE(o.project_id::text, '') = COALESCE(m.project_id::text, '')
+          AND COALESCE(o.subject_user_id, '') = COALESCE(m.subject_user_id, '')
+          AND (
+            m."key" <> 'business-term'
+            OR (o.payload ->> 'name') = (m.payload ->> 'name')
+          )
+        RETURNING o.id AS id
       ),
       a AS (
         INSERT INTO assistant_memory_audit
           (id, memory_id, organization_id, action, from_status, to_status,
            actor_id, created_at)
-        SELECT ${auditId}, m.id, m.organization_id, 'proposed', NULL,
-          'proposed', ${input.proposerId}, ${input.now}
+        SELECT ${auditId}, m.id, m.organization_id, ${auditAction}, NULL,
+          ${storedStatus}, ${input.proposerId}, ${input.now}
         FROM m
+        RETURNING id
+      ),
+      a2 AS (
+        INSERT INTO assistant_memory_audit
+          (id, memory_id, organization_id, action, from_status, to_status,
+           actor_id, created_at)
+        SELECT ('ma_' || md5(sup.id || (${input.now})::text)), sup.id,
+          m.organization_id, 'superseded', 'confirmed', 'superseded',
+          ${input.proposerId}, ${input.now}
+        FROM sup, m
         RETURNING id
       )
       SELECT * FROM m`;
-  } catch (error) {
-    if (isForeignKeyViolation(error)) {
+    } catch (error) {
+      if (isForeignKeyViolation(error)) {
+        throw new AssistantStoreError(
+          "not-found",
+          "Memory scope target not found",
+        );
+      }
+      throw error;
+    }
+    if (!rows[0]) {
       throw new AssistantStoreError(
-        "not-found",
-        "Memory scope target not found",
+        "invalid-output",
+        "Memory proposal converged on no row",
       );
     }
-    throw error;
+    return mapMemory(rows[0]);
   }
-  if (!rows[0]) {
-    throw new AssistantStoreError(
-      "invalid-output",
-      "Memory proposal converged on no row",
-    );
-  }
-  return mapMemory(rows[0]);
 }
 
 export type ConfirmedKnowledge = {
@@ -1233,16 +1614,23 @@ export type ConfirmMemoryInput = {
 
 export type ConfirmMemoryResult =
   | { ok: true; record: MemoryRecord; supersededIds: string[] }
-  | { ok: false; reason: "not-found" | "forbidden" | "not-proposed" };
+  | {
+      ok: false;
+      reason: "not-found" | "forbidden" | "not-proposed" | "slot-conflict";
+    };
 
 /**
- * Confirm (or reject) a proposal. Only `proposed` records transition —
- * the `WHERE status = 'proposed'` guard plus `transitionProposal` make
- * concurrent confirmations single-winner: the loser sees zero updated
- * rows and receives `not-proposed`. Confirming supersedes the prior
- * confirmed record in the same slot (same scope/key/owner, and same
- * term name for `business-term`), and every transition appends audit
- * history.
+ * Confirm (or reject) a proposal in ONE statement (R12-F2): slot locking,
+ * the status transition, old-value supersession, and every audit insert
+ * commit or roll back together — a failure between stages is impossible,
+ * and fault injection on the call proves nothing persists. The
+ * one-confirmed-per-slot exclusion constraint owns the invariant: two
+ * overlapping confirms of distinct proposals in one slot resolve so
+ * exactly one value stays confirmed and the loser rolls back entirely
+ * (reported deterministically as `slot-conflict`; its proposal stays
+ * proposed). Confirming the same proposal twice resolves on the
+ * `WHERE status = 'proposed'` guard (`not-proposed`). A residual
+ * deadlock abort (40P01) is safe to retry once — nothing committed.
  */
 export async function confirmMemoryProposal(
   db: AssistantDb,
@@ -1250,8 +1638,35 @@ export async function confirmMemoryProposal(
 ): Promise<ConfirmMemoryResult> {
   requireId("recordId", input.recordId);
   requireId("confirmerId", input.confirmerId);
+  requireNow(input.now);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await confirmOnce(db, input);
+    } catch (error) {
+      if (isDeadlock(error) && attempt === 0) continue;
+      throw error;
+    }
+  }
+  throw new AssistantStoreError(
+    "invalid-output",
+    "Confirmation did not converge",
+  );
+}
+
+function isDeadlock(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: unknown }).code === "40P01"
+  );
+}
+
+async function confirmOnce(
+  db: AssistantDb,
+  input: ConfirmMemoryInput & { action: "confirm" | "reject" },
+): Promise<ConfirmMemoryResult> {
   const current = await db`
-    SELECT * FROM assistant_memory
+    SELECT scope AS scope, status AS status FROM assistant_memory
     WHERE id = ${input.recordId}
       AND organization_id = ${input.organizationId}`;
   const row = current[0];
@@ -1265,58 +1680,97 @@ export async function confirmMemoryProposal(
     return { ok: false, reason: "not-proposed" };
   }
   const toStatus = input.action === "confirm" ? "confirmed" : "rejected";
-  const updated = await db`
-    UPDATE assistant_memory
-    SET status = ${toStatus}, confirmer_id = ${input.confirmerId},
-        updated_at = ${input.now}, version = version + 1
-    WHERE id = ${input.recordId}
-      AND organization_id = ${input.organizationId}
-      AND status = 'proposed'
-    RETURNING *`;
-  const updatedRow = updated[0];
-  if (!updatedRow) {
-    // Lost a confirmation race after the pre-check read.
-    return { ok: false, reason: "not-proposed" };
-  }
-  const auditId = newId("ma");
-  await db`
-    INSERT INTO assistant_memory_audit
-      (id, memory_id, organization_id, action, from_status, to_status,
-       actor_id, created_at)
-    VALUES (${auditId}, ${input.recordId}, ${input.organizationId},
-      ${input.action}, 'proposed', ${toStatus}, ${input.confirmerId},
-      ${input.now})`;
-  let supersededIds: string[] = [];
-  if (input.action === "confirm") {
-    const record = mapMemory(updatedRow);
-    const supRows = await db`
-      UPDATE assistant_memory o
-      SET status = 'superseded', updated_at = ${input.now},
-          version = o.version + 1
-      FROM (SELECT * FROM assistant_memory WHERE id = ${input.recordId}) u
-      WHERE o.organization_id = u.organization_id
-        AND o.scope = u.scope AND o."key" = u."key"
-        AND o.id <> u.id AND o.status = 'confirmed'
-        AND COALESCE(o.project_id::text, '') = COALESCE(u.project_id::text, '')
-        AND COALESCE(o.subject_user_id, '') = COALESCE(u.subject_user_id, '')
-        AND (
-          u."key" <> 'business-term'
-          OR (o.payload ->> 'name') = (u.payload ->> 'name')
-        )
-      RETURNING o.id AS id`;
-    supersededIds = supRows.map((entry) => asString(entry.id));
-    for (const supId of supersededIds) {
-      await db`
+  let rows: Array<Record<string, unknown>>;
+  try {
+    rows = await db`
+      WITH slot AS MATERIALIZED (
+        -- Slot serialization (R12-F2): lock the slot's currently-confirmed
+        -- rows in id order BEFORE writing anything, so overlapping
+        -- same-slot confirms serialize instead of deadlocking. MATERIALIZED
+        -- plus the COUNT cross-join below forces lock-before-write: the
+        -- updater cannot create a conflicting uncommitted entry while
+        -- blocked. Re-reads after a wait see the winner's outcome.
+        SELECT o.id FROM assistant_memory o, assistant_memory t
+        WHERE t.id = ${input.recordId}
+          AND t.organization_id = ${input.organizationId}
+          AND o.organization_id = t.organization_id
+          AND o.scope = t.scope AND o."key" = t."key"
+          AND COALESCE(o.project_id::text, '') = COALESCE(t.project_id::text, '')
+          AND COALESCE(o.subject_user_id, '') = COALESCE(t.subject_user_id, '')
+          AND (t."key" <> 'business-term'
+            OR (o.payload ->> 'name') = (t.payload ->> 'name'))
+          AND o.status = 'confirmed'
+        ORDER BY o.id
+        FOR UPDATE
+      ),
+      updated AS (
+        UPDATE assistant_memory
+        SET status = ${toStatus}, confirmer_id = ${input.confirmerId},
+            updated_at = ${input.now}, version = version + 1
+        FROM (SELECT COUNT(*) FROM slot) AS _s
+        WHERE id = ${input.recordId}
+          AND organization_id = ${input.organizationId}
+          AND status = 'proposed'
+        RETURNING *
+      ),
+      sup AS (
+        UPDATE assistant_memory o
+        SET status = 'superseded', updated_at = ${input.now},
+            version = o.version + 1
+        FROM updated u
+        WHERE ${toStatus} = 'confirmed'
+          AND o.organization_id = u.organization_id
+          AND o.scope = u.scope AND o."key" = u."key"
+          AND o.id <> u.id AND o.status = 'confirmed'
+          AND COALESCE(o.project_id::text, '') = COALESCE(u.project_id::text, '')
+          AND COALESCE(o.subject_user_id, '') = COALESCE(u.subject_user_id, '')
+          AND (
+            u."key" <> 'business-term'
+            OR (o.payload ->> 'name') = (u.payload ->> 'name')
+          )
+        RETURNING o.id AS id
+      ),
+      a1 AS (
         INSERT INTO assistant_memory_audit
           (id, memory_id, organization_id, action, from_status, to_status,
            actor_id, created_at)
-        VALUES (${newId("ma")}, ${supId}, ${input.organizationId},
-          'superseded', 'confirmed', 'superseded', ${input.confirmerId},
-          ${input.now})`;
+        SELECT ${newId("ma")}, u.id, u.organization_id, ${input.action},
+          'proposed', ${toStatus}, ${input.confirmerId}, ${input.now}
+        FROM updated u
+        RETURNING id
+      ),
+      a2 AS (
+        INSERT INTO assistant_memory_audit
+          (id, memory_id, organization_id, action, from_status, to_status,
+           actor_id, created_at)
+        SELECT ('ma_' || md5(s.id || (${input.now})::text)), s.id,
+          u.organization_id, 'superseded', 'confirmed', 'superseded',
+          ${input.confirmerId}, ${input.now}
+        FROM sup s, updated u
+        RETURNING id
+      )
+      SELECT (SELECT row_to_json(u) FROM updated u) AS rec,
+             (SELECT COALESCE(json_agg(s.id), '[]'::json) FROM sup s) AS sup_ids,
+             (SELECT COUNT(*) FROM slot) AS slot_locked`;
+  } catch (error) {
+    if (isExclusionViolation(error) || isUniqueViolation(error)) {
+      // Lost a same-slot confirmation race at commit: our proposal is
+      // still proposed, the winner owns the slot.
+      return { ok: false, reason: "slot-conflict" };
     }
-    return { ok: true, record, supersededIds };
+    throw error;
   }
-  return { ok: true, record: mapMemory(updatedRow), supersededIds };
+  const result = rows[0] as
+    | { rec: Record<string, unknown> | null; sup_ids: unknown }
+    | undefined;
+  if (!result || result.rec === null) {
+    // Lost a same-proposal race after the pre-check read.
+    return { ok: false, reason: "not-proposed" };
+  }
+  const supersededIds = (Array.isArray(result.sup_ids)
+    ? (result.sup_ids as unknown[]).map((entry) => String(entry))
+    : []) as string[];
+  return { ok: true, record: mapMemory(result.rec), supersededIds };
 }
 
 /**
@@ -1411,60 +1865,59 @@ export async function purgeAssistantRetention(
 }
 
 /**
- * Project-deletion boundary: remove the project's chats (messages and
- * runs cascade), its project-scoped memory (audit cascades), and nothing
- * else. Workspace memory and member preferences survive — shared
- * knowledge outlives any single project. Call BEFORE the product row
- * delete so a purge failure fails the deletion closed.
+ * Project-deletion boundary (R12-F4): the owning product-row deletion is
+ * the SINGLE transactional boundary — assistant rows are NOT pre-deleted.
+ * `assistant_conversations` and project-scoped `assistant_memory` carry
+ * cascade FKs into `projects`, so `DELETE FROM projects` removes them in
+ * the same statement that removes the project; a failed delete leaves
+ * everything intact. Workspace memory and member preferences survive by
+ * design (shared knowledge outlives any single project). `deleteProject`
+ * therefore issues no assistant DELETEs at all.
+ *
+ * There is intentionally no `purgeAssistantProjectData` helper: an
+ * explicit pre-delete would reopen the partial-deletion window this
+ * invariant closes.
  */
-export async function purgeAssistantProjectData(
-  db: AssistantDb,
-  projectId: string,
-): Promise<{ conversationsDeleted: number; memoriesDeleted: number }> {
-  requireId("projectId", projectId);
-  const convs = await db`
-    DELETE FROM assistant_conversations WHERE project_id = ${projectId}
-    RETURNING id`;
-  const mems = await db`
-    DELETE FROM assistant_memory
-    WHERE scope = 'project' AND project_id = ${projectId}
-    RETURNING id`;
-  return {
-    conversationsDeleted: convs.length,
-    memoriesDeleted: mems.length,
-  };
-}
 
 /**
- * Workspace-deletion path (no workspace-delete route exists yet; this is
- * the documented function that route must call): removes every
- * conversation, memory record, and audit entry of the organization.
- * Organization-row FK cascades backstop the same outcome.
+ * Workspace-deletion path in ONE statement (R12-F4): every conversation,
+ * memory record, and (via cascade) audit entry of the organization is
+ * removed atomically. No workspace-delete route exists yet; that route
+ * must call this inside its owning transaction boundary. Organization-row
+ * FK cascades backstop the same outcome.
  */
 export async function purgeAssistantWorkspaceData(
   db: AssistantDb,
   organizationId: string,
 ): Promise<{ conversationsDeleted: number; memoriesDeleted: number }> {
   requireId("organizationId", organizationId);
-  const convs = await db`
-    DELETE FROM assistant_conversations
-    WHERE organization_id = ${organizationId}
-    RETURNING id`;
-  const mems = await db`
-    DELETE FROM assistant_memory WHERE organization_id = ${organizationId}
-    RETURNING id`;
+  const rows = await db`
+    WITH c AS (
+      DELETE FROM assistant_conversations
+      WHERE organization_id = ${organizationId}
+      RETURNING id
+    ),
+    m AS (
+      DELETE FROM assistant_memory
+      WHERE organization_id = ${organizationId}
+      RETURNING id
+    )
+    SELECT (SELECT COUNT(*) FROM c) AS convs,
+           (SELECT COUNT(*) FROM m) AS mems`;
+  const row = rows[0] ?? { convs: 0, mems: 0 };
   return {
-    conversationsDeleted: convs.length,
-    memoriesDeleted: mems.length,
+    conversationsDeleted: asNumber(row.convs),
+    memoriesDeleted: asNumber(row.mems),
   };
 }
 
 /**
- * Account-deletion path: removes the user's chats (messages and runs
- * cascade) and member preferences. Shared project/workspace records
- * survive for the remaining members, but the deleted user's attribution
- * is replaced with an explicit tombstone — raw user IDs leave with the
- * account while the provenance-required shapes stay valid.
+ * Account-deletion path in ONE statement (R12-F4): removes the user's
+ * chats (messages and runs cascade) and member preferences, and replaces
+ * the deleted user's attribution with an explicit tombstone on the
+ * shared records and audit entries that survive for remaining members —
+ * raw user IDs leave with the account while the provenance-required
+ * shapes stay valid. A failure leaves all pre-operation data intact.
  */
 export const DELETED_USER_ATTRIBUTION = "deleted-user";
 
@@ -1473,23 +1926,38 @@ export async function purgeAssistantUserData(
   userId: string,
 ): Promise<{ conversationsDeleted: number; memoriesDeleted: number }> {
   requireId("userId", userId);
-  const convs = await db`
-    DELETE FROM assistant_conversations WHERE user_id = ${userId}
-    RETURNING id`;
-  const mems = await db`
-    DELETE FROM assistant_memory
-    WHERE scope = 'member' AND subject_user_id = ${userId}
-    RETURNING id`;
-  await db`
-    UPDATE assistant_memory SET proposer_id = ${DELETED_USER_ATTRIBUTION}
-    WHERE proposer_id = ${userId}`;
-  await db`
-    UPDATE assistant_memory SET confirmer_id = ${DELETED_USER_ATTRIBUTION}
-    WHERE confirmer_id = ${userId}`;
-  await db`
-    UPDATE assistant_memory_audit SET actor_id = ${DELETED_USER_ATTRIBUTION}
-    WHERE actor_id = ${userId}`;
-  return { conversationsDeleted: convs.length, memoriesDeleted: mems.length };
+  const rows = await db`
+    WITH c AS (
+      DELETE FROM assistant_conversations WHERE user_id = ${userId}
+      RETURNING id
+    ),
+    m AS (
+      DELETE FROM assistant_memory
+      WHERE scope = 'member' AND subject_user_id = ${userId}
+      RETURNING id
+    ),
+    t1 AS (
+      UPDATE assistant_memory SET proposer_id = ${DELETED_USER_ATTRIBUTION}
+      WHERE proposer_id = ${userId}
+      RETURNING id
+    ),
+    t2 AS (
+      UPDATE assistant_memory SET confirmer_id = ${DELETED_USER_ATTRIBUTION}
+      WHERE confirmer_id = ${userId}
+      RETURNING id
+    ),
+    t3 AS (
+      UPDATE assistant_memory_audit SET actor_id = ${DELETED_USER_ATTRIBUTION}
+      WHERE actor_id = ${userId}
+      RETURNING id
+    )
+    SELECT (SELECT COUNT(*) FROM c) AS convs,
+           (SELECT COUNT(*) FROM m) AS mems`;
+  const row = rows[0] ?? { convs: 0, mems: 0 };
+  return {
+    conversationsDeleted: asNumber(row.convs),
+    memoriesDeleted: asNumber(row.mems),
+  };
 }
 
 export type {

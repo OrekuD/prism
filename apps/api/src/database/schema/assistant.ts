@@ -1,5 +1,5 @@
 /**
- * Assistant control-plane tables (Task 21 slice 4).
+ * Assistant control-plane tables (Task 21 slice 4, hardened per R12).
  *
  * Durable foundation for conversations, messages, runs, typed memory, and
  * audit history — without invoking any model. All assistant reads/writes
@@ -7,21 +7,41 @@
  * multi-statement transactions), so the same code runs on Neon HTTP
  * (Cloudflare Worker) and postgres-js (Node).
  *
+ * Tenant binding (R12-F3): single-column existence FKs live here; the
+ * COMPOSITE (project, organization) pairing constraints live in
+ * migration 0005 as raw SQL (this drizzle-kit version cannot snapshot
+ * table-level composite foreign keys). Together they guarantee a project
+ * row can never pair with another workspace's organization. Run rows
+ * additionally derive project/user from their conversation at insert
+ * time (see the store).
+ *
+ * Slot invariant (R12-F2): at most one `confirmed` record per canonical
+ * slot lives in migration 0005 as a DEFERRABLE exclusion constraint
+ * (also raw SQL — drizzle cannot express it).
+ *
+ * Durable checks (R12-F5): enums, non-negative times, step bounds, the
+ * frozen definition version, running/completed timestamp rules, and the
+ * idempotency-key/digest pairing below.
+ *
+ * Idempotency digests (R12-F6): every idempotency key travels with a
+ * SHA-256 digest of the request content. A reused key with different
+ * content is a conflict, never a silent alias.
+ *
  * Conventions:
  * - IDs are opaque prefixed text (`conv_`, `msg_`, `run_`, `mem_`, `ma_`).
  * - Times are millisecond-epoch bigints, matching the frozen contract
  *   shapes (`ConversationSchema`, `AssistantMessageSchema`, ...).
- * - Tenant provenance (`organization_id`, `project_id`, `user_id`) is
- *   stored on every row; the store scopes every query by the verified IDs.
  * - Message parts, run arrays, usage, and memory payloads are JSONB.
  */
 import {
   bigint,
+  check,
   index,
   integer,
   jsonb,
   pgTable,
   text,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -35,6 +55,7 @@ export const assistantConversations = pgTable(
   DatabaseTables.ASSISTANT_CONVERSATIONS,
   {
     id: text("id").primaryKey(),
+    // Existence checks; pairing is owned by 0005's composite FK.
     organizationId: text("organization_id")
       .references(() => organization.id, { onDelete: "cascade" })
       .notNull(),
@@ -52,11 +73,19 @@ export const assistantConversations = pgTable(
      * request converge on one conversation.
      */
     clientRequestId: text("client_request_id"),
+    /** SHA-256 over first message, seed, and snapshot context (R12-F6). */
+    requestDigest: text("request_digest"),
     createdAt: bigint("created_at", { mode: "number" }).notNull(),
     updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
     lastMessageAt: bigint("last_message_at", { mode: "number" }),
   },
   (table) => [
+    // Identity backstop for the 0005 runs composite FK (R12-F3).
+    unique("assistant_conversations_identity_uidx").on(
+      table.id,
+      table.projectId,
+      table.userId,
+    ),
     // History order `(last_message_at DESC NULLS LAST, id DESC)` plus the
     // tenant scope every list query binds.
     index("assistant_conversations_owner_idx").on(
@@ -69,6 +98,14 @@ export const assistantConversations = pgTable(
     uniqueIndex("assistant_conversations_create_uidx")
       .on(table.projectId, table.userId, table.clientRequestId)
       .where(sql`"client_request_id" IS NOT NULL`),
+    check(
+      "assistant_conversations_times_check",
+      sql`"created_at" >= 0 AND "updated_at" >= 0 AND ("last_message_at" IS NULL OR "last_message_at" >= 0)`,
+    ),
+    check(
+      "assistant_conversations_digest_check",
+      sql`("client_request_id" IS NULL) = ("request_digest" IS NULL)`,
+    ),
   ],
 );
 
@@ -88,6 +125,8 @@ export const assistantMessages = pgTable(
     failureCode: text("failure_code"),
     /** Idempotency key for retried submissions within one chat. */
     clientRequestId: text("client_request_id"),
+    /** SHA-256 over role/status/parts/completion fields (R12-F6). */
+    requestDigest: text("request_digest"),
     createdAt: bigint("created_at", { mode: "number" }).notNull(),
     completedAt: bigint("completed_at", { mode: "number" }),
   },
@@ -106,13 +145,23 @@ export const assistantMessages = pgTable(
     uniqueIndex("assistant_messages_request_uidx")
       .on(table.conversationId, table.clientRequestId)
       .where(sql`"client_request_id" IS NOT NULL`),
+    check(
+      "assistant_messages_shape_check",
+      sql`"role" IN ('user', 'assistant') AND "status" IN ('pending', 'streaming', 'complete', 'cancelled', 'failed') AND "seq" >= 0 AND "created_at" >= 0 AND ("completed_at" IS NULL OR "completed_at" >= 0) AND ((("status" IN ('complete', 'cancelled', 'failed')) AND "completed_at" IS NOT NULL) OR (("status" IN ('pending', 'streaming')) AND "completed_at" IS NULL))`,
+    ),
+    check(
+      "assistant_messages_digest_check",
+      sql`("client_request_id" IS NULL) = ("request_digest" IS NULL)`,
+    ),
   ],
 );
 
 /**
  * Agent runs. One *running* run per `(project, user)` is enforced by a
  * partial unique index — the database, never a browser flag, owns the
- * one-active-run constraint.
+ * one-active-run constraint. Project/user provenance is derived from the
+ * owning conversation at insert time and held by 0005's composite FK
+ * (R12-F3).
  */
 export const assistantRuns = pgTable(
   DatabaseTables.ASSISTANT_RUNS,
@@ -147,15 +196,19 @@ export const assistantRuns = pgTable(
     uniqueIndex("assistant_runs_one_active_uidx")
       .on(table.projectId, table.userId)
       .where(sql`"status" = 'running'`),
+    check(
+      "assistant_runs_shape_check",
+      sql`"status" IN ('running', 'complete', 'cancelled', 'failed') AND "step_count" >= 0 AND "step_count" <= 6 AND "definition_version" = 1 AND "started_at" >= 0 AND ("completed_at" IS NULL OR "completed_at" >= 0) AND ("latency_ms" IS NULL OR "latency_ms" >= 0) AND ((("status" = 'running') AND "completed_at" IS NULL) OR ((("status" IN ('complete', 'cancelled', 'failed'))) AND "completed_at" IS NOT NULL))`,
+    ),
   ],
 );
 
 /**
  * Typed memory across project/workspace/member scopes. Proposals are
- * `proposed`-status records — no separate proposals table; confirmation
- * races resolve through conditional `UPDATE ... WHERE status='proposed'`
- * plus `transitionProposal`, and confirmation supersedes the prior
- * confirmed record in the same slot transactionally.
+ * `proposed`-status records — no separate proposals table; the
+ * one-confirmed-per-slot exclusion constraint (migration 0005) plus
+ * conditional `UPDATE ... WHERE status='proposed'` resolve confirmation
+ * races. Member preferences persist directly as `confirmed` (R12-F7).
  */
 export const assistantMemory = pgTable(
   DatabaseTables.ASSISTANT_MEMORY,
@@ -197,6 +250,10 @@ export const assistantMemory = pgTable(
       table.scope,
       table.status,
     ),
+    check(
+      "assistant_memory_shape_check",
+      sql`"scope" IN ('project', 'workspace', 'member') AND "status" IN ('proposed', 'confirmed', 'superseded', 'rejected') AND "created_at" >= 0 AND "updated_at" >= 0 AND "version" >= 0`,
+    ),
   ],
 );
 
@@ -226,5 +283,6 @@ export const assistantMemoryAudit = pgTable(
       table.organizationId,
       table.createdAt,
     ),
+    check("assistant_memory_audit_shape_check", sql`"created_at" >= 0`),
   ],
 );
