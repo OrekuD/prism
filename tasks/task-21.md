@@ -1200,8 +1200,8 @@ This slice makes dashboard and assistant measurements share one authority.
       Sources queries without copying their formulas.
 - [x] Add per-currency Standard Event value aggregation.
 - [x] Add exact source/capability and data-coverage resolution.
-- [ ] Extend drill-down reads with the same resolved range and `asOf` cutoff.
-- [ ] Execute libSQL reads sequentially and verify request completion under the
+- [x] Extend drill-down reads with the same resolved range and `asOf` cutoff.
+- [x] Execute libSQL reads sequentially and verify request completion under the
       Workers development runtime.
 - [x] Add immutable snapshot caching and run-level query memoization.
 - [x] Add real-store tests for time boundaries, late arrivals, prior-zero,
@@ -1214,21 +1214,21 @@ This slice makes dashboard and assistant measurements share one authority.
 
 This slice creates the default page without invoking an LLM.
 
-- [ ] Implement deterministic insight eligibility, ranking, templates, and
+- [x] Implement deterministic insight eligibility, ranking, templates, and
       controlled suggested prompts.
-- [ ] Implement stable adaptive pulse selection from capabilities and confirmed
+- [x] Implement stable adaptive pulse selection from capabilities and confirmed
       definitions.
-- [ ] Implement primary activity-series and secondary-panel selection.
-- [ ] Return explicit empty, unsupported, partial, and data-quality states.
-- [ ] Add `GET /projects/:slug/overview` with project authorization and bounded
+- [x] Implement primary activity-series and secondary-panel selection.
+- [x] Return explicit empty, unsupported, partial, and data-quality states.
+- [x] Add `GET /projects/:slug/overview` with project authorization and bounded
       range parsing.
-- [ ] Add a stable React Query key based on project, range key, filters, and
+- [x] Add a stable React Query key based on project, range key, filters, and
       resolved snapshot token.
-- [ ] Test every source combination and confirm temporary zeros do not reorder
+- [x] Test every source combination and confirm temporary zeros do not reorder
       stable pulse slots.
-- [ ] Test low-volume guards, no-prior behavior, coverage wording, release
+- [x] Test low-volume guards, no-prior behavior, coverage wording, release
       correlation wording, and no-significant-change state.
-- [ ] Prove the endpoint never reads or returns generated Live preview data.
+- [x] Prove the endpoint never reads or returns generated Live preview data.
 
 ## Slice 4: Conversation and memory storage
 
@@ -2903,3 +2903,50 @@ Evidence: api 273 passed | 19 skipped (22 files), web focused 21 passed
 (snapshot 11 + web-analytics + summary), full web green except
 pre-existing gallery calendar aria-selected failure, api/web typechecks
 clean, api lint clean, `git diff --check` clean.
+
+### 2026-09-04 — Slice 3 insights and adaptive overview API
+
+Deterministic page composition without invoking an LLM. All nine Slice 3
+boxes are implemented and regression-tested; the two remaining Slice 2
+boxes (drill-down range/`asOf`, sequential libSQL reads) are checked here
+as satisfied by R5-F1/R6-F1 wiring plus the sequential overview builder.
+
+- Insights (`selectInsights`, pure): change candidates from replayable
+  count facts via `isCountChangeEligible` on reconstructed previous
+  (prior-zero with volume headlines, low absolute/ratio suppressed);
+  error candidates from new/regressing issues with >=3 current
+  occurrences; coverage names the source dimension + measured share with
+  no loss language; definition proposes a key outcome only when nothing
+  is observed; release states the top observed release with
+  `associated with` (causal-claim guard). `current-only`
+  (`errors.unresolved_issues`) never feeds headlines. Ranked by
+  severity/recency/stable ID, capped at 3; `[]` is the calm
+  no-significant-change state.
+- Pulse (`selectPulsePlans`, capability-only): sorted observed Standard
+  Event first, then web/mobile audience, then error reliability, then
+  deterministic fill — exactly 3, never currency multi-row, identical
+  capabilities never reorder on temporary zeros. Confirmed-definition
+  memory (slice 4) is the reserved override; observed events are the v1
+  key-outcome proxy.
+- Activity: canonical `[from, to)` + `received_at <= asOf` + verified
+  scope event trend, hourly/daily/weekly on frozen thresholds,
+  zero-filled, <=93 points; empty range yields an explicit empty
+  artifact, never a fabricated series.
+- Secondary: issue-list when error collection + issues exist, else
+  release ranked-list from real occurrence metadata, else event
+  ranked-list; never an empty Releases shell.
+- Resource (`buildOverviewResource`, sequential only): pulse facts come
+  from `measureMetrics` (byte-equivalent with assistant), every nested
+  context equals the top context, data-quality carries confirmed/
+  standard-event/missing + bounded warnings. Empty-selected scope short-
+  circuits to honest zeros without storage reads.
+- Endpoint `GET /projects/:slug/overview`: non-disclosing auth boundary,
+  bounded v1 ranges (default 7d, invalid 400), all-source v1 scope,
+  capabilities built exactly like metrics, HMAC token issuance with 503
+  fail-closed. Web `useProjectOverviewQuery` key is
+  `[slug, range]`-stable with no moving timestamps.
+
+Evidence: api 299 passed | 19 skipped (24 files incl. 20 overview
+service + 6 controller), web overview-key 2 passed, full web green
+except pre-existing gallery calendar failure, api/web typechecks clean,
+api lint clean, `git diff --check` clean.

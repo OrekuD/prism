@@ -49,9 +49,11 @@ import { issueQueryContextToken, resolveTokenKeyConfig, verifyDrilldownToken } f
 import {
 	METRIC_REGISTRY,
 	ProjectMetricsResourceSchema,
+	ProjectOverviewResourceSchema,
 	StandardEventKeySchema,
 	type MetricFact,
 } from "@prism-analytics/types";
+import { buildOverviewResource } from "../utils/projectOverview";
 
 export class ProjectsController {
   /**
@@ -1195,6 +1197,172 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
         },
         queryContextToken,
         facts,
+      }),
+    );
+  }
+
+  /**
+   * Canonical adaptive overview (Task 21 slice 3): deterministic insights,
+   * stable pulse, primary activity, and secondary panel over one resolved
+   * snapshot. Same non-disclosing project boundary as every project read;
+   * range is bounded to the frozen v1 set. v1 serves the all-source scope;
+   * per-source overview filtering stays out of scope.
+   */
+  public static async getOverview(ctx: Context<HonoConfig>) {
+    const slug = ctx.req.param("slug");
+    if (!slug) {
+      return ctx.json(new ErrorResponse("slug_not_found").toJSON(), 404);
+    }
+    const user = ctx.get("user");
+    if (!user) {
+      return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+    }
+    const db = DatabaseManager.getInstance(ctx);
+    const projects = (await db`
+      SELECT id, organization_id FROM projects WHERE slug = ${slug}`) as Array<{
+      id: string;
+      organization_id: string;
+    }>;
+    if (projects.length === 0) {
+      return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
+    }
+    const projectId = String(projects[0].id);
+    const organizationId = String(projects[0].organization_id);
+    const role = await getWorkspaceRole(ctx, user.id, organizationId);
+    if (!role) {
+      return ctx.json(new ErrorResponse("project_not_found").toJSON(), 404);
+    }
+
+    const range = parseMetricRange(ctx.req.query("range") ?? "7d");
+    if (!range) {
+      return ctx.json(new ErrorResponse("invalid_range").toJSON(), 400);
+    }
+    const now = Date.now();
+    const window = resolveMetricWindow(now, range);
+    const scope = { sourceScope: "all", sourceIds: [] } as const;
+
+    // Capability inputs mirror getMetrics exactly (product Postgres for
+    // configured sources/keys; analytics store for live telemetry).
+    // Sequential reads only.
+    const sourceRows = (await db`
+      SELECT s.id AS id, s.platform AS platform,
+        COALESCE(BOOL_OR(k.status != 'revoked'), false) AS active
+      FROM project_sources s
+      LEFT JOIN project_api_keys k ON k.source_id = s.id
+      WHERE s.project_id = ${projectId}
+      GROUP BY s.id, s.platform`) as Array<{
+      id: string;
+      platform: string;
+      active: boolean;
+    }>;
+    const analytics = TursoDatabaseManager.getInstance(ctx);
+    const telemetry = await analytics.execute({
+      sql: `SELECT source_id AS source_id, COUNT(*) AS events,
+              MAX(received_at) AS last_received_at
+            FROM events WHERE project_id = ? AND source_id IS NOT NULL
+            GROUP BY source_id`,
+      args: [projectId],
+    });
+    const telemetryBySource = new Map(
+      telemetry.rows.map((row) => [
+        String(row.source_id),
+        {
+          events: Number(row.events ?? 0),
+          lastReceivedAt:
+            row.last_received_at === null || row.last_received_at === undefined
+              ? null
+              : Number(row.last_received_at),
+        },
+      ]),
+    );
+    const projectSourceIds = sourceRows.map((row) => String(row.id));
+    const errorSettings =
+      projectSourceIds.length === 0
+        ? { rows: [] as Array<Record<string, unknown>> }
+        : await analytics.execute({
+            sql: `SELECT 1 AS n FROM source_error_settings
+                  WHERE mode != 'off'
+                    AND source_id IN (${projectSourceIds.map(() => "?").join(",")})
+                  LIMIT 1`,
+            args: projectSourceIds,
+          });
+    const errorObserved = await analytics.execute({
+      sql: "SELECT 1 AS n FROM error_occurrences WHERE project_id = ? LIMIT 1",
+      args: [projectId],
+    });
+    const standardRows = await analytics.execute({
+      sql: `SELECT DISTINCT json_extract(properties, '$."$standard".key') AS k
+            FROM events
+            WHERE project_id = ? AND occurred_at >= ? AND occurred_at < ?
+              AND received_at <= ? AND name LIKE '$prism_%'`,
+      args: [projectId, window.from, window.to, window.asOf],
+    });
+    const capabilities = resolveProjectCapabilities({
+      sources: sourceRows.map((row) => ({
+        platform: String(row.platform),
+        active: row.active === true,
+        lastReceivedAt: telemetryBySource.get(String(row.id))?.lastReceivedAt ?? null,
+      })),
+      errorConfigured: errorSettings.rows.length > 0,
+      errorObserved: errorObserved.rows.length > 0,
+      standardEventsObserved: standardRows.rows.map((row) => String(row.k ?? "")),
+    });
+
+    let resource: Awaited<ReturnType<typeof buildOverviewResource>>;
+    try {
+      resource = await buildOverviewResource({
+        client: analytics,
+        projectId,
+        window,
+        scope: { sourceScope: scope.sourceScope, sourceIds: [...scope.sourceIds] },
+        capabilities,
+        deps: { capabilities, now },
+      });
+    } catch (error) {
+      if (error instanceof MetricQueryError) {
+        const code =
+          error.code === "invalid-range" ? "invalid_range" : "invalid_filter";
+        return ctx.json(new ErrorResponse(code).toJSON(), 400);
+      }
+      throw error;
+    }
+
+    let keyConfig: { kid: string; secret: string };
+    try {
+      keyConfig = resolveTokenKeyConfig(ctx.env);
+    } catch {
+      return ctx.json(
+        new ErrorResponse("query_context_signing_unavailable").toJSON(),
+        503,
+      );
+    }
+    let queryContextToken: string;
+    try {
+      queryContextToken = await issueQueryContextToken(
+        {
+          projectId,
+          organizationId,
+          from: window.from,
+          to: window.to,
+          compareFrom: window.compareFrom,
+          compareTo: window.compareTo,
+          asOf: window.asOf,
+          sourceScope: scope.sourceScope,
+          sourceIds: [...scope.sourceIds],
+        },
+        keyConfig,
+        window.asOf,
+      );
+    } catch {
+      return ctx.json(
+        new ErrorResponse("query_context_signing_unavailable").toJSON(),
+        503,
+      );
+    }
+    return ctx.json(
+      ProjectOverviewResourceSchema.parse({
+        ...resource,
+        queryContextToken,
       }),
     );
   }
