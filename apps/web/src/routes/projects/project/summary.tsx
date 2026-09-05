@@ -12,7 +12,7 @@
  * non-disclosing return, and drafts scope per project+chat.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import type { InsightCandidate } from "@prism-analytics/types";
 import { ChatView } from "@/components/project-overview/chat-view";
@@ -32,8 +32,6 @@ import {
 } from "@/network/queries/useAssistantConversations";
 import { useDecideAssistantProposal } from "@/network/queries/useAssistantMemory";
 import { useProjectOverviewQuery } from "@/network/queries/useProjectOverviewQuery";
-
-const RANGES = ["24h", "7d", "14d", "30d", "90d"] as const;
 
 function clientRequestId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -60,21 +58,18 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
     conversationSlug?: string;
   }>();
   const wrkSlug = useParams<{ wrkSlug: string }>().wrkSlug;
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const rawRange = searchParams.get("range");
-  const range = (RANGES as readonly string[]).includes(rawRange ?? "")
-    ? (rawRange as string)
-    : "7d";
+  // Fixed default window: the endpoint owns range resolution, and the URL
+  // stays clean (no range pills, no query params on these routes).
+  const range = "7d";
   // View lives in the route, not the query string: the index route is the
   // overview, `agent` is a fresh chat, and `agent/:conversationSlug` is an
   // existing chat.
   const view = freshChat || conversationSlug !== undefined ? "chat" : "overview";
   const chatSlug = conversationSlug ?? null;
   const projectBase = `/workspace/${wrkSlug ?? ""}/projects/${slug ?? ""}`;
-  const rangeSuffix = `?range=${range}`;
 
   const overview = useProjectOverviewQuery(slug, { range });
   const conversations = useAssistantConversationsQuery(slug);
@@ -117,21 +112,21 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
 
   const goToOverview = useCallback(() => {
     returnFocus.current = true;
-    void navigate(`${projectBase}${rangeSuffix}`);
-  }, [navigate, projectBase, rangeSuffix]);
+    void navigate(projectBase);
+  }, [navigate, projectBase]);
 
   const openChat = useCallback(
     (conversationSlug: string) => {
       setSendError(null);
-      void navigate(`${projectBase}/agent/${conversationSlug}${rangeSuffix}`);
+      void navigate(`${projectBase}/agent/${conversationSlug}`);
     },
-    [navigate, projectBase, rangeSuffix],
+    [navigate, projectBase],
   );
 
   const openFreshChat = useCallback(() => {
     setSendError(null);
-    void navigate(`${projectBase}/agent${rangeSuffix}`);
-  }, [navigate, projectBase, rangeSuffix]);
+    void navigate(`${projectBase}/agent`);
+  }, [navigate, projectBase]);
 
   const onViewChange = useCallback(
     (next: "overview" | "chat") => {
@@ -168,7 +163,7 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
         // chat as soon as the stream names its slug.
         setPendingChat(true);
         if (view !== "chat") {
-          void navigate(`${projectBase}/agent${rangeSuffix}`);
+          void navigate(`${projectBase}/agent`);
         }
       }
       try {
@@ -197,7 +192,7 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
         if (targetChatSlug === null) setPendingChat(false);
       }
     },
-    [slug, send, overview.data, queryClient, view, navigate, projectBase, rangeSuffix, openChat],
+    [slug, send, overview.data, queryClient, view, navigate, projectBase, openChat],
   );
 
   // A chat created mid-run lands on its URL: move the pending stream
@@ -223,11 +218,11 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
     (insight: InsightCandidate) => {
       // Investigate creates a NEW chat seeded with the deterministic
       // insight prompt — never appended to a prior topic.
-      void navigate(`${projectBase}/agent${rangeSuffix}`);
+      void navigate(`${projectBase}/agent`);
       setDraft(insight.askPrompt);
       dockRef.current?.focus();
     },
-    [navigate, projectBase, rangeSuffix, setDraft],
+    [navigate, projectBase, setDraft],
   );
 
   const newChat = useCallback(() => {
