@@ -1,0 +1,501 @@
+/**
+ * Slice 6 controller tests: auth boundary, validation, idempotency,
+ * disabled-AI stream, quota gates, and SSE frame validation.
+ * Store and agent are stubbed; no network, no real PG.
+ */
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../managers/DatabaseManager", () => ({
+  DatabaseManager: { getInstance: vi.fn() },
+}));
+vi.mock("../managers/TursoDatabaseManager", () => ({
+  TursoDatabaseManager: { getInstance: vi.fn() },
+}));
+vi.mock("../utils/assistantStore", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../utils/assistantStore")>();
+  return {
+    ...actual,
+    createConversationWithFirstMessage: vi.fn(),
+    appendMessage: vi.fn(),
+    startRun: vi.fn(),
+    finishRun: vi.fn(),
+    getConversation: vi.fn(),
+    listConversations: vi.fn(),
+    deleteConversation: vi.fn(),
+    listMemory: vi.fn(),
+    confirmMemoryProposal: vi.fn(),
+  };
+});
+
+import { DatabaseManager } from "../managers/DatabaseManager";
+import { AssistantController } from "../controllers/AssistantController";
+import { encodeStreamFrame } from "../controllers/AssistantController";
+import {
+  AssistantQuotas,
+  __setAssistantQuotasForTests,
+  resolveQuotaLimits,
+} from "../utils/assistantQuotas";
+import {
+  AssistantStoreError,
+  createConversationWithFirstMessage,
+  appendMessage,
+  startRun,
+  finishRun,
+  getConversation,
+  listConversations,
+  deleteConversation,
+  listMemory,
+  confirmMemoryProposal,
+} from "../utils/assistantStore";
+import { makeCtx, makeMockDb } from "./helpers";
+
+const getInstance = vi.mocked(DatabaseManager.getInstance);
+
+const USER_ID = "user_1";
+const OTHER_USER = "user_2";
+const ORG_ID = "org_1";
+const PROJECT_ID = "proj_1";
+const SLUG = "alpha";
+
+function productDb(role: string | null) {
+  return makeMockDb((sql) => {
+    if (sql.includes("FROM projects")) {
+      return [{ id: PROJECT_ID, organization_id: ORG_ID }];
+    }
+    if (sql.includes("FROM member") || sql.includes("member")) {
+      return role ? [{ role }] : [];
+    }
+    return [];
+  });
+}
+
+function ctxFor(
+  params: Record<string, string>,
+  body: unknown,
+  userId: string | null,
+  role: string | null = "member",
+  env: Record<string, string> = {},
+) {
+  getInstance.mockReturnValue(productDb(role) as never);
+  const ctx = makeCtx(
+    params,
+    body,
+    userId ? { user: { id: userId } } : {},
+    {},
+  );
+  (ctx as unknown as { env: Record<string, string> }).env = env;
+  return ctx;
+}
+
+async function readSse(response: Response): Promise<string> {
+  expect(response.headers.get("Content-Type")).toContain("text/event-stream");
+  return response.text();
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  __setAssistantQuotasForTests(
+    new AssistantQuotas(resolveQuotaLimits({})),
+  );
+});
+
+describe("assistant stream frames", () => {
+  it("encodes validated parts and rejects invalid ones", () => {
+    const frame = encodeStreamFrame({
+      kind: "data-run-start",
+      runId: "run_1",
+      conversationId: "conv_1",
+    });
+    expect(frame.startsWith("data: ")).toBe(true);
+    expect(frame).toContain("run_1");
+    const parsed = JSON.parse(frame.slice("data: ".length));
+    expect(parsed.kind).toBe("data-run-start");
+    expect(() =>
+      encodeStreamFrame({
+        kind: "data-run-start",
+        runId: "",
+        conversationId: "conv_1",
+      } as never),
+    ).toThrow();
+  });
+});
+
+describe("assistant quotas", () => {
+  it("rate-limits repeated runs and reports retry time", () => {
+    const quotas = new AssistantQuotas(
+      resolveQuotaLimits({
+        PRISM_AI_RUNS_PER_MINUTE_PER_USER: "2",
+      }),
+    );
+    const scope = { userId: USER_ID, projectId: PROJECT_ID, organizationId: ORG_ID };
+    expect(quotas.checkRate(scope).allowed).toBe(true);
+    expect(quotas.checkRate(scope).allowed).toBe(true);
+    const third = quotas.checkRate(scope);
+    expect(third.allowed).toBe(false);
+    if (!third.allowed) {
+      expect(third.reason).toBe("rate-limited");
+      expect(third.retryAfterMs).toBeGreaterThan(0);
+    }
+  });
+
+  it("denies exhausted daily quotas", () => {
+    const quotas = new AssistantQuotas(
+      resolveQuotaLimits({ PRISM_AI_DAILY_TOKENS_PER_USER: "100" }),
+    );
+    const now = Date.UTC(2026, 8, 5, 12);
+    quotas.recordUsage({
+      userId: USER_ID,
+      organizationId: ORG_ID,
+      promptTokens: 60,
+      completionTokens: 50,
+      costMicroUsd: 10,
+      now,
+    });
+    const denied = quotas.checkDaily({ userId: USER_ID, organizationId: ORG_ID, now });
+    expect(denied.allowed).toBe(false);
+  });
+});
+
+describe("assistant auth boundary", () => {
+  it("requires authentication on every route", async () => {
+    const list = (await AssistantController.listConversations(
+      ctxFor({ slug: SLUG }, null, null),
+    )) as { __status?: number };
+    expect(list.__status).toBe(401);
+    const get = (await AssistantController.getConversation(
+      ctxFor({ slug: SLUG, conversationId: "conv_1" }, null, null),
+    )) as { __status?: number };
+    expect(get.__status).toBe(401);
+    const del = (await AssistantController.deleteConversation(
+      ctxFor({ slug: SLUG, conversationId: "conv_1" }, null, null),
+    )) as { __status?: number };
+    expect(del.__status).toBe(401);
+    const mem = (await AssistantController.getMemory(
+      ctxFor({ slug: SLUG }, null, null),
+    )) as { __status?: number };
+    expect(mem.__status).toBe(401);
+  });
+
+  it("hides projects from non-members with 404", async () => {
+    const result = (await AssistantController.listConversations(
+      ctxFor({ slug: SLUG }, null, USER_ID, null),
+    )) as { __status?: number };
+    expect(result.__status).toBe(404);
+  });
+
+  it("hides foreign conversations with 404", async () => {
+    vi.mocked(getConversation).mockResolvedValue(null);
+    const result = (await AssistantController.getConversation(
+      ctxFor({ slug: SLUG, conversationId: "conv_foreign" }, null, USER_ID),
+    )) as { __status?: number };
+    expect(result.__status).toBe(404);
+  });
+
+  it("never shows another member's prefs in memory reads", async () => {
+    vi.mocked(listMemory).mockResolvedValue([
+      {
+        id: "mem_other",
+        organizationId: ORG_ID,
+        scope: "member",
+        key: "preferred-comparison-range",
+        projectId: null,
+        subjectUserId: OTHER_USER,
+        status: "confirmed",
+        value: {
+          version: 1,
+          label: "Range",
+          description: "Prefer 30d.",
+          payload: { range: "30d" },
+        },
+        proposerId: OTHER_USER,
+        confirmerId: OTHER_USER,
+        createdAt: 1,
+        updatedAt: 1,
+      } as never,
+    ]);
+    const result = (await AssistantController.getMemory(
+      ctxFor({ slug: SLUG }, null, USER_ID),
+    )) as { __json?: { records?: unknown[] } };
+    expect(result.__json?.records).toEqual([]);
+  });
+});
+
+describe("assistant validation", () => {
+  it("rejects malformed conversation creation with 400", async () => {
+    const result = (await AssistantController.createConversation(
+      ctxFor({ slug: SLUG }, { nonsense: true }, USER_ID),
+    )) as { __status?: number };
+    expect(result.__status).toBe(400);
+    expect(vi.mocked(createConversationWithFirstMessage)).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed message posts with 400", async () => {
+    vi.mocked(getConversation).mockResolvedValue({
+      conversation: {
+        id: "conv_1",
+        organizationId: ORG_ID,
+        projectId: PROJECT_ID,
+        userId: USER_ID,
+        title: "Hello",
+        seed: null,
+        createdAt: 1,
+        updatedAt: 1,
+        lastMessageAt: 1,
+      },
+      messages: [],
+      activeRun: null,
+    } as never);
+    const result = (await AssistantController.postMessage(
+      ctxFor({ slug: SLUG, conversationId: "conv_1" }, { content: "" }, USER_ID),
+    )) as { __status?: number };
+    expect(result.__status).toBe(400);
+  });
+
+  it("rejects tampered history cursors with 400", async () => {
+    vi.mocked(listConversations).mockRejectedValue(
+      new AssistantStoreError("invalid-input", "Invalid history cursor"),
+    );
+    const ctx = ctxFor({ slug: SLUG }, null, USER_ID) as unknown as {
+      req: { query: ReturnType<typeof vi.fn> };
+    };
+    ctx.req.query.mockImplementation(
+      (key: string) => (key === "cursor" ? "tampered" : undefined),
+    );
+    const result = (await AssistantController.listConversations(
+      ctx as never,
+    )) as {
+      __status?: number;
+    };
+    expect(result.__status).toBe(400);
+  });
+});
+
+describe("assistant runs", () => {
+  it("streams a disabled error when AI is not configured", async () => {
+    vi.mocked(getConversation).mockResolvedValue({
+      conversation: {
+        id: "conv_1",
+        organizationId: ORG_ID,
+        projectId: PROJECT_ID,
+        userId: USER_ID,
+        title: "Hello world",
+        seed: null,
+        createdAt: 1,
+        updatedAt: 1,
+        lastMessageAt: 1,
+      },
+      messages: [],
+      activeRun: null,
+    } as never);
+    vi.mocked(appendMessage).mockResolvedValue({
+      message: { id: "msg_1" },
+      created: true,
+    } as never);
+    vi.mocked(startRun).mockResolvedValue({ ok: true, run: { id: "run_1" } } as never);
+    vi.mocked(finishRun).mockResolvedValue({ finished: true, run: { id: "run_1" } } as never);
+    // No snapshot token: skips verification and reaches the disabled gate
+    // (resolveAssistantModelConfig fails closed with no key in env).
+    const response = (await AssistantController.postMessage(
+      ctxFor(
+        { slug: SLUG, conversationId: "conv_1" },
+        { clientRequestId: "req_1", content: "How are signups?" },
+        USER_ID,
+        "member",
+        {},
+      ),
+    )) as unknown as Response;
+    expect(response).toBeInstanceOf(Response);
+    const text = await readSse(response);
+    expect(text).toContain("data-run-error");
+    expect(text).toContain("disabled");
+    // No partial answer is ever persisted as complete on this path.
+    expect(vi.mocked(appendMessage)).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: "complete", role: "assistant" }),
+    );
+  });
+
+  it("returns 409 on duplicate creation payloads", async () => {
+    vi.mocked(createConversationWithFirstMessage).mockRejectedValue(
+      new AssistantStoreError("idempotency-conflict", "reuse with different content"),
+    );
+    const result = (await AssistantController.createConversation(
+      ctxFor(
+        { slug: SLUG },
+        {
+          clientRequestId: "req_dup",
+          firstMessage: "How are signups?",
+          seed: null,
+          queryContextToken: "opaque-token-12345678",
+        },
+        USER_ID,
+      ),
+    )) as { __status?: number };
+    expect(result.__status).toBe(409);
+  });
+
+  it("returns 409 on duplicate message request IDs (reconnect replays)", async () => {
+    vi.mocked(getConversation).mockResolvedValue({
+      conversation: {
+        id: "conv_1",
+        organizationId: ORG_ID,
+        projectId: PROJECT_ID,
+        userId: USER_ID,
+        title: "Hello",
+        seed: null,
+        createdAt: 1,
+        updatedAt: 1,
+        lastMessageAt: 1,
+      },
+      messages: [],
+      activeRun: null,
+    } as never);
+    vi.mocked(appendMessage).mockRejectedValue(
+      new AssistantStoreError("idempotency-conflict", "reuse with different content"),
+    );
+    const result = (await AssistantController.postMessage(
+      ctxFor(
+        { slug: SLUG, conversationId: "conv_1" },
+        { clientRequestId: "req_dup", content: "And now?" },
+        USER_ID,
+      ),
+    )) as { __status?: number };
+    expect(result.__status).toBe(409);
+  });
+
+  it("reports one-active-run as a retryable stream error", async () => {
+    vi.mocked(getConversation).mockResolvedValue({
+      conversation: {
+        id: "conv_1",
+        organizationId: ORG_ID,
+        projectId: PROJECT_ID,
+        userId: USER_ID,
+        title: "Hello",
+        seed: null,
+        createdAt: 1,
+        updatedAt: 1,
+        lastMessageAt: 1,
+      },
+      messages: [],
+      activeRun: null,
+    } as never);
+    vi.mocked(appendMessage).mockResolvedValue({ message: { id: "msg_2" }, created: true } as never);
+    vi.mocked(startRun).mockResolvedValue({
+      ok: false,
+      conflict: {
+        code: "active-run-exists",
+        projectId: PROJECT_ID,
+        userId: USER_ID,
+        activeConversationId: "conv_1",
+        activeRunId: "run_active",
+      },
+    } as never);
+    const response = (await AssistantController.postMessage(
+      ctxFor(
+        { slug: SLUG, conversationId: "conv_1" },
+        { clientRequestId: "req_new", content: "And now?" },
+        USER_ID,
+      ),
+    )) as unknown as Response;
+    const text = await readSse(response);
+    expect(text).toContain("already running");
+  });
+
+  it("rate-limited runs stream a retryable quota error", async () => {
+    __setAssistantQuotasForTests(
+      new AssistantQuotas(
+        resolveQuotaLimits({ PRISM_AI_RUNS_PER_MINUTE_PER_USER: "1" }),
+      ),
+    );
+    vi.mocked(getConversation).mockResolvedValue({
+      conversation: {
+        id: "conv_1",
+        organizationId: ORG_ID,
+        projectId: PROJECT_ID,
+        userId: USER_ID,
+        title: "Hello",
+        seed: null,
+        createdAt: 1,
+        updatedAt: 1,
+        lastMessageAt: 1,
+      },
+      messages: [],
+      activeRun: null,
+    } as never);
+    vi.mocked(appendMessage).mockResolvedValue({ message: { id: "msg_2" }, created: true } as never);
+    vi.mocked(startRun).mockResolvedValue({ ok: true, run: { id: "run_1" } } as never);
+    vi.mocked(finishRun).mockResolvedValue({ finished: true, run: { id: "run_1" } } as never);
+    const body = { clientRequestId: "req_a", content: "Hello?" };
+    // First run consumes the allowance (disabled stream still counts).
+    await AssistantController.postMessage(ctxFor({ slug: SLUG, conversationId: "conv_1" }, body, USER_ID));
+    const second = (await AssistantController.postMessage(
+      ctxFor({ slug: SLUG, conversationId: "conv_1" }, { ...body, clientRequestId: "req_b" }, USER_ID),
+    )) as unknown as Response;
+    const text = await readSse(second);
+    expect(text).toContain("quota-exhausted");
+    // The rejected run never started paid work.
+    expect(vi.mocked(startRun)).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("assistant memory writes", () => {
+  it("forbids member confirmation of shared definitions with 403", async () => {
+    vi.mocked(confirmMemoryProposal).mockResolvedValue({
+      ok: false,
+      reason: "forbidden",
+    });
+    const result = (await AssistantController.confirmProposal(
+      ctxFor({ slug: SLUG, proposalId: "mem_1" }, null, USER_ID, "member"),
+    )) as { __status?: number };
+    expect(result.__status).toBe(403);
+  });
+
+  it("maps slot races to 409 and double-confirm to 409", async () => {
+    vi.mocked(confirmMemoryProposal).mockResolvedValue({
+      ok: false,
+      reason: "slot-conflict",
+    });
+    const raced = (await AssistantController.confirmProposal(
+      ctxFor({ slug: SLUG, proposalId: "mem_1" }, null, USER_ID, "owner"),
+    )) as { __status?: number };
+    expect(raced.__status).toBe(409);
+    vi.mocked(confirmMemoryProposal).mockResolvedValue({
+      ok: false,
+      reason: "not-proposed",
+    });
+    const twice = (await AssistantController.rejectProposal(
+      ctxFor({ slug: SLUG, proposalId: "mem_1" }, null, USER_ID, "owner"),
+    )) as { __status?: number };
+    expect(twice.__status).toBe(409);
+  });
+
+  it("hides unknown proposals with 404", async () => {
+    vi.mocked(confirmMemoryProposal).mockResolvedValue({
+      ok: false,
+      reason: "not-found",
+    });
+    const result = (await AssistantController.confirmProposal(
+      ctxFor({ slug: SLUG, proposalId: "mem_missing" }, null, USER_ID, "owner"),
+    )) as { __status?: number };
+    expect(result.__status).toBe(404);
+  });
+});
+
+describe("assistant deletion", () => {
+  it("deletes an owned chat and reports aborts", async () => {
+    vi.mocked(deleteConversation).mockResolvedValue({ deleted: true, abortedRun: true });
+    const result = (await AssistantController.deleteConversation(
+      ctxFor({ slug: SLUG, conversationId: "conv_1" }, null, USER_ID),
+    )) as { __json?: Record<string, unknown> };
+    expect(result.__json).toMatchObject({ deleted: true, abortedRun: true });
+  });
+
+  it("returns 404 for missing or foreign chats", async () => {
+    vi.mocked(deleteConversation).mockResolvedValue({ deleted: false, abortedRun: false });
+    const result = (await AssistantController.deleteConversation(
+      ctxFor({ slug: SLUG, conversationId: "conv_missing" }, null, USER_ID),
+    )) as { __status?: number };
+    expect(result.__status).toBe(404);
+  });
+});
