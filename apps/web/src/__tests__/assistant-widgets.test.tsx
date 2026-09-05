@@ -427,10 +427,26 @@ describe("ProjectSummary v2 scaffold", () => {
       expect(screen.getByRole("heading", { name: "Project overview" })).toBeInTheDocument(),
     );
     await user.click(screen.getByRole("button", { name: "Conversations" }));
-    const menu = screen.getByRole("listbox", { name: "Conversations" });
+    const menu = screen.getByRole("menu", { name: "Conversations" });
     expect(
-      within(menu).getByRole("option", { name: /Checkout errors deep-dive/ }),
+      within(menu).getByRole("menuitem", { name: /Checkout errors deep-dive/ }),
     ).toBeInTheDocument();
+  });
+
+  it("gates new chat behind the chat tab", async () => {
+    const user = userEvent.setup();
+    // Overview mode: the menu lists chats but offers no New chat item.
+    renderRoute("/workspace/wrk/projects/alpha");
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Project overview" })).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("button", { name: "Conversations" }));
+    expect(
+      within(screen.getByRole("menu", { name: "Conversations" })).queryByRole(
+        "menuitem",
+        { name: /New chat/ },
+      ),
+    ).toBeNull();
   });
 
   it("offers a safe return for a missing chat", async () => {

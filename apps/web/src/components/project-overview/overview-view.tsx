@@ -88,7 +88,7 @@ export function OverviewView({
 
   return (
     <div className="flex flex-1 flex-col pb-2">
-      <div className="mb-1.5 mt-10">
+      <div className="mb-1.5 mt-2">
         <h1 className="text-[26px] font-semibold leading-[1.2] tracking-[-0.022em]">
           Project overview
         </h1>

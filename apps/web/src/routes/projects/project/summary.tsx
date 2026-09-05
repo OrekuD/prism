@@ -1,14 +1,15 @@
 /**
  * Project overview route (Task 21 slice 7, v2 design replica).
  *
- * Page scaffold from `prism-project-overview-v2.html`, converted to
- * Tailwind + modular components: sticky header (crumbs, conversations
- * dropdown, range, Overview/Chat toggle), overview widgets, chat view,
- * and the persistent blurred composer dock. The mock's placeholder
- * copy and simulated answers are replaced by real overview, chat, and
- * stream state; the mock's interactions (view switching, dropdown,
- * suggestions, Cmd+K, follow-up prompts) are preserved against the
- * production API.
+ * The dashboard shell owns the header, breadcrumbs, padding, and content
+ * column — this route renders directly into it with no second header and
+ * no custom page container. A slim control row holds the conversations
+ * menu and the Overview/Chat toggle; the composer dock is viewport-fixed
+ * beneath the shell column.
+ *
+ * Data behavior is unchanged: overview submits and insight investigation
+ * create chats, in-chat submits continue, missing chats get a safe
+ * non-disclosing return, and drafts scope per project+chat.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
@@ -16,8 +17,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { InsightCandidate } from "@prism-analytics/types";
 import { ChatView } from "@/components/project-overview/chat-view";
 import { ComposerDock, type ComposerDockHandle } from "@/components/project-overview/composer";
-import { OVERVIEW_RANGES, PageHeader } from "@/components/project-overview/page-header";
+import { ConversationsDropdown } from "@/components/project-overview/conversations-dropdown";
 import { OverviewView } from "@/components/project-overview/overview-view";
+import { Seg, SegTab } from "@/components/project-overview/primitives";
 import "@/components/project-overview/project-overview.css";
 import {
   INITIAL_STREAM_STATE,
@@ -30,6 +32,8 @@ import {
 } from "@/network/queries/useAssistantConversations";
 import { useDecideAssistantProposal } from "@/network/queries/useAssistantMemory";
 import { useProjectOverviewQuery } from "@/network/queries/useProjectOverviewQuery";
+
+const RANGES = ["24h", "7d", "14d", "30d", "90d"] as const;
 
 function clientRequestId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -56,7 +60,7 @@ export function ProjectSummary() {
   const queryClient = useQueryClient();
 
   const rawRange = searchParams.get("range");
-  const range = (OVERVIEW_RANGES as readonly string[]).includes(rawRange ?? "")
+  const range = (RANGES as readonly string[]).includes(rawRange ?? "")
     ? (rawRange as string)
     : "7d";
   const view = searchParams.get("view") === "assistant" ? "chat" : "overview";
@@ -133,19 +137,18 @@ export function ProjectSummary() {
     [patchParams],
   );
 
-  const goToChat = useCallback(() => {
-    patchParams((next) => {
-      next.set("view", "assistant");
-    });
-  }, [patchParams]);
-
   const onViewChange = useCallback(
     (next: "overview" | "chat") => {
       setSendError(null);
-      if (next === "overview") goToOverview();
-      else goToChat();
+      if (next === "overview") {
+        goToOverview();
+      } else {
+        patchParams((inner) => {
+          inner.set("view", "assistant");
+        });
+      }
     },
-    [goToOverview, goToChat],
+    [goToOverview, patchParams],
   );
 
   const chatMissing = view === "chat" && chatId !== null && detail.isError;
@@ -281,23 +284,30 @@ export function ProjectSummary() {
   const emptyScopeLine = `Prism answers from your events, errors, and release data — ${slug ?? "this project"} · Last ${range}.`;
 
   return (
-    <div className="mx-auto flex min-h-0 w-full max-w-[1216px] flex-col px-8 max-[760px]:px-[18px]">
-      <PageHeader
-        slug={slug ?? ""}
-        view={view}
-        onViewChange={onViewChange}
-        range={range}
-        onRangeChange={(value) =>
-          patchParams((next) => {
-            next.set("range", value);
-          })
-        }
-        conversations={conversations.data?.items ?? []}
-        selectedChatId={chatId}
-        onSelectChat={openChat}
-        onNewChat={newChat}
-        onDeleteChat={(id) => void deleteChat(id)}
-      />
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex flex-wrap items-center gap-2">
+        <ConversationsDropdown
+          items={conversations.data?.items ?? []}
+          selectedId={chatId}
+          showNewChat={view === "chat"}
+          onSelect={openChat}
+          onNewChat={newChat}
+          onDelete={(id) => void deleteChat(id)}
+        />
+        <div className="ml-auto">
+          <Seg label="View">
+            <SegTab
+              selected={view === "overview"}
+              onClick={() => onViewChange("overview")}
+            >
+              Overview
+            </SegTab>
+            <SegTab selected={view === "chat"} onClick={() => onViewChange("chat")}>
+              Chat
+            </SegTab>
+          </Seg>
+        </div>
+      </div>
 
       {view === "overview" ? (
         <OverviewView
@@ -307,10 +317,7 @@ export function ProjectSummary() {
           onInvestigate={investigate}
         />
       ) : chatMissing ? (
-        <div
-          role="alert"
-          className="mt-10 rounded-sm border border-border p-5"
-        >
+        <div role="alert" className="mt-6 rounded-[2px] border border-border p-5">
           <h1 className="text-[26px] font-semibold leading-[1.2] tracking-[-0.022em]">
             That chat isn&apos;t available
           </h1>
@@ -321,7 +328,7 @@ export function ProjectSummary() {
           <button
             type="button"
             onClick={goToOverview}
-            className="mt-3 inline-flex h-9 items-center justify-center gap-2 whitespace-nowrap rounded-sm border border-accent bg-accent px-3.5 text-[13px] font-medium text-white transition-colors duration-100 hover:border-accent-hover hover:bg-accent-hover"
+            className="mt-3 inline-flex h-9 items-center justify-center gap-2 whitespace-nowrap rounded-[2px] border border-accent bg-accent px-3.5 text-[13px] font-medium text-white transition-colors duration-100 hover:border-accent-hover hover:bg-accent-hover"
           >
             Back to overview
           </button>
@@ -346,17 +353,28 @@ export function ProjectSummary() {
         />
       )}
 
-      <ComposerDock
-        ref={dockRef}
-        draft={draft}
-        onDraftChange={setDraft}
-        onSubmit={submitFromDock}
-        running={active || pendingChat}
-        onStop={stopRun}
-        capabilities={overview.data?.capabilities ?? null}
-        disabled={overview.isError}
-        disabledReason="Overview unavailable — assistant paused."
-      />
+      {/* Bottom clearance for the fixed dock. */}
+      <div aria-hidden="true" className="h-48 shrink-0" />
+
+      <div className="fixed inset-x-0 bottom-0 z-30 min-[1024px]:left-[240px]">
+        <div
+          aria-hidden="true"
+          className="po-composer-fade pointer-events-none h-12"
+        />
+        <div className="mx-auto w-full max-w-[1800px] bg-canvas px-7 pb-5 max-[1023px]:px-5 max-[767px]:px-4">
+          <ComposerDock
+            ref={dockRef}
+            draft={draft}
+            onDraftChange={setDraft}
+            onSubmit={submitFromDock}
+            running={active || pendingChat}
+            onStop={stopRun}
+            capabilities={overview.data?.capabilities ?? null}
+            disabled={overview.isError}
+            disabledReason="Overview unavailable — assistant paused."
+          />
+        </div>
+      </div>
     </div>
   );
 }

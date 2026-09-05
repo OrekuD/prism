@@ -107,15 +107,10 @@ export const ComposerDock = forwardRef<
   const suggestions = suggestionsFor(capabilities);
 
   return (
-    <div className="sticky bottom-0 z-[25] mt-6 px-0 pb-5 pt-6">
-      <div
-        aria-hidden="true"
-        className="po-composer-fade pointer-events-none absolute -left-8 -right-8 top-0 h-12 max-[760px]:-left-[18px] max-[760px]:-right-[18px]"
-      />
-      <Frame
-        label="Ask Prism"
-        className="bg-surface/90 p-[14px_12px_12px] shadow-[0_-8px_32px_rgb(0_0_0/0.24),inset_0_1px_0_var(--border)] backdrop-blur-2xl"
-      >
+    <Frame
+      label="Ask Prism"
+      className="bg-surface/90 p-[14px_12px_12px] shadow-[0_-8px_32px_rgb(0_0_0/0.24),inset_0_1px_0_var(--border)] backdrop-blur-2xl"
+    >
         <form
           className="flex items-end gap-2.5"
           onSubmit={(event) => {
@@ -206,6 +201,5 @@ export const ComposerDock = forwardRef<
           ))}
         </ul>
       </Frame>
-    </div>
   );
 });
