@@ -26,7 +26,7 @@
  * Timestamps are millisecond epochs supplied by the caller (`now`) so
  * tests are deterministic.
  */
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
   AGENT_LIMITS,
@@ -91,6 +91,21 @@ const RUN_FINISH_STATUSES = ["complete", "cancelled", "failed"] as const;
 
 function newId(prefix: string): string {
   return `${prefix}_${randomUUID()}`;
+}
+
+/**
+ * URL slug for one chat: `chat_` + 12 lowercase alphanumerics — the same
+ * opaque crypto-random recipe as workspace `wrk_` slugs. Row IDs
+ * (`conv_*` UUIDs) stay server-internal.
+ */
+const CONVERSATION_SLUG_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
+export function newConversationSlug(): string {
+  const bytes = randomBytes(12);
+  let slug = "chat_";
+  for (const byte of bytes) {
+    slug += CONVERSATION_SLUG_ALPHABET[byte % CONVERSATION_SLUG_ALPHABET.length];
+  }
+  return slug;
 }
 
 function asNumber(value: unknown): number {
@@ -252,6 +267,7 @@ function mustParse<T>(schema: z.ZodType<T>, value: unknown, what: string): T {
 function mapConversation(row: Record<string, unknown>): AssistantConversation {
   return mustParse(ConversationSchema, {
     id: asString(row.id),
+    slug: asString(row.slug),
     organizationId: asString(row.organization_id),
     projectId: asString(row.project_id),
     userId: asString(row.user_id),
@@ -503,17 +519,23 @@ export async function createConversationWithFirstMessage(
   }
 
   for (let attempt = 0; attempt < 4; attempt += 1) {
-    const rows = await db`
+    // Fresh slug per attempt: a `chat_*` collision raises 23505 below and
+    // retries with a new value. Idempotent convergence is unaffected —
+    // duplicate keys still hit the DO NOTHING branches.
+    const slug = newConversationSlug();
+    let rows: Array<Record<string, unknown>>;
+    try {
+      rows = await db`
       WITH target AS (
         SELECT p.id AS project_id, p.organization_id AS organization_id
         FROM projects p WHERE p.id = ${projectId}
       ),
       conv AS (
         INSERT INTO assistant_conversations
-          (id, organization_id, project_id, user_id, title,
+          (id, slug, organization_id, project_id, user_id, title,
            seed_insight_id, client_request_id, request_digest,
            created_at, updated_at, last_message_at)
-        SELECT ${newId("conv")}, t.organization_id, t.project_id,
+        SELECT ${newId("conv")}, ${slug}, t.organization_id, t.project_id,
           ${userId}, ${title}, ${seed?.insightId ?? null},
           ${clientRequestId}, ${digest}, ${now}, ${now}, ${now}
         FROM target t
@@ -555,6 +577,13 @@ export async function createConversationWithFirstMessage(
              (SELECT row_to_json(e) FROM emsg e) AS existing_msg,
              (SELECT created FROM picked) AS conv_created,
              (SELECT COUNT(*) FROM target) AS target_count`;
+    } catch (error) {
+      // Slug collision only: the idempotency branches never raise (DO
+      // NOTHING), and row IDs are UUIDs — so 23505 here is our fresh
+      // `chat_*` value meeting another writer's. Retry with a new one.
+      if (isUniqueViolation(error) && attempt + 1 < 4) continue;
+      throw error;
+    }
     const row = rows[0] as
       | {
           conv: Record<string, unknown> | null;
@@ -624,6 +653,7 @@ export type ListConversationsInput = ConversationScope & {
 export type ConversationListPage = {
   items: Array<{
     id: string;
+    slug: string;
     title: string;
     lastMessageAt: number | null;
     messageCount: number;
@@ -691,6 +721,7 @@ export async function listConversations(
   const page = hasMore ? rows.slice(0, limit) : rows;
   const items = page.map((row) => ({
     id: asString(row.id),
+    slug: asString(row.slug),
     title: asString(row.title),
     lastMessageAt: asNullableNumber(row.last_message_at),
     messageCount: asNumber(row.message_count),
@@ -743,6 +774,35 @@ export async function getConversation(
     messages: msgRows.map(mapMessage),
     activeRun: runRows[0] ? mapRun(runRows[0]) : null,
   };
+}
+
+/**
+ * Slug-based chat lookup for URL resolution. Row IDs (`conv_*`) never
+ * appear in URLs: the route slug resolves here, under the same
+ * `(projectId, userId)` ownership binding and non-disclosing null as
+ * the ID path. Callers continue with the returned row ID internally.
+ */
+export async function getConversationBySlug(
+  db: AssistantDb,
+  input: ConversationScope & { slug: string },
+): Promise<{
+  conversation: AssistantConversation;
+  messages: AssistantMessage[];
+  activeRun: AssistantRun | null;
+} | null> {
+  if (!input.slug || input.slug.length > 32) return null;
+  const convRows = await db`
+    SELECT * FROM assistant_conversations
+    WHERE slug = ${input.slug}
+      AND project_id = ${input.projectId}
+      AND user_id = ${input.userId}`;
+  const convRow = convRows[0];
+  if (!convRow) return null;
+  return getConversation(db, {
+    projectId: input.projectId,
+    userId: input.userId,
+    conversationId: asString(convRow.id),
+  });
 }
 
 /* ------------------------------------------------------------------ */

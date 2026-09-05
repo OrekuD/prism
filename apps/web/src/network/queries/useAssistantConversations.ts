@@ -27,6 +27,8 @@ import { axiosInstance } from "@/utils/axiosInstance";
 
 export type ConversationListItem = {
   id: string;
+  /** URL slug (`chat_*`) — the only chat identifier used in URLs. */
+  slug: string;
   title: string;
   lastMessageAt: number | null;
   messageCount: number;
@@ -36,6 +38,7 @@ export type ConversationListItem = {
 export type ConversationDetail = {
   conversation: {
     id: string;
+    slug: string;
     title: string;
     seed: { type: "insight"; insightId: string } | null;
     createdAt: number;
@@ -57,8 +60,8 @@ export function conversationListKey(slug: string) {
   return ["assistant-conversations", slug] as const;
 }
 
-export function conversationDetailKey(slug: string, conversationId: string) {
-  return ["assistant-conversation", slug, conversationId] as const;
+export function conversationDetailKey(slug: string, conversationSlug: string) {
+  return ["assistant-conversation", slug, conversationSlug] as const;
 }
 
 export function useAssistantConversationsQuery(slug: string | undefined) {
@@ -81,17 +84,17 @@ export function useAssistantConversationsQuery(slug: string | undefined) {
 
 export function useAssistantConversationQuery(
   slug: string | undefined,
-  conversationId: string | null,
+  conversationSlug: string | null,
 ) {
   return useQuery({
-    queryKey: conversationDetailKey(slug ?? "", conversationId ?? ""),
+    queryKey: conversationDetailKey(slug ?? "", conversationSlug ?? ""),
     queryFn: async (): Promise<ConversationDetail> => {
       const response = await axiosInstance.get(
-        `/projects/${slug}/assistant/conversations/${conversationId}`,
+        `/projects/${slug}/assistant/conversations/${conversationSlug}`,
       );
       return response.data;
     },
-    enabled: Boolean(slug) && Boolean(conversationId),
+    enabled: Boolean(slug) && Boolean(conversationSlug),
     staleTime: 5_000,
     refetchOnWindowFocus: false,
   });
@@ -169,6 +172,8 @@ export type StreamState = {
   runId: string | null;
   /** Server-assigned chat from the run-start frame (chat-creation runs). */
   conversationId: string | null;
+  /** URL slug for the owning chat, echoed as a response header. */
+  conversationSlug: string | null;
   steps: ActivityStep[];
   facts: MetricFact[];
   artifacts: AssistantArtifact[];
@@ -181,6 +186,7 @@ export type StreamState = {
 export const INITIAL_STREAM_STATE: StreamState = {
   runId: null,
   conversationId: null,
+  conversationSlug: null,
   steps: [],
   facts: [],
   artifacts: [],
@@ -244,7 +250,8 @@ export function applyStreamEvent(
 }
 
 export type SendMessageInput = {
-  conversationId: string | null;
+  /** Chat URL slug, or null to lazily create the chat. */
+  conversationSlug: string | null;
   content: string;
   queryContextToken?: string;
   clientRequestId: string;
@@ -254,10 +261,10 @@ export type SendMessageInput = {
 
 /**
  * POST a message and fold the SSE stream into state. A null
- * conversationId creates the chat (lazy creation); otherwise the message
- * continues the selected chat. Returns the final state plus the
- * conversation ID from the `data-run-start` frame so the client can
- * replace the URL without remounting the composer.
+ * conversationSlug creates the chat (lazy creation); otherwise the
+ * message continues the selected chat. The owning chat's URL slug
+ * arrives as an `X-Conversation-Slug` response header, so a creation
+ * run can navigate to its URL without a second lookup.
  */
 export function useSendAssistantMessage(slug: string | undefined) {
   const queryClient = useQueryClient();
@@ -286,11 +293,11 @@ export function useSendAssistantMessage(slug: string | undefined) {
       const emit = () => input.onEvent?.(state);
       try {
         const url =
-          input.conversationId === null
+          input.conversationSlug === null
             ? `/projects/${slug}/assistant/conversations`
-            : `/projects/${slug}/assistant/conversations/${input.conversationId}/messages`;
+            : `/projects/${slug}/assistant/conversations/${input.conversationSlug}/messages`;
         const body =
-          input.conversationId === null
+          input.conversationSlug === null
             ? {
                 clientRequestId: input.clientRequestId,
                 firstMessage: input.content,
@@ -346,6 +353,12 @@ export function useSendAssistantMessage(slug: string | undefined) {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
+        // Owning chat's URL slug (present on every assistant stream).
+        const headerSlug = response.headers.get("X-Conversation-Slug");
+        if (headerSlug) {
+          state = { ...state, conversationSlug: headerSlug };
+          emit();
+        }
         for (;;) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -401,13 +414,13 @@ export function useSendAssistantMessage(slug: string | undefined) {
 export function useDeleteAssistantConversation(slug: string | undefined) {
   const queryClient = useQueryClient();
   return useCallback(
-    async (conversationId: string): Promise<boolean> => {
+    async (conversationSlug: string): Promise<boolean> => {
       if (!slug) return false;
       const confirmed = window.confirm("Delete this chat? This cannot be undone.");
       if (!confirmed) return false;
       try {
         await axiosInstance.delete(
-          `/projects/${slug}/assistant/conversations/${conversationId}`,
+          `/projects/${slug}/assistant/conversations/${conversationSlug}`,
         );
       } catch {
         return false;

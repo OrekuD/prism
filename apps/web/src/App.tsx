@@ -244,6 +244,11 @@ const router = createBrowserRouter(
 						<Route path="" element={<Projects />} />
 						<Route path=":slug" element={<ProjectLayout />}>
 							<Route path="" element={<ProjectSummary />} />
+							<Route path="agent" element={<ProjectSummary freshChat />} />
+							<Route
+								path="agent/:conversationSlug"
+								element={<ProjectSummary />}
+							/>
 							<Route path="events" element={<ProjectEvents />}>
 								<Route path=":eventId" element={<EventDetail />} />
 							</Route>

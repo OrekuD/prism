@@ -29,19 +29,19 @@ function timeMeta(value: number | null): string | null {
 
 export function ConversationsDropdown({
   items,
-  selectedId,
+  selectedSlug,
   onSelect,
   onNewChat,
   onDelete,
 }: {
   items: ConversationListItem[];
-  selectedId: string | null;
-  onSelect: (id: string) => void;
+  selectedSlug: string | null;
+  onSelect: (conversationSlug: string) => void;
   onNewChat: () => void;
-  onDelete: (id: string) => void;
+  onDelete: (conversationSlug: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const selected = items.find((item) => item.id === selectedId) ?? null;
+  const selected = items.find((item) => item.slug === selectedSlug) ?? null;
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -88,12 +88,12 @@ export function ConversationsDropdown({
           </div>
         ) : (
           items.map((item) => {
-            const active = item.id === selectedId;
+            const active = item.slug === selectedSlug;
             const meta = timeMeta(item.lastMessageAt);
             return (
               <div key={item.id} className="group relative flex items-center">
                 <DropdownMenuItem
-                  onClick={() => onSelect(item.id)}
+                  onClick={() => onSelect(item.slug)}
                   className={cn(
                     "min-w-0 flex-1 gap-2 pr-8",
                     active && "bg-accent-soft text-text",
@@ -112,7 +112,7 @@ export function ConversationsDropdown({
                   onClick={(event) => {
                     event.stopPropagation();
                     setOpen(false);
-                    onDelete(item.id);
+                    onDelete(item.slug);
                   }}
                   className="absolute right-1.5 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-[2px] text-sm leading-none text-text-subtle opacity-0 transition-all hover:bg-surface-hover hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
                 >

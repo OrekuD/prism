@@ -5499,3 +5499,40 @@ environment): live model eval, `run-assistant-eval` live gate,
 matrix, screenshots/latency/token evidence, axe audit + 200% zoom,
 both-themes viewport QA. These gate the hosted release, not the
 in-repo implementation.
+
+### 2026-09-06 — Conversation URL slugs (`chat_*`) + route-based chat URLs
+
+Chats now have opaque URL slugs following the workspace `wrk_`
+recipe: `chat_` + 12 crypto-random lowercase alphanumerics,
+globally unique, immutable, and the only chat identifier browsers
+ever see. Row IDs (`conv_*`) stay server-internal for runs, messages,
+and audit trails.
+
+- Contract: `ConversationSlugSchema` plus `slug` on `Conversation` /
+  `ConversationListItem` (fixtures updated).
+- Migration `0009_true_puck.sql`: nullable add → deterministic
+  `chat_`+md5 backfill for legacy rows → NOT NULL + unique index +
+  format CHECK (no R13-F1 repeat on populated DBs); `db:generate`
+  reports no drift.
+- Store: `newConversationSlug()`, creation CTE writes the slug with
+  bounded retry on `chat_*` collisions, `getConversationBySlug`
+  under the same ownership binding + non-disclosing null, list items
+  carry slugs, raw-SQL CHECK/unique probes.
+- API: `:conversationSlug` route params; every stream echoes
+  `X-Conversation-Slug` (row IDs never leave); new controller test
+  pins the header and the absent row ID.
+- Web: `projects/:slug/agent` (fresh chat) and
+  `projects/:slug/agent/:conversationSlug`; the `?view=`/`?chat=`
+  query params are gone, the Chat tab always lands on a fresh chat,
+  and creation runs navigate via the response header.
+- Design replica follow-ups: shell owns the only header (route
+  renders straight into its column), shared dropdown-menu primitive,
+  viewport-fixed composer tracking the sidebar breakpoint, chat-only
+  conversations menu, removed range pills/title/description per
+  review, all artifact CTA arrows dropped, top issues
+  unresolved-only/max-3/no pills.
+
+Evidence: api 505 passed | 19 skipped, types 96 passed, web 22/22
+replica tests (full web green except pre-existing gallery calendar
+failure), api/web typechecks + api lint clean, `git diff --check`
+clean.

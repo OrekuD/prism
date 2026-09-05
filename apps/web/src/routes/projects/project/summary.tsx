@@ -12,7 +12,7 @@
  * non-disclosing return, and drafts scope per project+chat.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import type { InsightCandidate } from "@prism-analytics/types";
 import { ChatView } from "@/components/project-overview/chat-view";
@@ -54,23 +54,33 @@ function loadDraft(key: string): string {
   }
 }
 
-export function ProjectSummary() {
-  const { slug } = useParams<{ slug: string }>();
-  const [searchParams, setSearchParams] = useSearchParams();
+export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
+  const { slug, conversationSlug } = useParams<{
+    slug: string;
+    conversationSlug?: string;
+  }>();
+  const wrkSlug = useParams<{ wrkSlug: string }>().wrkSlug;
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const rawRange = searchParams.get("range");
   const range = (RANGES as readonly string[]).includes(rawRange ?? "")
     ? (rawRange as string)
     : "7d";
-  const view = searchParams.get("view") === "assistant" ? "chat" : "overview";
-  const chatId = searchParams.get("chat");
+  // View lives in the route, not the query string: the index route is the
+  // overview, `agent` is a fresh chat, and `agent/:conversationSlug` is an
+  // existing chat.
+  const view = freshChat || conversationSlug !== undefined ? "chat" : "overview";
+  const chatSlug = conversationSlug ?? null;
+  const projectBase = `/workspace/${wrkSlug ?? ""}/projects/${slug ?? ""}`;
+  const rangeSuffix = `?range=${range}`;
 
   const overview = useProjectOverviewQuery(slug, { range });
   const conversations = useAssistantConversationsQuery(slug);
   const detail = useAssistantConversationQuery(
     slug,
-    view === "chat" ? chatId : null,
+    view === "chat" ? chatSlug : null,
   );
 
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -86,7 +96,8 @@ export function ProjectSummary() {
   const removeConversation = useDeleteAssistantConversation(slug);
   const decideProposal = useDecideAssistantProposal(slug);
 
-  const draftScope = view === "chat" ? chatId : null;
+  const draftScope =
+    view === "chat" ? (chatSlug ?? "agent-fresh") : "overview-new";
   const draftStorageKey = slug ? draftKey(slug, draftScope) : "";
   const draft =
     draftStorageKey in drafts ? (drafts[draftStorageKey] ?? "") : loadDraft(draftStorageKey);
@@ -104,38 +115,23 @@ export function ProjectSummary() {
     [slug, draftScope],
   );
 
-  const patchParams = useCallback(
-    (patch: (next: URLSearchParams) => void, replace = false) => {
-      setSearchParams(
-        (previous) => {
-          const next = new URLSearchParams(previous);
-          patch(next);
-          return next;
-        },
-        { replace },
-      );
-    },
-    [setSearchParams],
-  );
-
   const goToOverview = useCallback(() => {
     returnFocus.current = true;
-    patchParams((next) => {
-      next.delete("view");
-      next.delete("chat");
-    });
-  }, [patchParams]);
+    void navigate(`${projectBase}${rangeSuffix}`);
+  }, [navigate, projectBase, rangeSuffix]);
 
   const openChat = useCallback(
-    (id: string) => {
+    (conversationSlug: string) => {
       setSendError(null);
-      patchParams((next) => {
-        next.set("view", "assistant");
-        next.set("chat", id);
-      });
+      void navigate(`${projectBase}/agent/${conversationSlug}${rangeSuffix}`);
     },
-    [patchParams],
+    [navigate, projectBase, rangeSuffix],
   );
+
+  const openFreshChat = useCallback(() => {
+    setSendError(null);
+    void navigate(`${projectBase}/agent${rangeSuffix}`);
+  }, [navigate, projectBase, rangeSuffix]);
 
   const onViewChange = useCallback(
     (next: "overview" | "chat") => {
@@ -143,15 +139,13 @@ export function ProjectSummary() {
       if (next === "overview") {
         goToOverview();
       } else {
-        patchParams((inner) => {
-          inner.set("view", "assistant");
-        });
+        openFreshChat();
       }
     },
-    [goToOverview, patchParams],
+    [goToOverview, openFreshChat],
   );
 
-  const chatMissing = view === "chat" && chatId !== null && detail.isError;
+  const chatMissing = view === "chat" && chatSlug !== null && detail.isError;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: refocus after any view change; the effect reads no reactive values
   useEffect(() => {
@@ -162,98 +156,94 @@ export function ProjectSummary() {
   }, [view]);
 
   const runQuestion = useCallback(
-    async (question: string, targetChatId: string | null) => {
+    async (question: string, targetChatSlug: string | null) => {
       if (!slug) return;
       setSendError(null);
       const controller = new AbortController();
       abortRef.current = controller;
       const token = overview.data?.queryContextToken;
-      if (targetChatId === null) {
+      if (targetChatSlug === null) {
         // Submitting without a chat switches views instantly (cards
         // unmount, chat fades in) and navigates to the server-assigned
-        // chat as soon as the run-start frame names it.
+        // chat as soon as the stream names its slug.
         setPendingChat(true);
-        patchParams((next) => {
-          next.set("view", "assistant");
-          next.delete("chat");
-        });
+        if (view !== "chat") {
+          void navigate(`${projectBase}/agent${rangeSuffix}`);
+        }
       }
       try {
         const final = await send({
-          conversationId: targetChatId,
+          conversationSlug: targetChatSlug,
           content: question,
           queryContextToken: token,
           clientRequestId: clientRequestId(),
           signal: controller.signal,
           onEvent: (state) => {
-            const key = targetChatId ?? "new";
+            const key = targetChatSlug ?? "new";
             setStreamByChat((previous) => ({ ...previous, [key]: state }));
-            if (targetChatId === null && state.conversationId) {
-              openChat(state.conversationId);
+            if (targetChatSlug === null && state.conversationSlug) {
+              openChat(state.conversationSlug);
             }
           },
         });
         if (final.error) {
           setSendError({ message: final.error.message, retryable: final.error.retryable });
-        } else if (targetChatId !== null) {
+        } else if (targetChatSlug !== null) {
           await queryClient.invalidateQueries({
-            queryKey: conversationDetailKey(slug, targetChatId),
+            queryKey: conversationDetailKey(slug, targetChatSlug),
           });
         }
       } finally {
-        if (targetChatId === null) setPendingChat(false);
+        if (targetChatSlug === null) setPendingChat(false);
       }
     },
-    [slug, send, overview.data, queryClient, patchParams, openChat],
+    [slug, send, overview.data, queryClient, view, navigate, projectBase, rangeSuffix, openChat],
   );
 
   // A chat created mid-run lands on its URL: move the pending stream
   // state onto the assigned chat key once known.
   const pendingStream: StreamState | null =
-    view === "chat" && chatId
-      ? (streamByChat[chatId] ?? streamByChat.new ?? null)
+    view === "chat"
+      ? ((chatSlug ? streamByChat[chatSlug] : undefined) ?? streamByChat.new ?? null)
       : null;
 
   const submitFromDock = useCallback(
     (question: string) => {
-      if (view === "chat" && chatId) {
-        void runQuestion(question, chatId);
+      if (view === "chat" && chatSlug) {
+        void runQuestion(question, chatSlug);
       } else {
         void runQuestion(question, null);
       }
       setDraft("");
     },
-    [view, chatId, runQuestion, setDraft],
+    [view, chatSlug, runQuestion, setDraft],
   );
 
   const investigate = useCallback(
     (insight: InsightCandidate) => {
       // Investigate creates a NEW chat seeded with the deterministic
       // insight prompt — never appended to a prior topic.
-      patchParams((next) => {
-        next.set("view", "assistant");
-        next.delete("chat");
-      });
+      void navigate(`${projectBase}/agent${rangeSuffix}`);
       setDraft(insight.askPrompt);
       dockRef.current?.focus();
     },
-    [patchParams, setDraft],
+    [navigate, projectBase, rangeSuffix, setDraft],
   );
 
   const newChat = useCallback(() => {
     setSendError(null);
-    goToOverview();
+    openFreshChat();
     dockRef.current?.focus();
-  }, [goToOverview]);
+  }, [openFreshChat]);
 
   const deleteChat = useCallback(
-    async (id: string) => {
-      const ok = await removeConversation(id);
+    async (conversationSlug: string) => {
+      const ok = await removeConversation(conversationSlug);
       if (!ok) return;
-      if (id === chatId) goToOverview();
+      if (conversationSlug === chatSlug) goToOverview();
       dockRef.current?.focus();
     },
-    [removeConversation, chatId, goToOverview],
+    [removeConversation, chatSlug, goToOverview],
   );
 
   const stopRun = useCallback(() => {
@@ -278,7 +268,7 @@ export function ProjectSummary() {
 
   const stream = view === "chat" ? pendingStream : null;
   const activeStream: StreamState | null =
-    pendingChat && view === "chat" && !chatId
+    pendingChat && view === "chat" && !chatSlug
       ? (streamByChat.new ?? { ...INITIAL_STREAM_STATE })
       : stream;
 
@@ -288,10 +278,10 @@ export function ProjectSummary() {
         {view === "chat" ? (
           <ConversationsDropdown
             items={conversations.data?.items ?? []}
-            selectedId={chatId}
+            selectedSlug={chatSlug}
             onSelect={openChat}
             onNewChat={newChat}
-            onDelete={(id) => void deleteChat(id)}
+            onDelete={(conversationSlug) => void deleteChat(conversationSlug)}
           />
         ) : null}
         <div className="ml-auto">

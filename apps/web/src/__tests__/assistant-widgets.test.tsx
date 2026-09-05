@@ -366,6 +366,7 @@ describe("ProjectSummary v2 scaffold", () => {
             items: [
               {
                 id: "conv_1",
+                slug: "chat_abc123def456",
                 title: "Checkout errors deep-dive",
                 lastMessageAt: Date.now(),
                 messageCount: 4,
@@ -388,6 +389,14 @@ describe("ProjectSummary v2 scaffold", () => {
           <Routes>
             <Route
               path="/workspace/:wrkSlug/projects/:slug"
+              element={<ProjectSummary />}
+            />
+            <Route
+              path="/workspace/:wrkSlug/projects/:slug/agent"
+              element={<ProjectSummary freshChat />}
+            />
+            <Route
+              path="/workspace/:wrkSlug/projects/:slug/agent/:conversationSlug"
               element={<ProjectSummary />}
             />
           </Routes>
@@ -421,7 +430,7 @@ describe("ProjectSummary v2 scaffold", () => {
 
   it("opens the conversations dropdown with real chats", async () => {
     const user = userEvent.setup();
-    renderRoute("/workspace/wrk/projects/alpha?view=assistant");
+    renderRoute("/workspace/wrk/projects/alpha/agent");
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Conversations" })).toBeInTheDocument(),
     );
@@ -443,7 +452,7 @@ describe("ProjectSummary v2 scaffold", () => {
       screen.queryByRole("button", { name: "Conversations" }),
     ).toBeNull();
     // Chat tab: the menu lists chats plus New chat.
-    renderRoute("/workspace/wrk/projects/alpha?view=assistant");
+    renderRoute("/workspace/wrk/projects/alpha/agent");
     await user.click(screen.getByRole("button", { name: "Conversations" }));
     const menu = screen.getByRole("menu", { name: "Conversations" });
     expect(
@@ -461,7 +470,7 @@ describe("ProjectSummary v2 scaffold", () => {
       }
       return { data: { items: [], nextCursor: null }, status: 200 };
     });
-    renderRoute("/workspace/wrk/projects/alpha?view=assistant&chat=conv_missing");
+    renderRoute("/workspace/wrk/projects/alpha/agent/conv_missing");
     await waitFor(() =>
       expect(screen.getByText("That chat isn't available")).toBeInTheDocument(),
     );

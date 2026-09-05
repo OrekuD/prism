@@ -2521,8 +2521,24 @@ export const InsightSeedSchema = z.strictObject({
 });
 export type InsightSeed = z.infer<typeof InsightSeedSchema>;
 
+/**
+ * URL slug for one chat: `chat_` + 12 lowercase alphanumerics, the same
+ * opaque crypto-random recipe as workspace `wrk_` slugs. Globally unique
+ * (unique index), immutable after creation, and the only chat identifier
+ * that ever appears in URLs or the browser. Row IDs (`conv_*`) stay
+ * server-internal: runs, messages, and audit trails keep referencing
+ * them, and every slug resolves through an ownership-checked lookup
+ * that preserves the non-disclosing 404 policy.
+ */
+export const ConversationSlugSchema = z
+  .string()
+  .regex(/^chat_[a-z0-9]{12}$/)
+  .max(32);
+export type ConversationSlug = z.infer<typeof ConversationSlugSchema>;
+
 export const ConversationSchema = z.strictObject({
   id: z.string().min(1).max(128),
+  slug: ConversationSlugSchema,
   organizationId: z.string().min(1).max(128),
   projectId: z.string().min(1).max(128),
   userId: z.string().min(1).max(128),
@@ -2536,6 +2552,7 @@ export type AssistantConversation = z.infer<typeof ConversationSchema>;
 
 export const ConversationListItemSchema = z.strictObject({
   id: z.string().min(1).max(128),
+  slug: ConversationSlugSchema,
   title: z.string().min(1).max(80),
   lastMessageAt: z.number().int().nonnegative().nullable(),
   messageCount: z.number().int().nonnegative(),

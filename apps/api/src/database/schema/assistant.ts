@@ -76,6 +76,12 @@ export const assistantConversations = pgTable(
   DatabaseTables.ASSISTANT_CONVERSATIONS,
   {
     id: text("id").primaryKey(),
+    /**
+     * URL slug (`chat_` + 12 lowercase alphanumerics). Generated in the
+     * application at creation; backfilled deterministically for legacy
+     * rows by migration 0009.
+     */
+    slug: text("slug").notNull(),
     // Existence checks; pairing is owned by 0005's composite FK.
     organizationId: text("organization_id")
       .references(() => organization.id, { onDelete: "cascade" })
@@ -107,6 +113,12 @@ export const assistantConversations = pgTable(
       table.projectId,
       table.userId,
     ),
+    /**
+     * URL slug: `chat_` + 12 lowercase alphanumerics (same opaque
+     * recipe as workspace `wrk_` slugs), globally unique, immutable
+     * after creation. The only chat identifier browsers ever see.
+     */
+    uniqueIndex("assistant_conversations_slug_uidx").on(table.slug),
     // History order `(last_message_at DESC NULLS LAST, id DESC)` plus the
     // tenant scope every list query binds.
     index("assistant_conversations_owner_idx").on(
@@ -130,6 +142,10 @@ export const assistantConversations = pgTable(
     check(
       "assistant_conversations_digest_format_check",
       sql`"request_digest" IS NULL OR "request_digest" ~ '^[0-9a-f]{64}$' OR "request_digest" = 'legacy-0004-unverifiable'`,
+    ),
+    check(
+      "assistant_conversations_slug_format_check",
+      sql`"slug" ~ '^chat_[a-z0-9]{12}$'`,
     ),
   ],
 );

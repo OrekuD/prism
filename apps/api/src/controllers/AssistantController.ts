@@ -4,9 +4,9 @@
  * Project-scoped routes under the authenticated Projects router:
  * - GET    /:slug/assistant/conversations (cursor-paginated, owner-scoped)
  * - POST   /:slug/assistant/conversations (lazy create + first stream)
- * - GET    /:slug/assistant/conversations/:conversationId
- * - DELETE /:slug/assistant/conversations/:conversationId
- * - POST   /:slug/assistant/conversations/:conversationId/messages
+ * - GET    /:slug/assistant/conversations/:conversationSlug
+ * - DELETE /:slug/assistant/conversations/:conversationSlug
+ * - POST   /:slug/assistant/conversations/:conversationSlug/messages
  * - GET    /:slug/assistant/memory
  * - POST   /:slug/assistant/memory/:proposalId/confirm
  * - POST   /:slug/assistant/memory/:proposalId/reject
@@ -57,6 +57,7 @@ import {
   deleteConversation,
   finishRun,
   getConversation,
+  getConversationBySlug,
   listConversations,
   listMemory,
   readConfirmedKnowledge,
@@ -163,6 +164,7 @@ export function encodeTextFrame(text: string): string {
 function sseResponse(
   body: ReadableStream<Uint8Array>,
   signal: AbortSignal,
+  conversationSlug?: string,
 ): Response {
   void signal;
   return new Response(body, {
@@ -171,6 +173,9 @@ function sseResponse(
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
       "X-Accel-Buffering": "no",
+      // The chat that owns this stream, so a creation run can navigate
+      // to its URL without a second lookup. Row IDs never leave here.
+      ...(conversationSlug ? { "X-Conversation-Slug": conversationSlug } : {}),
     },
   });
 }
@@ -366,12 +371,18 @@ async function executeStreamedRun(input: {
   scope: ProjectScope;
   userId: string;
   conversationId: string;
+  /** URL slug of the owning chat, echoed as a response header. */
+  conversationSlug: string;
   userMessageId: string;
   question: string;
   queryContextToken?: string;
   now: number;
 }): Promise<Response> {
   const { ctx, scope, userId, conversationId, userMessageId, question, now } = input;
+  const streamWithSlug = (
+    body: ReadableStream<Uint8Array>,
+    signal: AbortSignal,
+  ): Response => sseResponse(body, signal, input.conversationSlug);
   // NOTE: no env argument — passing one would reset the process-local
   // singleton (see assistantQuotas). Limits are configured at startup.
   const quotas = assistantQuotas();
@@ -391,7 +402,7 @@ async function executeStreamedRun(input: {
         retryable,
       }),
     ];
-    return sseResponse(streamParts(frames, signal), signal);
+    return streamWithSlug(streamParts(frames, signal), signal);
   };
 
   // Pre-run gates: rate + daily quota.
@@ -458,7 +469,7 @@ async function executeStreamedRun(input: {
         retryable: true,
       }),
     ];
-    return sseResponse(streamParts(frames, signal), signal);
+    return streamWithSlug(streamParts(frames, signal), signal);
   }
   const run = (started as { run: { id: string } }).run;
 
@@ -578,7 +589,7 @@ async function executeStreamedRun(input: {
       encodeStreamFrame({ kind: "data-run-start", runId: run.id, conversationId }),
       encodeStreamFrame({ kind: "data-run-error", code: "cancelled", message: "The run was stopped.", retryable: true }),
     ];
-    return sseResponse(streamParts(frames, signal), signal);
+    return streamWithSlug(streamParts(frames, signal), signal);
   }
 
   if (result.status !== "answered" && result.status !== "fallback") {
@@ -601,7 +612,7 @@ async function executeStreamedRun(input: {
       encodeStreamFrame({ kind: "data-run-start", runId: run.id, conversationId }),
       encodeStreamFrame({ kind: "data-run-error", code: mapped.code, message: mapped.message, retryable: mapped.retryable }),
     ];
-    return sseResponse(streamParts(frames, signal), signal);
+    return streamWithSlug(streamParts(frames, signal), signal);
   }
 
   const answer: AssistantAnswer = result.answer ?? buildFallbackAnswer("unusable answer");
@@ -738,6 +749,7 @@ export class AssistantController {
         scope,
         userId: user.id,
         conversationId: created.conversation.id,
+        conversationSlug: created.conversation.slug,
         userMessageId: created.message.id,
         question: parsed.data.firstMessage,
         queryContextToken: parsed.data.queryContextToken,
@@ -757,17 +769,17 @@ export class AssistantController {
 
   public static async getConversation(ctx: Context<HonoConfig>) {
     const slug = ctx.req.param("slug");
-    const conversationId = ctx.req.param("conversationId");
+    const conversationSlug = ctx.req.param("conversationSlug");
     const user = ctx.get("user");
     if (!user) return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
-    if (!slug || !conversationId) return notFound(ctx);
+    if (!slug || !conversationSlug) return notFound(ctx);
     const scope = await resolveProjectScope(ctx, slug, user.id);
     if (!scope) return notFound(ctx);
     const db = DatabaseManager.getInstance(ctx) as unknown as AssistantDb;
-    const detail = await getConversation(db, {
+    const detail = await getConversationBySlug(db, {
       projectId: scope.projectId,
       userId: user.id,
-      conversationId,
+      slug: conversationSlug,
     });
     if (!detail) return notFound(ctx);
     return ctx.json({
@@ -779,20 +791,26 @@ export class AssistantController {
 
   public static async deleteConversation(ctx: Context<HonoConfig>) {
     const slug = ctx.req.param("slug");
-    const conversationId = ctx.req.param("conversationId");
+    const conversationSlug = ctx.req.param("conversationSlug");
     const user = ctx.get("user");
     if (!user) return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
-    if (!slug || !conversationId) return notFound(ctx);
+    if (!slug || !conversationSlug) return notFound(ctx);
     const scope = await resolveProjectScope(ctx, slug, user.id);
     if (!scope) return notFound(ctx);
     // Fresh membership check before a destructive write (no cached authz).
     const fresh = await getWorkspaceRole(ctx, user.id, scope.organizationId);
     if (!fresh) return notFound(ctx);
     const db = DatabaseManager.getInstance(ctx) as unknown as AssistantDb;
+    const detail = await getConversationBySlug(db, {
+      projectId: scope.projectId,
+      userId: user.id,
+      slug: conversationSlug,
+    });
+    if (!detail) return notFound(ctx);
     const result = await deleteConversation(db, {
       projectId: scope.projectId,
       userId: user.id,
-      conversationId,
+      conversationId: detail.conversation.id,
     });
     if (!result.deleted) return notFound(ctx);
     return ctx.json({ deleted: true, abortedRun: result.abortedRun });
@@ -800,10 +818,10 @@ export class AssistantController {
 
   public static async postMessage(ctx: Context<HonoConfig>) {
     const slug = ctx.req.param("slug");
-    const conversationId = ctx.req.param("conversationId");
+    const conversationSlug = ctx.req.param("conversationSlug");
     const user = ctx.get("user");
     if (!user) return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
-    if (!slug || !conversationId) return notFound(ctx);
+    if (!slug || !conversationSlug) return notFound(ctx);
     const scope = await resolveProjectScope(ctx, slug, user.id);
     if (!scope) return notFound(ctx);
     let body: unknown;
@@ -817,12 +835,13 @@ export class AssistantController {
     const db = DatabaseManager.getInstance(ctx) as unknown as AssistantDb;
     const now = Date.now();
     // Ownership first: unknown/foreign chats are a non-disclosing 404.
-    const detail = await getConversation(db, {
+    const detail = await getConversationBySlug(db, {
       projectId: scope.projectId,
       userId: user.id,
-      conversationId,
+      slug: conversationSlug,
     });
     if (!detail) return notFound(ctx);
+    const conversationId = detail.conversation.id;
     try {
       const appended = await appendMessage(db, {
         projectId: scope.projectId,
@@ -840,6 +859,7 @@ export class AssistantController {
         scope,
         userId: user.id,
         conversationId,
+        conversationSlug: detail.conversation.slug,
         userMessageId: appended.message.id,
         question: parsed.data.content,
         queryContextToken: parsed.data.queryContextToken,

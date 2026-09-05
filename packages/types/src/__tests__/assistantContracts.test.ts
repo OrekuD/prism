@@ -978,6 +978,7 @@ describe("structured answers", () => {
 describe("multi-chat conversations (R1-F5)", () => {
   const conversation: AssistantConversation = {
     id: "conv_1",
+    slug: "chat_abc123def456",
     organizationId: "org_1",
     projectId: "proj_1",
     userId: "user_1",
@@ -1039,6 +1040,7 @@ describe("multi-chat conversations (R1-F5)", () => {
     expect(
       ConversationListItemSchema.safeParse({
         id: "conv_1",
+        slug: "chat_abc123def456",
         title: "t",
         lastMessageAt: null,
         messageCount: 0,

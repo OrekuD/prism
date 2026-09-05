@@ -20,6 +20,7 @@ import {
   finishRun,
   getAssistantRetentionConfig,
   getConversation,
+  getConversationBySlug,
   listConversations,
   proposeMemory,
   purgeAssistantRetention,
@@ -372,8 +373,8 @@ run("history listing and cursors", () => {
     await newChat(tenant, "second chat");
     // A chat row with no messages sorts after every messaged chat.
     await db`INSERT INTO assistant_conversations
-      (id, organization_id, project_id, user_id, title, created_at, updated_at, last_message_at)
-      VALUES ('conv_empty_order', ${tenant.orgId}, ${tenant.projectId}, ${tenant.userId}, 'Empty', ${tick()}, ${tick()}, NULL)`;
+      (id, slug, organization_id, project_id, user_id, title, created_at, updated_at, last_message_at)
+      VALUES ('conv_empty_order', 'chat_emptyorder12', ${tenant.orgId}, ${tenant.projectId}, ${tenant.userId}, 'Empty', ${tick()}, ${tick()}, NULL)`;
     // Touch the first chat so it becomes most recent.
     await appendMessage(db, {
       projectId: tenant.projectId,
@@ -426,11 +427,11 @@ run("history listing and cursors", () => {
     const tenant = await newTenant("nullpage");
     await newChat(tenant, "only messaged");
     await db`INSERT INTO assistant_conversations
-      (id, organization_id, project_id, user_id, title, created_at, updated_at, last_message_at)
-      VALUES ('conv_e1_nullpage', ${tenant.orgId}, ${tenant.projectId}, ${tenant.userId}, 'Empty A', ${tick()}, ${tick()}, NULL)`;
+      (id, slug, organization_id, project_id, user_id, title, created_at, updated_at, last_message_at)
+      VALUES ('conv_e1_nullpage', 'chat_nullpagee001', ${tenant.orgId}, ${tenant.projectId}, ${tenant.userId}, 'Empty A', ${tick()}, ${tick()}, NULL)`;
     await db`INSERT INTO assistant_conversations
-      (id, organization_id, project_id, user_id, title, created_at, updated_at, last_message_at)
-      VALUES ('conv_e2_nullpage', ${tenant.orgId}, ${tenant.projectId}, ${tenant.userId}, 'Empty B', ${tick()}, ${tick()}, NULL)`;
+      (id, slug, organization_id, project_id, user_id, title, created_at, updated_at, last_message_at)
+      VALUES ('conv_e2_nullpage', 'chat_nullpagee002', ${tenant.orgId}, ${tenant.projectId}, ${tenant.userId}, 'Empty B', ${tick()}, ${tick()}, NULL)`;
     const first = await listConversations(db, {
       projectId: tenant.projectId,
       userId: tenant.userId,
@@ -1295,6 +1296,72 @@ run("pre-write validation (R12-F5)", () => {
       db`INSERT INTO assistant_messages
         (id, conversation_id, seq, role, status, parts, created_at, completed_at)
         VALUES ('msg_raw_bad', 'conv_missing', -1, 'system', 'complete', '[]', -5, NULL)`,
+    ).rejects.toThrow();
+  });
+
+  it("issues opaque chat_ slugs and resolves them by slug", async () => {
+    const tenant = await newTenant("chatslug");
+    const first = await newChat(tenant, "How are signups?");
+    const second = await newChat(tenant, "What changed?");
+    // Opaque, URL-safe, distinct from the row ID.
+    for (const chat of [first, second]) {
+      expect(chat.conversation.slug).toMatch(/^chat_[a-z0-9]{12}$/);
+      expect(chat.conversation.slug).not.toContain(chat.conversation.id);
+    }
+    expect(first.conversation.slug).not.toBe(second.conversation.slug);
+    // List items carry the slug for URL building.
+    const page = await listConversations(db, {
+      projectId: tenant.projectId,
+      userId: tenant.userId,
+      limit: 10,
+    });
+    expect(
+      page.items.find((item) => item.id === first.conversation.id)?.slug,
+    ).toBe(first.conversation.slug);
+    // Slug lookup binds the same ownership as the ID path.
+    const bySlug = await getConversationBySlug(db, {
+      projectId: tenant.projectId,
+      userId: tenant.userId,
+      slug: first.conversation.slug,
+    });
+    expect(bySlug?.conversation.id).toBe(first.conversation.id);
+    expect(bySlug?.messages).toHaveLength(1);
+    expect(
+      await getConversationBySlug(db, {
+        projectId: tenant.projectId,
+        userId: "u_stranger",
+        slug: first.conversation.slug,
+      }),
+    ).toBeNull();
+    expect(
+      await getConversationBySlug(db, {
+        projectId: tenant.projectId,
+        userId: tenant.userId,
+        slug: "chat_000000000000",
+      }),
+    ).toBeNull();
+    expect(
+      await getConversationBySlug(db, {
+        projectId: tenant.projectId,
+        userId: tenant.userId,
+        slug: "not-a-slug",
+      }),
+    ).toBeNull();
+  });
+
+  it("rejects malformed slugs below the store", async () => {
+    const tenant = await newTenant("chatslugraw");
+    const chat = await newChat(tenant);
+    // Raw SQL bypassing the store cannot persist a non-chat_ slug.
+    await expect(
+      db`UPDATE assistant_conversations SET slug = 'conv_hacker'
+        WHERE id = ${chat.conversation.id}`,
+    ).rejects.toThrow();
+    // Nor a duplicate of another chat's slug.
+    const other = await newChat(tenant, "Another topic?");
+    await expect(
+      db`UPDATE assistant_conversations SET slug = ${other.conversation.slug}
+        WHERE id = ${chat.conversation.id}`,
     ).rejects.toThrow();
   });
 });

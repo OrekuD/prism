@@ -27,15 +27,15 @@ router.get("/:slug/overview", ProjectsController.getOverview);
 router.get("/:slug/assistant/conversations", AssistantController.listConversations);
 router.post("/:slug/assistant/conversations", AssistantController.createConversation);
 router.get(
-  "/:slug/assistant/conversations/:conversationId",
+  "/:slug/assistant/conversations/:conversationSlug",
   AssistantController.getConversation,
 );
 router.delete(
-  "/:slug/assistant/conversations/:conversationId",
+  "/:slug/assistant/conversations/:conversationSlug",
   AssistantController.deleteConversation,
 );
 router.post(
-  "/:slug/assistant/conversations/:conversationId/messages",
+  "/:slug/assistant/conversations/:conversationSlug/messages",
   AssistantController.postMessage,
 );
 router.get("/:slug/assistant/memory", AssistantController.getMemory);

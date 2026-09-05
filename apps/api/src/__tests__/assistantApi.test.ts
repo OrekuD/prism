@@ -21,6 +21,7 @@ vi.mock("../utils/assistantStore", async (importOriginal) => {
     startRun: vi.fn(),
     finishRun: vi.fn(),
     getConversation: vi.fn(),
+    getConversationBySlug: vi.fn(),
     listConversations: vi.fn(),
     deleteConversation: vi.fn(),
     listMemory: vi.fn(),
@@ -43,6 +44,7 @@ import {
   startRun,
   finishRun,
   getConversation,
+  getConversationBySlug,
   listConversations,
   deleteConversation,
   listMemory,
@@ -164,11 +166,11 @@ describe("assistant auth boundary", () => {
     )) as { __status?: number };
     expect(list.__status).toBe(401);
     const get = (await AssistantController.getConversation(
-      ctxFor({ slug: SLUG, conversationId: "conv_1" }, null, null),
+      ctxFor({ slug: SLUG, conversationSlug: "conv_1" }, null, null),
     )) as { __status?: number };
     expect(get.__status).toBe(401);
     const del = (await AssistantController.deleteConversation(
-      ctxFor({ slug: SLUG, conversationId: "conv_1" }, null, null),
+      ctxFor({ slug: SLUG, conversationSlug: "conv_1" }, null, null),
     )) as { __status?: number };
     expect(del.__status).toBe(401);
     const mem = (await AssistantController.getMemory(
@@ -185,9 +187,9 @@ describe("assistant auth boundary", () => {
   });
 
   it("hides foreign conversations with 404", async () => {
-    vi.mocked(getConversation).mockResolvedValue(null);
+    vi.mocked(getConversationBySlug).mockResolvedValue(null);
     const result = (await AssistantController.getConversation(
-      ctxFor({ slug: SLUG, conversationId: "conv_foreign" }, null, USER_ID),
+      ctxFor({ slug: SLUG, conversationSlug: "conv_foreign" }, null, USER_ID),
     )) as { __status?: number };
     expect(result.__status).toBe(404);
   });
@@ -231,9 +233,10 @@ describe("assistant validation", () => {
   });
 
   it("rejects malformed message posts with 400", async () => {
-    vi.mocked(getConversation).mockResolvedValue({
+    vi.mocked(getConversationBySlug).mockResolvedValue({
       conversation: {
         id: "conv_1",
+        slug: "chat_abc123def456",
         organizationId: ORG_ID,
         projectId: PROJECT_ID,
         userId: USER_ID,
@@ -247,7 +250,7 @@ describe("assistant validation", () => {
       activeRun: null,
     } as never);
     const result = (await AssistantController.postMessage(
-      ctxFor({ slug: SLUG, conversationId: "conv_1" }, { content: "" }, USER_ID),
+      ctxFor({ slug: SLUG, conversationSlug: "conv_1" }, { content: "" }, USER_ID),
     )) as { __status?: number };
     expect(result.__status).toBe(400);
   });
@@ -273,9 +276,10 @@ describe("assistant validation", () => {
 
 describe("assistant runs", () => {
   it("streams a disabled error when AI is not configured", async () => {
-    vi.mocked(getConversation).mockResolvedValue({
+    vi.mocked(getConversationBySlug).mockResolvedValue({
       conversation: {
         id: "conv_1",
+        slug: "chat_abc123def456",
         organizationId: ORG_ID,
         projectId: PROJECT_ID,
         userId: USER_ID,
@@ -298,7 +302,7 @@ describe("assistant runs", () => {
     // (resolveAssistantModelConfig fails closed with no key in env).
     const response = (await AssistantController.postMessage(
       ctxFor(
-        { slug: SLUG, conversationId: "conv_1" },
+        { slug: SLUG, conversationSlug: "chat_abc123def456" },
         { clientRequestId: "req_1", content: "How are signups?" },
         USER_ID,
         "member",
@@ -335,10 +339,49 @@ describe("assistant runs", () => {
     expect(result.__status).toBe(409);
   });
 
+  it("echoes the chat slug (never the row ID) on every stream", async () => {
+    vi.mocked(createConversationWithFirstMessage).mockResolvedValue({
+      conversation: {
+        id: "conv_secret_row_id",
+        slug: "chat_abc123def456",
+        organizationId: ORG_ID,
+        projectId: PROJECT_ID,
+        userId: USER_ID,
+        title: "Hello world",
+        seed: null,
+        createdAt: 1,
+        updatedAt: 1,
+        lastMessageAt: 1,
+      },
+      message: { id: "msg_1" },
+      createdConversation: true,
+      createdMessage: true,
+    } as never);
+    vi.mocked(startRun).mockResolvedValue({ ok: true, run: { id: "run_1" } } as never);
+    vi.mocked(finishRun).mockResolvedValue({ finished: true, run: { id: "run_1" } } as never);
+    const response = (await AssistantController.createConversation(
+      ctxFor(
+        { slug: SLUG },
+        {
+          clientRequestId: "req_slug",
+          firstMessage: "How are signups?",
+          seed: null,
+          queryContextToken: "opaque-token-12345678",
+        },
+        USER_ID,
+        "member",
+        {},
+      ),
+    )) as unknown as Response;
+    expect(response).toBeInstanceOf(Response);
+    expect(response.headers.get("X-Conversation-Slug")).toBe("chat_abc123def456");
+  });
+
   it("returns 409 on duplicate message request IDs (reconnect replays)", async () => {
-    vi.mocked(getConversation).mockResolvedValue({
+    vi.mocked(getConversationBySlug).mockResolvedValue({
       conversation: {
         id: "conv_1",
+        slug: "chat_abc123def456",
         organizationId: ORG_ID,
         projectId: PROJECT_ID,
         userId: USER_ID,
@@ -356,7 +399,7 @@ describe("assistant runs", () => {
     );
     const result = (await AssistantController.postMessage(
       ctxFor(
-        { slug: SLUG, conversationId: "conv_1" },
+        { slug: SLUG, conversationSlug: "chat_abc123def456" },
         { clientRequestId: "req_dup", content: "And now?" },
         USER_ID,
       ),
@@ -365,9 +408,10 @@ describe("assistant runs", () => {
   });
 
   it("reports one-active-run as a retryable stream error", async () => {
-    vi.mocked(getConversation).mockResolvedValue({
+    vi.mocked(getConversationBySlug).mockResolvedValue({
       conversation: {
         id: "conv_1",
+        slug: "chat_abc123def456",
         organizationId: ORG_ID,
         projectId: PROJECT_ID,
         userId: USER_ID,
@@ -393,7 +437,7 @@ describe("assistant runs", () => {
     } as never);
     const response = (await AssistantController.postMessage(
       ctxFor(
-        { slug: SLUG, conversationId: "conv_1" },
+        { slug: SLUG, conversationSlug: "chat_abc123def456" },
         { clientRequestId: "req_new", content: "And now?" },
         USER_ID,
       ),
@@ -408,9 +452,10 @@ describe("assistant runs", () => {
         resolveQuotaLimits({ PRISM_AI_RUNS_PER_MINUTE_PER_USER: "1" }),
       ),
     );
-    vi.mocked(getConversation).mockResolvedValue({
+    vi.mocked(getConversationBySlug).mockResolvedValue({
       conversation: {
         id: "conv_1",
+        slug: "chat_abc123def456",
         organizationId: ORG_ID,
         projectId: PROJECT_ID,
         userId: USER_ID,
@@ -428,9 +473,9 @@ describe("assistant runs", () => {
     vi.mocked(finishRun).mockResolvedValue({ finished: true, run: { id: "run_1" } } as never);
     const body = { clientRequestId: "req_a", content: "Hello?" };
     // First run consumes the allowance (disabled stream still counts).
-    await AssistantController.postMessage(ctxFor({ slug: SLUG, conversationId: "conv_1" }, body, USER_ID));
+    await AssistantController.postMessage(ctxFor({ slug: SLUG, conversationSlug: "chat_abc123def456" }, body, USER_ID));
     const second = (await AssistantController.postMessage(
-      ctxFor({ slug: SLUG, conversationId: "conv_1" }, { ...body, clientRequestId: "req_b" }, USER_ID),
+      ctxFor({ slug: SLUG, conversationSlug: "chat_abc123def456" }, { ...body, clientRequestId: "req_b" }, USER_ID),
     )) as unknown as Response;
     const text = await readSse(second);
     expect(text).toContain("quota-exhausted");
@@ -486,7 +531,7 @@ describe("assistant deletion", () => {
   it("deletes an owned chat and reports aborts", async () => {
     vi.mocked(deleteConversation).mockResolvedValue({ deleted: true, abortedRun: true });
     const result = (await AssistantController.deleteConversation(
-      ctxFor({ slug: SLUG, conversationId: "conv_1" }, null, USER_ID),
+      ctxFor({ slug: SLUG, conversationSlug: "chat_abc123def456" }, null, USER_ID),
     )) as { __json?: Record<string, unknown> };
     expect(result.__json).toMatchObject({ deleted: true, abortedRun: true });
   });
@@ -494,7 +539,7 @@ describe("assistant deletion", () => {
   it("returns 404 for missing or foreign chats", async () => {
     vi.mocked(deleteConversation).mockResolvedValue({ deleted: false, abortedRun: false });
     const result = (await AssistantController.deleteConversation(
-      ctxFor({ slug: SLUG, conversationId: "conv_missing" }, null, USER_ID),
+      ctxFor({ slug: SLUG, conversationSlug: "chat_missing00000" }, null, USER_ID),
     )) as { __status?: number };
     expect(result.__status).toBe(404);
   });

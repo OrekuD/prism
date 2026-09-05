@@ -320,6 +320,7 @@ export const CONVERSATION_ACCESS_FIXTURES: readonly {
     label: "member opens their own project chat",
     conversation: {
       id: "conv_own",
+      slug: "chat_own0chat0001",
       organizationId: "org_1",
       projectId: "proj_1",
       userId: "user_1",
@@ -338,6 +339,7 @@ export const CONVERSATION_ACCESS_FIXTURES: readonly {
     label: "member cannot open another member's chat",
     conversation: {
       id: "conv_other",
+      slug: "chat_othe0chat002",
       organizationId: "org_1",
       projectId: "proj_1",
       userId: "user_2",
@@ -356,6 +358,7 @@ export const CONVERSATION_ACCESS_FIXTURES: readonly {
     label: "own chat from another project is not reachable here",
     conversation: {
       id: "conv_cross",
+      slug: "chat_cros0chat003",
       organizationId: "org_1",
       projectId: "proj_2",
       userId: "user_1",
