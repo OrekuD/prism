@@ -48,7 +48,7 @@ export function Tag({
   return (
     <span
       className={cn(
-        "inline-flex h-[22px] items-center gap-1.5 whitespace-nowrap rounded-sm border px-2 font-mono text-[11px] font-medium leading-none",
+        "inline-flex h-[22px] w-fit max-w-full items-center gap-1.5 self-start whitespace-nowrap rounded-sm border px-2 font-mono text-[11px] font-medium leading-none",
         tone === "err" && "border-danger/40 text-danger",
         tone === "warn" && "border-warning/40 text-warning",
         tone === "info" && "border-info/40 text-info",
