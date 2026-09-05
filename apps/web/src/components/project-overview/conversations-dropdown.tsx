@@ -6,7 +6,7 @@
  * chat` renders only in the chat tab.
  */
 import { useState } from "react";
-import { Check, MessageSquareText, Plus } from "lucide-react";
+import { MessageSquareText, Plus } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -101,12 +101,9 @@ export function ConversationsDropdown({
                 >
                   <span className="min-w-0 flex-1 truncate">{item.title}</span>
                   {meta ? (
-                    <span className="flex-none font-mono text-[10px] text-text-subtle">
+                    <span className="ml-auto flex-none font-mono text-[10px] text-text-subtle">
                       {meta}
                     </span>
-                  ) : null}
-                  {active ? (
-                    <Check className="size-3.5 flex-none text-accent" />
                   ) : null}
                 </DropdownMenuItem>
                 <button

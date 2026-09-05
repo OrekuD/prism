@@ -399,9 +399,8 @@ describe("ProjectSummary v2 scaffold", () => {
   it("renders the header, overview h1, pulse, and docked composer", async () => {
     renderRoute("/workspace/wrk/projects/alpha");
     await waitFor(() =>
-      expect(screen.getByRole("heading", { name: "Project overview" })).toBeInTheDocument(),
+      expect(screen.getByText("Project health")).toBeInTheDocument(),
     );
-    expect(screen.getByRole("heading", { name: "Project overview" }).tagName).toBe("H1");
     expect(screen.getAllByText("Accepted events").length).toBeGreaterThanOrEqual(1);
     expect(
       screen.getByPlaceholderText("Ask a question about this project…"),
@@ -438,7 +437,7 @@ describe("ProjectSummary v2 scaffold", () => {
     // Overview mode: no conversations menu at all.
     renderRoute("/workspace/wrk/projects/alpha");
     await waitFor(() =>
-      expect(screen.getByRole("heading", { name: "Project overview" })).toBeInTheDocument(),
+      expect(screen.getByText("Project health")).toBeInTheDocument(),
     );
     expect(
       screen.queryByRole("button", { name: "Conversations" }),

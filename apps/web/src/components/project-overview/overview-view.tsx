@@ -88,15 +88,6 @@ export function OverviewView({
 
   return (
     <div className="flex flex-1 flex-col pb-2">
-      <div className="mb-1.5 mt-2">
-        <h1 className="text-[26px] font-semibold leading-[1.2] tracking-[-0.022em]">
-          Project overview
-        </h1>
-        <p className="mt-1.5 text-sm text-text-muted">
-          Current health, behavior, and changes across this project.
-        </p>
-      </div>
-
       <div className="flex flex-1 flex-col pb-2">
         <InsightsGrid
           insights={resource.insights}
