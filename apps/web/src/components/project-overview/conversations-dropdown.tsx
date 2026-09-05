@@ -82,11 +82,7 @@ export function ConversationsDropdown({
           <span className="flex-1">New chat</span>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        {items.length === 0 ? (
-          <div className="px-2 py-1.5 text-[13px] text-text-subtle">
-            No chats yet — ask a question to start one.
-          </div>
-        ) : (
+        {items.length === 0 ? null : (
           items.map((item) => {
             const active = item.slug === selectedSlug;
             const meta = timeMeta(item.lastMessageAt);
