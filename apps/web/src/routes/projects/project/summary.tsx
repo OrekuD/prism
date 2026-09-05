@@ -1,25 +1,24 @@
 /**
- * Project overview route (Task 21 slice 7).
+ * Project overview route (Task 21 slice 7, v2 design replica).
  *
- * Sibling regions inside the existing shell: `OverviewView` by default,
- * `ConversationView` when `?view=assistant&chat=<id>`, and a persistent
- * `AskPrismDock` beneath both modes. The composer stays mounted across
- * mode changes so draft text, focus, and height never reset; drafts are
- * scoped by project and chat (the overview new-chat draft is separate
- * from every existing chat draft).
- *
- * Mode lives in the URL without a second route hierarchy. Reload
- * restores the selected chat and its mode; a missing, deleted,
- * foreign, or cross-project chat follows the non-disclosing policy
- * and offers a safe return to the overview.
+ * Page scaffold from `prism-project-overview-v2.html`, converted to
+ * Tailwind + modular components: sticky header (crumbs, conversations
+ * dropdown, range, Overview/Chat toggle), overview widgets, chat view,
+ * and the persistent blurred composer dock. The mock's placeholder
+ * copy and simulated answers are replaced by real overview, chat, and
+ * stream state; the mock's interactions (view switching, dropdown,
+ * suggestions, Cmd+K, follow-up prompts) are preserved against the
+ * production API.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import type { InsightCandidate } from "@prism-analytics/types";
-import { AskPrismDock, type AskPrismDockHandle } from "@/components/assistant/ask-prism-dock";
-import { ChatsPanel } from "@/components/assistant/chats-panel";
-import { ConversationView } from "@/components/assistant/conversation-view";
-import { OverviewView } from "@/components/assistant/overview-view";
+import { ChatView } from "@/components/project-overview/chat-view";
+import { ComposerDock, type ComposerDockHandle } from "@/components/project-overview/composer";
+import { OVERVIEW_RANGES, PageHeader } from "@/components/project-overview/page-header";
+import { OverviewView } from "@/components/project-overview/overview-view";
+import "@/components/project-overview/project-overview.css";
 import {
   INITIAL_STREAM_STATE,
   conversationDetailKey,
@@ -31,9 +30,6 @@ import {
 } from "@/network/queries/useAssistantConversations";
 import { useDecideAssistantProposal } from "@/network/queries/useAssistantMemory";
 import { useProjectOverviewQuery } from "@/network/queries/useProjectOverviewQuery";
-import { useQueryClient } from "@tanstack/react-query";
-
-const RANGES = ["24h", "7d", "14d", "30d", "90d"] as const;
 
 function clientRequestId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -59,34 +55,34 @@ export function ProjectSummary() {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
 
-  const range = RANGES.includes(searchParams.get("range") as (typeof RANGES)[number])
-    ? (searchParams.get("range") as string)
+  const rawRange = searchParams.get("range");
+  const range = (OVERVIEW_RANGES as readonly string[]).includes(rawRange ?? "")
+    ? (rawRange as string)
     : "7d";
-  const view = searchParams.get("view") === "assistant" ? "assistant" : "overview";
+  const view = searchParams.get("view") === "assistant" ? "chat" : "overview";
   const chatId = searchParams.get("chat");
 
   const overview = useProjectOverviewQuery(slug, { range });
   const conversations = useAssistantConversationsQuery(slug);
   const detail = useAssistantConversationQuery(
     slug,
-    view === "assistant" ? chatId : null,
+    view === "chat" ? chatId : null,
   );
 
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [streamByChat, setStreamByChat] = useState<Record<string, StreamState>>({});
   const [pendingChat, setPendingChat] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
   const [deciding, setDeciding] = useState<string | null>(null);
   const [sendError, setSendError] = useState<{ message: string; retryable: boolean } | null>(null);
-  const dockRef = useRef<AskPrismDockHandle>(null);
+  const dockRef = useRef<ComposerDockHandle>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const backButtonReturnFocus = useRef(false);
+  const returnFocus = useRef(false);
 
   const { send, stop, active } = useSendAssistantMessage(slug);
   const removeConversation = useDeleteAssistantConversation(slug);
   const decideProposal = useDecideAssistantProposal(slug);
 
-  const draftScope = view === "assistant" ? chatId : null;
+  const draftScope = view === "chat" ? chatId : null;
   const draftStorageKey = slug ? draftKey(slug, draftScope) : "";
   const draft =
     draftStorageKey in drafts ? (drafts[draftStorageKey] ?? "") : loadDraft(draftStorageKey);
@@ -104,61 +100,81 @@ export function ProjectSummary() {
     [slug, draftScope],
   );
 
-  const goToOverview = useCallback(() => {
-    backButtonReturnFocus.current = true;
-    setSearchParams(
-      (previous) => {
-        const next = new URLSearchParams(previous);
-        next.delete("view");
-        next.delete("chat");
-        return next;
-      },
-      { replace: false },
-    );
-  }, [setSearchParams]);
-
-  const openChat = useCallback(
-    (id: string) => {
-      setHistoryOpen(false);
-      setSendError(null);
+  const patchParams = useCallback(
+    (patch: (next: URLSearchParams) => void, replace = false) => {
       setSearchParams(
         (previous) => {
           const next = new URLSearchParams(previous);
-          next.set("view", "assistant");
-          next.set("chat", id);
+          patch(next);
           return next;
         },
-        { replace: false },
+        { replace },
       );
     },
     [setSearchParams],
   );
 
-  // Missing/deleted/foreign chat: the detail query 404s — offer a safe
-  // return without disclosing which failure occurred.
-  const chatMissing =
-    view === "assistant" && chatId !== null && detail.isError;
+  const goToOverview = useCallback(() => {
+    returnFocus.current = true;
+    patchParams((next) => {
+      next.delete("view");
+      next.delete("chat");
+    });
+  }, [patchParams]);
 
+  const openChat = useCallback(
+    (id: string) => {
+      setSendError(null);
+      patchParams((next) => {
+        next.set("view", "assistant");
+        next.set("chat", id);
+      });
+    },
+    [patchParams],
+  );
+
+  const goToChat = useCallback(() => {
+    patchParams((next) => {
+      next.set("view", "assistant");
+    });
+  }, [patchParams]);
+
+  const onViewChange = useCallback(
+    (next: "overview" | "chat") => {
+      setSendError(null);
+      if (next === "overview") goToOverview();
+      else goToChat();
+    },
+    [goToOverview, goToChat],
+  );
+
+  const chatMissing = view === "chat" && chatId !== null && detail.isError;
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refocus after any view change; the effect reads no reactive values
   useEffect(() => {
-    if (backButtonReturnFocus.current) {
-      backButtonReturnFocus.current = false;
+    if (returnFocus.current) {
+      returnFocus.current = false;
       dockRef.current?.focus();
     }
   }, [view]);
 
-  const runningConversationId = useMemo(() => {
-    if (active && view === "assistant" && chatId) return chatId;
-    return conversations.data?.items.find((item) => item.hasActiveRun)?.id ?? null;
-  }, [active, view, chatId, conversations.data]);
-
   const runQuestion = useCallback(
-    async (question: string, targetChatId: string | null, seedInsightId: string | null) => {
+    async (question: string, targetChatId: string | null) => {
       if (!slug) return;
       setSendError(null);
       const controller = new AbortController();
       abortRef.current = controller;
       const token = overview.data?.queryContextToken;
-      if (targetChatId === null) setPendingChat(true);
+      if (targetChatId === null) {
+        // Submitting without a chat switches views instantly (cards
+        // unmount, chat fades in) and navigates to the server-assigned
+        // chat as soon as the run-start frame names it.
+        setPendingChat(true);
+        patchParams((next) => {
+          next.set("view", "assistant");
+          next.delete("chat");
+        });
+      }
       try {
         const final = await send({
           conversationId: targetChatId,
@@ -169,20 +185,14 @@ export function ProjectSummary() {
           onEvent: (state) => {
             const key = targetChatId ?? "new";
             setStreamByChat((previous) => ({ ...previous, [key]: state }));
-            if (state.runId && targetChatId === null) {
-              // Server assigned the chat: replace the URL without
-              // remounting the composer. The run-start frame carries the
-              // conversation through the stream state runId only when the
-              // server echoes it — otherwise refresh history to discover it.
-              void queryClient.invalidateQueries({ queryKey: ["assistant-conversations", slug] });
+            if (targetChatId === null && state.conversationId) {
+              openChat(state.conversationId);
             }
-            void seedInsightId;
           },
         });
         if (final.error) {
           setSendError({ message: final.error.message, retryable: final.error.retryable });
         } else if (targetChatId !== null) {
-          // Refresh the persisted transcript behind the streamed answer.
           await queryClient.invalidateQueries({
             queryKey: conversationDetailKey(slug, targetChatId),
           });
@@ -191,17 +201,22 @@ export function ProjectSummary() {
         if (targetChatId === null) setPendingChat(false);
       }
     },
-    [slug, send, overview.data, queryClient],
+    [slug, send, overview.data, queryClient, patchParams, openChat],
   );
+
+  // A chat created mid-run lands on its URL: move the pending stream
+  // state onto the assigned chat key once known.
+  const pendingStream: StreamState | null =
+    view === "chat" && chatId
+      ? (streamByChat[chatId] ?? streamByChat.new ?? null)
+      : null;
 
   const submitFromDock = useCallback(
     (question: string) => {
-      if (view === "assistant" && chatId) {
-        void runQuestion(question, chatId, null);
+      if (view === "chat" && chatId) {
+        void runQuestion(question, chatId);
       } else {
-        // Submitting from Overview creates a new chat (never appends to
-        // an unrelated prior topic).
-        void runQuestion(question, null, null);
+        void runQuestion(question, null);
       }
       setDraft("");
     },
@@ -210,45 +225,29 @@ export function ProjectSummary() {
 
   const investigate = useCallback(
     (insight: InsightCandidate) => {
-      // Investigate with Prism creates a NEW chat seeded with the
-      // deterministic insight — never appended to a prior topic.
-      setSearchParams(
-        (previous) => {
-          const next = new URLSearchParams(previous);
-          next.set("view", "assistant");
-          next.delete("chat");
-          return next;
-        },
-        { replace: false },
-      );
+      // Investigate creates a NEW chat seeded with the deterministic
+      // insight prompt — never appended to a prior topic.
+      patchParams((next) => {
+        next.set("view", "assistant");
+        next.delete("chat");
+      });
       setDraft(insight.askPrompt);
       dockRef.current?.focus();
     },
-    [setSearchParams, setDraft],
+    [patchParams, setDraft],
   );
 
   const newChat = useCallback(() => {
-    setHistoryOpen(false);
     setSendError(null);
-    setSearchParams(
-      (previous) => {
-        const next = new URLSearchParams(previous);
-        next.delete("view");
-        next.delete("chat");
-        return next;
-      },
-      { replace: false },
-    );
+    goToOverview();
     dockRef.current?.focus();
-  }, [setSearchParams]);
+  }, [goToOverview]);
 
   const deleteChat = useCallback(
     async (id: string) => {
       const ok = await removeConversation(id);
       if (!ok) return;
-      if (id === chatId) {
-        goToOverview();
-      }
+      if (id === chatId) goToOverview();
       dockRef.current?.focus();
     },
     [removeConversation, chatId, goToOverview],
@@ -274,63 +273,33 @@ export function ProjectSummary() {
     [decideProposal, deciding],
   );
 
-  const stream = view === "assistant" && chatId ? (streamByChat[chatId] ?? null) : null;
+  const stream = view === "chat" ? pendingStream : null;
   const activeStream: StreamState | null =
-    pendingChat && view === "overview"
+    pendingChat && view === "chat" && !chatId
       ? (streamByChat.new ?? { ...INITIAL_STREAM_STATE })
       : stream;
+  const emptyScopeLine = `Prism answers from your events, errors, and release data — ${slug ?? "this project"} · Last ${range}.`;
 
   return (
-    <div className="relative grid gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <div role="group" aria-label="Overview range" className="flex gap-1">
-          {RANGES.map((value) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() =>
-                setSearchParams(
-                  (previous) => {
-                    const next = new URLSearchParams(previous);
-                    next.set("range", value);
-                    return next;
-                  },
-                  { replace: false },
-                )
-              }
-              aria-pressed={range === value}
-              className={
-                range === value
-                  ? "rounded-md bg-accent px-2.5 py-1 font-mono text-xs text-white"
-                  : "rounded-md px-2.5 py-1 font-mono text-xs text-text-subtle hover:text-text"
-              }
-            >
-              {value}
-            </button>
-          ))}
-        </div>
-        {view === "assistant" ? (
-          <div className="ml-auto flex gap-1">
-            <button
-              type="button"
-              onClick={() => setHistoryOpen((value) => !value)}
-              aria-expanded={historyOpen}
-              className="rounded-md border border-border px-3 py-1.5 font-mono text-xs"
-            >
-              Chats
-            </button>
-            <button
-              type="button"
-              onClick={newChat}
-              className="rounded-md border border-border px-3 py-1.5 font-mono text-xs text-accent"
-            >
-              New chat
-            </button>
-          </div>
-        ) : null}
-      </div>
+    <div className="mx-auto flex min-h-0 w-full max-w-[1216px] flex-col px-8 max-[760px]:px-[18px]">
+      <PageHeader
+        slug={slug ?? ""}
+        view={view}
+        onViewChange={onViewChange}
+        range={range}
+        onRangeChange={(value) =>
+          patchParams((next) => {
+            next.set("range", value);
+          })
+        }
+        conversations={conversations.data?.items ?? []}
+        selectedChatId={chatId}
+        onSelectChat={openChat}
+        onNewChat={newChat}
+        onDeleteChat={(id) => void deleteChat(id)}
+      />
 
-      {view === "overview" || chatId === null ? (
+      {view === "overview" ? (
         <OverviewView
           resource={overview.data}
           isLoading={overview.isLoading}
@@ -338,27 +307,37 @@ export function ProjectSummary() {
           onInvestigate={investigate}
         />
       ) : chatMissing ? (
-        <div role="alert" className="rounded-xl border border-border p-5">
-          <h1 className="font-semibold">That chat isn&apos;t available</h1>
-          <p className="mt-1 text-sm text-text-subtle">
+        <div
+          role="alert"
+          className="mt-10 rounded-sm border border-border p-5"
+        >
+          <h1 className="text-[26px] font-semibold leading-[1.2] tracking-[-0.022em]">
+            That chat isn&apos;t available
+          </h1>
+          <p className="mt-1.5 text-sm text-text-muted">
             It may have been deleted or belong to another project. Your other
             chats are unaffected.
           </p>
           <button
             type="button"
             onClick={goToOverview}
-            className="mt-3 rounded-md bg-accent px-3 py-1.5 font-mono text-xs text-white"
+            className="mt-3 inline-flex h-9 items-center justify-center gap-2 whitespace-nowrap rounded-sm border border-accent bg-accent px-3.5 text-[13px] font-medium text-white transition-colors duration-100 hover:border-accent-hover hover:bg-accent-hover"
           >
             Back to overview
           </button>
         </div>
       ) : (
-        <ConversationView
+        <ChatView
           detail={detail.data ?? null}
           stream={activeStream}
           streaming={active || detail.isLoading}
-          error={sendError}
+          sendError={sendError}
+          emptyScopeLine={emptyScopeLine}
           onBack={goToOverview}
+          onAsk={(prompt) => {
+            setDraft(prompt);
+            dockRef.current?.focus();
+          }}
           definitionActions={(artifact) =>
             artifact.kind === "definition"
               ? confirmActions(artifact.proposalId)
@@ -367,19 +346,7 @@ export function ProjectSummary() {
         />
       )}
 
-      {historyOpen && view === "assistant" ? (
-        <ChatsPanel
-          items={conversations.data?.items ?? []}
-          selectedId={chatId}
-          runningConversationId={runningConversationId}
-          onSelect={openChat}
-          onNewChat={newChat}
-          onDelete={(id) => void deleteChat(id)}
-          onClose={() => setHistoryOpen(false)}
-        />
-      ) : null}
-
-      <AskPrismDock
+      <ComposerDock
         ref={dockRef}
         draft={draft}
         onDraftChange={setDraft}

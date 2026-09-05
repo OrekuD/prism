@@ -1,0 +1,223 @@
+/**
+ * Chat view: the design mock's conversation column bound to real
+ * transcript + stream state. User bubbles, full-width assistant
+ * messages (body, trace, artifacts, evidence, follow-ups, notices),
+ * the empty state, provider errors, and Back to overview.
+ */
+import { useEffect, useRef } from "react";
+import { ArrowLeft, MessageSquareText } from "lucide-react";
+import type { AssistantAnswer, AssistantArtifact } from "@prism-analytics/types";
+import {
+  ChatArtifact,
+  CoverageNoticeBlock,
+  EvidenceBlock,
+  FollowUpsBlock,
+  TraceBlock,
+  UnavailableBlock,
+} from "@/components/project-overview/chat-widgets";
+import type {
+  ConversationDetail,
+  StreamState,
+} from "@/network/queries/useAssistantConversations";
+
+export type ChatDefinitionActions = (
+  artifact: AssistantArtifact,
+) =>
+  | { onConfirm: () => void; onReject: () => void; deciding: boolean }
+  | undefined;
+
+function AssistantText({ text }: { text: string }) {
+  if (!text) return null;
+  return <div className="text-[13.5px] leading-[1.6] text-text">{text}</div>;
+}
+
+function StreamAnswer({
+  answer,
+  artifacts,
+  onAsk,
+  definitionActions,
+}: {
+  answer: AssistantAnswer;
+  artifacts: AssistantArtifact[];
+  onAsk: (prompt: string) => void;
+  definitionActions?: ChatDefinitionActions;
+}) {
+  const primary = artifacts.find((item) => item.id === answer.primaryArtifactId);
+  const supporting = answer.supportingArtifactIds.flatMap((id) => {
+    const found = artifacts.find((item) => item.id === id);
+    return found ? [found] : [];
+  });
+  return (
+    <>
+      <AssistantText text={answer.summary} />
+      {primary ? (
+        <ChatArtifact artifact={primary} definitionActions={definitionActions?.(primary)} />
+      ) : null}
+      <EvidenceBlock observations={answer.observations} />
+      {supporting.map((artifact) => (
+        <ChatArtifact
+          key={artifact.id}
+          artifact={artifact}
+          definitionActions={definitionActions?.(artifact)}
+        />
+      ))}
+      {answer.assumptions.length > 0 ? (
+        <div className="mt-2.5 flex items-start gap-2.5 rounded-sm border border-warning/40 p-[10px_12px] text-[12.5px] text-text-muted">
+          <span
+            aria-hidden="true"
+            className="mt-[5px] h-[7px] w-[7px] flex-none rounded-full bg-warning"
+          />
+          <span>{answer.assumptions.join(" ")}</span>
+        </div>
+      ) : null}
+      <FollowUpsBlock followUps={answer.followUps} onAsk={onAsk} />
+    </>
+  );
+}
+
+export function ChatView({
+  detail,
+  stream,
+  streaming,
+  streamLatencyMs,
+  sendError,
+  emptyScopeLine,
+  onBack,
+  onAsk,
+  definitionActions,
+}: {
+  detail: ConversationDetail | null;
+  stream: StreamState | null;
+  streaming: boolean;
+  streamLatencyMs?: number;
+  sendError: { message: string; retryable: boolean } | null;
+  emptyScopeLine: string;
+  onBack: () => void;
+  onAsk: (prompt: string) => void;
+  definitionActions?: ChatDefinitionActions;
+}) {
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const messages = detail?.messages ?? [];
+  const showStream =
+    stream !== null &&
+    (streaming || stream.text || stream.answer || stream.steps.length > 0);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: deps are intentional scroll triggers, not values read by the effect
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [stream?.text, messages.length]);
+
+  return (
+    <div className="po-chat-in flex min-h-0 flex-1 flex-col" aria-label="Conversation">
+      <div className="po-chat-scroll flex flex-1 flex-col gap-[18px] overflow-auto pb-3 pt-7">
+        {messages.length === 0 && !showStream ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-2.5 px-5 py-10 text-center">
+            <MessageSquareText
+              aria-hidden="true"
+              className="h-[22px] w-[22px] stroke-text-subtle"
+            />
+            <p className="text-[13px] font-medium leading-[1.4] text-text">
+              Ask about this project
+            </p>
+            <span className="max-w-[36ch] font-mono text-xs font-normal leading-[1.5] text-text-subtle">
+              {emptyScopeLine}
+            </span>
+          </div>
+        ) : null}
+
+        {messages.map((message) => {
+          const text = message.parts
+            .filter((part) => part.type === "text")
+            .map((part) => (part as { text?: string }).text ?? "")
+            .join("\n");
+          if (message.role === "user") {
+            return (
+              <div
+                key={message.id}
+                className="po-msg-in max-w-[70%] self-end whitespace-pre-wrap rounded-sm border border-border-strong bg-surface-raised px-3.5 py-2.5 text-[13.5px] text-text"
+              >
+                {text}
+              </div>
+            );
+          }
+          const artifacts = message.parts
+            .map((part) => (part as { artifact?: AssistantArtifact }).artifact)
+            .filter((item): item is AssistantArtifact => item !== undefined);
+          if (!text && artifacts.length === 0) return null;
+          return (
+            <div
+              key={message.id}
+              className="po-msg-in w-full max-w-[70%] self-start rounded-sm border border-border bg-surface p-[14px_16px] max-[760px]:max-w-full"
+            >
+              <AssistantText text={text} />
+              {artifacts.map((artifact) =>
+                artifact.kind === "coverage" ? (
+                  <CoverageNoticeBlock key={artifact.id} artifact={artifact} />
+                ) : artifact.kind === "unavailable" ? (
+                  <UnavailableBlock key={artifact.id} artifact={artifact} />
+                ) : (
+                  <ChatArtifact
+                    key={artifact.id}
+                    artifact={artifact}
+                    definitionActions={definitionActions?.(artifact)}
+                  />
+                ),
+              )}
+            </div>
+          );
+        })}
+
+        {showStream && stream ? (
+          <div
+            className="po-msg-in w-full max-w-[70%] self-start rounded-sm border border-border bg-surface p-[14px_16px] max-[760px]:max-w-full"
+            aria-live="polite"
+          >
+            <TraceBlock steps={stream.steps} latencyMs={streamLatencyMs} />
+            {stream.answer ? (
+              <StreamAnswer
+                answer={stream.answer}
+                artifacts={stream.artifacts}
+                onAsk={onAsk}
+                definitionActions={definitionActions}
+              />
+            ) : (
+              <>
+                <AssistantText text={stream.text} />
+                {stream.artifacts.map((artifact) => (
+                  <ChatArtifact
+                    key={artifact.id}
+                    artifact={artifact}
+                    definitionActions={definitionActions?.(artifact)}
+                  />
+                ))}
+              </>
+            )}
+          </div>
+        ) : null}
+
+        {stream?.error || sendError ? (
+          <div
+            role="alert"
+            className="mt-2.5 flex items-start gap-2.5 rounded-sm border border-danger/40 p-[10px_12px] text-[12.5px] text-text-muted"
+          >
+            <span
+              aria-hidden="true"
+              className="mt-[5px] h-[7px] w-[7px] flex-none rounded-full bg-danger"
+            />
+            <span>{(stream?.error ?? sendError)?.message}</span>
+          </div>
+        ) : null}
+        <div ref={bottomRef} aria-hidden="true" />
+      </div>
+
+      <button
+        type="button"
+        onClick={onBack}
+        className="mt-1 inline-flex h-[30px] items-center gap-2 self-start whitespace-nowrap rounded-sm px-3 text-xs font-medium text-text-muted transition-colors duration-100 hover:bg-surface-hover hover:text-text [&_svg]:h-3.5 [&_svg]:w-3.5"
+      >
+        <ArrowLeft aria-hidden="true" />
+        Back to overview
+      </button>
+    </div>
+  );
+}

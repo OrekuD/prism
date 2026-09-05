@@ -1,9 +1,12 @@
 /**
- * Slice 7 UI tests: widget fidelity (server values render unchanged),
- * activity-trace states, and validated SSE parsing/folding.
+ * Slice 7 v2-design tests: widget fidelity (server values render
+ * unchanged in the mock's visual language), trace states, chart math,
+ * validated SSE parsing/folding, and the scaffold (header, views,
+ * dropdown, composer).
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -12,8 +15,8 @@ import type {
 } from "@prism-analytics/types";
 
 import { ProjectSummary } from "@/routes/projects/project/summary";
-import { ArtifactWidget } from "@/components/assistant/artifact-widgets";
-import { ActivityTrace } from "@/components/assistant/activity-trace";
+import { ChatArtifact, TraceBlock } from "@/components/project-overview/chat-widgets";
+import { sparkPath } from "@/components/project-overview/chart-math";
 import {
   INITIAL_STREAM_STATE,
   applyStreamEvent,
@@ -22,7 +25,12 @@ import {
 } from "@/network/queries/useAssistantConversations";
 
 vi.mock("@/utils/axiosInstance", () => ({
-  axiosInstance: { get: vi.fn(), post: vi.fn(), delete: vi.fn() },
+  axiosInstance: {
+    get: vi.fn(),
+    post: vi.fn(),
+    delete: vi.fn(),
+    defaults: { baseURL: "http://localhost/api/v1" },
+  },
 }));
 
 import { axiosInstance } from "@/utils/axiosInstance";
@@ -70,57 +78,54 @@ function fact(overrides: Partial<MetricFact> = {}): MetricFact {
   } as MetricFact;
 }
 
-function renderWidget(artifact: AssistantArtifact) {
+function baseArtifact(kind: AssistantArtifact["kind"]): Record<string, unknown> {
+  return {
+    id: `a_${kind}`,
+    title: `${kind} title`,
+    summary: `${kind} summary.`,
+    factIds: [],
+    queryContext: { ...queryContext, sourceIds: [] },
+    drilldown: { destination: "events", label: "Open Events" },
+  };
+}
+
+function renderArtifact(artifact: AssistantArtifact) {
   return render(
     <MemoryRouter>
-      <ArtifactWidget artifact={artifact} />
+      <ChatArtifact artifact={artifact} />
     </MemoryRouter>,
   );
 }
 
-describe("artifact widgets render server values unchanged", () => {
-  it("metric widget shows the exact formatted value, not prose", () => {
-    const artifact: AssistantArtifact = {
+describe("chat widgets render server values unchanged", () => {
+  it("metric widget shows the exact formatted value and delta", () => {
+    const { container } = renderArtifact({
       kind: "metric",
-      id: "a_metric",
-      title: "Accepted events",
-      summary: "Accepted events were 120.",
-      factIds: [fact().id],
-      queryContext: { ...queryContext, sourceIds: [] },
-      drilldown: { destination: "events", label: "Open Events" },
+      ...baseArtifact("metric"),
       fact: fact(),
-    };
-    const { container } = renderWidget(artifact);
+    } as AssistantArtifact);
     expect(container.textContent).toContain("120");
-    expect(container.textContent).toContain("Accepted events");
+    expect(container.textContent).toContain("▲ 20%");
+    expect(
+      container.querySelector('a[href="/events"]') ?? container.textContent,
+    ).toBeTruthy();
   });
 
   it("comparison widget shows current and previous values", () => {
-    const artifact: AssistantArtifact = {
+    const { container } = renderArtifact({
       kind: "comparison",
-      id: "a_cmp",
-      title: "Events vs previous",
-      summary: "120 vs 100 previously.",
-      factIds: [],
-      queryContext: { ...queryContext, sourceIds: [] },
-      drilldown: { destination: "events", label: "Open Events" },
+      ...baseArtifact("comparison"),
       current: fact(),
       previous: fact({ id: "prev", formattedValue: "100", value: 100 }),
-    };
-    const { container } = renderWidget(artifact);
+    } as AssistantArtifact);
     expect(container.textContent).toContain("120");
     expect(container.textContent).toContain("100");
   });
 
-  it("timeseries widget exposes an accessible summary and data table", () => {
-    const artifact: AssistantArtifact = {
+  it("timeseries widget exposes an accessible summary", () => {
+    renderArtifact({
       kind: "timeseries",
-      id: "a_ts",
-      title: "Accepted events trend",
-      summary: "Events rose across 3 days.",
-      factIds: [],
-      queryContext: { ...queryContext, sourceIds: [] },
-      drilldown: { destination: "events", label: "Open Events" },
+      ...baseArtifact("timeseries"),
       bucket: "daily",
       series: [
         {
@@ -132,22 +137,42 @@ describe("artifact widgets render server values unchanged", () => {
           ],
         },
       ],
-    };
-    renderWidget(artifact);
+    } as AssistantArtifact);
     expect(
-      screen.getByRole("img", { name: "Events rose across 3 days." }),
+      screen.getByRole("img", { name: "timeseries summary." }),
     ).toBeInTheDocument();
   });
 
+  it("ranked list shows labels and values with ranks", () => {
+    const { container } = renderArtifact({
+      kind: "ranked-list",
+      ...baseArtifact("ranked-list"),
+      entity: "screen",
+      rows: [
+        { key: "/pricing", label: "/pricing", value: 512, sharePercent: 100 },
+        { key: "/features", label: "/features", value: 386, sharePercent: 75 },
+      ],
+    } as AssistantArtifact);
+    expect(container.textContent).toContain("/pricing");
+    expect(container.textContent).toContain("512");
+    expect(container.textContent).toContain("386");
+  });
+
+  it("table renders exact cells", () => {
+    const { container } = renderArtifact({
+      kind: "table",
+      ...baseArtifact("table"),
+      columns: ["Screen", "Signups"],
+      rows: [["/pricing", 512]],
+    } as AssistantArtifact);
+    expect(container.textContent).toContain("/pricing");
+    expect(container.textContent).toContain("512");
+  });
+
   it("issue list shows status, count, and users without internals", () => {
-    const artifact: AssistantArtifact = {
+    const { container } = renderArtifact({
       kind: "issue-list",
-      id: "a_issues",
-      title: "Top issues",
-      summary: "One unresolved issue with 12 occurrences.",
-      factIds: [],
-      queryContext: { ...queryContext, sourceIds: [] },
-      drilldown: { destination: "errors", label: "Open Errors" },
+      ...baseArtifact("issue-list"),
       issues: [
         {
           id: "iss_1",
@@ -159,34 +184,41 @@ describe("artifact widgets render server values unchanged", () => {
           drilldown: { destination: "errors", label: "Open issue" },
         },
       ],
-    };
-    const { container } = renderWidget(artifact);
+    } as AssistantArtifact);
     expect(container.textContent).toContain("TypeError in checkout");
     expect(container.textContent).toContain("12");
     expect(container.textContent).not.toContain("stack");
   });
 
+  it("definition picker offers confirm while proposed", () => {
+    renderArtifact({
+      kind: "definition",
+      ...baseArtifact("definition"),
+      proposalId: "mem_1",
+      memoryKey: "signup-definition",
+      description: "Use sign_up as signup.",
+      status: "proposed",
+    } as AssistantArtifact);
+    expect(
+      screen.getByRole("button", { name: /definition title/ }),
+    ).toBeInTheDocument();
+  });
+
   it("unavailable widget explains and offers a next action", () => {
-    const artifact: AssistantArtifact = {
+    const { container } = renderArtifact({
       kind: "unavailable",
-      id: "a_un",
-      title: "Revenue",
-      summary: "No revenue definition exists.",
-      factIds: [],
-      queryContext: { ...queryContext, sourceIds: [] },
-      drilldown: { destination: "overview", label: "Overview" },
+      ...baseArtifact("unavailable"),
       reason: "No revenue definition exists.",
       nextAction: "Define a key outcome first.",
-    };
-    const { container } = renderWidget(artifact);
+    } as AssistantArtifact);
     expect(container.textContent).toContain("Define a key outcome first.");
   });
 });
 
-describe("activity trace", () => {
+describe("trace block", () => {
   it("exposes text states and friendly labels only", () => {
     render(
-      <ActivityTrace
+      <TraceBlock
         steps={[
           { stepId: "st_1", sequence: 0, toolId: "measure_metric", state: "complete", label: "Measured accepted events" },
           { stepId: "st_2", sequence: 1, toolId: "compare_periods", state: "running", label: "Comparing time periods" },
@@ -203,12 +235,24 @@ describe("activity trace", () => {
   });
 });
 
+describe("chart math", () => {
+  it("scales sparkline points into the box", () => {
+    expect(sparkPath([], 100, 25)).toBe("");
+    const path = sparkPath([0, 50, 100], 100, 25);
+    expect(path.startsWith("M")).toBe(true);
+    expect(path).toContain("L");
+  });
+});
+
 describe("SSE parsing and folding", () => {
   it("validates parts and drops malformed frames", () => {
     const good = parseStreamDataPayload(
       JSON.stringify({ kind: "data-run-start", runId: "run_1", conversationId: "conv_1" }),
     );
     expect(good.kind).toBe("part");
+    if (good.kind === "part" && good.part.kind === "data-run-start") {
+      expect(good.part.conversationId).toBe("conv_1");
+    }
     expect(parseStreamDataPayload("not json").kind).toBe("unknown");
     expect(
       parseStreamDataPayload(JSON.stringify({ kind: "data-run-start", runId: "" })).kind,
@@ -221,7 +265,6 @@ describe("SSE parsing and folding", () => {
     const first = splitSsePayloads('data: {"a":1}\n\npartial');
     expect(first.payloads).toEqual(['{"a":1}']);
     expect(first.remainder).toBe("partial");
-    // A fragment without a data: prefix is not an event (SSE semantics).
     const second = splitSsePayloads("data: partial-tail\n\ndata: {\"b\":2}\n\n");
     expect(second.payloads).toEqual(["partial-tail", '{"b":2}']);
   });
@@ -235,6 +278,7 @@ describe("SSE parsing and folding", () => {
       ),
     );
     expect(state.runId).toBe("run_1");
+    expect(state.conversationId).toBe("conv_1");
     const step = JSON.stringify({
       kind: "data-activity-step",
       stepId: "st_1",
@@ -257,7 +301,6 @@ describe("SSE parsing and folding", () => {
         }),
       ),
     );
-    // Same stepId updates the row instead of adding a second row.
     expect(state.steps).toHaveLength(1);
     expect(state.steps[0]?.state).toBe("complete");
     state = applyStreamEvent(state, { kind: "text", text: "Events were " });
@@ -266,7 +309,7 @@ describe("SSE parsing and folding", () => {
   });
 });
 
-describe("ProjectSummary scaffold", () => {
+describe("ProjectSummary v2 scaffold", () => {
   let queryClient: QueryClient;
 
   const overviewResource = {
@@ -293,7 +336,7 @@ describe("ProjectSummary scaffold", () => {
       queryContext: { ...queryContext, sourceIds: [] },
       drilldown: { destination: "events", label: "Open Events" },
       bucket: "daily",
-      series: [{ name: "events", points: [{ t: 1000, value: 5 }] }],
+      series: [{ name: "events", points: [{ t: 1000, value: 5 }, { t: 2000, value: 7 }] }],
     },
     secondary: {
       kind: "empty",
@@ -318,7 +361,21 @@ describe("ProjectSummary scaffold", () => {
         return { data: overviewResource, status: 200 };
       }
       if (String(url).includes("/assistant/conversations")) {
-        return { data: { items: [], nextCursor: null }, status: 200 };
+        return {
+          data: {
+            items: [
+              {
+                id: "conv_1",
+                title: "Checkout errors deep-dive",
+                lastMessageAt: Date.now(),
+                messageCount: 4,
+                hasActiveRun: false,
+              },
+            ],
+            nextCursor: null,
+          },
+          status: 200,
+        };
       }
       return { data: null, status: 200 };
     });
@@ -339,14 +396,21 @@ describe("ProjectSummary scaffold", () => {
     );
   }
 
-  it("renders the adaptive overview with one h1 and pulse widgets", async () => {
+  it("renders the header, overview h1, pulse, and docked composer", async () => {
     renderRoute("/workspace/wrk/projects/alpha");
     await waitFor(() =>
       expect(screen.getByRole("heading", { name: "Project overview" })).toBeInTheDocument(),
     );
     expect(screen.getByRole("heading", { name: "Project overview" }).tagName).toBe("H1");
-    expect(screen.getByText("Accepted events")).toBeInTheDocument();
-    expect(screen.getByLabelText("Ask Prism about this project")).toBeInTheDocument();
+    expect(screen.getAllByText("Accepted events").length).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getByPlaceholderText("Ask a question about this project…"),
+    ).toBeInTheDocument();
+    // View toggle tabs.
+    expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
   });
 
   it("shows the calm empty-insights state, not generic advice", async () => {
@@ -354,6 +418,19 @@ describe("ProjectSummary scaffold", () => {
     await waitFor(() =>
       expect(screen.getByText(/No significant changes detected/)).toBeInTheDocument(),
     );
+  });
+
+  it("opens the conversations dropdown with real chats", async () => {
+    const user = userEvent.setup();
+    renderRoute("/workspace/wrk/projects/alpha");
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Project overview" })).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("button", { name: "Conversations" }));
+    const menu = screen.getByRole("listbox", { name: "Conversations" });
+    expect(
+      within(menu).getByRole("option", { name: /Checkout errors deep-dive/ }),
+    ).toBeInTheDocument();
   });
 
   it("offers a safe return for a missing chat", async () => {

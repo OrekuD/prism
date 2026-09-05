@@ -167,6 +167,8 @@ export function splitSsePayloads(buffer: string): {
 
 export type StreamState = {
   runId: string | null;
+  /** Server-assigned chat from the run-start frame (chat-creation runs). */
+  conversationId: string | null;
   steps: ActivityStep[];
   facts: MetricFact[];
   artifacts: AssistantArtifact[];
@@ -178,6 +180,7 @@ export type StreamState = {
 
 export const INITIAL_STREAM_STATE: StreamState = {
   runId: null,
+  conversationId: null,
   steps: [],
   facts: [],
   artifacts: [],
@@ -199,7 +202,7 @@ export function applyStreamEvent(
   const part = event.part;
   switch (part.kind) {
     case "data-run-start":
-      return { ...state, runId: part.runId };
+      return { ...state, runId: part.runId, conversationId: part.conversationId };
     case "data-activity-step": {
       const step: ActivityStep = {
         stepId: part.stepId,
