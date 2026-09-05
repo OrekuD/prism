@@ -113,7 +113,7 @@ function InsightActions({
           to={insight.drilldown.destination}
           className="inline-flex h-[30px] items-center justify-center gap-2 whitespace-nowrap rounded-sm border border-border-strong px-3 text-xs font-medium text-text transition-colors duration-100 hover:border-text-subtle hover:bg-surface-hover"
         >
-          {insight.drilldown.label} →
+          {insight.drilldown.label}
         </Link>
       )}
       {primary ? (
