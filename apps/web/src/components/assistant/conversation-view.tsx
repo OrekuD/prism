@@ -54,8 +54,8 @@ function AnswerBlock({
       ) : null}
       {answer.observations.length > 0 ? (
         <ul className="space-y-1.5">
-          {answer.observations.map((observation, index) => (
-            <li key={index} className="flex gap-2 text-sm text-text">
+          {answer.observations.map((observation) => (
+            <li key={observation.text} className="flex gap-2 text-sm text-text">
               <span aria-hidden="true" className="text-accent">•</span>
               <span>{observation.text}</span>
             </li>
@@ -75,8 +75,8 @@ function AnswerBlock({
             Assumptions
           </p>
           <ul className="mt-1 space-y-1">
-            {answer.assumptions.map((assumption, index) => (
-              <li key={index} className="font-mono text-xs text-text-subtle">
+            {answer.assumptions.map((assumption) => (
+              <li key={assumption} className="font-mono text-xs text-text-subtle">
                 {assumption}
               </li>
             ))}
@@ -85,9 +85,9 @@ function AnswerBlock({
       ) : null}
       {answer.followUps.length > 0 ? (
         <div className="flex flex-wrap gap-2">
-          {answer.followUps.map((followUp, index) => (
+          {answer.followUps.map((followUp) => (
             <span
-              key={index}
+              key={followUp}
               className="rounded-full border border-border-subtle px-3 py-1 font-mono text-[11px] text-text-subtle"
             >
               {followUp}

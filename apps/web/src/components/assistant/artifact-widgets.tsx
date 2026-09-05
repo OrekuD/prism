@@ -251,7 +251,9 @@ export function TableWidget({
           </thead>
           <tbody>
             {artifact.rows.map((row, index) => (
-              <tr key={index} className="border-b border-border-subtle last:border-b-0">
+              // Anonymous server-bounded rows carry no stable ID; the
+              // joined cell values make the key stable across rerenders.
+              <tr key={`${index}:${row.join("|")}`} className="border-b border-border-subtle last:border-b-0">
                 {row.map((cell, cellIndex) => (
                   <td key={cellIndex} className="px-2 py-1">
                     {cell ?? "—"}

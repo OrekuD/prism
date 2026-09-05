@@ -102,22 +102,22 @@ export const AskPrismDock = forwardRef<
       <div className="pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-t from-background to-transparent" aria-hidden="true" />
       <div className="relative rounded-xl border border-border bg-background/95 shadow-lg backdrop-blur">
         {!focused && draft.length === 0 ? (
-          <div className="flex gap-2 overflow-x-auto px-3 pt-2.5" role="list" aria-label="Suggested questions">
+          <ul className="flex gap-2 overflow-x-auto px-3 pt-2.5" aria-label="Suggested questions">
             {suggestions.map((suggestion) => (
-              <button
-                key={suggestion}
-                type="button"
-                role="listitem"
-                onClick={() => {
-                  onDraftChange(suggestion);
-                  inputRef.current?.focus();
-                }}
-                className="shrink-0 rounded-full border border-border-subtle px-3 py-1 font-mono text-[11px] text-text-subtle transition-colors hover:border-accent hover:text-text"
-              >
-                {suggestion}
-              </button>
+              <li key={suggestion} className="shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onDraftChange(suggestion);
+                    inputRef.current?.focus();
+                  }}
+                  className="shrink-0 rounded-full border border-border-subtle px-3 py-1 font-mono text-[11px] text-text-subtle transition-colors hover:border-accent hover:text-text"
+                >
+                  {suggestion}
+                </button>
+              </li>
             ))}
-          </div>
+          </ul>
         ) : null}
         <div className="flex items-end gap-2 p-2.5">
           <label htmlFor="ask-prism-input" className="sr-only">
