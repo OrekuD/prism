@@ -81,7 +81,6 @@ export function ChatView({
   streaming,
   streamLatencyMs,
   sendError,
-  emptyScopeLine,
   onBack,
   onAsk,
   definitionActions,
@@ -91,7 +90,6 @@ export function ChatView({
   streaming: boolean;
   streamLatencyMs?: number;
   sendError: { message: string; retryable: boolean } | null;
-  emptyScopeLine: string;
   onBack: () => void;
   onAsk: (prompt: string) => void;
   definitionActions?: ChatDefinitionActions;
@@ -119,9 +117,6 @@ export function ChatView({
             <p className="text-[13px] font-medium leading-[1.4] text-text">
               Ask about this project
             </p>
-            <span className="max-w-[36ch] font-mono text-xs font-normal leading-[1.5] text-text-subtle">
-              {emptyScopeLine}
-            </span>
           </div>
         ) : null}
 

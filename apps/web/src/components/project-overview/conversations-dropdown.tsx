@@ -30,15 +30,12 @@ function timeMeta(value: number | null): string | null {
 export function ConversationsDropdown({
   items,
   selectedId,
-  showNewChat,
   onSelect,
   onNewChat,
   onDelete,
 }: {
   items: ConversationListItem[];
   selectedId: string | null;
-  /** `+ New chat` is a chat-tab action only. */
-  showNewChat: boolean;
   onSelect: (id: string) => void;
   onNewChat: () => void;
   onDelete: (id: string) => void;
@@ -77,18 +74,14 @@ export function ConversationsDropdown({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="bottom" sideOffset={8} className="w-[300px]">
         <DropdownMenuLabel>Conversations</DropdownMenuLabel>
-        {showNewChat ? (
-          <>
-            <DropdownMenuItem
-              onClick={() => onNewChat()}
-              className="gap-2 font-medium"
-            >
-              <Plus className="size-4" />
-              <span className="flex-1">New chat</span>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-          </>
-        ) : null}
+        <DropdownMenuItem
+          onClick={() => onNewChat()}
+          className="gap-2 font-medium"
+        >
+          <Plus className="size-4" />
+          <span className="flex-1">New chat</span>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         {items.length === 0 ? (
           <div className="px-2 py-1.5 text-[13px] text-text-subtle">
             No chats yet — ask a question to start one.

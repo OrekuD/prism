@@ -281,19 +281,19 @@ export function ProjectSummary() {
     pendingChat && view === "chat" && !chatId
       ? (streamByChat.new ?? { ...INITIAL_STREAM_STATE })
       : stream;
-  const emptyScopeLine = `Prism answers from your events, errors, and release data — ${slug ?? "this project"} · Last ${range}.`;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center gap-2">
-        <ConversationsDropdown
-          items={conversations.data?.items ?? []}
-          selectedId={chatId}
-          showNewChat={view === "chat"}
-          onSelect={openChat}
-          onNewChat={newChat}
-          onDelete={(id) => void deleteChat(id)}
-        />
+        {view === "chat" ? (
+          <ConversationsDropdown
+            items={conversations.data?.items ?? []}
+            selectedId={chatId}
+            onSelect={openChat}
+            onNewChat={newChat}
+            onDelete={(id) => void deleteChat(id)}
+          />
+        ) : null}
         <div className="ml-auto">
           <Seg label="View">
             <SegTab
@@ -339,7 +339,6 @@ export function ProjectSummary() {
           stream={activeStream}
           streaming={active || detail.isLoading}
           sendError={sendError}
-          emptyScopeLine={emptyScopeLine}
           onBack={goToOverview}
           onAsk={(prompt) => {
             setDraft(prompt);

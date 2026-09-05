@@ -422,9 +422,9 @@ describe("ProjectSummary v2 scaffold", () => {
 
   it("opens the conversations dropdown with real chats", async () => {
     const user = userEvent.setup();
-    renderRoute("/workspace/wrk/projects/alpha");
+    renderRoute("/workspace/wrk/projects/alpha?view=assistant");
     await waitFor(() =>
-      expect(screen.getByRole("heading", { name: "Project overview" })).toBeInTheDocument(),
+      expect(screen.getByRole("button", { name: "Conversations" })).toBeInTheDocument(),
     );
     await user.click(screen.getByRole("button", { name: "Conversations" }));
     const menu = screen.getByRole("menu", { name: "Conversations" });
@@ -433,20 +433,23 @@ describe("ProjectSummary v2 scaffold", () => {
     ).toBeInTheDocument();
   });
 
-  it("gates new chat behind the chat tab", async () => {
+  it("keeps the conversations menu in the chat tab only", async () => {
     const user = userEvent.setup();
-    // Overview mode: the menu lists chats but offers no New chat item.
+    // Overview mode: no conversations menu at all.
     renderRoute("/workspace/wrk/projects/alpha");
     await waitFor(() =>
       expect(screen.getByRole("heading", { name: "Project overview" })).toBeInTheDocument(),
     );
-    await user.click(screen.getByRole("button", { name: "Conversations" }));
     expect(
-      within(screen.getByRole("menu", { name: "Conversations" })).queryByRole(
-        "menuitem",
-        { name: /New chat/ },
-      ),
+      screen.queryByRole("button", { name: "Conversations" }),
     ).toBeNull();
+    // Chat tab: the menu lists chats plus New chat.
+    renderRoute("/workspace/wrk/projects/alpha?view=assistant");
+    await user.click(screen.getByRole("button", { name: "Conversations" }));
+    const menu = screen.getByRole("menu", { name: "Conversations" });
+    expect(
+      within(menu).getByRole("menuitem", { name: /New chat/ }),
+    ).toBeInTheDocument();
   });
 
   it("offers a safe return for a missing chat", async () => {
