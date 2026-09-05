@@ -11,7 +11,8 @@ import type {
   AssistantArtifact,
   MetricFact,
 } from "@prism-analytics/types";
-import { MkFrame, SectionLabel, Tag } from "@/components/project-overview/primitives";
+import { SectionLabel, Tag } from "@/components/project-overview/primitives";
+import { Frame } from "@/components/public/frame";
 import { evenXs } from "@/components/project-overview/chart-math";
 
 const SERIES_COLORS = ["var(--text)", "var(--danger)", "var(--info)"] as const;
@@ -77,7 +78,7 @@ export function ActivityChart({
 
   if (!series || series.length === 0 || !geometry) {
     return (
-      <MkFrame inset className="p-[12px_14px]">
+      <Frame inset className="p-[12px_14px]">
         <div className="flex items-center gap-3 px-0 pb-2">
           <h3 className="font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
             Activity trend
@@ -89,7 +90,7 @@ export function ActivityChart({
         <span id={tipId} className="sr-only">
           {artifact.summary}
         </span>
-      </MkFrame>
+      </Frame>
     );
   }
 
@@ -102,7 +103,7 @@ export function ActivityChart({
   );
 
   return (
-    <MkFrame inset>
+    <Frame inset>
       <div className="flex flex-wrap items-center gap-3 px-3.5 pt-3">
         <h3 className="font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
           Activity trend
@@ -224,7 +225,7 @@ export function ActivityChart({
           <Label fact={supportingFact} /> {supportingFact.formattedValue}
         </p>
       ) : null}
-    </MkFrame>
+    </Frame>
   );
 }
 
@@ -289,7 +290,7 @@ export function SecondaryPanel({ artifact }: { artifact: AssistantArtifact }) {
       ? "Recent releases"
       : artifact.title;
   return (
-    <MkFrame inset>
+    <Frame inset>
       <div className="flex flex-wrap items-center gap-3 px-3.5 pt-3">
         <h3 className="font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
           {title}
@@ -314,7 +315,7 @@ export function SecondaryPanel({ artifact }: { artifact: AssistantArtifact }) {
             : artifact.summary}
         </p>
       )}
-    </MkFrame>
+    </Frame>
   );
 }
 

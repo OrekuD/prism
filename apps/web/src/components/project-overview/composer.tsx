@@ -15,6 +15,7 @@ import {
 import { Square } from "lucide-react";
 import type { ProjectCapabilities } from "@prism-analytics/types";
 import { Kbd } from "@/components/project-overview/primitives";
+import { Frame } from "@/components/public/frame";
 import { cn } from "@/lib/utils";
 
 export type ComposerDockHandle = {
@@ -111,10 +112,10 @@ export const ComposerDock = forwardRef<
         aria-hidden="true"
         className="po-composer-fade pointer-events-none absolute -left-8 -right-8 top-0 h-12 max-[760px]:-left-[18px] max-[760px]:-right-[18px]"
       />
-      <div className="po-mk relative rounded-sm border border-border bg-surface/90 p-[14px_12px_12px] shadow-[0_-8px_32px_rgb(0_0_0/0.24),inset_0_1px_0_var(--border)] backdrop-blur-2xl">
-        <span className="absolute -top-[7px] left-[14px] bg-canvas px-[5px] font-mono text-[10px] font-medium uppercase leading-none tracking-[0.09em] text-text-muted">
-          Ask Prism
-        </span>
+      <Frame
+        label="Ask Prism"
+        className="bg-surface/90 p-[14px_12px_12px] shadow-[0_-8px_32px_rgb(0_0_0/0.24),inset_0_1px_0_var(--border)] backdrop-blur-2xl"
+      >
         <form
           className="flex items-end gap-2.5"
           onSubmit={(event) => {
@@ -204,7 +205,7 @@ export const ComposerDock = forwardRef<
             </li>
           ))}
         </ul>
-      </div>
+      </Frame>
     </div>
   );
 });

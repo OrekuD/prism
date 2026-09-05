@@ -11,7 +11,8 @@ import type {
   AssistantArtifact,
   InsightCandidate,
 } from "@prism-analytics/types";
-import { Btn, MkFrame, OverflowButton, SectionLabel, Tag } from "@/components/project-overview/primitives";
+import { Btn, OverflowButton, SectionLabel, Tag } from "@/components/project-overview/primitives";
+import { Frame } from "@/components/public/frame";
 import { sparkPath } from "@/components/project-overview/chart-math";
 import { cn } from "@/lib/utils";
 
@@ -242,7 +243,7 @@ export function InsightsGrid({
           below reflect the current snapshot.
         </p>
       ) : (
-        <MkFrame className="grid grid-cols-[1.25fr_1fr] overflow-visible bg-surface max-[1100px]:grid-cols-1">
+        <Frame className="grid grid-cols-[1.25fr_1fr] overflow-visible bg-surface max-[1100px]:grid-cols-1">
           {featured ? (
             <FeaturedInsight insight={featured} onInvestigate={onInvestigate} />
           ) : null}
@@ -270,7 +271,7 @@ export function InsightsGrid({
               />
             </div>
           ) : null}
-        </MkFrame>
+        </Frame>
       )}
     </>
   );

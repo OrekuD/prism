@@ -10,36 +10,6 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-/** Framed surface with accent corner registration marks (`.frame.mk`). */
-export function MkFrame({
-  children,
-  className,
-  inset,
-  label,
-}: {
-  children: ReactNode;
-  className?: string;
-  inset?: boolean;
-  label?: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "po-mk relative rounded-sm border border-border",
-        inset && "bg-surface",
-        className,
-      )}
-    >
-      {label ? (
-        <span className="absolute -top-[7px] left-[14px] bg-canvas px-[5px] font-mono text-[10px] font-medium uppercase leading-none tracking-[0.09em] text-text-muted">
-          {label}
-        </span>
-      ) : null}
-      {children}
-    </div>
-  );
-}
-
 /** Uppercase mono section heading with an optional right-aligned note. */
 export function SectionLabel({
   children,

@@ -6,7 +6,8 @@
  * accepted-events activity series) — never synthesized curves.
  */
 import type { MetricFact } from "@prism-analytics/types";
-import { MkFrame, SectionLabel } from "@/components/project-overview/primitives";
+import { SectionLabel } from "@/components/project-overview/primitives";
+import { Frame } from "@/components/public/frame";
 import { sparkPath } from "@/components/project-overview/chart-math";
 import { cn } from "@/lib/utils";
 
@@ -99,7 +100,7 @@ export function MetricCard({
   spark?: { points: readonly number[]; tone: "text" | "danger" | "success" };
 }) {
   return (
-    <MkFrame className="flex min-h-[108px] flex-col bg-surface p-[16px_12px_12px]">
+    <Frame className="flex min-h-[108px] flex-col bg-surface p-[16px_12px_12px]">
       <div className="flex items-center justify-between gap-2">
         <span
           className="whitespace-nowrap font-mono text-xl tracking-[-0.05em] text-text tabular-nums"
@@ -115,7 +116,7 @@ export function MetricCard({
       {spark ? (
         <Sparkline points={spark.points} tone={spark.tone} label={`${fact.label} trend`} />
       ) : null}
-    </MkFrame>
+    </Frame>
   );
 }
 
