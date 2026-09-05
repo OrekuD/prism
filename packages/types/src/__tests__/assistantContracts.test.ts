@@ -2525,3 +2525,68 @@ describe("run-scoped authorization context", () => {
     expect(isToolScopeAllowed(cache, { sourceIds: [] })).toBe(true);
   });
 });
+
+describe("assistant evidence facts (R17-F4)", () => {
+  it("bounds every non-metric evidence shape", async () => {
+    const contracts = await import(
+      "../network/resources/projectAssistant"
+    );
+    const {
+      AssistantEvidenceFactSchema,
+      evidenceDirection,
+      evidenceId,
+      evidenceNumbers,
+    } = contracts;
+    const count = {
+      kind: "count",
+      id: "errors:unresolved",
+      label: "Unresolved issues",
+      value: 3,
+      unit: "issues",
+    };
+    const issue = {
+      kind: "issue",
+      id: "issue:iss_1",
+      title: "TypeError in checkout",
+      status: "unresolved",
+      count: 42,
+      users: 7,
+      delta: "new",
+    };
+    const definition = {
+      kind: "definition",
+      id: "mem_1",
+      label: "Signup",
+      state: "confirmed",
+      reference: "sign_up",
+    };
+    for (const record of [count, issue, definition]) {
+      expect(AssistantEvidenceFactSchema.safeParse(record).success).toBe(true);
+    }
+    // Raw payloads never qualify: no stack data, traits, or free-form JSON.
+    expect(
+      AssistantEvidenceFactSchema.safeParse({
+        kind: "issue",
+        id: "x",
+        title: "t",
+        status: "unresolved",
+        count: 1,
+        users: 1,
+        delta: null,
+        stack: ["frame"],
+      }).success,
+    ).toBe(false);
+    expect(
+      AssistantEvidenceFactSchema.safeParse({ kind: "mystery", id: "x" })
+        .success,
+    ).toBe(false);
+    // Identity, numbers, and direction per kind.
+    expect(evidenceId(count)).toBe("errors:unresolved");
+    expect(evidenceNumbers(count)).toEqual(["3"]);
+    expect(evidenceNumbers(issue).sort()).toEqual(["42", "7"]);
+    expect(evidenceDirection(count)).toBeNull();
+    expect(evidenceDirection(issue)).toBeNull();
+    expect(evidenceDirection(definition)).toBeNull();
+    expect(evidenceNumbers(definition)).toEqual([]);
+  });
+});

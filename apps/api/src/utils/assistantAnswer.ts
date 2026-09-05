@@ -1,17 +1,22 @@
 /**
- * Grounded-answer validation (Task 21 slice 5).
+ * Grounded-answer validation (Task 21 slice 5, hardened per R17-F3).
  *
  * The model explains tool results; Prism code owns the truth. A
  * structured `AssistantAnswer` passes this gate only when every material
- * claim traces to run evidence:
- * - every observation cites facts collected by this run (non-empty,
- *   subset of the run's fact IDs; primary/supporting artifacts must be
- *   run artifacts),
- * - every numeric token in answer text appears in a cited fact's
- *   formatted value (unsupported numbers fall back safely),
- * - directional wording requires a cited fact with a real comparison
- *   (no trend language off a single point or a no-prior-data fact),
- * - causal claims are rejected (association language only).
+ * claim traces to run evidence through its own citation binding:
+ * - each observation is validated ONLY against its own `factIds` (never
+ *   the global run set): a number must appear in the cited evidence, and
+ *   trend language must match the cited evidence's own comparison
+ *   direction (up claims need `up`, down claims need `down`, flat claims
+ *   need `flat`; `new`/`no-prior-data`/non-metric evidence grounds no
+ *   trend language at all),
+ * - the summary derives from already-validated structured claims: its
+ *   numbers and trend language must appear in evidence cited by the
+ *   observations (never in merely measured-but-uncited run facts),
+ * - the citation binding (fact ID) is the primary proof; numeric-token
+ *   coincidence only handles formatting variants inside already-bound
+ *   evidence,
+ * - causal claims are rejected anywhere (association language only).
  *
  * Failures return reasons for the single bounded repair pass; when repair
  * also fails the run falls back to `buildFallbackAnswer`, which is valid
@@ -21,36 +26,47 @@ import {
   ANSWER_LIMITS,
   AssistantAnswerSchema,
   containsCausalClaim,
+  evidenceDirection,
+  evidenceNumbers,
   type AssistantAnswer,
-  type MetricFact,
+  type AssistantEvidenceFact,
 } from "@prism-analytics/types";
 
 export type AnswerValidation =
   | { ok: true }
   | { ok: false; reasons: string[] };
 
-/** Directional wording that needs comparison evidence to be grounded. */
-const DIRECTION_PATTERNS = [
+/** Trend wording grouped by the comparison direction it requires. */
+const UP_PATTERNS = [
   /\bincreas(?:e|ed|es|ing)\b/i,
-  /\bdecreas(?:e|ed|es|ing)\b/i,
   /\brose\b/i,
   /\brisen\b/i,
-  /\bfell\b/i,
-  /\bfallen\b/i,
   /\bgrew\b/i,
   /\bgrown\b/i,
+  /\bhigher\b/i,
+  /\bspiked\b/i,
+  /\bsurged\b/i,
+  /\bup\b/i,
+] as const;
+
+const DOWN_PATTERNS = [
+  /\bdecreas(?:e|ed|es|ing)\b/i,
+  /\bfell\b/i,
+  /\bfallen\b/i,
   /\bdropped\b/i,
   /\bdeclined\b/i,
   /\bdeclining\b/i,
-  /\bimproved\b/i,
   /\bworsened\b/i,
-  /\bhigher\b/i,
   /\blower\b/i,
-  /\bspiked\b/i,
-  /\bsurged\b/i,
   /\bplunged\b/i,
-  /\bup\b/i,
   /\bdown\b/i,
+] as const;
+
+const FLAT_PATTERNS = [
+  /\bflat\b/i,
+  /\bstable\b/i,
+  /\bunchanged\b/i,
+  /\bsteady\b/i,
 ] as const;
 
 /** Non-directional phrases that happen to contain up/down. */
@@ -70,15 +86,22 @@ const DIRECTION_EXEMPTIONS = [
 function stripExemptions(text: string): string {
   let stripped = ` ${text} `;
   for (const phrase of DIRECTION_EXEMPTIONS) {
-    stripped = stripped
-      .replace(new RegExp(phrase.replace(/[- ]/g, "[- ]"), "gi"), " ");
+    stripped = stripped.replace(
+      new RegExp(phrase.replace(/[- ]/g, "[- ]"), "gi"),
+      " ",
+    );
   }
   return stripped;
 }
 
-function hasDirectionalClaim(text: string): boolean {
+type TrendClaim = "up" | "down" | "flat" | null;
+
+function trendClaimOf(text: string): TrendClaim {
   const candidate = stripExemptions(text);
-  return DIRECTION_PATTERNS.some((pattern) => pattern.test(candidate));
+  if (UP_PATTERNS.some((pattern) => pattern.test(candidate))) return "up";
+  if (DOWN_PATTERNS.some((pattern) => pattern.test(candidate))) return "down";
+  if (FLAT_PATTERNS.some((pattern) => pattern.test(candidate))) return "flat";
+  return null;
 }
 
 /** Integer/decimal/percentage tokens a reader would take as measured. */
@@ -91,31 +114,65 @@ function normalizeNumberToken(token: string): string {
   return token.replace(/,/g, "").replace(/%$/, "");
 }
 
+function validateNumbersAgainst(
+  text: string,
+  evidence: readonly AssistantEvidenceFact[],
+  where: string,
+  reasons: string[],
+): void {
+  const available = new Set<string>();
+  for (const record of evidence) {
+    for (const token of evidenceNumbers(record)) available.add(token);
+  }
+  for (const token of numericTokens(text)) {
+    if (!available.has(normalizeNumberToken(token))) {
+      reasons.push(`unsupported numeric claim in ${where}: ${token}`);
+      return;
+    }
+  }
+}
+
+function validateTrendAgainst(
+  text: string,
+  evidence: readonly AssistantEvidenceFact[],
+  where: string,
+  reasons: string[],
+): void {
+  const claim = trendClaimOf(text);
+  if (claim === null) return;
+  const supported = evidence.some(
+    (record) => evidenceDirection(record) === claim,
+  );
+  if (!supported) {
+    reasons.push(`unsupported ${claim} claim in ${where}`);
+  }
+}
+
 export function validateGroundedAnswer(
   answer: AssistantAnswer,
-  facts: ReadonlyMap<string, MetricFact>,
+  evidence: ReadonlyMap<string, AssistantEvidenceFact>,
   artifactIds: ReadonlySet<string>,
 ): AnswerValidation {
   const reasons: string[] = [];
   if (!AssistantAnswerSchema.safeParse(answer).success) {
     return { ok: false, reasons: ["answer failed contract validation"] };
   }
-  const cited = new Map<string, MetricFact>();
-  const unknownFacts: string[] = [];
-  for (const observation of answer.observations) {
+  // Resolve each observation's OWN citations; unknown IDs fail loudly.
+  const observationEvidence: AssistantEvidenceFact[][] = [];
+  for (const [index, observation] of answer.observations.entries()) {
+    const cited: AssistantEvidenceFact[] = [];
     for (const id of observation.factIds) {
-      const fact = facts.get(id);
-      if (!fact) {
-        unknownFacts.push(id);
-      } else if (!cited.has(id)) {
-        cited.set(id, fact);
+      const record = evidence.get(id);
+      if (!record) {
+        reasons.push(`observation ${index} cites unknown evidence: ${id}`);
+      } else {
+        cited.push(record);
       }
     }
-  }
-  if (unknownFacts.length > 0) {
-    reasons.push(
-      `observations cite unknown facts: ${[...new Set(unknownFacts)].slice(0, 4).join(", ")}`,
-    );
+    observationEvidence.push(cited);
+    const where = `observation ${index}`;
+    validateNumbersAgainst(observation.text, cited, where, reasons);
+    validateTrendAgainst(observation.text, cited, where, reasons);
   }
   if (answer.primaryArtifactId !== null && !artifactIds.has(answer.primaryArtifactId)) {
     reasons.push("primary artifact is not a run artifact");
@@ -126,56 +183,21 @@ export function validateGroundedAnswer(
   if (unknownArtifacts.length > 0) {
     reasons.push("supporting artifacts are not run artifacts");
   }
+  // The summary derives from validated structured claims only: numbers
+  // and trend language must appear in observation-cited evidence, never
+  // in merely measured-but-uncited run records.
+  const citedByObservations = observationEvidence.flat();
+  validateNumbersAgainst(answer.summary, citedByObservations, "summary", reasons);
+  validateTrendAgainst(answer.summary, citedByObservations, "summary", reasons);
   const texts = [
     answer.summary,
     ...answer.observations.map((entry) => entry.text),
   ];
   for (const text of texts) {
     if (containsCausalClaim(text)) {
-      reasons.push("causal claims require a causal contract; use association language");
-      break;
-    }
-  }
-  for (const text of texts) {
-    for (const token of numericTokens(text)) {
-      const normalized = normalizeNumberToken(token);
-      const supported = [...cited.values()].some((fact) => {
-        const factTokens = new Set(
-          numericTokens(fact.formattedValue).map(normalizeNumberToken),
-        );
-        if (factTokens.has(normalized)) return true;
-        const rawNumbers: Array<number | null> = [
-          fact.value,
-          fact.comparisonBasis.previousValue,
-        ];
-        if (
-          fact.comparison !== null &&
-          fact.comparison.kind === "percent" &&
-          typeof fact.comparison.percent === "number"
-        ) {
-          rawNumbers.push(fact.comparison.percent);
-        }
-        return rawNumbers.some(
-          (entry) =>
-            typeof entry === "number" &&
-            Number.isFinite(entry) &&
-            String(entry).replace(/,/g, "") === normalized,
-        );
-      });
-      if (!supported) {
-        reasons.push(`unsupported numeric claim: ${token}`);
-        break;
-      }
-    }
-    if (reasons.some((reason) => reason.startsWith("unsupported numeric"))) break;
-  }
-  for (const text of texts) {
-    if (!hasDirectionalClaim(text)) continue;
-    const supported = [...cited.values()].some(
-      (fact) => fact.comparison !== null,
-    );
-    if (!supported) {
-      reasons.push("directional claims require a cited comparison");
+      reasons.push(
+        "causal claims require a causal contract; use association language",
+      );
       break;
     }
   }

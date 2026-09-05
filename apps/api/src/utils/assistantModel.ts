@@ -36,16 +36,19 @@ export type ModelCandidate = {
 };
 
 /**
- * Pinned default first: the cheapest evaluated tool-capable candidate.
- * Prices are eval-gated estimates until the Slice 8 hosted evaluation
- * records measured values; the caps below still bind every run.
+ * Pinned default first: the cheapest provisionally selected tool-capable
+ * candidate. `evaluated: false` until the versioned Slice 8 hosted
+ * evaluation records measured gates — production activation stays
+ * fail-closed, and unit tests inject scripted models instead. Prices are
+ * documented estimates until the evaluator records measured values; the
+ * per-run caps still bind every run.
  */
 export const MODEL_ALLOWLIST: readonly ModelCandidate[] = [
   {
     id: "openai/gpt-4o-mini",
     promptPricePerMillionMicroUsd: 150_000,
     completionPricePerMillionMicroUsd: 600_000,
-    evaluated: true,
+    evaluated: false,
   },
 ] as const;
 

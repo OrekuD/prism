@@ -1979,6 +1979,130 @@ export const ModelSummaryItemSchema = z.strictObject({
 });
 export type ModelSummaryItem = z.infer<typeof ModelSummaryItemSchema>;
 
+// ---------------------------------------------------------------------------
+// Assistant evidence facts (R17-F4): every ID advertised to the model
+// ---------------------------------------------------------------------------
+
+/**
+ * Bounded non-metric evidence the model may cite. Measurements stay
+ * canonical `MetricFact`s; everything else the model can quote — an
+ * error aggregate, one sanitized issue row, a coverage count, or a
+ * definition/memory reference — is one of these explicit shapes. Raw
+ * issues, traits, stack data, and arbitrary memory payloads are never
+ * evidence: only these server-composed, length-bounded projections.
+ * Every shape is JSON-bounded so runs can persist it in slice 6.
+ */
+export const EvidenceCountSchema = z.strictObject({
+  kind: z.literal("count"),
+  id: z.string().min(1).max(128),
+  label: z
+    .string()
+    .min(1)
+    .max(160)
+    .regex(/^[^\r\n]*$/, "label must be a single line"),
+  value: z.number().int().nonnegative(),
+  unit: z.string().max(32),
+});
+export type EvidenceCount = z.infer<typeof EvidenceCountSchema>;
+
+export const EvidenceIssueSchema = z.strictObject({
+  kind: z.literal("issue"),
+  id: z.string().min(1).max(128),
+  title: z.string().min(1).max(200),
+  status: z.enum(["unresolved", "resolved", "ignored"]),
+  count: z.number().int().nonnegative(),
+  users: z.number().int().nonnegative(),
+  delta: z.enum(["new", "regressing", "declining"]).nullable(),
+});
+export type EvidenceIssue = z.infer<typeof EvidenceIssueSchema>;
+
+export const EvidenceDefinitionSchema = z.strictObject({
+  kind: z.literal("definition"),
+  id: z.string().min(1).max(128),
+  label: z
+    .string()
+    .min(1)
+    .max(160)
+    .regex(/^[^\r\n]*$/, "label must be a single line"),
+  state: z.enum(["confirmed", "proposed", "standard-event", "missing"]),
+  /** Display reference (event key, term name, or state word), verbatim. */
+  reference: z.string().min(1).max(200),
+});
+export type EvidenceDefinition = z.infer<typeof EvidenceDefinitionSchema>;
+
+export const EvidenceMetricSchema = z.strictObject({
+  kind: z.literal("metric"),
+  fact: MetricFactSchema,
+});
+export type EvidenceMetric = z.infer<typeof EvidenceMetricSchema>;
+
+export const AssistantEvidenceFactSchema = z.discriminatedUnion("kind", [
+  EvidenceMetricSchema,
+  EvidenceCountSchema,
+  EvidenceIssueSchema,
+  EvidenceDefinitionSchema,
+]);
+export type AssistantEvidenceFact = z.infer<typeof AssistantEvidenceFactSchema>;
+
+/** Stable evidence ID: metric facts keep their canonical ID. */
+export function evidenceId(evidence: AssistantEvidenceFact): string {
+  return evidence.kind === "metric" ? evidence.fact.id : evidence.id;
+}
+
+/** Citable numeric tokens for one evidence record (structured first). */
+export function evidenceNumbers(evidence: AssistantEvidenceFact): string[] {
+  const tokens = new Set<string>();
+  const addToken = (value: string): void => {
+    const matches = value.match(/-?\d[\d,]*(?:\.\d+)?%?/g);
+    for (const match of matches ?? []) {
+      tokens.add(match.replace(/,/g, "").replace(/%$/, ""));
+    }
+  };
+  const addRaw = (value: number | null): void => {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      tokens.add(String(value).replace(/,/g, ""));
+    }
+  };
+  if (evidence.kind === "metric") {
+    addToken(evidence.fact.formattedValue);
+    addRaw(evidence.fact.value);
+    addRaw(evidence.fact.comparisonBasis.previousValue);
+    if (
+      evidence.fact.comparison !== null &&
+      evidence.fact.comparison.kind === "percent" &&
+      typeof evidence.fact.comparison.percent === "number"
+    ) {
+      addRaw(evidence.fact.comparison.percent);
+    }
+    return [...tokens];
+  }
+  if (evidence.kind === "count") {
+    addRaw(evidence.value);
+    return [...tokens];
+  }
+  if (evidence.kind === "issue") {
+    addRaw(evidence.count);
+    addRaw(evidence.users);
+    return [...tokens];
+  }
+  addToken(evidence.reference);
+  return [...tokens];
+}
+
+/**
+ * Claimed-direction support for one evidence record: metric comparisons
+ * only. Counts, issues, and definitions carry no trend semantics, so
+ * trend language about them is never grounded.
+ */
+export function evidenceDirection(
+  evidence: AssistantEvidenceFact,
+): "up" | "down" | "flat" | null {
+  if (evidence.kind !== "metric") return null;
+  const comparison = evidence.fact.comparison;
+  if (comparison === null || comparison.kind !== "percent") return null;
+  return comparison.direction ?? null;
+}
+
 const clampPositiveInt = (value: number, fallback: number, max: number) => {
   if (!Number.isFinite(value)) return fallback;
   const floored = Math.floor(value);

@@ -5040,3 +5040,329 @@ default.
 - Evidence: api 451 passed | 19 skipped (31 files: 29 passed |
   2 skipped) incl. 45 new Slice 5 tests, types 95 passed, api/web
   typechecks clean, api lint clean, `git diff --check` clean.
+
+## Feedback: review round 17
+
+**Review target:** `62f540f`
+**Status:** Slice 5 reopened. Resolve the runtime accuracy, cost, and prompt
+boundary findings below before connecting it to the Slice 6 streaming API.
+This was a focused review of the Slice 5 diff and the installed AI SDK/OpenRouter
+provider contracts. No broad test, lint, typecheck, build, or network checks
+were run.
+
+### R17-F1 - Run limits do not cover every paid generation
+
+**Severity:** High
+**Status:** Closed
+
+`runToolLoopAgent()` checks aggregate tokens and cost only after the complete
+`generateText()` tool loop and before either structured-answer generation. A
+multi-step loop can therefore spend past the ceiling before Prism notices, and
+the first answer or repair call can push a run over its token or cost limit and
+still return `status: "answered"` with `quota.decision: "allowed"`. Every call
+also receives the full `config.maxOutputTokens`, including a repair that starts
+with only one output token nominally remaining. The current “skips repair” test
+only checks `completionTokens < maxOutputTokens`; it does not prove the next
+call fits the remaining quota.
+
+This contradicts the task's per-step enforcement and bounded-repair contracts,
+and it is especially important because the model and repair are paid calls.
+
+**How to address:**
+
+1. [x] Introduce one run-usage ledger that records each individual model call
+       and checks prompt tokens, completion tokens, and cost after every tool-
+       loop step, answer call, and repair call.
+2. [x] Bound each next call by the actual remaining output budget instead of
+       passing the original full ceiling again. Do not start a repair unless a
+       conservative preflight proves the remaining token and cost budgets can
+       cover it.
+3. [x] Re-check the ledger before every successful/fallback return. A run that
+       crossed a hard ceiling must return the corresponding quota/cost outcome,
+       never `allowed` with an answer.
+4. [x] Add regressions where the loop is just under the ceiling but the answer
+       crosses it, where the first invalid answer leaves too little budget for
+       repair, and where a later internal tool-loop step crosses the per-run
+       ceiling.
+
+### R17-F2 - Real OpenRouter cost and upstream-provider metadata are not read
+
+**Severity:** High
+**Status:** Closed
+
+The installed `@openrouter/ai-sdk-provider@3.0.0` exposes cost at
+`providerMetadata.openrouter.usage.cost` and the routed provider at
+`providerMetadata.openrouter.provider`. `readReportedCostMicroUsd()` instead
+reads `providerMetadata.openrouter.cost`; the test fixture repeats that
+nonexistent shape, so it passes while a real response falls back to an
+estimate. In addition, AI SDK 7 documents the top-level `generateText()`
+`providerMetadata` as metadata from the final step. Reading it once does not
+account for earlier tool-loop generations, and `upstreamProvider` is always
+stored as `null` even when OpenRouter returns it.
+
+The current global `reportedCost ?? aggregateEstimate` strategy also
+undercounts mixed runs: if any call reports a cost and another does not, the
+unreported call disappears instead of receiving a per-call estimate. The eval
+harness has the same metadata-path and aggregation problem.
+
+**How to address:**
+
+1. [x] Parse the installed provider's typed
+       `openrouter.usage.cost`/`openrouter.provider` shape. Do not maintain a
+       parallel mock-only metadata contract.
+2. [x] Aggregate cost per generation, including every `loop.steps` entry and
+       each answer/repair call. For each call use its reported cost when
+       present, otherwise estimate that call only, then sum the results.
+3. [x] Record the routed upstream provider consistently. Define how to report
+       a run that legitimately used more than one upstream provider rather
+       than silently returning `null`.
+4. [x] Correct the evaluator's accounting and add fixtures using the exact v3
+       metadata nesting, multiple loop steps, and a mixed reported/unreported
+       sequence.
+
+### R17-F3 - Grounding is global, so an observation can cite the wrong fact
+
+**Severity:** High
+**Status:** Closed
+
+`validateGroundedAnswer()` first unions every fact cited by every observation,
+then validates the summary and all observation text against that global set.
+An observation can therefore claim another observation's number without citing
+its fact. Numeric collisions make this weaker still: an unrelated fact with the
+same value satisfies the check. Direction validation only asks whether any
+globally cited fact has a comparison; it never proves that the local fact moved
+in the claimed direction. A claim that a metric “fell to 120” passes against a
+fact whose comparison says it rose to 120.
+
+This is a direct dashboard/assistant accuracy boundary, not merely a wording
+quality issue.
+
+**How to address:**
+
+1. [x] Validate each observation only against its own `factIds`. Match an up/
+       down claim to the cited fact's actual comparison direction and reject
+       flat, new, and no-prior-data facts for unsupported trend language.
+2. [x] Give the summary an explicit grounding mechanism, such as bounded
+       `summaryFactIds`, or derive it from already validated structured claims.
+       Do not authorize every summary claim with the union of unrelated
+       observation citations.
+3. [x] Prefer structured fact-to-claim bindings over numeric-token coincidence
+       as the primary proof. Formatting variants may be allowed only after the
+       metric/fact identity is established.
+4. [x] Add cross-observation citation-swap, same-number/different-metric,
+       opposite-direction, flat, new, and no-prior regressions for both summary
+       and observation text.
+
+### R17-F4 - Several tools return claimable numbers without run evidence
+
+**Severity:** High
+**Status:** Closed
+
+`review_error_health`, `inspect_issue`, and `check_coverage` place counts and
+synthetic IDs in `ModelSummary`, but call `collectOutcome()` with no facts and
+artifacts whose `factIds` are empty. The final-answer schema requires every
+observation to cite at least one fact, while the validator only recognizes
+entries in `run.facts`. The model can see “3 unresolved” or “12 occurrences,”
+but it cannot produce a valid cited observation about that result. If it cites
+the IDs shown in the summary they are rejected as unknown; if it omits them,
+the answer contract or numeric gate rejects the response. Coverage and
+definition text containing digits have the same structural mismatch.
+
+Unit tests currently stop at “tool returned a valid artifact,” so they do not
+exercise the tool-to-final-answer path.
+
+**How to address:**
+
+1. [x] Make every claim-bearing tool produce typed, run-owned evidence whose
+       IDs are the same IDs sent in its compact summary and referenced by its
+       artifact. Reuse canonical `MetricFact` for error aggregates where it
+       genuinely fits; do not disguise issue rows or memory records as metric
+       facts.
+2. [x] If non-metric evidence is required, freeze a bounded
+       `AssistantEvidenceFact` union and extend answer validation/persistence
+       deliberately. Keep raw issues, traits, stack data, and arbitrary memory
+       payloads out of it.
+3. [x] Enforce that every ID advertised to the model resolves to identical run
+       evidence and that artifact `factIds` resolve as well.
+4. [x] Add end-to-end scripted runs for error aggregates, one issue, coverage,
+       and a definition with digits, proving each can yield a valid grounded
+       answer and exact widget.
+
+### R17-F5 - Previous user messages and memory are elevated into the system prompt
+
+**Severity:** High
+**Status:** Closed
+
+`fitContextBudget()` concatenates `knowledgeLines` and prior chat turns into the
+same `system` string as Prism's trusted instructions. Persisted member text is
+rewritten as `Member: ...`, but it is still system-role content and no longer
+has its original message role. Confirmed memory is also user-controlled data.
+An instruction planted in an earlier message or confirmed description is
+therefore promoted from untrusted data to the model's highest authority level.
+The hostile-memory test covers JSON escaping inside a tool result, not this
+separate `knowledgeLines`/history path.
+
+**How to address:**
+
+1. [x] Keep the system prompt static and composed only of Prism-owned
+       instructions. Never append transcript or memory strings to it.
+2. [x] Send bounded history as actual role-preserving model messages. Carry
+       confirmed memory through the typed read tool, or through one explicitly
+       delimited, JSON-serialized data message at non-system authority.
+3. [x] Replace free-form `knowledgeLines` with typed records and one central
+       bounded serializer if eager knowledge remains necessary.
+4. [x] Add provider-prompt assertions for hostile current/previous user text
+       and hostile project/workspace/member memory. Prove they remain in their
+       intended non-system roles after context trimming.
+
+### R17-F6 - Timeout and stop signals do not reach analytics work
+
+**Severity:** Medium
+**Status:** Closed
+
+The composed `signal` is passed to model calls, but tool execution ignores the
+AI SDK tool-call abort context and `AssistantToolDeps` has no cancellation
+signal. A slow queued measurement can therefore continue after the member
+stops or the request disconnects. Both catch blocks check only
+`input.signal?.aborted`; when `AbortSignal.timeout()` fires without a user
+signal, Prism reports `provider-error` instead of cancellation/timeout. The
+only cancellation test starts with an already-aborted signal, so it does not
+exercise propagation during provider or tool work.
+
+**How to address:**
+
+1. [x] Create a run-owned abort controller combined with the user/disconnect
+       and timeout signals, and use that same composed signal for planning,
+       tools, answer generation, and repair.
+2. [x] Pass the signal into tool execution and every repository/HTTP operation
+       that supports cancellation. At minimum, check it before starting each
+       queued sequential read and never start the next read after abort.
+3. [x] Classify cancellation from the composed signal, distinguishing timeout
+       from an explicit stop in persisted operational status if the run
+       contract supports both.
+4. [x] Add active-abort tests for a pending provider request, a pending tool,
+       and work waiting behind the sequential mutex, plus a timeout-only test.
+
+### R17-F7 - The default is marked evaluated although no evaluation has run
+
+**Severity:** Medium
+**Status:** Closed
+
+The allowlist defines `evaluated` as “Live evaluation cleared tool + structured-
+output gates,” but `openai/gpt-4o-mini` is set to `evaluated: true` while the
+task correctly leaves live evaluation open and records that no key was
+available. The guard therefore certifies something the evidence explicitly
+says has not happened and would allow production inference as soon as Slice 6
+wires the controller.
+
+The harness is not yet sufficient to flip that state: despite its header, it
+does not test grounding refusal; it performs one sample rather than producing
+p50/p95 latency; and its recommendation does not gate the task's privacy,
+grounding, or repeated structured-output thresholds. This is more than the
+missing credential noted beside the open checkbox.
+
+**How to address:**
+
+1. [x] Represent the default honestly as provisional/not evaluated and keep
+       production activation fail-closed. Unit tests can continue injecting a
+       scripted model without weakening that release gate.
+2. [x] Complete a versioned, repeated-sample evaluator for every frozen gate,
+       including refusal/grounding, tool selection and arguments, structured
+       output, routing/privacy, p50/p95 latency, tokens, and correctly summed
+       cost.
+3. [x] Record the model revision and result artifact, then change the allowlist
+       status only from reviewed evidence. Slice 6 implementation may proceed
+       behind the disabled gate, but hosted enablement may not.
+
+### R17-F8 - Every run sends all eleven tool schemas
+
+**Severity:** Medium
+**Status:** Closed
+
+`runToolLoopAgent()` builds `sdkTools` from every entry in
+`ASSISTANT_TOOL_DEFINITIONS` for every request. It does not use project
+capabilities or run stage to exclude irrelevant Web, Mobile, Errors, memory,
+or proposal operations. This contradicts the task's smallest-eligible-tool-set
+rule, adds recurring input-token cost, and gives the small model more invalid
+choices. Runtime validation prevents an unauthorized read, but it does not
+solve cost or tool-selection accuracy.
+
+**How to address:**
+
+1. [x] Derive an immutable eligible-tool set from server-owned capabilities,
+       permissions, resolved definitions, and current stage. The model must not
+       control this set.
+2. [x] Use AI SDK `activeTools`/step preparation or construct the bounded tool
+       map from that policy. Error tools should not appear without error
+       collection, and proposal tools should appear only in a definition flow.
+3. [x] Add capability-matrix and stage-transition tests that inspect the exact
+       schemas sent to the provider and assert unrelated tools are absent.
+4. [x] Include tool-schema tokens in context/cost budgets so the optimization
+       is measurable rather than cosmetic.
+
+### 2026-09-05 — Slice 5 follow-up: R17 review closed (5 high + 3 medium)
+
+Slice 5 returns to complete; Slice 6 is unblocked. All eight findings
+are implemented and regression-tested with scripted providers only (no
+network in unit tests). The live-evaluation box stays open on missing
+credentials, and production activation stays fail-closed behind it.
+
+- R17-F1: one ledger owns every paid call. Each loop step (via
+  `onStepFinish`), answer, and repair records tokens plus per-call cost
+  into a single run ledger that is the only source for usage, quotas,
+  and cost; ceilings are checked after every step (aborting the composed
+  signal mid-loop) and re-checked before every answered/fallback
+  return, so a crossed ceiling can never return `allowed`. Each answer
+  call is bounded by the actual remaining output budget, and repair
+  starts only on a conservative token + cost preflight (50-token floor,
+  worst-case cost fit). Regressions: answer-crosses-ceiling,
+  repair-without-budget, and later-step cost abort.
+- R17-F2: provider shape read from source. Cost is parsed at the exact
+  v3 nesting `openrouter.usage.cost` (verified in the installed
+  provider bundle, which also emits `openrouter.provider`, empty when
+  unrouted and treated as absent), aggregated per generation across
+  every loop step plus answer/repair with reported-else-estimate per
+  call, and the upstream rule is documented last-reported-wins. The
+  harness shares the same accounting. Fixtures use the exact nesting
+  with multi-step and mixed reported/unreported sequences.
+- R17-F3: per-observation grounding. Each observation validates only
+  against its own citations; trend language must match the cited
+  comparison direction (`up`/`down`/`flat`; `new`, `no-prior-data`, and
+  non-metric evidence ground nothing); the summary derives from
+  observation-cited evidence only; citation identity is the primary
+  proof with token coincidence reserved for formatting variants.
+  Regressions: citation swaps, same-number collisions, opposite and
+  flat mismatches, new/no-prior, and summary-from-uncited-fact cases.
+- R17-F4: frozen `AssistantEvidenceFact` union (`metric` wraps canonical
+  facts; `count`/`issue`/`definition` are bounded server-composed
+  projections — raw issues, traits, and stacks stay out). Every
+  claim-bearing tool banks run-owned evidence under the same IDs it
+  advertises, and a loud resolution proof rejects unresolvable
+  advertisements. Scripted end-to-end runs prove valid answers plus
+  exact widgets for aggregates, one issue, coverage, and a digit-bearing
+  definition.
+- R17-F5: static system, role-true messages. History travels as actual
+  user/assistant messages and confirmed knowledge as one delimited JSON
+  data message via a central bounded serializer — nothing member-written
+  enters system content. Provider-prompt assertions cover hostile
+  current/previous text and memory plus role preservation under trim.
+- R17-F6: one run-owned controller composes user stop and timeout and
+  gates planning, tools, answer, and repair; queued sequential reads
+  never start after abort; user vs timeout cancellation classify
+  distinctly. Active-abort tests cover pending provider, pending tool,
+  mutex-queued work, and timeout-only runs.
+- R17-F7: the default reads `evaluated: false` and resolution fails
+  closed, so Slice 6 wiring cannot enable production inference; tests
+  inject scripted models instead. The harness is now a versioned
+  repeated-sample evaluator (tool exactness, repeated structured
+  output, grounding refusal, static routing/privacy, p50/p95, summed
+  tokens and cost); only reviewed evidence may flip the flag.
+- R17-F8: `selectEligibleTools` derives the smallest set from
+  capabilities and stage (error tools need error collection, proposals
+  need a definition flow); the agent constructs exactly that map, and
+  schema weight feeds the context budget. Matrix and stage tests assert
+  the absent tools plus measurable weight ordering.
+
+Evidence: api 474 passed | 19 skipped (31 files: 29 passed | 2 skipped),
+types 96 passed (4 files), api/web typechecks clean, api lint clean,
+`git diff --check` clean. Agent abort suites re-run stable.

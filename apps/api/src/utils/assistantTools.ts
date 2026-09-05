@@ -32,11 +32,13 @@ import {
   STANDARD_EVENT_KEYS,
   TOOL_REGISTRY,
   type AssistantArtifact,
+  type AssistantEvidenceFact,
   type AuthorizedProjectContext,
   type MemoryRecord,
   type MetricFact,
   type MetricId,
   type ModelSummary,
+  type ProjectCapabilities,
   type PublicQueryContext,
   type ToolId,
 } from "@prism-analytics/types";
@@ -150,7 +152,8 @@ export type AssistantToolDeps = {
 export type ToolRunScope = {
   memo: Map<string, ToolOutcome>;
   artifactSeq: () => string;
-  facts: Map<string, MetricFact>;
+  /** Every ID advertised to the model resolves here, identically. */
+  facts: Map<string, AssistantEvidenceFact>;
   artifacts: Map<string, AssistantArtifact>;
 };
 
@@ -306,17 +309,19 @@ function collectOutcome(
   run: ToolRunScope,
   summary: ModelSummary,
   artifact: AssistantArtifact | undefined,
-  facts: readonly MetricFact[],
+  evidence: readonly AssistantEvidenceFact[],
 ): ToolOutcome {
   // Artifact fact IDs must be unique (frozen consistency rule): bucket
   // rows share one canonical ID across windows, so dedupe in order.
   const seen = new Set<string>();
   const factIds: string[] = [];
-  for (const fact of facts) {
-    if (!run.facts.has(fact.id)) run.facts.set(fact.id, fact);
-    if (!seen.has(fact.id)) {
-      seen.add(fact.id);
-      factIds.push(fact.id);
+  for (const record of evidence) {
+    const id =
+      record.kind === "metric" ? record.fact.id : record.id;
+    if (!run.facts.has(id)) run.facts.set(id, record);
+    if (!seen.has(id)) {
+      seen.add(id);
+      factIds.push(id);
     }
   }
   const artifactIds: string[] = [];
@@ -325,6 +330,63 @@ function collectOutcome(
     artifactIds.push(artifact.id);
   }
   return { ok: true, result: { summary, artifact, factIds, artifactIds } };
+}
+
+/** Wrap canonical facts as metric evidence (identity preserved). */
+function metricEvidence(
+  facts: readonly MetricFact[],
+): AssistantEvidenceFact[] {
+  return facts.map((fact) => ({
+    kind: "metric" as const,
+    fact,
+  }));
+}
+
+/**
+ * Resolution proof (R17-F4.3): every ID a tool advertises — summary
+ * items, result fact IDs, and artifact fact IDs — resolves to identical
+ * run evidence. Violations are loud tool errors, never silent drops.
+ */
+export function verifyToolOutcome(
+  run: ToolRunScope,
+  outcome: ToolOutcome,
+): ToolOutcome {
+  if (!outcome.ok) return outcome;
+  const missing = outcome.result.factIds.filter((id) => !run.facts.has(id));
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      failure: {
+        code: "tool-error",
+        message: "Tool advertised unresolvable evidence",
+      },
+    };
+  }
+  for (const id of outcome.result.summary.factIds) {
+    if (!run.facts.has(id)) {
+      return {
+        ok: false,
+        failure: {
+          code: "tool-error",
+          message: "Tool summary cites unresolvable evidence",
+        },
+      };
+    }
+  }
+  if (outcome.result.artifact) {
+    for (const id of outcome.result.artifact.factIds) {
+      if (!run.facts.has(id)) {
+        return {
+          ok: false,
+          failure: {
+            code: "tool-error",
+            message: "Tool artifact cites unresolvable evidence",
+          },
+        };
+      }
+    }
+  }
+  return outcome;
 }
 
 function metricLabel(metricId: string): string {
@@ -397,12 +459,25 @@ const resolveDefinition: ToolDefinitionEntry<{
     key: z.string().min(1).max(120),
   }),
   execute: async (deps, input, run) => {
+    const definitionEvidence = (
+      id: string,
+      label: string,
+      state: "confirmed" | "proposed" | "standard-event" | "missing",
+      reference: string,
+    ): AssistantEvidenceFact => ({
+      kind: "definition",
+      id,
+      label: label.slice(0, 160),
+      state,
+      reference: reference.slice(0, 200),
+    });
     try {
       if (input.kind === "standard-event") {
         if (!(STANDARD_EVENT_KEYS as readonly string[]).includes(input.key)) {
+          const missingId = `definition:missing:${input.key.slice(0, 64)}`;
           const summary = buildModelSummary([
             {
-              id: `definition:missing:${input.key.slice(0, 64)}`,
+              id: missingId,
               label: "Definition state",
               value: "missing",
             },
@@ -421,20 +496,28 @@ const resolveDefinition: ToolDefinitionEntry<{
               reason: `No Standard Event named ${input.key.slice(0, 64)} exists.`,
               nextAction: "Ask about an observed event from coverage.",
             },
-            [],
+            [
+              definitionEvidence(
+                missingId,
+                "Definition state",
+                "missing",
+                "missing",
+              ),
+            ],
           );
         }
+        const knownId = `standard-event:${input.key}`;
         return collectOutcome(
           run,
           buildModelSummary([
             {
-              id: `standard-event:${input.key}`,
+              id: knownId,
               label: "Standard event",
               value: `${input.key} is a known event key`,
             },
           ]),
           undefined,
-          [],
+          [definitionEvidence(knownId, "Standard event", "standard-event", input.key)],
         );
       }
       const records = await deps.listMemoryRecords({
@@ -463,17 +546,20 @@ const resolveDefinition: ToolDefinitionEntry<{
           );
         });
       if (!record) {
+        const missingId = `definition:missing:${input.key.slice(0, 64)}`;
         return collectOutcome(
           run,
           buildModelSummary([
             {
-              id: `definition:missing:${input.key.slice(0, 64)}`,
+              id: missingId,
               label: "Definition state",
               value: "missing",
             },
           ]),
           undefined,
-          [],
+          [
+            definitionEvidence(missingId, "Definition state", "missing", "missing"),
+          ],
         );
       }
       const payload = record.value.payload as {
@@ -483,6 +569,16 @@ const resolveDefinition: ToolDefinitionEntry<{
       };
       const display =
         payload.name ?? payload.eventKey ?? payload.eventName ?? record.key;
+      const state =
+        record.status === "confirmed" || record.status === "proposed"
+          ? record.status
+          : "proposed";
+      const recordEvidence = definitionEvidence(
+        record.id,
+        record.value.label,
+        state,
+        display,
+      );
       const summary = buildModelSummary([
         {
           id: record.id,
@@ -506,21 +602,18 @@ const resolveDefinition: ToolDefinitionEntry<{
             id: run.artifactSeq(),
             title: record.value.label.slice(0, 140),
             summary: record.value.description.slice(0, 500),
-            factIds: [],
+            factIds: [record.id],
             queryContext: runWindowContext(deps),
             drilldown: { destination: "overview", label: "Overview" },
             proposalId: record.id,
             memoryKey: record.key,
             description: record.value.description.slice(0, 500),
-            status:
-              record.status === "confirmed" || record.status === "proposed"
-                ? record.status
-                : "proposed",
+            status: state,
           },
-          [],
+          [recordEvidence],
         );
       }
-      return collectOutcome(run, summary, undefined, []);
+      return collectOutcome(run, summary, undefined, [recordEvidence]);
     } catch (error) {
       return { ok: false, failure: toFailure(error) };
     }
@@ -574,7 +667,7 @@ const measureMetric: ToolDefinitionEntry<MetricQueryInput> = {
             drilldown: fact.drilldown,
             fact,
           },
-          facts,
+          metricEvidence(facts),
         );
       }
       return collectOutcome(
@@ -600,7 +693,7 @@ const measureMetric: ToolDefinitionEntry<MetricQueryInput> = {
             fact.formattedValue,
           ]),
         },
-        facts,
+        metricEvidence(facts),
       );
     } catch (error) {
       return { ok: false, failure: toFailure(error) };
@@ -688,7 +781,7 @@ const comparePeriods: ToolDefinitionEntry<MetricQueryInput> = {
           current,
           previous: parsed.data,
         },
-        [current, parsed.data],
+        metricEvidence([current, parsed.data]),
       );
     } catch (error) {
       return { ok: false, failure: toFailure(error) };
@@ -807,7 +900,7 @@ const analyzeTrend: ToolDefinitionEntry<
             { name: metricLabel(input.metricId).slice(0, 80), points },
           ],
         },
-        bucketFacts,
+        metricEvidence(bucketFacts),
       );
     } catch (error) {
       return { ok: false, failure: toFailure(error) };
@@ -858,7 +951,12 @@ const breakDownMetric: ToolDefinitionEntry<
       }
       const totalEnvelope = await deps.measure([request], scope);
       const total = totalEnvelope.facts[0]?.value ?? null;
-      const rows: Array<{ key: string; label: string; value: number }> = [];
+      const rows: Array<{
+        key: string;
+        label: string;
+        value: number;
+        fact: MetricFact;
+      }> = [];
       const rowFacts: MetricFact[] = [...totalEnvelope.facts];
       for (const value of mapping.values) {
         const envelope = await deps.measure(
@@ -872,7 +970,7 @@ const breakDownMetric: ToolDefinitionEntry<
         );
         const fact = envelope.facts[0];
         if (fact && fact.value !== null && Number.isFinite(fact.value)) {
-          rows.push({ key: value, label: value, value: fact.value });
+          rows.push({ key: value, label: value, value: fact.value, fact });
           rowFacts.push(fact);
         }
         if (rows.length >= ARTIFACT_LIMITS.maxBreakdownRows) break;
@@ -881,9 +979,9 @@ const breakDownMetric: ToolDefinitionEntry<
       const summary = buildModelSummary(
         rows.length > 0
           ? rows.map((row) => ({
-              id: `breakdown:${input.dimension}:${row.key}`,
-              label: row.label,
-              value: String(row.value),
+              id: row.fact.id,
+              label: `${row.label} ${metricLabel(request.metricId)}`,
+              value: row.fact.formattedValue,
             }))
           : [
               {
@@ -925,7 +1023,7 @@ const breakDownMetric: ToolDefinitionEntry<
                 : null,
           })),
         },
-        rowFacts,
+        metricEvidence(rowFacts),
       );
     } catch (error) {
       return { ok: false, failure: toFailure(error) };
@@ -998,9 +1096,9 @@ const rankEntities: ToolDefinitionEntry<{
       const summary = buildModelSummary(
         rows.length > 0
           ? rows.map((row) => ({
-              id: `rank:${input.entity}:${row.key}`,
+              id: row.fact.id,
               label: row.label,
-              value: String(row.value),
+              value: row.fact.formattedValue,
             }))
           : [
               {
@@ -1036,7 +1134,7 @@ const rankEntities: ToolDefinitionEntry<{
             sharePercent: null,
           })),
         },
-        rows.map((row) => row.fact),
+        metricEvidence(rows.map((row) => row.fact)),
       );
     } catch (error) {
       return { ok: false, failure: toFailure(error) };
@@ -1063,23 +1161,38 @@ const reviewErrorHealth: ToolDefinitionEntry<{
       const context = runWindowContext(deps);
       if (input.view === "aggregates") {
         const counts = await deps.errorAggregates();
-        const summary = buildModelSummary([
+        const evidence: AssistantEvidenceFact[] = [
           {
+            kind: "count",
             id: "errors:unresolved",
             label: "Unresolved issues",
-            value: String(counts.unresolved),
+            value: counts.unresolved,
+            unit: "issues",
           },
           {
+            kind: "count",
             id: "errors:fresh",
             label: "New issues",
-            value: String(counts.fresh),
+            value: counts.fresh,
+            unit: "issues",
           },
           {
+            kind: "count",
             id: "errors:regressing",
             label: "Regressing issues",
-            value: String(counts.regressing),
+            value: counts.regressing,
+            unit: "issues",
           },
-        ]);
+        ];
+        const summary = buildModelSummary(
+          evidence
+            .filter((record) => record.kind === "count")
+            .map((record) => ({
+              id: record.id,
+              label: record.label,
+              value: String(record.value),
+            })),
+        );
         return collectOutcome(
           run,
           summary,
@@ -1088,7 +1201,7 @@ const reviewErrorHealth: ToolDefinitionEntry<{
             id: run.artifactSeq(),
             title: "Error health",
             summary: `${counts.unresolved} unresolved, ${counts.fresh} new, ${counts.regressing} regressing.`,
-            factIds: [],
+            factIds: ["errors:unresolved", "errors:fresh", "errors:regressing"],
             queryContext: context,
             drilldown: { destination: "errors", label: "Errors" },
             columns: ["State", "Count"],
@@ -1098,7 +1211,7 @@ const reviewErrorHealth: ToolDefinitionEntry<{
               ["Regressing", counts.regressing],
             ],
           },
-          [],
+          evidence,
         );
       }
       const issues = (
@@ -1126,9 +1239,18 @@ const reviewErrorHealth: ToolDefinitionEntry<{
           [],
         );
       }
+      const evidence: AssistantEvidenceFact[] = issues.map((issue) => ({
+        kind: "issue",
+        id: `issue:${issue.id}`.slice(0, 128),
+        title: issue.title.slice(0, 200),
+        status: issue.status,
+        count: issue.count,
+        users: issue.users,
+        delta: issue.delta,
+      }));
       const summary = buildModelSummary(
         issues.map((issue) => ({
-          id: `issue:${issue.id}`,
+          id: `issue:${issue.id}`.slice(0, 128),
           label: issue.title.slice(0, 160),
           value: `${issue.count} occurrences`,
         })),
@@ -1141,7 +1263,9 @@ const reviewErrorHealth: ToolDefinitionEntry<{
           id: run.artifactSeq(),
           title: "Error issues",
           summary: `${issues.length} issues by occurrences.`,
-          factIds: [],
+          factIds: issues.map((issue) =>
+            `issue:${issue.id}`.slice(0, 128),
+          ),
           queryContext: context,
           drilldown: { destination: "errors", label: "Errors" },
           issues: issues.map((issue) => ({
@@ -1158,7 +1282,7 @@ const reviewErrorHealth: ToolDefinitionEntry<{
             },
           })),
         },
-        [],
+        evidence,
       );
     } catch (error) {
       return { ok: false, failure: toFailure(error) };
@@ -1181,9 +1305,19 @@ const inspectIssue: ToolDefinitionEntry<{ issueId: string }> = {
           failure: { code: "not-found", message: "Issue not found" },
         };
       }
+      const evidenceId = `issue:${issue.id}`.slice(0, 128);
+      const evidence: AssistantEvidenceFact = {
+        kind: "issue",
+        id: evidenceId,
+        title: issue.title.slice(0, 200),
+        status: issue.status,
+        count: issue.count,
+        users: issue.users,
+        delta: issue.delta,
+      };
       const summary = buildModelSummary([
         {
-          id: `issue:${issue.id}`,
+          id: evidenceId,
           label: issue.title.slice(0, 160),
           value: `${issue.count} occurrences, ${issue.users} users, ${issue.status}`,
         },
@@ -1209,7 +1343,7 @@ const inspectIssue: ToolDefinitionEntry<{ issueId: string }> = {
           id: run.artifactSeq(),
           title: issue.title.slice(0, 140),
           summary: `${issue.count} occurrences across ${issue.users} users.`,
-          factIds: [],
+          factIds: [evidenceId],
           queryContext: runWindowContext(deps),
           drilldown: {
             destination: "errors-issue",
@@ -1218,7 +1352,7 @@ const inspectIssue: ToolDefinitionEntry<{ issueId: string }> = {
           },
           issues: [{ ...row }],
         },
-        [],
+        [evidence],
       );
     } catch (error) {
       return { ok: false, failure: toFailure(error) };
@@ -1241,18 +1375,31 @@ const checkCoverage: ToolDefinitionEntry<Record<string, never>> = {
       if (observed === 0) {
         warnings.push("No confirmed definitions back this project yet.");
       }
-      const summary = buildModelSummary([
+      const evidence: AssistantEvidenceFact[] = [
         {
+          kind: "count",
           id: "coverage:sources",
           label: "Authorized sources",
-          value: String(deps.authorized.allowedSourceIds.length),
+          value: deps.authorized.allowedSourceIds.length,
+          unit: "sources",
         },
         {
+          kind: "count",
           id: "coverage:definitions",
           label: "Confirmed definitions",
-          value: String(observed),
+          value: observed,
+          unit: "definitions",
         },
-      ]);
+      ];
+      const summary = buildModelSummary(
+        evidence
+          .filter((record) => record.kind === "count")
+          .map((record) => ({
+            id: record.id,
+            label: record.label,
+            value: String(record.value),
+          })),
+      );
       return collectOutcome(
         run,
         summary,
@@ -1265,7 +1412,7 @@ const checkCoverage: ToolDefinitionEntry<Record<string, never>> = {
               0,
               500,
             ),
-          factIds: [],
+          factIds: ["coverage:sources", "coverage:definitions"],
           queryContext: runWindowContext(deps),
           drilldown: { destination: "sources", label: "Sources" },
           coverage: {
@@ -1275,7 +1422,7 @@ const checkCoverage: ToolDefinitionEntry<Record<string, never>> = {
             warnings: warnings.slice(0, 8),
           },
         },
-        [],
+        evidence,
       );
     } catch (error) {
       return { ok: false, failure: toFailure(error) };
@@ -1335,7 +1482,32 @@ const readProjectKnowledge: ToolDefinitionEntry<{
           };
         }),
       );
-      return collectOutcome(run, summary, undefined, []);
+      const evidence: AssistantEvidenceFact[] = selected
+        .slice(0, 12)
+        .map((entry) => {
+          const payload = entry.value.payload as {
+            name?: string;
+            range?: string;
+            eventKey?: string;
+            eventName?: string;
+          };
+          const reference = (
+            payload.name ??
+            payload.range ??
+            payload.eventKey ??
+            payload.eventName ??
+            entry.key
+          ).slice(0, 200);
+          return {
+            kind: "definition" as const,
+            id: entry.id,
+            label: entry.value.label.slice(0, 160),
+            // readKnowledge returns confirmed records only.
+            state: "confirmed" as const,
+            reference: reference.length > 0 ? reference : entry.key,
+          };
+        });
+      return collectOutcome(run, summary, undefined, evidence);
     } catch (error) {
       return { ok: false, failure: toFailure(error) };
     }
@@ -1397,6 +1569,13 @@ const proposeDefinition: ToolDefinitionEntry<{
           value: "proposed, awaiting confirmation",
         },
       ]);
+      const evidence: AssistantEvidenceFact = {
+        kind: "definition",
+        id: record.id,
+        label: record.value.label.slice(0, 160),
+        state: "proposed",
+        reference: record.value.label.slice(0, 200),
+      };
       return collectOutcome(
         run,
         summary,
@@ -1409,7 +1588,7 @@ const proposeDefinition: ToolDefinitionEntry<{
               0,
               500,
             ),
-          factIds: [],
+          factIds: [record.id],
           queryContext: runWindowContext(deps),
           drilldown: { destination: "overview", label: "Overview" },
           proposalId: record.id,
@@ -1417,7 +1596,7 @@ const proposeDefinition: ToolDefinitionEntry<{
           description: record.value.description.slice(0, 500),
           status: "proposed",
         },
-        [],
+        [evidence],
       );
     } catch (error) {
       return { ok: false, failure: toFailure(error) };
@@ -1438,6 +1617,72 @@ export const ASSISTANT_TOOL_DEFINITIONS = {
   read_project_knowledge: readProjectKnowledge,
   propose_definition: proposeDefinition,
 } as const;
+
+/** Run stage: definition flows unlock the proposal tool. */
+export type AgentStage = "general" | "definition";
+
+/**
+ * Smallest eligible tool set (R17-F8): derived from server-owned
+ * capabilities and stage only — never from model input. Error tools
+ * require error collection; the proposal tool appears only in a
+ * definition flow (v1 has no confirm tool, and any member may propose).
+ * Measurement, knowledge, and coverage tools are always eligible and
+ * fail safe on empty data.
+ */
+export function selectEligibleTools(input: {
+  capabilities: ProjectCapabilities;
+  stage: AgentStage;
+}): ToolId[] {
+  const eligible: ToolId[] = [
+    "resolve_definition",
+    "measure_metric",
+    "compare_periods",
+    "analyze_trend",
+    "break_down_metric",
+    "rank_entities",
+    "check_coverage",
+    "read_project_knowledge",
+  ];
+  if (input.capabilities.errorCollection.configured) {
+    eligible.push("review_error_health", "inspect_issue");
+  }
+  if (input.stage === "definition") {
+    eligible.push("propose_definition");
+  }
+  return eligible;
+}
+
+/** Exact input-field counts per tool (reviewable, no schema introspection). */
+const TOOL_INPUT_FIELDS: Record<ToolId, number> = {
+  resolve_definition: 2,
+  measure_metric: 3,
+  compare_periods: 3,
+  analyze_trend: 4,
+  break_down_metric: 4,
+  rank_entities: 5,
+  review_error_health: 3,
+  inspect_issue: 1,
+  check_coverage: 0,
+  read_project_knowledge: 1,
+  propose_definition: 5,
+};
+
+/**
+ * Estimated input-token weight of sending tool schemas to the provider:
+ * identifier plus frozen description plus a per-field allowance. The
+ * agent subtracts this from the context budget so the eligible-set
+ * optimization is measurable rather than cosmetic.
+ */
+export function toolSchemaChars(toolIds: readonly ToolId[]): number {
+  return toolIds.reduce(
+    (sum, id) =>
+      sum +
+      id.length +
+      TOOL_REGISTRY[id].description.length +
+      TOOL_INPUT_FIELDS[id] * 24,
+    0,
+  );
+}
 
 export function toolActivityLabel(
   toolId: ToolId,

@@ -22,6 +22,7 @@ import {
   type AssistantArtifact,
   type AuthorizedProjectContext,
   type MetricFact,
+  type ProjectCapabilities,
 } from "@prism-analytics/types";
 import type { MemoryRecord } from "@prism-analytics/types";
 import type {
@@ -666,5 +667,70 @@ describe("memoization and channel split", () => {
     expect(JSON.stringify(outcome.result.summary)).not.toContain(
       '"definitionVersion"',
     );
+  });
+});
+
+describe("eligible tool sets", () => {
+  it("derives the smallest set from capabilities and stage", async () => {
+    const { selectEligibleTools, toolSchemaChars } = await import(
+      "../utils/assistantTools"
+    );
+    const base: ProjectCapabilities = {
+      web: false,
+      mobile: false,
+      server: true,
+      errorCollection: { configured: false, observed: false },
+      standardEventsObserved: [],
+      sources: { total: 1, active: 1, lastReceivedAt: null },
+      trafficPolicy: "human",
+    };
+    const general = selectEligibleTools({
+      capabilities: { ...base },
+      stage: "general",
+    });
+    expect(general).not.toContain("review_error_health");
+    expect(general).not.toContain("inspect_issue");
+    expect(general).not.toContain("propose_definition");
+    expect(general).toContain("measure_metric");
+    const withErrors = selectEligibleTools({
+      capabilities: {
+        ...base,
+        errorCollection: { configured: true, observed: true },
+      },
+      stage: "general",
+    });
+    expect(withErrors).toContain("review_error_health");
+    expect(withErrors).toContain("inspect_issue");
+    expect(withErrors).not.toContain("propose_definition");
+    const defining = selectEligibleTools({
+      capabilities: { ...base },
+      stage: "definition",
+    });
+    expect(defining).toContain("propose_definition");
+    // Schema weight is measurable: the eligible set costs less context.
+    expect(toolSchemaChars(general)).toBeGreaterThan(0);
+    expect(toolSchemaChars(withErrors)).toBeGreaterThan(
+      toolSchemaChars(general),
+    );
+  });
+
+  it("rejects outcomes advertising unresolvable evidence", async () => {
+    const { verifyToolOutcome } = await import("../utils/assistantTools");
+    const run = newRun();
+    expect(
+      verifyToolOutcome(run, {
+        ok: true,
+        result: {
+          summary: {
+            factIds: ["ghost"],
+            text: "x",
+            truncated: false,
+            omittedFacts: 0,
+          },
+          factIds: ["ghost"],
+          artifactIds: [],
+        },
+      }),
+    ).toMatchObject({ ok: false, failure: { code: "tool-error" } });
   });
 });

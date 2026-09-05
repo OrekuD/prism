@@ -22,6 +22,7 @@ import {
   AssistantAnswerSchema,
   PROMPT_INJECTION_FIXTURES,
   type AssistantAnswer,
+  type AssistantEvidenceFact,
   type AuthorizedProjectContext,
   type MetricFact,
 } from "@prism-analytics/types";
@@ -172,6 +173,10 @@ function answerWith(overrides: Partial<AssistantAnswer>): AssistantAnswer {
   };
 }
 
+function ev(fact: MetricFact): AssistantEvidenceFact {
+  return { kind: "metric", fact };
+}
+
 describe("grounded-answer validation", () => {
   it("accepts fully cited numeric and directional claims", () => {
     const fact = factWith({ id: "f1" });
@@ -182,13 +187,13 @@ describe("grounded-answer validation", () => {
       ],
     });
     expect(
-      validateGroundedAnswer(answer, new Map([["f1", fact]]), new Set()),
+      validateGroundedAnswer(answer, new Map([["f1", ev(fact)]]), new Set()),
     ).toEqual({ ok: true });
   });
 
   it("rejects unknown facts, foreign artifacts, and causal claims", () => {
     const fact = factWith({ id: "f1" });
-    const facts = new Map([["f1", fact]]);
+    const facts = new Map([["f1", ev(fact)]]);
     expect(
       validateGroundedAnswer(
         answerWith({
@@ -219,7 +224,7 @@ describe("grounded-answer validation", () => {
 
   it("rejects unsupported numbers and direction without comparison", () => {
     const fact = factWith({ id: "f1" });
-    const facts = new Map([["f1", fact]]);
+    const facts = new Map([["f1", ev(fact)]]);
     expect(
       validateGroundedAnswer(
         answerWith({ summary: "Accepted events hit 9,999." }),
@@ -244,7 +249,7 @@ describe("grounded-answer validation", () => {
           summary: "Events increased to 50.",
           observations: [{ text: "Events increased to 50.", factIds: ["f2"] }],
         }),
-        new Map([["f2", flat]]),
+        new Map([["f2", ev(flat)]]),
         new Set(),
       ),
     ).toMatchObject({ ok: false });
@@ -268,10 +273,317 @@ describe("grounded-answer validation", () => {
           summary: "Sign up completed at 50. Break down by source on request.",
           observations: [{ text: "Sign up completed at 50.", factIds: ["f2"] }],
         }),
-        new Map([["f2", flat]]),
+        new Map([["f2", ev(flat)]]),
         new Set(),
       ),
     ).toEqual({ ok: true });
+  });
+
+  it("ignores non-directional up/down phrases", () => {
+    const flat = factWith({
+      id: "f2",
+      value: 50,
+      formattedValue: "50",
+      comparison: null,
+      comparisonBasis: {
+        previousValue: null,
+        denominatorCurrent: null,
+        denominatorPrevious: null,
+      },
+    });
+    expect(
+      validateGroundedAnswer(
+        answerWith({
+          summary: "Sign up completed at 50. Break down by source on request.",
+          observations: [{ text: "Sign up completed at 50.", factIds: ["f2"] }],
+        }),
+        new Map([["f2", ev(flat)]]),
+        new Set(),
+      ),
+    ).toEqual({ ok: true });
+  });
+
+  it("confines each observation to its own citations (swap)", () => {
+    const events = factWith({ id: "f_events", label: "Accepted events" });
+    const sessions = factWith({
+      id: "f_sessions",
+      metricId: "project.sessions",
+      label: "Sessions",
+      value: 60,
+      formattedValue: "60",
+      comparison: { kind: "percent", direction: "down", percent: 10 },
+      comparisonBasis: {
+        previousValue: 66,
+        denominatorCurrent: null,
+        denominatorPrevious: null,
+      },
+    });
+    const evidence = new Map([
+      ["f_events", ev(events)],
+      ["f_sessions", ev(sessions)],
+    ]);
+    // Swapped: sessions text citing the events fact fails on numbers.
+    expect(
+      validateGroundedAnswer(
+        answerWith({
+          observations: [
+            { text: "Sessions fell to 60.", factIds: ["f_events"] },
+          ],
+        }),
+        evidence,
+        new Set(),
+      ),
+    ).toMatchObject({ ok: false });
+    // Correctly bound: each observation cites its own fact.
+    expect(
+      validateGroundedAnswer(
+        answerWith({
+          summary: "Events rose to 120 while sessions fell to 60.",
+          observations: [
+            { text: "Accepted events rose to 120.", factIds: ["f_events"] },
+            { text: "Sessions fell to 60.", factIds: ["f_sessions"] },
+          ],
+        }),
+        evidence,
+        new Set(),
+      ),
+    ).toEqual({ ok: true });
+  });
+
+  it("rejects same-number claims from a different metric", () => {
+    const events = factWith({ id: "f_events", label: "Accepted events" });
+    const sessions = factWith({
+      id: "f_sessions",
+      metricId: "project.sessions",
+      label: "Sessions",
+      value: 120,
+      formattedValue: "120",
+      comparison: { kind: "percent", direction: "flat", percent: 0 },
+      comparisonBasis: {
+        previousValue: 120,
+        denominatorCurrent: null,
+        denominatorPrevious: null,
+      },
+    });
+    const evidence = new Map([
+      ["f_events", ev(events)],
+      ["f_sessions", ev(sessions)],
+    ]);
+    // 120 coincides, but the flat sessions fact cannot support "rose".
+    expect(
+      validateGroundedAnswer(
+        answerWith({
+          observations: [
+            { text: "Sessions rose to 120.", factIds: ["f_sessions"] },
+          ],
+        }),
+        evidence,
+        new Set(),
+      ),
+    ).toMatchObject({ ok: false });
+  });
+
+  it("matches trend language to the cited comparison direction", () => {
+    const up = factWith({ id: "f_up" });
+    const down = factWith({
+      id: "f_down",
+      value: 80,
+      formattedValue: "80",
+      comparison: { kind: "percent", direction: "down", percent: 20 },
+      comparisonBasis: {
+        previousValue: 100,
+        denominatorCurrent: null,
+        denominatorPrevious: null,
+      },
+    });
+    const flat = factWith({
+      id: "f_flat",
+      value: 50,
+      formattedValue: "50",
+      comparison: { kind: "percent", direction: "flat", percent: 0 },
+      comparisonBasis: {
+        previousValue: 50,
+        denominatorCurrent: null,
+        denominatorPrevious: null,
+      },
+    });
+    const fresh = factWith({
+      id: "f_new",
+      value: 5,
+      formattedValue: "5",
+      comparison: { kind: "new" },
+      comparisonBasis: {
+        previousValue: 0,
+        denominatorCurrent: null,
+        denominatorPrevious: null,
+      },
+    });
+    const missing = factWith({
+      id: "f_none",
+      value: 7,
+      formattedValue: "7",
+      comparison: { kind: "no-prior-data" },
+      comparisonBasis: {
+        previousValue: null,
+        denominatorCurrent: null,
+        denominatorPrevious: null,
+      },
+    });
+    const evidence = new Map([
+      ["f_up", ev(up)],
+      ["f_down", ev(down)],
+      ["f_flat", ev(flat)],
+      ["f_new", ev(fresh)],
+      ["f_none", ev(missing)],
+    ]);
+    // Opposite direction fails even though the number is cited.
+    expect(
+      validateGroundedAnswer(
+        answerWith({
+          summary: "Trend check.",
+          observations: [{ text: "Events fell to 120.", factIds: ["f_up"] }],
+        }),
+        evidence,
+        new Set(),
+      ),
+    ).toMatchObject({ ok: false });
+    // Flat language needs a flat comparison.
+    expect(
+      validateGroundedAnswer(
+        answerWith({
+          summary: "Trend check.",
+          observations: [{ text: "Events held flat at 50.", factIds: ["f_flat"] }],
+        }),
+        evidence,
+        new Set(),
+      ),
+    ).toEqual({ ok: true });
+    expect(
+      validateGroundedAnswer(
+        answerWith({
+          summary: "Trend check.",
+          observations: [{ text: "Events held flat at 120.", factIds: ["f_up"] }],
+        }),
+        evidence,
+        new Set(),
+      ),
+    ).toMatchObject({ ok: false });
+    // New and no-prior-data ground no trend language at all.
+    for (const [id, value] of [["f_new", 5], ["f_none", 7]] as const) {
+      expect(
+        validateGroundedAnswer(
+          answerWith({
+            summary: "Trend check.",
+            observations: [
+              { text: `Events rose to ${value}.`, factIds: [id] },
+            ],
+          }),
+          evidence,
+          new Set(),
+        ),
+      ).toMatchObject({ ok: false });
+    }
+  });
+
+  it("derives summary claims from cited observations only", () => {
+    const cited = factWith({ id: "f_cited" });
+    const uncited = factWith({
+      id: "f_uncited",
+      metricId: "project.sessions",
+      label: "Sessions",
+      value: 999,
+      formattedValue: "999",
+      comparison: { kind: "percent", direction: "up", percent: 5 },
+      comparisonBasis: {
+        previousValue: 950,
+        denominatorCurrent: null,
+        denominatorPrevious: null,
+      },
+    });
+    const evidence = new Map([
+      ["f_cited", ev(cited)],
+      ["f_uncited", ev(uncited)],
+    ]);
+    // 999 was measured but never cited by an observation: the summary
+    // may not claim it.
+    expect(
+      validateGroundedAnswer(
+        answerWith({
+          summary: "Events rose to 120 and sessions hit 999.",
+          observations: [
+            { text: "Accepted events rose to 120.", factIds: ["f_cited"] },
+          ],
+        }),
+        evidence,
+        new Set(),
+      ),
+    ).toMatchObject({ ok: false });
+  });
+
+  it("grounds non-metric evidence kinds without trend language", () => {
+    const evidence = new Map<string, AssistantEvidenceFact>([
+      [
+        "errors:unresolved",
+        {
+          kind: "count",
+          id: "errors:unresolved",
+          label: "Unresolved issues",
+          value: 3,
+          unit: "issues",
+        },
+      ],
+      [
+        "issue:iss_1",
+        {
+          kind: "issue",
+          id: "issue:iss_1",
+          title: "TypeError in checkout",
+          status: "unresolved",
+          count: 42,
+          users: 7,
+          delta: "new",
+        },
+      ],
+      [
+        "mem_1",
+        {
+          kind: "definition",
+          id: "mem_1",
+          label: "Signup",
+          state: "confirmed",
+          reference: "sign_up",
+        },
+      ],
+    ]);
+    expect(
+      validateGroundedAnswer(
+        answerWith({
+          summary: "3 unresolved issues, led by TypeError in checkout at 42 occurrences across 7 users. Signup means sign_up.",
+          observations: [
+            { text: "3 unresolved issues.", factIds: ["errors:unresolved"] },
+            {
+              text: "TypeError in checkout has 42 occurrences across 7 users.",
+              factIds: ["issue:iss_1"],
+            },
+            { text: "Signup means sign_up.", factIds: ["mem_1"] },
+          ],
+        }),
+        evidence,
+        new Set(),
+      ),
+    ).toEqual({ ok: true });
+    // Trend language about a count is never grounded (no comparison).
+    expect(
+      validateGroundedAnswer(
+        answerWith({
+          observations: [
+            { text: "Unresolved issues rose to 3.", factIds: ["errors:unresolved"] },
+          ],
+        }),
+        evidence,
+        new Set(),
+      ),
+    ).toMatchObject({ ok: false });
   });
 
   it("builds a valid fallback and clamps questions", () => {
@@ -307,7 +619,7 @@ describe("grounded-answer validation", () => {
       observations: [{ text: "Events were 7.", factIds: ["fh"] }],
     });
     expect(
-      validateGroundedAnswer(answer, new Map([["fh", fact]]), new Set()),
+      validateGroundedAnswer(answer, new Map([["fh", ev(fact)]]), new Set()),
     ).toMatchObject({ ok: false });
   });
 });
@@ -317,15 +629,13 @@ describe("model configuration", () => {
     PRISM_AI_ENABLED: "1",
     OPENROUTER_API_KEY: "sk-test",
   };
-  it("resolves the pinned default with routing policy", () => {
-    const config = resolveAssistantModelConfig(baseEnv);
-    expect(config.enabled).toBe(true);
-    expect(config.model.id).toBe("openai/gpt-4o-mini");
-    expect(config.routing.allowedModels).toEqual(["openai/gpt-4o-mini"]);
-    expect(config.routing.allowFallbackModels).toBe(false);
-    expect(config.routing.denyDataCollection).toBe(true);
-    expect(config.routing.requireZeroDataRetention).toBe(true);
-    expect(config.maxSteps).toBe(5);
+  it("keeps production activation fail-closed until evaluation lands", () => {
+    // The provisional default is NOT evaluated: resolving it fails even
+    // with a key and generous caps. Unit tests inject scripted models
+    // instead; Slice 6 wiring stays behind the disabled gate.
+    expect(() => resolveAssistantModelConfig(baseEnv)).toThrowError(
+      expect.objectContaining({ code: "invalid-config" }),
+    );
   });
 
   it("fails closed when disabled, keyless, off-allowlist, or over-cap", () => {
@@ -338,12 +648,29 @@ describe("model configuration", () => {
     expect(() =>
       resolveAssistantModelConfig({ ...baseEnv, PRISM_AI_MODEL: "evil/model" }),
     ).toThrowError(expect.objectContaining({ code: "invalid-config" }));
-    expect(() =>
-      resolveAssistantModelConfig({
-        ...baseEnv,
-        PRISM_AI_MAX_PROMPT_PRICE_PER_MILLION: "0.000001",
-      }),
-    ).toThrowError(expect.objectContaining({ code: "price-exceeded" }));
+  });
+
+  it("shapes exact provider options with privacy routing", async () => {
+    const { assistantCallProviderOptions, assistantProviderOptions } =
+      await import("../utils/assistantModel");
+    const options = assistantProviderOptions({
+      maxPromptPricePerMillionMicroUsd: 1_000_000,
+      maxCompletionPricePerMillionMicroUsd: 4_000_000,
+    } as never);
+    expect(options).toEqual({
+      provider: {
+        allow_fallbacks: false,
+        require_parameters: true,
+        data_collection: "deny",
+        sort: "price",
+        max_price: { prompt: 1, completion: 4 },
+        zdr: true,
+      },
+    });
+    expect(assistantCallProviderOptions("user_1")).toEqual({
+      openrouter: { user: "user_1" },
+    });
+    expect(assistantCallProviderOptions(undefined)).toBeUndefined();
   });
 
   it("prices runs in integer micro-USD", () => {
