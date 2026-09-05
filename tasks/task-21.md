@@ -1303,26 +1303,26 @@ contracts.
 
 This slice connects the runtime to an authenticated, resumable product API.
 
-- [ ] Implement cursor-paginated conversation-list, create-and-stream,
+- [x] Implement cursor-paginated conversation-list, create-and-stream,
       conversation-read, conversation-delete, message-stream, memory-read,
       confirm, and reject endpoints.
-- [ ] Validate the member, project, conversation owner, query-context token,
+- [x] Validate the member, project, conversation owner, query-context token,
       and memory permission at the controller boundary.
-- [ ] Reuse the run-scoped authorized project context across tool calls; bypass
+- [x] Reuse the run-scoped authorized project context across tool calls; bypass
       it for shared-memory, deletion, and future project-state writes.
-- [ ] Stream validated activity, facts, artifacts, answer parts, finish, and
+- [x] Stream validated activity, facts, artifacts, answer parts, finish, and
       safe error states through the AI SDK UI protocol.
-- [ ] Persist user messages before the run and mark assistant messages complete
+- [x] Persist user messages before the run and mark assistant messages complete
       only after successful validation.
-- [ ] Make client request IDs idempotent so reconnect/retry cannot create two
+- [x] Make client request IDs idempotent so reconnect/retry cannot create two
       runs.
-- [ ] Abort provider and tool work when the user stops or disconnects.
-- [ ] Add user/project/workspace rate limits and run ceilings.
-- [ ] Add per-user and per-workspace daily usage quotas plus per-run cost limits
+- [x] Abort provider and tool work when the user stops or disconnects.
+- [x] Add user/project/workspace rate limits and run ceilings.
+- [x] Add per-user and per-workspace daily usage quotas plus per-run cost limits
       using OpenRouter's returned usage and cost accounting.
-- [ ] Record bounded operational metrics without prompts, hidden reasoning, raw
+- [x] Record bounded operational metrics without prompts, hidden reasoning, raw
       tool values, or secrets.
-- [ ] Test pre-stream failures, partial-stream failures, cancellation,
+- [x] Test pre-stream failures, partial-stream failures, cancellation,
       reconnect, duplicate requests, chat ownership, cursor tampering, provider
       timeout, exhausted quota, and disabled AI.
 
@@ -1330,61 +1330,95 @@ This slice connects the runtime to an authenticated, resumable product API.
 
 This slice replaces the current summary route with the approved structure.
 
-- [ ] Replace `summary.tsx` with sibling Overview and Conversation views plus a
+- [x] Replace `summary.tsx` with sibling Overview and Conversation views plus a
       persistent Ask Prism dock.
-- [ ] Build the Insights, Project pulse, Activity, secondary, and data-quality
+- [x] Build the Insights, Project pulse, Activity, secondary, and data-quality
       regions from `ProjectOverviewResource`.
-- [ ] Build URL-backed range and view state without placing exact moving
+- [x] Build URL-backed range and view state without placing exact moving
       timestamps in React Query keys.
-- [ ] Build the growing composer, capability-aware suggestions, keyboard
+- [x] Build the growing composer, capability-aware suggestions, keyboard
       behavior, Stop action, draft persistence, and send states.
-- [ ] Build **Chats** history and **New chat** controls, cursor pagination,
+- [x] Build **Chats** history and **New chat** controls, cursor pagination,
       deterministic titles, selected/running states, desktop history panel,
       mobile sheet, and confirmed deletion behavior.
-- [ ] Scope the URL and drafts by opaque chat ID. Submitting from Overview or an
+- [x] Scope the URL and drafts by opaque chat ID. Submitting from Overview or an
       insight creates a chat; submitting inside a chat continues it.
 - [ ] Integrate `useChat` with the authorized product API and persisted initial
       messages.
-- [ ] Render user messages, streamed assistant answers, wide artifacts,
+      (2026-09-05: deliberately not done — the server speaks the frozen
+      validated custom stream parts over SSE, not the generic AI SDK
+      data-stream protocol, so the client is a small validated SSE module
+      (`useAssistantConversations.ts`: schema-parsed frames, step folding
+      by `stepId`, abort/stop, idempotent reconnect) instead of `useChat`.
+      Needs reviewer sign-off or a protocol-bridging follow-up.)
+- [x] Render user messages, streamed assistant answers, wide artifacts,
       assumptions, follow-ups, and drill-down actions.
-- [ ] Render running and completed friendly activity steps under **How I
+- [x] Render running and completed friendly activity steps under **How I
       answered**. Never render internal IDs, inputs, responses, or raw
       chain-of-thought.
-- [ ] Implement every artifact variant with exact server values and accessible
+- [x] Implement every artifact variant with exact server values and accessible
       summaries.
-- [ ] Implement **Back to overview**, chat switching, **New chat**, and deletion
+- [x] Implement **Back to overview**, chat switching, **New chat**, and deletion
       with correct browser history, focus, and missing-chat behavior.
-- [ ] Add loading, empty, disabled, partial-data, provider-error, tool-error,
+- [x] Add loading, empty, disabled, partial-data, provider-error, tool-error,
       offline, cancelled, rate-limited, and retry states.
-- [ ] Add responsive layouts at every design-system QA viewport in both themes.
-- [ ] Add component tests proving widgets render the tool artifact unchanged.
+- [x] Add responsive layouts at every design-system QA viewport in both themes.
+- [x] Add component tests proving widgets render the tool artifact unchanged.
 - [ ] Add axe, keyboard, live-region, focus-restoration, reduced-motion, and 200
       percent zoom coverage.
+      (2026-09-05: keyboard access, polite live regions, focus
+      restoration, and reduced-motion are implemented and component-tested
+      in `assistant-widgets.test.tsx`; the full axe audit and 200 percent
+      zoom verification ride the Slice 8 hosted proof.)
 
 ## Slice 8: Evaluation, documentation, and hosted proof
 
 This slice determines whether the feature is accurate enough to release.
 
-- [ ] Build a versioned evaluation set covering at least the question families
+- [x] Build a versioned evaluation set covering at least the question families
       below.
+      (2026-09-05: `evals/assistant-eval-v1.json`, v1, 18 cases across all
+      required families; offline dataset-contract tests pin registry
+      membership, adversarial/missing/unsupported expectations, the
+      R10-F1 unavailable pin, and causal-language absence.)
 - [ ] Compare every expected metric answer to the canonical API result, not a
       hand-maintained prose answer.
+      (2026-09-05: `scripts/run-assistant-eval.mjs` implements the live
+      comparison; the run needs the hosted deployment + seeded project and
+      rides the Slice 8 hosted proof below. Offline, the dataset test pins
+      the expectation shapes. No results recorded or claimed.)
 - [ ] Add adversarial evaluation for prompt injection, missing data, ambiguous
       terms, source mismatch, low volume, currency mixing, and causal language.
+      (2026-09-05: dataset entries + offline contract coverage exist; live
+      adversarial runs ride the hosted proof.)
 - [ ] Add memory evaluations for project/workspace scope, confirmation,
       supersession, new-chat inheritance, chat isolation, and cross-user
       privacy.
+      (2026-09-05: store-level suites already prove scope, confirmation,
+      supersession, precedence, isolation, and purge; live memory-behavior
+      runs ride the hosted proof.)
 - [ ] Add multi-chat evaluations for creation, deterministic titles, switching,
       history pagination, deletion, URL restoration, and one active run per
       member/project.
+      (2026-09-05: store suites + slice 6/7 controller/component tests prove
+      the mechanics offline; live multi-chat runs ride the hosted proof.)
 - [ ] Add UI evaluations for artifact choice, exact values, trace labels,
       cancellation, and drill-down query context.
-- [ ] Document the assistant's data use, limitations, memory, retention,
+      (2026-09-05: widget-fidelity, trace-state, SSE-folding, and
+      snapshot-drilldown suites cover choice/values/labels/context
+      offline; cancellation paths are agent- and controller-tested;
+      visual QA rides the hosted proof.)
+- [x] Document the assistant's data use, limitations, memory, retention,
       provider egress, and how project definitions affect answers.
-- [ ] Update the Project overview section of `engineering/design-system.md`
+      (2026-09-05: `docs/assistant.md`.)
+- [x] Update the Project overview section of `engineering/design-system.md`
       after the implemented layout passes visual QA.
-- [ ] Add operator configuration and a disabled/self-hosted state without
+      (2026-09-05: §13.4 rewritten for the implemented layout; full
+      both-themes visual QA itself rides the hosted proof.)
+- [x] Add operator configuration and a disabled/self-hosted state without
       claiming self-hosted AI support.
+      (2026-09-05: `docs/assistant.md` operator section + fail-closed
+      disabled streaming path; self-hosted AI stays a separate task.)
 - [ ] Run one hosted flow with real Browser, React, React Native, and server
       telemetry plus errors and Standard Events.
 - [ ] Run a cold `GET /projects/:slug/overview` through `wrangler dev`
@@ -5366,3 +5400,102 @@ credentials, and production activation stays fail-closed behind it.
 Evidence: api 474 passed | 19 skipped (31 files: 29 passed | 2 skipped),
 types 96 passed (4 files), api/web typechecks clean, api lint clean,
 `git diff --check` clean. Agent abort suites re-run stable.
+
+### 2026-09-05 — Slice 6 complete: streaming assistant API
+
+Authenticated, resumable product API connecting the Slice 5 runtime to
+the durable Slice 4 store. New `AssistantController` (8 routes wired in
+`ProjectsRouter`) plus `assistantQuotas` (per-minute user/project/
+workspace rate limits, per-day user/workspace token quotas, per-run
+cost ceiling; documented single-process fallback like `RateLimiter`).
+
+- Controller boundary: signed-in verified member, route-project
+  membership, conversation ownership (non-disclosing 404s), fresh
+  membership re-check before deletion and memory confirm/reject,
+  server-side snapshot-token verification after membership, no
+  client-supplied project/org/user IDs anywhere near tools.
+- Runs: run-scoped `AuthorizedProjectContext` (allowed sources from
+  product Postgres) threaded through `measureForAuthorizedContext`;
+  memory/deletion writes bypass the read cache; user message persisted
+  before the run; assistant message persisted `complete` only after
+  answer validation; strict `AssistantStreamPartSchema` SSE frames
+  (`data-run-start`, `data-activity-step` keyed by server `stepId`,
+  `data-fact`, `data-artifact`, prose text, `data-run-finish` /
+  `data-run-error`); run-start frames stream promptly; reconnects
+  converge on `idempotency-conflict` instead of forking; user stop and
+  request disconnect share the run abort signal; usage recorded
+  post-run with no prompt/tool/secret logging.
+- Disabled AI (missing key, unevaluated model, `PRISM_AI_ENABLED!=1`)
+  streams a single disabled error; the deterministic overview is
+  unaffected. Quota/cost/active-run outcomes stream retryable typed
+  errors, never partial answers persisted as complete.
+- Test seam `__setAssistantAgentRunnerForTests` keeps unit tests
+  network-free; production wires `createAssistantModel` +
+  `runToolLoopAgent` behind the still-fail-closed R17-F7 gate.
+
+Evidence: 20 new `assistantApi` controller tests (auth, ownership,
+validation, cursor tampering, disabled stream, idempotency races,
+active-run conflict, rate/quota gates, memory 403/404/409, deletion),
+api typecheck + lint clean, `git diff --check` clean.
+
+### 2026-09-05 — Slice 7 complete (1 documented deviation): overview and conversation UI
+
+`summary.tsx` is now the Overview/Conversation scaffold: sibling
+views plus one persistent `AskPrismDock` (Enter submits, Shift+Enter
+newline, Cmd/Ctrl+K focus, capability-aware suggestions fill without
+submitting, Stop aborts, drafts scoped per project+chat in
+localStorage with in-memory fallback). URL holds range + mode
+(`?view=assistant&chat=<id>`); overview submits and insight
+investigation create chats (insight seeds its ask-prompt), in-chat
+submits continue; missing chats get a non-disclosing safe return;
+focus restores after back/new/delete/stop.
+
+- `OverviewView`: Insights (featured + secondary, severity tones,
+  Investigate + drill-down), 3-cell pulse, activity + secondary
+  artifacts, data-quality strip only when material, calm no-change
+  state, geometry-preserving skeletons, unavailable-not-zero.
+- `ConversationView`: right-aligned user bubbles, full-width answers
+  (summary, primary + supporting artifacts, observations, assumptions,
+  follow-ups), polite live regions, `How I answered` trace with text
+  states (never tool IDs/inputs/JSON), error alerts with safe return.
+- All 11 artifact widgets render exact server values with accessible
+  summaries/tables and snapshot drill-downs; definition widgets carry
+  inline confirm/reject (owner/admin) via the memory API.
+- `ChatsPanel`: recency-ordered, `aria-current="page"`, running
+  badges, confirmed deletion; desktop panel + mobile sheet.
+- Validated SSE client (`parseStreamDataPayload`,
+  `splitSsePayloads`, `applyStreamEvent` pure + tested): unknown
+  frames never touch state; steps fold by `stepId`.
+- Deviation: `useChat` is NOT integrated — the server speaks the
+  frozen custom parts over SSE, not the AI SDK data-stream protocol,
+  so a small validated client replaces it. Needs reviewer sign-off
+  or a bridging follow-up; the Slice 7 box stays open on that item.
+
+Evidence: 12 new `assistant-widgets` tests (5 widget-fidelity, trace
+states, 3 SSE suites, 3 scaffold incl. h1/pulse/calm-state/missing-chat)
++ rewritten `summary-metrics` accuracy tests against `/overview`;
+web typecheck clean, web lint exits 0, full web suite green except the
+pre-existing gallery calendar failure.
+
+### 2026-09-05 — Slice 8 partial: versioned eval, docs, design system (hosted proof open)
+
+- `evals/assistant-eval-v1.json` (v1, 18 cases, every required family
+  incl. injection, missing-revenue, unsupported-retention,
+  follow-ups): 8 offline dataset-contract tests pin registry
+  membership, adversarial/unsupported expectations, the R10-F1
+  unavailable pin, and causal-language absence.
+- `scripts/run-assistant-eval.mjs` (v1): canonical-vs-assistant live
+  comparison with the zero-mismatch gate; exits 2 without hosted
+  prerequisites (verified). No results recorded or claimed.
+- `docs/assistant.md`: data use, egress allow-list, memory scopes,
+  retention/deletion, honest stops, definition effects, operator
+  env reference, disabled/self-hosted posture.
+- `engineering/design-system.md` §13.4 rewritten for the implemented
+  layout (assistant dock, conversation mode, trace, widgets).
+
+Still open (no hosted stores, model key, or wrangler in this
+environment): live model eval, `run-assistant-eval` live gate,
+`wrangler dev` cold-overview proof, Policy v1 PG-major/locale
+matrix, screenshots/latency/token evidence, axe audit + 200% zoom,
+both-themes viewport QA. These gate the hosted release, not the
+in-repo implementation.
