@@ -11,7 +11,7 @@ import type {
   AssistantArtifact,
   MetricFact,
 } from "@prism-analytics/types";
-import { SectionLabel, Tag } from "@/components/project-overview/primitives";
+import { SectionLabel } from "@/components/project-overview/primitives";
 import { Frame } from "@/components/public/frame";
 import { evenXs } from "@/components/project-overview/chart-math";
 
@@ -260,19 +260,17 @@ function IssueRows({
 }: {
   artifact: Extract<AssistantArtifact, { kind: "issue-list" }>;
 }) {
+  const unresolved = artifact.issues
+    .filter((issue) => issue.status === "unresolved")
+    .slice(0, 3);
   return (
     <div className="px-0 pb-2 pt-1.5">
-      {artifact.issues.map((issue) => (
+      {unresolved.map((issue) => (
         <div
           key={issue.id}
-          className="grid grid-cols-[auto_1fr_auto] gap-x-2.5 gap-y-[3px] border-t border-border px-3.5 py-2.5 first:border-t-0"
+          className="grid grid-cols-[1fr_auto] items-center gap-x-2.5 border-t border-border px-3.5 py-2.5 first:border-t-0"
         >
-          <Tag tone={issue.status === "unresolved" ? "err" : "neu"}>
-            {issue.delta === "new"
-              ? "NEW"
-              : (issue.delta ?? issue.status).toUpperCase()}
-          </Tag>
-          <span className="text-[11.5px] leading-[1.45] text-text-muted">
+          <span className="truncate text-[11.5px] leading-[1.45] text-text-muted">
             <b className="font-semibold text-text">{issue.title}</b>
           </span>
           <span className="text-right font-mono text-[11px] leading-[1.7] text-text-muted tabular-nums">
@@ -300,7 +298,7 @@ export function SecondaryPanel({ artifact }: { artifact: AssistantArtifact }) {
             to={artifact.drilldown.destination}
             className="inline-flex h-[30px] items-center justify-center gap-2 whitespace-nowrap rounded-sm px-3 text-xs font-medium text-text-muted transition-colors duration-100 hover:bg-surface-hover hover:text-text"
           >
-            {artifact.drilldown.label} →
+            {artifact.drilldown.label}
           </Link>
         </div>
       </div>

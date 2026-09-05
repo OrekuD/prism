@@ -11,7 +11,7 @@ import type {
   AssistantArtifact,
   MetricFact,
 } from "@prism-analytics/types";
-import { Btn, Tag } from "@/components/project-overview/primitives";
+import { Btn } from "@/components/project-overview/primitives";
 import { sparkPath } from "@/components/project-overview/chart-math";
 import { cn } from "@/lib/utils";
 
@@ -69,20 +69,16 @@ export function IssueListBlock({
 }: {
   artifact: Extract<AssistantArtifact, { kind: "issue-list" }>;
 }) {
+  const unresolved = artifact.issues
+    .filter((issue) => issue.status === "unresolved")
+    .slice(0, 3);
   return (
     <div className="mt-2.5 overflow-hidden rounded-sm border border-border">
-      {artifact.issues.map((issue) => (
+      {unresolved.map((issue) => (
         <div
           key={issue.id}
           className="flex items-center gap-2.5 bg-surface-raised px-3 py-[9px] text-[12.5px] leading-[1.45] [&_+&]:border-t [&_+&]:border-border"
         >
-          <Tag tone={issue.status === "unresolved" ? "err" : "neu"}>
-            {issue.delta === "new"
-              ? "NEW"
-              : issue.delta === "regressing"
-                ? "SPIKE"
-                : issue.status.toUpperCase()}
-          </Tag>
           <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-text-muted">
             <b className="font-semibold text-text">{issue.title}</b>
           </span>
