@@ -632,7 +632,7 @@ export async function runToolLoopAgent(
       if (Array.isArray(messagesOut)) modelMessages.push(...messagesOut);
     }
     void loop.text;
-  } catch {
+  } catch (error) {
     if (signal.aborted) {
       if (cancelState.reason === "quota" || cancelState.reason === "cost") {
         return finishLedgerBreach(
@@ -640,6 +640,21 @@ export async function runToolLoopAgent(
         );
       }
       return finishCancelled();
+    }
+    // Operator-side failure class (browser keeps the sanitized message).
+    // Imported lazily: this module is also exercised in contexts where
+    // the logger transport is replaced by tests.
+    try {
+      const { logger } = await import("./logger");
+      logger.error("assistant.agent", "tool loop threw", {
+        errorName: error instanceof Error ? error.name : typeof error,
+        errorMessage:
+          error instanceof Error
+            ? error.message.slice(0, 500)
+            : String(error).slice(0, 500),
+      });
+    } catch {
+      // Logging must never break the run outcome.
     }
     return finish({
       status: "provider-error",
@@ -807,7 +822,7 @@ export async function runToolLoopAgent(
       usage: usageOf(),
       quota: { decision: "allowed", limitType: null, retryAfterMs: null },
     });
-  } catch {
+  } catch (error) {
     if (signal.aborted) {
       if (cancelState.reason === "quota" || cancelState.reason === "cost") {
         return finishLedgerBreach(
@@ -815,6 +830,18 @@ export async function runToolLoopAgent(
         );
       }
       return finishCancelled();
+    }
+    try {
+      const { logger } = await import("./logger");
+      logger.error("assistant.agent", "answer generation threw", {
+        errorName: error instanceof Error ? error.name : typeof error,
+        errorMessage:
+          error instanceof Error
+            ? error.message.slice(0, 500)
+            : String(error).slice(0, 500),
+      });
+    } catch {
+      // Logging must never break the run outcome.
     }
     return finish({
       status: "provider-error",
