@@ -139,10 +139,16 @@ export function ChatView({
             .map((part) => (part as { artifact?: AssistantArtifact }).artifact)
             .filter((item): item is AssistantArtifact => item !== undefined);
           if (!text && artifacts.length === 0) return null;
+          // Widget answers get the fixed column width; text-only answers
+          // fit their content.
+          const width =
+            artifacts.length > 0
+              ? "w-full max-w-[70%] max-[760px]:max-w-full"
+              : "w-fit max-w-[70%]";
           return (
             <div
               key={message.id}
-              className="po-msg-in w-full max-w-[70%] self-start rounded-sm border border-border bg-surface p-[14px_16px] max-[760px]:max-w-full"
+              className={`po-msg-in self-start rounded-sm border border-border bg-surface p-[14px_16px] ${width}`}
             >
               <AssistantText text={text} />
               {artifacts.map((artifact) =>
@@ -164,7 +170,11 @@ export function ChatView({
 
         {showStream && stream ? (
           <div
-            className="po-msg-in w-full max-w-[70%] self-start rounded-sm border border-border bg-surface p-[14px_16px] max-[760px]:max-w-full"
+            className={`po-msg-in self-start rounded-sm border border-border bg-surface p-[14px_16px] ${
+              stream.artifacts.length > 0
+                ? "w-full max-w-[70%] max-[760px]:max-w-full"
+                : "w-fit max-w-[70%]"
+            }`}
             aria-live="polite"
           >
             <TraceBlock steps={stream.steps} latencyMs={streamLatencyMs} />

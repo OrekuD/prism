@@ -183,9 +183,22 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
         });
         if (final.error) {
           setSendError({ message: final.error.message, retryable: final.error.retryable });
-        } else if (targetChatSlug !== null) {
-          await queryClient.invalidateQueries({
-            queryKey: conversationDetailKey(slug, targetChatSlug),
+        } else {
+          // The answer is now persisted: refresh the transcript, then
+          // drop the live stream copy so the same answer never renders
+          // twice (persisted message + lingering stream).
+          const persistedSlug = targetChatSlug ?? final.conversationSlug;
+          if (persistedSlug) {
+            await queryClient.invalidateQueries({
+              queryKey: conversationDetailKey(slug, persistedSlug),
+            });
+          }
+          const bucket = targetChatSlug ?? "new";
+          setStreamByChat((previous) => {
+            if (!(bucket in previous)) return previous;
+            const next = { ...previous };
+            delete next[bucket];
+            return next;
           });
         }
       } finally {
