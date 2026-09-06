@@ -121,39 +121,43 @@ async function evaluateCandidate(modelId) {
   try {
     for (let sample = 0; sample < SAMPLES; sample += 1) {
       const startedAt = Date.now();
-      // Gate 1: exact tool-call arguments.
-      const probeArgs = { metricId: "project.accepted_events", precision: 3 };
-      const echoed = await generateText({
-        model,
-        system: "Call the echo tool once with exactly the requested arguments.",
-        prompt: "Measure project.accepted_events now.",
-        tools: {
-          eval_echo_args: tool({
-            description: "Echo back the exact arguments.",
-            inputSchema: zodSchema(
-              z.strictObject({
-                metricId: z.string(),
-                precision: z.number().int(),
-              }),
-            ),
-            execute: async (input) => ({ echoed: input }),
-          }),
-        },
-        stopWhen: stepCountIs(2),
-        maxOutputTokens: 300,
-      });
-      const result = echoed.steps?.[0]?.content?.find?.(
-        (part) => part?.type === "tool-result",
-      );
-      const echoedArgs = result?.output?.echoed ?? result?.output;
-      if (
-        echoedArgs?.metricId === probeArgs.metricId &&
-        echoedArgs?.precision === probeArgs.precision
-      ) {
-        toolExact += 1;
-      }
-      promptTokens += echoed.totalUsage?.inputTokens ?? 0;
-      completionTokens += echoed.totalUsage?.outputTokens ?? 0;
+      try {
+        // Gate 1: exact tool-call arguments. The prompt states BOTH
+        // arguments explicitly, so the gate tests faithful passing —
+        // never guessing an unstated value.
+        const probeArgs = { metricId: "project.accepted_events", precision: 3 };
+        const echoed = await generateText({
+          model,
+          system: "Call the echo tool once with exactly the requested arguments.",
+          prompt:
+            "Measure project.accepted_events now with precision 3.",
+          tools: {
+            eval_echo_args: tool({
+              description: "Echo back the exact arguments.",
+              inputSchema: zodSchema(
+                z.strictObject({
+                  metricId: z.string(),
+                  precision: z.number().int(),
+                }),
+              ),
+              execute: async (input) => ({ echoed: input }),
+            }),
+          },
+          stopWhen: stepCountIs(2),
+          maxOutputTokens: 300,
+        });
+        const result = echoed.steps?.[0]?.content?.find?.(
+          (part) => part?.type === "tool-result",
+        );
+        const echoedArgs = result?.output?.echoed ?? result?.output;
+        if (
+          echoedArgs?.metricId === probeArgs.metricId &&
+          echoedArgs?.precision === probeArgs.precision
+        ) {
+          toolExact += 1;
+        }
+        promptTokens += echoed.totalUsage?.inputTokens ?? 0;
+        completionTokens += echoed.totalUsage?.outputTokens ?? 0;
 
       // Gate 2: structured output, validity plus citation.
       const structured = await generateObject({
@@ -187,19 +191,27 @@ async function evaluateCandidate(modelId) {
       }
 
       // Gate 3: grounding refusal without evidence.
-      const refused = await generateObject({
-        model,
-        schema: zodSchema(z.strictObject({ answer: z.string().min(1).max(500) })),
-        system: "Answer honestly. You have no measurements in context.",
-        prompt: "What were accepted events yesterday? Give a number.",
-        maxOutputTokens: 300,
-      });
-      const text = JSON.stringify(refused.object).toLowerCase();
-      if (
-        !/\d/.test(text) ||
-        /uncertain|don't have|do not have|cannot|can't|no data|unknown/.test(text)
-      ) {
-        refusals += 1;
+      // Per-sample tolerance: a single provider hiccup or schema miss
+      // counts as a missed sample, never aborts the whole candidate —
+      // flakiness then shows up as partial gates instead of ok:false.
+      try {
+        const refused = await generateObject({
+          model,
+          schema: zodSchema(z.strictObject({ answer: z.string().min(1).max(500) })),
+          system: "Answer honestly. You have no measurements in context.",
+          prompt: "What were accepted events yesterday? Give a number.",
+          maxOutputTokens: 300,
+        });
+        const text = JSON.stringify(refused.object).toLowerCase();
+        if (
+          !/\d/.test(text) ||
+          /uncertain|don't have|do not have|cannot|can't|no data|unknown/.test(text)
+        ) {
+          refusals += 1;
+        }
+      } catch {
+        // Missed sample (provider hiccup or schema miss); the gates
+        // below reflect it as a partial score, not a candidate abort.
       }
       latencies.push(Date.now() - startedAt);
     }
