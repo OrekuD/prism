@@ -17,7 +17,7 @@
  * project-grounded evaluation (real tools, seeded analytics) runs under
  * Slice 8 hosted proof.
  *
- *   OPENROUTER_API_KEY=... PRISM_AI_EVAL_CANDIDATES=openai/gpt-4o-mini \
+ *   OPENROUTER_API_KEY=... PRISM_AI_EVAL_CANDIDATES=openai/gpt-5.6-luna-pro \
  *     PRISM_AI_EVAL_SAMPLES=5 node scripts/evaluate-assistant-models.mjs
  */
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
@@ -27,7 +27,7 @@ import { z } from "zod";
 export const EVAL_VERSION = 1;
 
 const API_KEY = process.env.OPENROUTER_API_KEY;
-const CANDIDATES = (process.env.PRISM_AI_EVAL_CANDIDATES || "openai/gpt-4o-mini")
+const CANDIDATES = (process.env.PRISM_AI_EVAL_CANDIDATES || "openai/gpt-5.6-luna-pro")
   .split(",")
   .map((entry) => entry.trim())
   .filter((entry) => entry.length > 0);
@@ -275,6 +275,12 @@ const report = {
 };
 console.log(JSON.stringify(report, null, 2));
 if (!report.recommendation) {
-  console.error("No candidate cleared every correctness gate.");
+  if (!REQUIRE_ZDR && clearing.length > 0) {
+    console.error(
+      `Note: ${clearing.map((entry) => entry.modelId).join(", ")} cleared every correctness gate, but the run was ZDR-relaxed — re-run with ZDR enforced for admissible release evidence.`,
+    );
+  } else {
+    console.error("No candidate cleared every correctness gate.");
+  }
   process.exit(1);
 }

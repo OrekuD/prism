@@ -40,14 +40,15 @@ export type ModelCandidate = {
  * candidate. `evaluated: false` until the versioned Slice 8 hosted
  * evaluation records measured gates — production activation stays
  * fail-closed, and unit tests inject scripted models instead. Prices are
- * documented estimates until the evaluator records measured values; the
- * per-run caps still bind every run.
+ * OpenRouter list prices (verified 2026-09-06; bulk-tier overrides
+ * above 272k prompt tokens not modeled) until the evaluator records
+ * measured values; the per-run caps still bind every run.
  */
 export const MODEL_ALLOWLIST: readonly ModelCandidate[] = [
   {
-    id: "openai/gpt-4o-mini",
-    promptPricePerMillionMicroUsd: 150_000,
-    completionPricePerMillionMicroUsd: 600_000,
+    id: "openai/gpt-5.6-luna-pro",
+    promptPricePerMillionMicroUsd: 200_000,
+    completionPricePerMillionMicroUsd: 1_200_000,
     evaluated: false,
   },
 ] as const;

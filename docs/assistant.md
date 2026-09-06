@@ -97,7 +97,7 @@ with a mismatched measurement is treated as a failed result.
 
 ```text
 PRISM_AI_ENABLED=1
-PRISM_AI_MODEL=openai/gpt-4o-mini
+PRISM_AI_MODEL=openai/gpt-5.6-luna-pro
 OPENROUTER_API_KEY=...
 PRISM_AI_MAX_STEPS=5
 PRISM_AI_MAX_INPUT_CHARS=24000

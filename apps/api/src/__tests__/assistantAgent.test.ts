@@ -64,14 +64,14 @@ const QUERY_CONTEXT = {
 const CONFIG: AssistantModelConfig = {
   enabled: true,
   model: {
-    id: "openai/gpt-4o-mini",
+    id: "openai/gpt-5.6-luna-pro",
     promptPricePerMillionMicroUsd: 150_000,
     completionPricePerMillionMicroUsd: 600_000,
     evaluated: false,
   },
   apiKey: "sk-test",
   routing: {
-    allowedModels: ["openai/gpt-4o-mini"],
+    allowedModels: ["openai/gpt-5.6-luna-pro"],
     allowFallbackModels: false,
     requireToolSupport: true,
     requireStructuredOutput: true,
@@ -260,7 +260,7 @@ describe("happy path", () => {
     expect(result.steps[0]?.label).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}/);
     expect(result.usage.promptTokens).toBeGreaterThan(0);
     expect(result.usage.completionTokens).toBeGreaterThan(0);
-    expect(result.usage.model).toBe("openai/gpt-4o-mini");
+    expect(result.usage.model).toBe("openai/gpt-5.6-luna-pro");
     expect(result.usage.gateway).toBe("openrouter");
     expect(result.quota).toEqual({
       decision: "allowed",
