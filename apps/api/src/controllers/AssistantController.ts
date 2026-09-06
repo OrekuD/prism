@@ -66,6 +66,7 @@ import {
   type AssistantDb,
 } from "../utils/assistantStore";
 import { AssistantStoreError } from "../utils/assistantStore";
+import { logger } from "../utils/logger";
 import { createAuthorizationCache } from "../utils/assistantAuthCache";
 import {
   resolveAssistantModelConfig,
@@ -568,7 +569,15 @@ async function executeStreamedRun(input: {
   let result: AgentRunResult;
   try {
     result = await runAgent();
-  } catch {
+  } catch (error) {
+    // Operator-side failure class only: the browser keeps the sanitized
+    // message, while the wrangler log carries what actually threw
+    // (never prompts, tool inputs, or secrets — logger redacts those).
+    logger.error("assistant.run", "agent run threw", {
+      runId: run.id,
+      errorName: error instanceof Error ? error.name : typeof error,
+      errorMessage: error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500),
+    });
     await finishRun(db, { projectId: scope.projectId, userId, runId: run.id, status: "failed", failureCode: "provider-error", now: Date.now() });
     return writeErrorStream("provider-error", "The model request failed. Try again shortly.", true);
   }
@@ -594,6 +603,11 @@ async function executeStreamedRun(input: {
 
   if (result.status !== "answered" && result.status !== "fallback") {
     const mapped = agentStatusToStreamError(result);
+    logger.warn("assistant.run", "agent run ended without an answer", {
+      runId: run.id,
+      status: result.status,
+      quotaDecision: result.quota.decision,
+    });
     await finishRun(db, {
       projectId: scope.projectId,
       userId,
@@ -676,7 +690,7 @@ async function executeStreamedRun(input: {
       artifactIds: result.artifactIds.slice(0, 16),
     }),
   ];
-  return sseResponse(streamParts(frames, signal), signal);
+  return streamWithSlug(streamParts(frames, signal), signal);
 }
 
 /* ------------------------------------------------------------------ */
