@@ -1662,6 +1662,7 @@ describe("frozen protocol names (R1-F6)", () => {
       "PRISM_AI_MAX_OUTPUT_TOKENS",
       "PRISM_AI_MAX_PROMPT_PRICE_PER_MILLION",
       "PRISM_AI_MAX_COMPLETION_PRICE_PER_MILLION",
+      "PRISM_AI_REQUIRE_ZDR",
     ]);
     // no direct-provider names survive the amendment
     expect(PRISM_AI_ENV_NAMES).not.toContain("OPENAI_API_KEY");
@@ -1707,10 +1708,18 @@ describe("frozen protocol names (R1-F6)", () => {
         allowFallbackModels: true,
       }).success,
     ).toBe(false);
+    // The ZDR opt-out is deliberate and explicit (local eval only):
+    // `false` parses, but a non-boolean still fails closed.
     expect(
       OpenRouterRoutingPolicySchema.safeParse({
         ...policy,
         requireZeroDataRetention: false,
+      }).success,
+    ).toBe(true);
+    expect(
+      OpenRouterRoutingPolicySchema.safeParse({
+        ...policy,
+        requireZeroDataRetention: "sometimes",
       }).success,
     ).toBe(false);
   });

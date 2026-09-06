@@ -59,6 +59,13 @@ export type AssistantModelConfig = {
   model: ModelCandidate;
   apiKey: string;
   routing: OpenRouterRoutingPolicy;
+  /**
+   * Zero-data-retention endpoints required. Default true; `false` only
+   * via explicit `PRISM_AI_REQUIRE_ZDR=0` for local evaluation against
+   * models with no ZDR endpoint. Production must never disable it:
+   * prompts and tool summaries may be retained upstream.
+   */
+  requireZeroDataRetention: boolean;
   maxSteps: number;
   maxInputChars: number;
   maxInputTokens: number;
@@ -160,7 +167,11 @@ export function resolveAssistantModelConfig(
     requireToolSupport: true,
     requireStructuredOutput: true,
     denyDataCollection: true,
-    requireZeroDataRetention: true,
+    // Explicit opt-out only (`PRISM_AI_REQUIRE_ZDR=0`): local eval
+    // against models with no ZDR endpoint. Never disabled in production.
+    requireZeroDataRetention:
+      env.PRISM_AI_REQUIRE_ZDR !== "0" &&
+      env.PRISM_AI_REQUIRE_ZDR !== "false",
     preferLowestPrice: true,
     maxPromptPricePerMillion: maxPromptPrice,
     maxCompletionPricePerMillion: maxCompletionPrice,
@@ -173,6 +184,7 @@ export function resolveAssistantModelConfig(
     model,
     apiKey,
     routing,
+    requireZeroDataRetention: routing.requireZeroDataRetention,
     maxSteps: optionalInt(env, "PRISM_AI_MAX_STEPS", AGENT_LIMITS.defaultSteps, 1, AGENT_LIMITS.maxSteps),
     maxInputChars: optionalInt(env, "PRISM_AI_MAX_INPUT_CHARS", 24_000, 1_000, 100_000),
     maxInputTokens: optionalInt(env, "PRISM_AI_MAX_INPUT_TOKENS", AGENT_LIMITS.maxInputTokens, 1_000, 128_000),
@@ -204,10 +216,11 @@ export function estimateCostMicroUsd(input: {
 /**
  * Exact OpenRouter provider options for one call (verified against
  * `@openrouter/ai-sdk-provider@3`): no fallback providers, data
- * collection denied, zero-data-retention endpoints only, cheapest
- * eligible price first, hard per-request price caps, and tool support
- * required. The allowlist holds exactly one model, so `models` stays
- * unset — the model ID itself is the pin.
+ * collection denied, zero-data-retention endpoints unless explicitly
+ * opted out for local eval, cheapest eligible price first, hard
+ * per-request price caps, and tool support required. The allowlist
+ * holds exactly one model, so `models` stays unset — the model ID
+ * itself is the pin.
  */
 export function assistantProviderOptions(config: AssistantModelConfig): {
   provider: {
@@ -216,7 +229,7 @@ export function assistantProviderOptions(config: AssistantModelConfig): {
     data_collection: "deny";
     sort: "price";
     max_price: { prompt: number; completion: number };
-    zdr: true;
+    zdr: boolean;
   };
 } {
   return {
@@ -229,7 +242,7 @@ export function assistantProviderOptions(config: AssistantModelConfig): {
         prompt: config.maxPromptPricePerMillionMicroUsd / 1_000_000,
         completion: config.maxCompletionPricePerMillionMicroUsd / 1_000_000,
       },
-      zdr: true,
+      zdr: config.requireZeroDataRetention !== false,
     },
   };
 }

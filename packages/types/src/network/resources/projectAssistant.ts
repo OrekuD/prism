@@ -2867,9 +2867,17 @@ export type QuotaOutcome = z.infer<typeof QuotaOutcomeSchema>;
 /**
  * OpenRouter routing policy (v1): one pinned model, no fallback list, tool
  * and structured-output support required, provider data collection denied,
- * zero-data-retention endpoints only, lowest eligible price preferred, hard
- * per-million-token price caps. Verify the exact provider-options shape
- * against the installed adapter version in slice 5.
+ * zero-data-retention endpoints by default, lowest eligible price
+ * preferred, hard per-million-token price caps. Verify the exact
+ * provider-options shape against the installed adapter version in
+ * slice 5.
+ *
+ * `requireZeroDataRetention` is boolean (not a literal) for exactly one
+ * reason: local evaluation against models with no ZDR endpoint
+ * (`PRISM_AI_REQUIRE_ZDR=0`). That weakens the privacy posture —
+ * prompts and tool summaries may be retained upstream — so production
+ * must never set it. The eval harness records the effective value in
+ * every report.
  */
 export const OpenRouterRoutingPolicySchema = z.strictObject({
   allowedModels: z.array(z.string().min(1).max(128)).length(1),
@@ -2877,7 +2885,7 @@ export const OpenRouterRoutingPolicySchema = z.strictObject({
   requireToolSupport: z.literal(true),
   requireStructuredOutput: z.literal(true),
   denyDataCollection: z.literal(true),
-  requireZeroDataRetention: z.literal(true),
+  requireZeroDataRetention: z.boolean(),
   preferLowestPrice: z.literal(true),
   maxPromptPricePerMillion: z.number().nonnegative(),
   maxCompletionPricePerMillion: z.number().nonnegative(),
@@ -3143,5 +3151,6 @@ export const PRISM_AI_ENV_NAMES = deepFreeze([
   "PRISM_AI_MAX_OUTPUT_TOKENS",
   "PRISM_AI_MAX_PROMPT_PRICE_PER_MILLION",
   "PRISM_AI_MAX_COMPLETION_PRICE_PER_MILLION",
+  "PRISM_AI_REQUIRE_ZDR",
 ] as const);
 export type PrismAiEnvName = (typeof PRISM_AI_ENV_NAMES)[number];

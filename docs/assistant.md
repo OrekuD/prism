@@ -105,6 +105,11 @@ PRISM_AI_MAX_INPUT_TOKENS=8000
 PRISM_AI_MAX_OUTPUT_TOKENS=600
 PRISM_AI_MAX_PROMPT_PRICE_PER_MILLION=1
 PRISM_AI_MAX_COMPLETION_PRICE_PER_MILLION=4
+# Local-eval escape hatch ONLY (default: ZDR required). Set to 0 to run
+# the eval harness against models with no ZDR endpoint. Production must
+# never set this: prompts and tool summaries may be retained upstream,
+# and relaxed-ZDR eval reports cannot recommend a production model.
+# PRISM_AI_REQUIRE_ZDR=0
 PRISM_AI_RUNS_PER_MINUTE_PER_USER=6
 PRISM_AI_RUNS_PER_MINUTE_PER_PROJECT=20
 PRISM_AI_RUNS_PER_MINUTE_PER_WORKSPACE=60

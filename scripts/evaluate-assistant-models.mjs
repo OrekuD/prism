@@ -49,19 +49,25 @@ if (!API_KEY) {
 const provider = createOpenRouter({ apiKey: API_KEY });
 
 // Static routing/privacy assertion: the harness itself must run denied,
-// ZDR-only, fallback-free, cheapest-first or its results prove nothing.
+// fallback-free, cheapest-first, and ZDR-only unless the operator
+// explicitly opted out for local eval (`PRISM_AI_REQUIRE_ZDR=0`). The
+// effective value is recorded in every report; results from a relaxed
+// run cannot flip a production allowlist flag.
+const REQUIRE_ZDR =
+  process.env.PRISM_AI_REQUIRE_ZDR !== "0" &&
+  process.env.PRISM_AI_REQUIRE_ZDR !== "false";
 const ROUTING = {
   allow_fallbacks: false,
   require_parameters: true,
   data_collection: "deny",
   sort: "price",
-  zdr: true,
+  zdr: REQUIRE_ZDR,
 };
 function assertRouting() {
   if (
     ROUTING.allow_fallbacks !== false ||
     ROUTING.data_collection !== "deny" ||
-    ROUTING.zdr !== true ||
+    ROUTING.zdr !== REQUIRE_ZDR ||
     ROUTING.sort !== "price"
   ) {
     throw new Error("eval routing drifted from the frozen policy");
@@ -210,7 +216,7 @@ async function evaluateCandidate(modelId) {
     structuredOutputValid: `${structuredValid}/${SAMPLES}`,
     structuredOutputCited: `${structuredCited}/${SAMPLES}`,
     groundingRefusal: `${refusals}/${SAMPLES}`,
-    routingPrivacy: "deny+zdr+no-fallback+price-sort (static assertion)",
+    routingPrivacy: `${REQUIRE_ZDR ? "deny+zdr" : "deny (ZDR RELAXED for local eval)"}+no-fallback+price-sort (static assertion)`,
   };
   const clears =
     toolExact === SAMPLES &&
@@ -242,8 +248,13 @@ clearing.sort((a, b) => a.costMicroUsd - b.costMicroUsd);
 const report = {
   evalVersion: EVAL_VERSION,
   evaluatedAt: new Date().toISOString(),
+  requireZdr: REQUIRE_ZDR,
+  // A relaxed-ZDR run can never recommend a production model: prompts
+  // may have been retained upstream, so the evidence is inadmissible
+  // for flipping an allowlist flag.
   results,
-  recommendation: clearing[0]?.modelId ?? null,
+  recommendation:
+    REQUIRE_ZDR && clearing[0] ? clearing[0].modelId : null,
 };
 console.log(JSON.stringify(report, null, 2));
 if (!report.recommendation) {

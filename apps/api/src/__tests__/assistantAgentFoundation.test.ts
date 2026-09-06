@@ -656,6 +656,7 @@ describe("model configuration", () => {
     const options = assistantProviderOptions({
       maxPromptPricePerMillionMicroUsd: 1_000_000,
       maxCompletionPricePerMillionMicroUsd: 4_000_000,
+      requireZeroDataRetention: true,
     } as never);
     expect(options).toEqual({
       provider: {
@@ -667,6 +668,14 @@ describe("model configuration", () => {
         zdr: true,
       },
     });
+    // Explicit local-eval opt-out only; production must never set it.
+    const relaxed = assistantProviderOptions({
+      maxPromptPricePerMillionMicroUsd: 1_000_000,
+      maxCompletionPricePerMillionMicroUsd: 4_000_000,
+      requireZeroDataRetention: false,
+    } as never);
+    expect(relaxed.provider.zdr).toBe(false);
+    expect(relaxed.provider.data_collection).toBe("deny");
     expect(assistantCallProviderOptions("user_1")).toEqual({
       openrouter: { user: "user_1" },
     });

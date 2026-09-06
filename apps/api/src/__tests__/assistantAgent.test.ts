@@ -81,6 +81,7 @@ const CONFIG: AssistantModelConfig = {
     maxPromptPricePerMillion: 1,
     maxCompletionPricePerMillion: 4,
   },
+  requireZeroDataRetention: true,
   maxSteps: 5,
   maxInputChars: 24_000,
   maxInputTokens: 8000,
