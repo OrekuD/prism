@@ -193,7 +193,7 @@ export function ChatView({
         {stream?.error || sendError ? (
           <div
             role="alert"
-            className="mt-2.5 flex items-start gap-2.5 rounded-sm border border-danger/40 p-[10px_12px] text-[12.5px] text-text-muted"
+            className="mt-2.5 flex w-fit max-w-full items-start gap-2.5 rounded-sm border border-danger/40 p-[10px_12px] text-[12.5px] text-text-muted"
           >
             <span
               aria-hidden="true"
