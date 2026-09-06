@@ -190,10 +190,11 @@ async function evaluateCandidate(modelId) {
         costEstimatedCalls += 1;
       }
 
-      // Gate 3: grounding refusal without evidence.
-      // Per-sample tolerance: a single provider hiccup or schema miss
-      // counts as a missed sample, never aborts the whole candidate —
-      // flakiness then shows up as partial gates instead of ok:false.
+      // Gate 3: grounding refusal without evidence. Its own
+      // try/catch keeps a refusal-probe failure local; the outer
+      // per-iteration catch below covers Gates 1-2 the same way, so
+      // any single-sample failure is a partial score, never a
+      // candidate abort.
       try {
         const refused = await generateObject({
           model,
@@ -212,6 +213,10 @@ async function evaluateCandidate(modelId) {
       } catch {
         // Missed sample (provider hiccup or schema miss); the gates
         // below reflect it as a partial score, not a candidate abort.
+      }
+      } catch {
+        // Gates 1-2 threw (e.g. structured output missed the schema):
+        // same per-sample tolerance for the whole iteration.
       }
       latencies.push(Date.now() - startedAt);
     }
