@@ -37,19 +37,18 @@ export type ModelCandidate = {
 
 /**
  * Pinned default first: the cheapest provisionally selected tool-capable
- * candidate. `evaluated: false` until the versioned Slice 8 hosted
- * evaluation records measured gates — production activation stays
- * fail-closed, and unit tests inject scripted models instead. Prices are
- * OpenRouter list prices (verified 2026-09-06; bulk-tier overrides
- * above 272k prompt tokens not modeled) until the evaluator records
- * measured values; the per-run caps still bind every run.
+ * candidate. `evaluated` flips to true only from reviewed versioned
+ * evidence (see `evals/model-eval-gpt-5.6-luna-pro-v1.json`) — unit tests
+ * inject scripted models instead. Prices are OpenRouter list prices
+ * (verified 2026-09-06; bulk-tier overrides above 272k prompt tokens
+ * not modeled); the per-run caps still bind every run.
  */
 export const MODEL_ALLOWLIST: readonly ModelCandidate[] = [
   {
     id: "openai/gpt-5.6-luna-pro",
     promptPricePerMillionMicroUsd: 200_000,
     completionPricePerMillionMicroUsd: 1_200_000,
-    evaluated: false,
+    evaluated: true,
   },
 ] as const;
 

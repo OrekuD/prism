@@ -5500,7 +5500,27 @@ matrix, screenshots/latency/token evidence, axe audit + 200% zoom,
 both-themes viewport QA. These gate the hosted release, not the
 in-repo implementation.
 
-### 2026-09-06 — Conversation URL slugs (`chat_*`) + route-based chat URLs
+### 2026-09-06 — Model pinned on reviewed evidence: `openai/gpt-5.6-luna-pro`
+
+Live harness runs (operator-executed, `PRISM_AI_REQUIRE_ZDR=0` local
+eval) swept four candidates. Refusal — not tools or price — was the
+scarce property: deepseek-v4-flash passed mechanics but refused only
+2/5 (fabricates numbers), glm-5.3-flash refused 4/5 with a 31s p50.
+Base `gpt-5.6-luna` and `-pro` both cleared 5/5 on every correctness
+gate; pro chosen by the operator for reasoning quality despite ~7x
+cost ($0.0056 vs $0.0008/run) and ~2x latency (p50 20.5s vs 9.5s).
+
+- Evidence filed: `evals/model-eval-gpt-5.6-luna-pro-v1.json`
+  (unanimous correctness gates, cost/latency recorded).
+- Deviation (operator-accepted, recorded in the evidence file): the
+  clearing run was ZDR-relaxed, so the harness yields no
+  recommendation by construction. A ZDR-enforced confirmation run is
+  still owed before this counts as a full release evaluation, and
+  production must run ZDR-enforced (`PRISM_AI_REQUIRE_ZDR` unset).
+- Allowlist now `evaluated: true` with verified list prices
+  ($0.20/$1.20 per 1M); the fail-closed test now asserts the
+  evaluated default resolves while all other misconfigurations
+  still fail closed.
 
 Chats now have opaque URL slugs following the workspace `wrk_`
 recipe: `chat_` + 12 crypto-random lowercase alphanumerics,

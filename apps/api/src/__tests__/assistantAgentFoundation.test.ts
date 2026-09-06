@@ -629,13 +629,16 @@ describe("model configuration", () => {
     PRISM_AI_ENABLED: "1",
     OPENROUTER_API_KEY: "sk-test",
   };
-  it("keeps production activation fail-closed until evaluation lands", () => {
-    // The provisional default is NOT evaluated: resolving it fails even
-    // with a key and generous caps. Unit tests inject scripted models
-    // instead; Slice 6 wiring stays behind the disabled gate.
-    expect(() => resolveAssistantModelConfig(baseEnv)).toThrowError(
-      expect.objectContaining({ code: "invalid-config" }),
-    );
+  it("resolves the evaluated pinned default, fail-closed otherwise", () => {
+    // Evaluation landed (evals/model-eval-gpt-5.6-luna-pro-v1.json):
+    // the pinned default resolves with a key and in-cap prices, while
+    // every other misconfiguration still fails closed. Unit tests
+    // inject scripted models instead of calling production inference.
+    const config = resolveAssistantModelConfig(baseEnv);
+    expect(config.enabled).toBe(true);
+    expect(config.model.id).toBe("openai/gpt-5.6-luna-pro");
+    expect(config.model.evaluated).toBe(true);
+    expect(config.requireZeroDataRetention).toBe(true);
   });
 
   it("fails closed when disabled, keyless, off-allowlist, or over-cap", () => {
