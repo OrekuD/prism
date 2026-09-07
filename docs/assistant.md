@@ -110,6 +110,11 @@ PRISM_AI_MAX_COMPLETION_PRICE_PER_MILLION=4
 # never set this: prompts and tool summaries may be retained upstream,
 # and relaxed-ZDR eval reports cannot recommend a production model.
 # PRISM_AI_REQUIRE_ZDR=0
+# Full-flow trace logging for debugging (default off). Emits message
+# content, tool inputs, and answer text under the assistant.trace scope
+# with one traceId per request. Local debugging only — never enable in
+# production or on shared infrastructure.
+# PRISM_AI_TRACE_LOGGING=1
 PRISM_AI_RUNS_PER_MINUTE_PER_USER=6
 PRISM_AI_RUNS_PER_MINUTE_PER_PROJECT=20
 PRISM_AI_RUNS_PER_MINUTE_PER_WORKSPACE=60

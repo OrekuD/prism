@@ -31,6 +31,8 @@ vi.mock("../utils/assistantStore", async (importOriginal) => {
 
 import { DatabaseManager } from "../managers/DatabaseManager";
 import { AssistantController } from "../controllers/AssistantController";
+import { __setAssistantAgentRunnerForTests } from "../controllers/AssistantController";
+import type { AgentRunResult } from "../utils/toolLoopAgent";
 import { encodeStreamFrame } from "../controllers/AssistantController";
 import {
   AssistantQuotas,
@@ -97,9 +99,37 @@ async function readSse(response: Response): Promise<string> {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  __setAssistantAgentRunnerForTests(null);
   __setAssistantQuotasForTests(
     new AssistantQuotas(resolveQuotaLimits({})),
   );
+});
+
+it("returns the chat stream before generation completes and persists the structured answer", async () => {
+  let complete!: (result: AgentRunResult) => void;
+  __setAssistantAgentRunnerForTests(() => new Promise((resolve) => { complete = resolve; }));
+  vi.mocked(getConversationBySlug).mockResolvedValue({ conversation: { id: "conv_1", slug: "chat_abc123def456" }, messages: [], activeRun: null } as never);
+  vi.mocked(appendMessage).mockResolvedValue({ message: { id: "msg_1" }, created: true } as never);
+  vi.mocked(startRun).mockResolvedValue({ ok: true, run: { id: "run_1" } } as never);
+  vi.mocked(finishRun).mockResolvedValue({ finished: true } as never);
+  const response = await AssistantController.postMessage(ctxFor(
+    { slug: SLUG, conversationSlug: "chat_abc123def456" },
+    { clientRequestId: "req_stream", content: "What changed?" }, USER_ID, "member",
+    { PRISM_AI_ENABLED: "1", OPENROUTER_API_KEY: "test-only" },
+  )) as Response;
+  expect(response.headers.get("X-Conversation-Slug")).toBe("chat_abc123def456");
+  const streamBody = response.body;
+  expect(streamBody).not.toBeNull();
+  const reader = (streamBody as ReadableStream<Uint8Array>).getReader();
+  expect(new TextDecoder().decode((await reader.read()).value)).toContain("data-run-start");
+  await vi.waitFor(() => expect(complete).toBeTypeOf("function"));
+  const answer = { summary: "No significant change.", observations: [], primaryArtifactId: null, supportingArtifactIds: [], assumptions: ["Small sample."], followUps: ["Check errors"] };
+  complete({ status: "answered", answer, repaired: false, steps: [], facts: [], factIds: [], toolIds: [], artifactIds: [], artifacts: [], eligibleToolIds: [], usage: { model: "test", gateway: "openrouter", upstreamProvider: null, promptTokens: 1, completionTokens: 1, reasoningTokens: 0, cachedTokens: 0, costMicroUsd: 1 }, quota: { decision: "allowed", limitType: null, retryAfterMs: null }, latencyMs: 1, modelMessages: [] } as AgentRunResult);
+  let tail = "";
+  for (;;) { const chunk = await reader.read(); if (chunk.done) break; tail += new TextDecoder().decode(chunk.value); }
+  expect(tail).toContain("data-run-finish");
+  expect(vi.mocked(appendMessage)).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ role: "assistant", status: "complete", parts: expect.arrayContaining([{ type: "answer", answer }]) }));
+  expect(vi.mocked(appendMessage).mock.calls.some(([, input]) => input.status === "streaming")).toBe(false);
 });
 
 describe("assistant stream frames", () => {

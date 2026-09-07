@@ -67,6 +67,11 @@ import {
 } from "../utils/assistantStore";
 import { AssistantStoreError } from "../utils/assistantStore";
 import { logger } from "../utils/logger";
+import {
+  createRequestTrace,
+  traceText,
+  type TraceFn,
+} from "../utils/assistantTrace";
 import { createAuthorizationCache } from "../utils/assistantAuthCache";
 import {
   resolveAssistantModelConfig,
@@ -147,6 +152,18 @@ function notFound(ctx: Context<HonoConfig>) {
 
 function invalid(ctx: Context<HonoConfig>, code = "invalid-input") {
   return ctx.json(new ErrorResponse(code).toJSON(), 400);
+}
+
+/** Mint the per-request trace (no-op unless trace logging is enabled). */
+function requestTrace(ctx: Context<HonoConfig>): {
+  traceId: string;
+  trace: TraceFn;
+} {
+  const { traceId, trace } = createRequestTrace(
+    (level, scope, message, meta) => logger[level](scope, message, meta),
+    ctx.env as Record<string, string | undefined>,
+  );
+  return { traceId, trace };
 }
 
 /** Serialize one SSE data frame (validated before write). */
@@ -369,6 +386,10 @@ async function buildToolDeps(input: {
 
 async function executeStreamedRun(input: {
   ctx: Context<HonoConfig>;
+  /** Route name for trace lines (e.g. "conversations.create"). */
+  route: string;
+  trace: TraceFn;
+  traceId: string;
   scope: ProjectScope;
   userId: string;
   conversationId: string;
@@ -379,7 +400,18 @@ async function executeStreamedRun(input: {
   queryContextToken?: string;
   now: number;
 }): Promise<Response> {
-  const { ctx, scope, userId, conversationId, userMessageId, question, now } = input;
+  const { ctx, route, trace, traceId, scope, userId, conversationId, userMessageId, question, now } = input;
+  trace("run.received", `assistant run requested via ${route}`, {
+    route,
+    userId,
+    projectId: scope.projectId,
+    organizationId: scope.organizationId,
+    role: scope.role,
+    conversationSlug: input.conversationSlug,
+    question: traceText(question, 2000),
+    queryContextTokenPresent: Boolean(input.queryContextToken),
+    queryContextTokenPreview: input.queryContextToken?.slice(0, 24) ?? null,
+  });
   const streamWithSlug = (
     body: ReadableStream<Uint8Array>,
     signal: AbortSignal,
@@ -387,7 +419,8 @@ async function executeStreamedRun(input: {
   // NOTE: no env argument — passing one would reset the process-local
   // singleton (see assistantQuotas). Limits are configured at startup.
   const quotas = assistantQuotas();
-  const signal = userSignal(ctx);
+  const streamAbort = new AbortController();
+  const signal = AbortSignal.any([userSignal(ctx), streamAbort.signal]);
   const db = DatabaseManager.getInstance(ctx) as unknown as AssistantDb;
 
   const writeErrorStream = (
@@ -409,15 +442,25 @@ async function executeStreamedRun(input: {
   // Pre-run gates: rate + daily quota.
   const rate = quotas.checkRate({ userId, projectId: scope.projectId, organizationId: scope.organizationId });
   if (!rate.allowed) {
+    trace("run.gate", "rate limit denied the run", {
+      reason: rate.reason,
+      retryAfterMs: rate.retryAfterMs,
+    });
     const mapped = quotaToStreamError(rate);
     await finishRun(db, { projectId: scope.projectId, userId, runId: `run_missing_${now}`, status: "failed", now }).catch(() => undefined);
     return writeErrorStream(mapped.code, mapped.message, mapped.retryable);
   }
+  trace("run.gate", "rate limit passed", {});
   const daily = quotas.checkDaily({ userId, organizationId: scope.organizationId, now });
   if (!daily.allowed) {
+    trace("run.gate", "daily quota denied the run", {
+      reason: daily.reason,
+      retryAfterMs: daily.retryAfterMs,
+    });
     const mapped = quotaToStreamError(daily);
     return writeErrorStream(mapped.code, mapped.message, mapped.retryable);
   }
+  trace("run.gate", "daily quota passed", {});
 
   // Verify the snapshot token when supplied (server-side, after member).
   if (input.queryContextToken) {
@@ -429,12 +472,20 @@ async function executeStreamedRun(input: {
         organizationId: scope.organizationId,
         allowedSourceIds: [],
       });
+      trace("run.token", "snapshot token verified", {
+        present: verified.present,
+        ok: verified.present ? verified.ok : null,
+        reason: verified.present && !verified.ok ? verified.reason : null,
+      });
       if (verified.present && !verified.ok) {
         return writeErrorStream("validation-failed", "That snapshot expired. Refresh the overview and ask again.", true);
       }
     } catch {
+      trace("run.token", "snapshot token verification threw", {});
       return writeErrorStream("validation-failed", "That snapshot expired. Refresh the overview and ask again.", true);
     }
+  } else {
+    trace("run.token", "no snapshot token supplied; continuing without one", {});
   }
 
   // Model configuration: fail closed to a disabled stream error.
@@ -442,8 +493,17 @@ async function executeStreamedRun(input: {
   let configError: "disabled" | null = null;
   try {
     modelConfig = resolveAssistantModelConfig(ctx.env as Record<string, string | undefined>);
+    trace("run.config", "model configuration resolved", {
+      model: modelConfig.model.id,
+      evaluated: modelConfig.model.evaluated,
+      requireZeroDataRetention: modelConfig.requireZeroDataRetention,
+      maxSteps: modelConfig.maxSteps,
+      maxInputTokens: modelConfig.maxInputTokens,
+      maxOutputTokens: modelConfig.maxOutputTokens,
+    });
   } catch {
     configError = "disabled";
+    trace("run.config", "model configuration failed; run will stream disabled", {});
   }
 
   // Start the run BEFORE any paid work (one-active-run owned by the DB).
@@ -457,9 +517,15 @@ async function executeStreamedRun(input: {
     now,
   }).catch((error: unknown) => ({ ok: false as const, storeError: error }));
   if ("storeError" in (started as Record<string, unknown>)) {
+    trace("run.start", "startRun threw", {
+      error: errorMessageFor((started as { storeError: unknown }).storeError),
+    });
     return writeErrorStream("provider-error", errorMessageFor((started as { storeError: unknown }).storeError), true);
   }
   if (!(started as { ok: boolean }).ok) {
+    trace("run.start", "one-active-run conflict; streaming retryable error", {
+      activeRunId: (started as { conflict?: { activeRunId?: string } }).conflict?.activeRunId ?? null,
+    });
     const conflict = (started as { conflict?: { activeRunId?: string } }).conflict;
     void conflict;
     const frames = [
@@ -473,31 +539,40 @@ async function executeStreamedRun(input: {
     return streamWithSlug(streamParts(frames, signal), signal);
   }
   const run = (started as { run: { id: string } }).run;
+  trace("run.start", "run started", { runId: run.id, userMessageId });
 
   if (configError || !modelConfig) {
+    trace("run.disabled", "streaming disabled error; no model call made", {});
     await finishRun(db, { projectId: scope.projectId, userId, runId: run.id, status: "failed", failureCode: "disabled", now: Date.now() });
     return writeErrorStream("disabled", "Assistant is disabled for this deployment.", false);
   }
 
-  // Assistant placeholder message (streaming → complete only on success).
-  const assistantPlaceholder = await appendMessage(db, {
-    projectId: scope.projectId,
-    userId,
-    conversationId,
-    role: "assistant",
-    status: "streaming",
-    parts: [{ type: "text", text: "" }],
-    now,
-  }).catch(() => null);
+  // Return headers immediately; the member's message already exists.
+  const encoder = new TextEncoder();
+  let closed = false;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const emit = (frame: string) => { if (!closed) controller.enqueue(encoder.encode(frame)); };
+      emit(encodeStreamFrame({ kind: "data-run-start", runId: run.id, conversationId }));
+      const execute = async (): Promise<Response> => {
 
   // Resolve window + capabilities sequentially (Workers-safe).
   const metricWindow = resolveMetricWindow(now, "7d");
+  trace("run.window", "metric window resolved", { ...metricWindow });
   const analytics = TursoDatabaseManager.getInstance(ctx);
   const capabilities = resolveProjectCapabilities({
     sources: [],
     errorConfigured: false,
     errorObserved: false,
     standardEventsObserved: [],
+  });
+  trace("run.capabilities", "capabilities resolved", {
+    web: capabilities.web,
+    mobile: capabilities.mobile,
+    server: capabilities.server,
+    errorConfigured: capabilities.errorCollection.configured,
+    errorObserved: capabilities.errorCollection.observed,
+    standardEventsObserved: capabilities.standardEventsObserved,
   });
   const authCache = createAuthorizationCache({
     lookup: async () => ({
@@ -521,10 +596,15 @@ async function executeStreamedRun(input: {
     capabilities: capabilities as never,
     authCache,
   });
+  trace("run.deps", "run-bound tool dependencies built", {
+    allowedSourceIds: authorized.allowedSourceIds,
+    canConfirmMemory: authorized.permissions.canConfirmMemory,
+  });
   void authorized;
 
   const runAgent = async (): Promise<AgentRunResult> => {
     if (testAgentRunner) {
+      trace("run.agent", "using injected test agent runner", {});
       return testAgentRunner({
         question,
         tools: deps,
@@ -535,10 +615,20 @@ async function executeStreamedRun(input: {
       });
     }
     const knowledge = await deps.readKnowledge();
+    trace("run.knowledge", "confirmed knowledge loaded", {
+      project: knowledge.project.length,
+      workspace: knowledge.workspace.length,
+      member: knowledge.member.length,
+      keys: [
+        ...knowledge.project.map((entry) => entry.key),
+        ...knowledge.workspace.map((entry) => entry.key),
+        ...knowledge.member.map((entry) => entry.key),
+      ],
+    });
     const historyRows = await (async () => {
       const detail = await getConversation(db, { projectId: scope.projectId, userId, conversationId });
       const eligible = (detail?.messages ?? [])
-        .filter((message) => message.role === "user" || message.role === "assistant")
+        .filter((message) => message.id !== userMessageId && message.status === "complete")
         .map((message) => ({
           seq: message.seq,
           role: message.role as "user" | "assistant",
@@ -550,7 +640,14 @@ async function executeStreamedRun(input: {
         }));
       return selectRecentTurns(eligible).messages.map((entry) => ({ role: entry.role, text: entry.text }));
     })();
+    trace("run.history", "bounded history selected for model context", {
+      turns: historyRows.length,
+      texts: historyRows.map((entry) => traceText(entry.text, 200)),
+    });
     const model = createAssistantModel(modelConfig as AssistantModelConfig);
+    trace("run.agent", "invoking production tool-loop agent", {
+      historyTurns: historyRows.length,
+    });
     return runToolLoopAgent({
       question,
       model,
@@ -559,6 +656,8 @@ async function executeStreamedRun(input: {
       capabilities,
       history: historyRows,
       knowledge,
+      trace,
+      onActivity: (step) => emit(encodeStreamFrame({ kind: "data-activity-step", ...step })),
       maxRunCostMicroUsd: quotas.config.maxRunCostMicroUsd,
       providerUserId: userId,
       signal,
@@ -591,8 +690,21 @@ async function executeStreamedRun(input: {
     costMicroUsd: result.usage.costMicroUsd,
     now: Date.now(),
   });
+  trace("run.result", "agent run returned", {
+    runId: run.id,
+    status: result.status,
+    repaired: result.repaired,
+    steps: result.steps.map((step) => `${step.toolId}:${step.state}`),
+    toolIds: result.toolIds,
+    factIds: result.factIds,
+    artifactIds: result.artifactIds,
+    usage: result.usage,
+    quotaDecision: result.quota.decision,
+    latencyMs: result.latencyMs,
+  });
 
   if (signal.aborted) {
+    trace("run.abort", "run aborted before answering", {});
     await finishRun(db, { projectId: scope.projectId, userId, runId: run.id, status: "cancelled", now: Date.now() });
     const frames = [
       encodeStreamFrame({ kind: "data-run-start", runId: run.id, conversationId }),
@@ -603,6 +715,11 @@ async function executeStreamedRun(input: {
 
   if (result.status !== "answered" && result.status !== "fallback") {
     const mapped = agentStatusToStreamError(result);
+    trace("run.failed", "streaming run-error frame", {
+      runId: run.id,
+      code: mapped.code,
+      retryable: mapped.retryable,
+    });
     logger.warn("assistant.run", "agent run ended without an answer", {
       runId: run.id,
       status: result.status,
@@ -632,6 +749,26 @@ async function executeStreamedRun(input: {
   const answer: AssistantAnswer = result.answer ?? buildFallbackAnswer("unusable answer");
   const answerCheck = AssistantAnswerSchema.safeParse(answer);
   const finalAnswer: AssistantAnswer = answerCheck.success ? answerCheck.data : buildFallbackAnswer("invalid");
+  trace("run.answer", "final answer validated for persistence", {
+    runId: run.id,
+    contractValid: answerCheck.success,
+    summary: traceText(finalAnswer.summary, 500),
+    observations: finalAnswer.observations.map((entry) => ({
+      text: traceText(entry.text, 300),
+      factIds: entry.factIds,
+    })),
+    primaryArtifactId: finalAnswer.primaryArtifactId,
+    supportingArtifactIds: finalAnswer.supportingArtifactIds,
+    assumptions: finalAnswer.assumptions,
+    followUps: finalAnswer.followUps,
+  });
+  // Preserve every answer-referenced widget before optional tool artifacts.
+  // Text, answer and trace reserve three of the sixteen message-part slots.
+  const referenced = new Set([finalAnswer.primaryArtifactId, ...finalAnswer.supportingArtifactIds]);
+  const answerArtifacts = [
+    ...(result.artifacts ?? []).filter((artifact) => referenced.has(artifact.id)),
+    ...(result.artifacts ?? []).filter((artifact) => !referenced.has(artifact.id)),
+  ].slice(0, 13);
 
   // Facts/artifacts for the stream: metric facts only (evidence union
   // members that are not MetricFacts never enter the fact channel).
@@ -642,9 +779,12 @@ async function executeStreamedRun(input: {
   void artifactFrames;
 
   // Persist the assistant message complete ONLY after validation.
-  if (assistantPlaceholder) {
-    const parts: Array<{ type: "text"; text: string }> = [
+  {
+    const parts = [
       { type: "text", text: finalAnswer.summary.slice(0, 2000) },
+      { type: "answer", answer: finalAnswer },
+      { type: "trace", steps: result.steps },
+      ...answerArtifacts.map((artifact) => ({ type: "artifact", artifact })),
     ];
     await appendMessage(db, {
       projectId: scope.projectId,
@@ -654,7 +794,12 @@ async function executeStreamedRun(input: {
       status: "complete",
       parts: parts as never,
       now: Date.now(),
-    }).catch(() => undefined);
+    });
+    trace("run.persist", "assistant message persisted as complete", {
+      runId: run.id,
+      partKinds: parts.map((part) => part.type),
+      artifactIds: answerArtifacts.map((artifact) => `${artifact.id}:${artifact.kind}`),
+    });
   }
   await finishRun(db, {
     projectId: scope.projectId,
@@ -668,6 +813,11 @@ async function executeStreamedRun(input: {
     artifactIds: result.artifactIds,
     latencyMs: result.latencyMs,
     now: Date.now(),
+  });
+  trace("run.finish", "run marked complete", {
+    runId: run.id,
+    stepCount: result.steps.length,
+    latencyMs: result.latencyMs,
   });
 
   const frames: string[] = [
@@ -683,6 +833,7 @@ async function executeStreamedRun(input: {
       }),
     ),
     encodeTextFrame(finalAnswer.summary),
+    ...answerArtifacts.map((artifact) => encodeStreamFrame({ kind: "data-artifact", artifact })),
     encodeStreamFrame({
       kind: "data-run-finish",
       answer: finalAnswer,
@@ -690,7 +841,40 @@ async function executeStreamedRun(input: {
       artifactIds: result.artifactIds.slice(0, 16),
     }),
   ];
+  trace("run.respond", "sending final stream response", {
+    runId: run.id,
+    frameKinds: [
+      "data-run-start",
+      ...result.steps.map(() => "data-activity-step"),
+      "text",
+      ...answerArtifacts.map(() => "data-artifact"),
+      "data-run-finish",
+    ],
+    conversationSlug: input.conversationSlug,
+  });
   return streamWithSlug(streamParts(frames, signal), signal);
+      };
+      void execute().then(async (response) => {
+        const reader = response.body?.getReader();
+        if (reader) {
+          for (;;) {
+            const chunk = await reader.read();
+            if (chunk.done || closed) break;
+            controller.enqueue(chunk.value);
+          }
+          reader.releaseLock();
+        }
+      }).catch(async () => {
+        trace("run.respond", "stream relay failed while serving chunks", {
+          runId: run.id,
+        });
+        await finishRun(db, { projectId: scope.projectId, userId, runId: run.id, status: "failed", failureCode: "provider-error", now: Date.now() }).catch(() => undefined);
+        emit(encodeStreamFrame({ kind: "data-run-error", code: "provider-error", message: "The answer could not be saved. Please retry.", retryable: true }));
+      }).finally(() => { if (!closed) { closed = true; controller.close(); } });
+    },
+    cancel() { closed = true; streamAbort.abort(); },
+  });
+  return streamWithSlug(body, signal);
 }
 
 /* ------------------------------------------------------------------ */
@@ -703,6 +887,7 @@ export class AssistantController {
     const user = ctx.get("user");
     if (!user) return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
     if (!slug) return notFound(ctx);
+    const { traceId, trace } = requestTrace(ctx);
     const scope = await resolveProjectScope(ctx, slug, user.id);
     if (!scope) return notFound(ctx);
     const db = DatabaseManager.getInstance(ctx) as unknown as AssistantDb;
@@ -714,12 +899,24 @@ export class AssistantController {
       }
     };
     const limit = Math.min(Math.max(Number.parseInt(query("limit") ?? "20", 10) || 20, 1), 50);
+    trace("http.request", "GET conversations", {
+      traceId,
+      userId: user.id,
+      projectSlug: slug,
+      limit,
+      cursorPresent: (query("cursor") ?? null) !== null,
+    });
     try {
       const page = await listConversations(db, {
         projectId: scope.projectId,
         userId: user.id,
         limit,
         cursor: query("cursor") ?? null,
+      });
+      trace("http.response", "GET conversations -> 200", {
+        traceId,
+        itemCount: page.items.length,
+        nextCursorPresent: page.nextCursor !== null,
       });
       return ctx.json(page);
     } catch (error) {
@@ -735,8 +932,12 @@ export class AssistantController {
     const user = ctx.get("user");
     if (!user) return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
     if (!slug) return notFound(ctx);
+    const { traceId, trace } = requestTrace(ctx);
     const scope = await resolveProjectScope(ctx, slug, user.id);
-    if (!scope) return notFound(ctx);
+    if (!scope) {
+      trace("http.auth", "POST conversations -> 404 (unknown project or non-member)", { traceId });
+      return notFound(ctx);
+    }
     let body: unknown;
     try {
       body = await ctx.req.json();
@@ -744,7 +945,19 @@ export class AssistantController {
       return invalid(ctx);
     }
     const parsed = ConversationCreateSchema.safeParse(body);
-    if (!parsed.success) return invalid(ctx);
+    if (!parsed.success) {
+      trace("http.request", "POST conversations -> 400 (contract validation)", { traceId });
+      return invalid(ctx);
+    }
+    trace("http.request", "POST conversations (create-and-stream)", {
+      traceId,
+      userId: user.id,
+      projectSlug: slug,
+      clientRequestId: parsed.data.clientRequestId,
+      firstMessage: traceText(parsed.data.firstMessage, 2000),
+      seed: parsed.data.seed,
+      queryContextTokenPreview: parsed.data.queryContextToken.slice(0, 24),
+    });
     const db = DatabaseManager.getInstance(ctx) as unknown as AssistantDb;
     const now = Date.now();
     try {
@@ -758,8 +971,19 @@ export class AssistantController {
         queryContextToken: parsed.data.queryContextToken,
         now,
       });
+      trace("http.persist", "chat created with first message", {
+        traceId,
+        conversationId: created.conversation.id,
+        conversationSlug: created.conversation.slug,
+        messageId: created.message.id,
+        createdConversation: created.createdConversation,
+        createdMessage: created.createdMessage,
+      });
       return executeStreamedRun({
         ctx,
+        route: "conversations.create",
+        trace,
+        traceId,
         scope,
         userId: user.id,
         conversationId: created.conversation.id,
@@ -771,6 +995,10 @@ export class AssistantController {
       });
     } catch (error) {
       if (error instanceof AssistantStoreError) {
+        trace("http.persist", "chat creation failed in store", {
+          traceId,
+          code: error.code,
+        });
         if (error.code === "idempotency-conflict") {
           return ctx.json(new ErrorResponse("idempotency-conflict").toJSON(), 409);
         }
@@ -787,6 +1015,13 @@ export class AssistantController {
     const user = ctx.get("user");
     if (!user) return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
     if (!slug || !conversationSlug) return notFound(ctx);
+    const { traceId, trace } = requestTrace(ctx);
+    trace("http.request", "GET conversation", {
+      traceId,
+      userId: user.id,
+      projectSlug: slug,
+      conversationSlug,
+    });
     const scope = await resolveProjectScope(ctx, slug, user.id);
     if (!scope) return notFound(ctx);
     const db = DatabaseManager.getInstance(ctx) as unknown as AssistantDb;
@@ -795,7 +1030,15 @@ export class AssistantController {
       userId: user.id,
       slug: conversationSlug,
     });
-    if (!detail) return notFound(ctx);
+    if (!detail) {
+      trace("http.response", "GET conversation -> 404", { traceId });
+      return notFound(ctx);
+    }
+    trace("http.response", "GET conversation -> 200", {
+      traceId,
+      messageCount: detail.messages.length,
+      hasActiveRun: detail.activeRun !== null,
+    });
     return ctx.json({
       conversation: detail.conversation,
       messages: detail.messages,
@@ -809,6 +1052,13 @@ export class AssistantController {
     const user = ctx.get("user");
     if (!user) return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
     if (!slug || !conversationSlug) return notFound(ctx);
+    const { traceId, trace } = requestTrace(ctx);
+    trace("http.request", "DELETE conversation", {
+      traceId,
+      userId: user.id,
+      projectSlug: slug,
+      conversationSlug,
+    });
     const scope = await resolveProjectScope(ctx, slug, user.id);
     if (!scope) return notFound(ctx);
     // Fresh membership check before a destructive write (no cached authz).
@@ -820,11 +1070,19 @@ export class AssistantController {
       userId: user.id,
       slug: conversationSlug,
     });
-    if (!detail) return notFound(ctx);
+    if (!detail) {
+      trace("http.response", "DELETE conversation -> 404", { traceId });
+      return notFound(ctx);
+    }
     const result = await deleteConversation(db, {
       projectId: scope.projectId,
       userId: user.id,
       conversationId: detail.conversation.id,
+    });
+    trace("http.response", "DELETE conversation -> 200", {
+      traceId,
+      deleted: result.deleted,
+      abortedRun: result.abortedRun,
     });
     if (!result.deleted) return notFound(ctx);
     return ctx.json({ deleted: true, abortedRun: result.abortedRun });
@@ -836,8 +1094,12 @@ export class AssistantController {
     const user = ctx.get("user");
     if (!user) return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
     if (!slug || !conversationSlug) return notFound(ctx);
+    const { traceId, trace } = requestTrace(ctx);
     const scope = await resolveProjectScope(ctx, slug, user.id);
-    if (!scope) return notFound(ctx);
+    if (!scope) {
+      trace("http.auth", "POST message -> 404 (unknown project or non-member)", { traceId });
+      return notFound(ctx);
+    }
     let body: unknown;
     try {
       body = await ctx.req.json();
@@ -845,7 +1107,19 @@ export class AssistantController {
       return invalid(ctx);
     }
     const parsed = MessagePostSchema.safeParse(body);
-    if (!parsed.success) return invalid(ctx);
+    if (!parsed.success) {
+      trace("http.request", "POST message -> 400 (contract validation)", { traceId });
+      return invalid(ctx);
+    }
+    trace("http.request", "POST message (continue-and-stream)", {
+      traceId,
+      userId: user.id,
+      projectSlug: slug,
+      conversationSlug,
+      clientRequestId: parsed.data.clientRequestId,
+      content: traceText(parsed.data.content, 2000),
+      queryContextTokenPresent: Boolean(parsed.data.queryContextToken),
+    });
     const db = DatabaseManager.getInstance(ctx) as unknown as AssistantDb;
     const now = Date.now();
     // Ownership first: unknown/foreign chats are a non-disclosing 404.
@@ -854,7 +1128,10 @@ export class AssistantController {
       userId: user.id,
       slug: conversationSlug,
     });
-    if (!detail) return notFound(ctx);
+    if (!detail) {
+      trace("http.response", "POST message -> 404 (unknown/foreign chat)", { traceId });
+      return notFound(ctx);
+    }
     const conversationId = detail.conversation.id;
     try {
       const appended = await appendMessage(db, {
@@ -868,8 +1145,17 @@ export class AssistantController {
         completedAt: now,
         now,
       });
+      trace("http.persist", "user message appended", {
+        traceId,
+        messageId: appended.message.id,
+        created: appended.created,
+        seq: appended.message.seq,
+      });
       return executeStreamedRun({
         ctx,
+        route: "conversations.message",
+        trace,
+        traceId,
         scope,
         userId: user.id,
         conversationId,
@@ -881,6 +1167,10 @@ export class AssistantController {
       });
     } catch (error) {
       if (error instanceof AssistantStoreError) {
+        trace("http.persist", "message append failed in store", {
+          traceId,
+          code: error.code,
+        });
         if (error.code === "idempotency-conflict") {
           // Idempotent reconnect: the earlier run already exists — the
           // client replays the persisted transcript instead of forking.
@@ -898,6 +1188,8 @@ export class AssistantController {
     const user = ctx.get("user");
     if (!user) return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
     if (!slug) return notFound(ctx);
+    const { traceId, trace } = requestTrace(ctx);
+    trace("http.request", "GET memory", { traceId, userId: user.id, projectSlug: slug });
     const scope = await resolveProjectScope(ctx, slug, user.id);
     if (!scope) return notFound(ctx);
     const db = DatabaseManager.getInstance(ctx) as unknown as AssistantDb;
@@ -913,6 +1205,11 @@ export class AssistantController {
       }
       if (record.scope === "project") return record.projectId === scope.projectId;
       return true;
+    });
+    trace("http.response", "GET memory -> 200", {
+      traceId,
+      total: records.length,
+      visible: visible.length,
     });
     return ctx.json({ records: visible });
   }
@@ -934,12 +1231,23 @@ export class AssistantController {
     const user = ctx.get("user");
     if (!user) return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
     if (!slug || !proposalId) return notFound(ctx);
+    const { traceId, trace } = requestTrace(ctx);
+    trace("http.request", `POST memory ${action}`, {
+      traceId,
+      userId: user.id,
+      projectSlug: slug,
+      proposalId,
+    });
     const scope = await resolveProjectScope(ctx, slug, user.id);
     if (!scope) return notFound(ctx);
     // Fresh transactional authorization for shared-memory writes: bypass
     // any cached decision (the cache is a read optimization only).
     const fresh = await getWorkspaceRole(ctx, user.id, scope.organizationId);
     if (!fresh) return notFound(ctx);
+    trace("http.auth", `memory ${action} fresh role resolved`, {
+      traceId,
+      role: fresh,
+    });
     const db = DatabaseManager.getInstance(ctx) as unknown as AssistantDb;
     const result = await confirmMemoryProposal(db, {
       organizationId: scope.organizationId,
@@ -952,8 +1260,12 @@ export class AssistantController {
       if (error instanceof AssistantStoreError) return null;
       throw error;
     });
-    if (!result) return invalid(ctx);
+    if (!result) {
+      trace("http.response", `POST memory ${action} -> 400 (store rejected)`, { traceId });
+      return invalid(ctx);
+    }
     if (!result.ok) {
+      trace("http.response", `POST memory ${action} -> ${result.reason}`, { traceId });
       if (result.reason === "not-found") return notFound(ctx);
       if (result.reason === "forbidden") {
         return ctx.json(new ErrorResponse("forbidden").toJSON(), 403);
@@ -963,6 +1275,11 @@ export class AssistantController {
       }
       return ctx.json(new ErrorResponse("not-proposed").toJSON(), 409);
     }
+    trace("http.response", `POST memory ${action} -> 200`, {
+      traceId,
+      recordId: result.record.id,
+      supersededIds: result.supersededIds,
+    });
     return ctx.json({ record: result.record, supersededIds: result.supersededIds });
   }
 }

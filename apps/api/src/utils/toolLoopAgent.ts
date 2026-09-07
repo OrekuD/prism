@@ -76,6 +76,7 @@ import {
   type AssistantModelConfig,
 } from "./assistantModel";
 import type { ConfirmedKnowledge } from "./assistantStore";
+import type { TraceFn } from "./assistantTrace";
 
 export const AGENT_SYSTEM_PROMPT = [
   "You are Prism, a grounded product-analytics assistant.",
@@ -119,6 +120,14 @@ export type AgentRunInput = {
   /** Total run timeout in milliseconds. */
   timeoutMs?: number;
   now?: () => number;
+  onActivity?: (step: ActivityStep) => void;
+  /**
+   * Trace sink for full-flow debugging (see `assistantTrace`). Optional;
+   * the run is identical with or without it. Receives stage/message/meta
+   * for agent start, every tool call + outcome, every ledger entry,
+   * answer attempts, validation/repair decisions, and the final status.
+   */
+  trace?: TraceFn;
 };
 
 export type AgentRunResult = {
@@ -140,6 +149,7 @@ export type AgentRunResult = {
   factIds: string[];
   toolIds: ToolId[];
   artifactIds: string[];
+  artifacts?: AssistantArtifact[];
   usage: RunUsage;
   quota: QuotaOutcome;
   latencyMs: number;
@@ -308,6 +318,20 @@ export async function runToolLoopAgent(
   const modelMessages: ModelMessage[] = [];
   const ledger: LedgerEntry[] = [];
   let currentStep = 0;
+  const trace: TraceFn = input.trace ?? (() => undefined);
+  trace("agent.start", "run starting", {
+    question: input.question.slice(0, 2000),
+    model: config.model.id,
+    stage,
+    eligibleToolIds,
+    maxSteps,
+    historyTurns: (input.history ?? []).length,
+    knowledgeRecords:
+      (input.knowledge?.project.length ?? 0) +
+      (input.knowledge?.workspace.length ?? 0) +
+      (input.knowledge?.member.length ?? 0),
+    maxRunCostMicroUsd: input.maxRunCostMicroUsd ?? null,
+  });
   // Run-owned controller: user stop + total timeout compose here, and this
   // SAME signal gates planning, tools, answer, and repair (R17-F6).
   const controller = new AbortController();
@@ -379,6 +403,7 @@ export async function runToolLoopAgent(
     for (const timeout of cancelTimeouts) clearTimeout(timeout);
     return {
       ...partial,
+      artifacts: [...run.artifacts.values()],
       latencyMs: Math.max(0, now() - startedAt),
       modelMessages,
     };
@@ -545,7 +570,13 @@ export async function runToolLoopAgent(
           label: toolActivityLabel(id).slice(0, 160),
         };
         steps.push(activity);
+        input.onActivity?.({ ...activity });
         toolIds.push(id);
+        trace("agent.tool.call", `calling ${id}`, {
+          stepId,
+          toolId: id,
+          input: JSON.stringify(toolInput).slice(0, 1000),
+        });
         const task = chain.then(async () => {
           // Never start the next queued read after abort (R17-F6).
           if (signal.aborted) {
@@ -574,6 +605,20 @@ export async function runToolLoopAgent(
         }
         const verified = verifyToolOutcome(run, outcome);
         activity.state = verified.ok ? "complete" : "failed";
+        input.onActivity?.({ ...activity });
+        trace(
+          verified.ok ? "agent.tool.ok" : "agent.tool.failed",
+          `${id} ${verified.ok ? "succeeded" : "failed"}`,
+          verified.ok
+            ? {
+                stepId,
+                toolId: id,
+                factIds: verified.result.factIds,
+                artifactIds: verified.result.artifactIds,
+                summary: verified.result.summary.text.slice(0, 500),
+              }
+            : { stepId, toolId: id, error: verified.failure.message },
+        );
         if (verified.ok) {
           // Model channel carries the compact summary text only — full
           // artifacts and raw facts never serialize into model messages.
@@ -596,6 +641,12 @@ export async function runToolLoopAgent(
       prices,
     );
     ledger.push({ call, ...usage, costMicroUsd, upstreamProvider });
+    trace("agent.ledger", `usage recorded for ${call}`, {
+      call,
+      ...usage,
+      costMicroUsd,
+      upstreamProvider,
+    });
   };
 
   try {
@@ -756,6 +807,10 @@ export async function runToolLoopAgent(
   };
 
   try {
+    trace("agent.answer", "requesting structured answer", {
+      evidenceFacts: [...run.facts.keys()],
+      artifactIds: [...run.artifacts.keys()],
+    });
     const first = await answerCall([]);
     const artifacts = new Map<string, AssistantArtifact>(run.artifacts);
     const check = (answer: AssistantAnswer | null) =>
@@ -766,17 +821,36 @@ export async function runToolLoopAgent(
           }
         : validateGroundedAnswer(answer, facts, new Set(artifacts.keys()));
     let validation = check(first.answer);
+    trace(
+      validation.ok ? "agent.answer.valid" : "agent.answer.rejected",
+      validation.ok
+        ? "first answer passed grounding validation"
+        : `first answer rejected: ${(validation.ok ? [] : validation.reasons).join("; ").slice(0, 500)}`,
+      { repaired: false },
+    );
     let repaired = false;
     let answer = first.answer;
     if (!validation.ok && repairFits(validation.ok ? [] : validation.reasons)) {
+      trace("agent.repair", "starting bounded repair pass", {
+        reasons: (validation.ok ? [] : validation.reasons).slice(0, 8),
+      });
       const second = await answerCall(
         validation.ok ? [] : validation.reasons,
       );
       validation = check(second.answer);
+      trace(
+        validation.ok ? "agent.repair.valid" : "agent.repair.rejected",
+        validation.ok
+          ? "repair passed grounding validation"
+          : `repair rejected: ${(validation.ok ? [] : validation.reasons).join("; ").slice(0, 500)}`,
+        {},
+      );
       if (validation.ok) {
         answer = second.answer;
         repaired = true;
       }
+    } else if (!validation.ok) {
+      trace("agent.repair.skipped", "repair preflight failed; falling back", {});
     }
     // Final ledger re-check: a run that crossed a hard ceiling returns
     // the quota/cost outcome, never `allowed` with an answer.
@@ -793,6 +867,12 @@ export async function runToolLoopAgent(
       return finishCancelled();
     }
     if (!validation.ok || answer === null) {
+      trace("agent.finish", "run fell back to safe answer", {
+        reason: validation.ok ? "unusable answer" : (validation.reasons[0] ?? "invalid"),
+        steps: steps.length,
+        toolIds,
+        usage: usageOf(),
+      });
       return finish({
         status: "fallback",
         eligibleToolIds,
@@ -810,6 +890,13 @@ export async function runToolLoopAgent(
         quota: { decision: "allowed", limitType: null, retryAfterMs: null },
       });
     }
+    trace("agent.finish", "run answered", {
+      repaired,
+      steps: steps.length,
+      toolIds,
+      factIds: [...facts.keys()],
+      usage: usageOf(),
+    });
     return finish({
       status: "answered",
       eligibleToolIds,
