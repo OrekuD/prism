@@ -42,6 +42,7 @@ import {
 import {
   AGENT_LIMITS,
   AssistantAnswerSchema,
+  METRIC_REGISTRY,
   type ActivityStep,
   type AssistantAnswer,
   type AssistantArtifact,
@@ -89,6 +90,10 @@ export const AGENT_SYSTEM_PROMPT = [
   "6. Definitions come only from resolve_definition or confirmed memory. Never invent event names.",
   "7. To change a definition, call propose_definition. Proposals need member confirmation; you cannot confirm.",
   "8. Prefer one exact measurement over many. Stop calling tools once the question is answered.",
+  "9. Built-in metrics below do not require business-term definitions. For errors, measure errors.occurrences first; use its comparison to verify whether there was a change before investigating associations. Never assume the question's claimed direction is true.",
+  "10. Do not ask members for internal fact IDs. If evidence is unavailable, explain the unavailable measurement or tool in plain language. Issue-detail inspection may be unavailable even when error metrics are measurable.",
+  "Built-in metric IDs (use with measure_metric or compare_periods; schema filters still apply):",
+  ...Object.values(METRIC_REGISTRY).map((metric) => `${metric.id}: ${metric.label}`),
 ].join("\n");
 
 /** Minimum remaining output tokens that can hold a valid answer object. */
@@ -105,6 +110,8 @@ export type AgentRunInput = {
   config: AssistantModelConfig;
   tools: AssistantToolDeps;
   capabilities: ProjectCapabilities;
+  /** Server-owned implementation allowlist, intersected with capability gates. */
+  supportedToolIds?: readonly ToolId[];
   /** Definition flows unlock propose_definition; default "general". */
   stage?: AgentStage;
   /** Bounded recent turns of the SELECTED chat only (text already extracted). */
@@ -305,7 +312,7 @@ export async function runToolLoopAgent(
   const eligibleToolIds = selectEligibleTools({
     capabilities: input.capabilities,
     stage,
-  });
+  }).filter((id) => !input.supportedToolIds || input.supportedToolIds.includes(id));
   const eligible = Object.fromEntries(
     Object.entries(ASSISTANT_TOOL_DEFINITIONS).filter(([toolId]) =>
       (eligibleToolIds as string[]).includes(toolId),
@@ -396,6 +403,11 @@ export async function runToolLoopAgent(
   };
   const completionUsed = (): number =>
     ledger.reduce((sum, entry) => sum + entry.completionTokens, 0);
+  const remainingOutput = (): number =>
+    Math.max(0, config.maxOutputTokens - completionUsed());
+  // Reserve a quarter of the configured run ceiling (up to 500 tokens)
+  // for the grounded answer; planning cannot spend the entire run budget.
+  const answerReserve = Math.min(500, Math.floor(config.maxOutputTokens / 4));
 
   const finish = (
     partial: Omit<AgentRunResult, "latencyMs" | "modelMessages">,
@@ -471,6 +483,9 @@ export async function runToolLoopAgent(
       toolIds,
       artifactIds: [...run.artifacts.keys()],
       usage: usageOf(),
+      errorMessage: result === "quota-exhausted"
+        ? "This response reached Prism's per-run token limit. Try a narrower question; this is not your provider credit balance."
+        : undefined,
       quota:
         result === "quota-exhausted"
           ? { decision: "denied-quota", limitType: null, retryAfterMs: null }
@@ -655,8 +670,11 @@ export async function runToolLoopAgent(
       system: AGENT_SYSTEM_PROMPT,
       messages,
       tools: sdkTools,
-      stopWhen: stepCountIs(maxSteps),
-      maxOutputTokens: config.maxOutputTokens,
+      stopWhen: [stepCountIs(maxSteps), () => remainingOutput() <= answerReserve],
+      maxOutputTokens: Math.max(1, remainingOutput() - answerReserve),
+      prepareStep: () => ({
+        maxOutputTokens: Math.max(1, remainingOutput() - answerReserve),
+      }),
       ...(providerOptions ? { providerOptions } : {}),
       abortSignal: signal,
       onStepFinish: (event) => {
@@ -754,8 +772,6 @@ export async function runToolLoopAgent(
     "Return the grounded answer object.",
   ].join("\n");
 
-  const remainingOutput = (): number =>
-    Math.max(0, config.maxOutputTokens - completionUsed());
   const answerCall = async (
     repairReasons: string[],
   ): Promise<{ answer: AssistantAnswer | null; usage: TokenUsage }> => {

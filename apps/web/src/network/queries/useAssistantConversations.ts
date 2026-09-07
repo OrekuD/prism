@@ -50,7 +50,7 @@ export type ConversationDetail = {
     seq: number;
     role: "user" | "assistant";
     status: string;
-    parts: Array<{ type: string; text?: string; artifact?: AssistantArtifact }>;
+    parts: Array<{ type: string; text?: string; artifact?: AssistantArtifact; answer?: AssistantAnswer; steps?: ActivityStep[] }>;
     failureCode: string | null;
   }>;
   activeRun: { id: string; status: string } | null;
@@ -287,10 +287,12 @@ export function useSendAssistantMessage(slug: string | undefined) {
       const controller = new AbortController();
       const forwardAbort = () => controller.abort();
       input.signal.addEventListener("abort", forwardAbort, { once: true });
+      if (input.signal.aborted) controller.abort();
       abortRef.current = controller;
       setActive(true);
       let state: StreamState = { ...INITIAL_STREAM_STATE };
       const emit = () => input.onEvent?.(state);
+      emit();
       try {
         const url =
           input.conversationSlug === null
@@ -373,6 +375,10 @@ export function useSendAssistantMessage(slug: string | undefined) {
         const tail = splitSsePayloads(`${buffer}\n\n`);
         for (const payload of tail.payloads) {
           state = applyStreamEvent(state, parseStreamDataPayload(payload));
+          emit();
+        }
+        if (!state.done) {
+          state = { ...state, done: true, error: { code: "provider-error", message: "The connection ended before the answer finished. Please try again.", retryable: true } };
           emit();
         }
         return state;

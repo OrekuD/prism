@@ -6,7 +6,10 @@
  */
 import { useEffect, useRef } from "react";
 import { ArrowLeft, MessageSquareText } from "lucide-react";
-import type { AssistantAnswer, AssistantArtifact } from "@prism-analytics/types";
+import type {
+  AssistantAnswer,
+  AssistantArtifact,
+} from "@prism-analytics/types";
 import {
   ChatArtifact,
   CoverageNoticeBlock,
@@ -21,7 +24,7 @@ import type {
 } from "@/network/queries/useAssistantConversations";
 
 export type ChatDefinitionActions = (
-  artifact: AssistantArtifact,
+  artifact: AssistantArtifact
 ) =>
   | { onConfirm: () => void; onReject: () => void; deciding: boolean }
   | undefined;
@@ -42,7 +45,9 @@ function StreamAnswer({
   onAsk: (prompt: string) => void;
   definitionActions?: ChatDefinitionActions;
 }) {
-  const primary = artifacts.find((item) => item.id === answer.primaryArtifactId);
+  const primary = artifacts.find(
+    (item) => item.id === answer.primaryArtifactId
+  );
   const supporting = answer.supportingArtifactIds.flatMap((id) => {
     const found = artifacts.find((item) => item.id === id);
     return found ? [found] : [];
@@ -51,7 +56,10 @@ function StreamAnswer({
     <>
       <AssistantText text={answer.summary} />
       {primary ? (
-        <ChatArtifact artifact={primary} definitionActions={definitionActions?.(primary)} />
+        <ChatArtifact
+          artifact={primary}
+          definitionActions={definitionActions?.(primary)}
+        />
       ) : null}
       <EvidenceBlock observations={answer.observations} />
       {supporting.map((artifact) => (
@@ -105,10 +113,19 @@ export function ChatView({
   // biome-ignore lint/correctness/useExhaustiveDependencies: deps are intentional scroll triggers, not values read by the effect
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [stream?.text, stream?.answer, stream?.steps.length, pendingMessage, messages.length]);
+  }, [
+    stream?.text,
+    stream?.answer,
+    stream?.steps.length,
+    pendingMessage,
+    messages.length,
+  ]);
 
   return (
-    <div className="po-chat-in flex min-h-0 flex-1 flex-col" aria-label="Conversation">
+    <div
+      className="po-chat-in flex min-h-0 flex-1 flex-col"
+      aria-label="Conversation"
+    >
       <div className="po-chat-scroll flex flex-1 flex-col gap-[18px] overflow-auto pb-3 pt-7">
         {messages.length === 0 && !showStream && !pendingMessage ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-2.5 px-5 py-10 text-center">
@@ -140,8 +157,11 @@ export function ChatView({
           const artifacts = message.parts
             .map((part) => (part as { artifact?: AssistantArtifact }).artifact)
             .filter((item): item is AssistantArtifact => item !== undefined);
-          const answer = message.parts.find((part) => part.type === "answer")?.answer;
-          const trace = message.parts.find((part) => part.type === "trace")?.steps ?? [];
+          const answer = message.parts.find(
+            (part) => part.type === "answer"
+          )?.answer;
+          const trace =
+            message.parts.find((part) => part.type === "trace")?.steps ?? [];
           if (!text && !answer && artifacts.length === 0) return null;
           // Widget answers get the fixed column width; text-only answers
           // fit their content.
@@ -156,26 +176,41 @@ export function ChatView({
               className={`po-msg-in self-start rounded-sm border border-border bg-surface p-[14px_16px] ${width}`}
             >
               <TraceBlock steps={trace} />
-              {answer ? <StreamAnswer answer={answer} artifacts={artifacts} onAsk={onAsk} definitionActions={definitionActions} /> : <AssistantText text={text} />}
-              {!answer && artifacts.map((artifact) =>
-                artifact.kind === "coverage" ? (
-                  <CoverageNoticeBlock key={artifact.id} artifact={artifact} />
-                ) : artifact.kind === "unavailable" ? (
-                  <UnavailableBlock key={artifact.id} artifact={artifact} />
-                ) : (
-                  <ChatArtifact
-                    key={artifact.id}
-                    artifact={artifact}
-                    definitionActions={definitionActions?.(artifact)}
-                  />
-                ),
+              {answer ? (
+                <StreamAnswer
+                  answer={answer}
+                  artifacts={artifacts}
+                  onAsk={onAsk}
+                  definitionActions={definitionActions}
+                />
+              ) : (
+                <AssistantText text={text} />
               )}
+              {!answer &&
+                artifacts.map((artifact) =>
+                  artifact.kind === "coverage" ? (
+                    <CoverageNoticeBlock
+                      key={artifact.id}
+                      artifact={artifact}
+                    />
+                  ) : artifact.kind === "unavailable" ? (
+                    <UnavailableBlock key={artifact.id} artifact={artifact} />
+                  ) : (
+                    <ChatArtifact
+                      key={artifact.id}
+                      artifact={artifact}
+                      definitionActions={definitionActions?.(artifact)}
+                    />
+                  )
+                )}
             </div>
           );
         })}
 
         {pendingMessage ? (
-          <div className="po-msg-in max-w-[70%] self-end whitespace-pre-wrap rounded-sm border border-border-strong bg-surface-raised px-3.5 py-2.5 text-[13.5px] text-text">{pendingMessage}</div>
+          <div className="po-msg-in max-w-[70%] self-end whitespace-pre-wrap rounded-sm border border-border-strong bg-surface-raised px-3.5 py-2.5 text-[13.5px] text-text">
+            {pendingMessage}
+          </div>
         ) : null}
 
         {showStream && stream ? (
@@ -188,7 +223,14 @@ export function ChatView({
             aria-live="polite"
           >
             <TraceBlock steps={stream.steps} latencyMs={streamLatencyMs} />
-            {streaming && !stream.text && !stream.answer && stream.steps.length === 0 ? <output className="block text-sm text-text-muted">Working…</output> : null}
+            {streaming &&
+            !stream.text &&
+            !stream.answer &&
+            stream.steps.length === 0 ? (
+              <output className="block text-sm text-text-muted">
+                Working…
+              </output>
+            ) : null}
             {stream.answer ? (
               <StreamAnswer
                 answer={stream.answer}

@@ -710,6 +710,32 @@ describe("usage ledger and remaining budgets (R17-F1)", () => {
     };
     // Loop spent 20 completion tokens; the answer call is bounded by 580.
     expect(answerCall.maxOutputTokens).toBe(580);
+    // Planning calls must also subtract the preceding call's usage.
+    expect(model.doGenerateCalls[1]?.maxOutputTokens).toBeLessThan(
+      model.doGenerateCalls[0]?.maxOutputTokens ?? 0,
+    );
+  });
+
+  it("stops planning before consuming the reserved answer budget", async () => {
+    const model = new MockLanguageModelV4({
+      doGenerate: [
+        {
+          ...toolCallResponse("measure_metric", { metricId: "project.accepted_events" }),
+          usage: {
+            inputTokens: { total: 100, noCache: 100, cacheRead: 0, cacheWrite: 0 },
+            outputTokens: { total: 1500, text: 500, reasoning: 1000 },
+          },
+        },
+        objectResponse(validAnswer()),
+      ],
+    });
+    const result = await runToolLoopAgent(agentInput(model, {
+      config: { ...CONFIG, maxOutputTokens: 2000 },
+    }));
+    expect(result.status).toBe("answered");
+    expect(model.doGenerateCalls).toHaveLength(2);
+    expect(model.doGenerateCalls[0]?.maxOutputTokens).toBe(1500);
+    expect(model.doGenerateCalls[1]?.maxOutputTokens).toBe(500);
   });
 
   it("re-checks the ledger before returning an answer", async () => {

@@ -44,6 +44,7 @@ import {
   type AssistantArtifact,
   type AssistantStreamPart,
   type MetricFact,
+  type ProjectCapabilities,
 } from "@prism-analytics/types";
 import { DatabaseManager } from "../managers/DatabaseManager";
 import { TursoDatabaseManager } from "../managers/TursoDatabaseManager";
@@ -82,7 +83,7 @@ import {
   runToolLoopAgent,
   type AgentRunResult,
 } from "../utils/toolLoopAgent";
-import type { AssistantToolDeps } from "../utils/assistantTools";
+import { ASSISTANT_TOOL_DEFINITIONS, type AssistantToolDeps } from "../utils/assistantTools";
 import { measureForAuthorizedContext } from "../utils/projectMetrics";
 import {
   resolveMetricWindow,
@@ -106,6 +107,7 @@ type AgentRunner = (input: {
   signal: AbortSignal;
   timeoutMs: number;
   maxRunCostMicroUsd: number;
+  capabilities: ProjectCapabilities;
 }) => Promise<AgentRunResult>;
 
 let testAgentRunner: AgentRunner | null = null;
@@ -244,7 +246,7 @@ function agentStatusToStreamError(result: AgentRunResult): {
 } {
   switch (result.status) {
     case "quota-exhausted":
-      return { code: "quota-exhausted", message: "Usage quota exhausted. Try again later.", retryable: true };
+      return { code: "quota-exhausted", message: result.errorMessage ?? "This response reached Prism's per-run token limit. Try a narrower question; this is not your provider credit balance.", retryable: false };
     case "cost-exhausted":
       return { code: "cost-exhausted", message: "Run cost limit reached. Narrow the question.", retryable: false };
     case "cancelled":
@@ -276,12 +278,59 @@ function errorMessageFor(error: unknown): string {
 /* Tool dependency construction (run-bound, server-owned)              */
 /* ------------------------------------------------------------------ */
 
+// These issue-detail adapters are not snapshot-safe implementations yet.
+// Keep them out of model eligibility instead of returning fabricated zeros.
+const SUPPORTED_TOOL_IDS = Object.values(ASSISTANT_TOOL_DEFINITIONS)
+  .map((definition) => definition.id)
+  .filter((id) => id !== "review_error_health" && id !== "inspect_issue");
+
+async function loadRunCapabilities(ctx: Context<HonoConfig>, projectId: string, asOf: number) {
+  const db = DatabaseManager.getInstance(ctx);
+  const sources = (await db`
+    SELECT s.id AS id, s.platform AS platform,
+      COALESCE(BOOL_OR(k.status != 'revoked'), false) AS active
+    FROM project_sources s
+    LEFT JOIN project_api_keys k ON k.source_id = s.id
+    WHERE s.project_id = ${projectId}
+    GROUP BY s.id, s.platform`) as Array<{ id: string; platform: string; active: boolean }>;
+  const sourceIds = sources.map((source) => String(source.id));
+  const analytics = TursoDatabaseManager.getInstance(ctx);
+  // Sequential queries preserve the Workers-safe analytics execution policy.
+  const telemetry = await analytics.execute({
+    sql: "SELECT source_id, MAX(received_at) AS last_received_at FROM events WHERE project_id = ? AND received_at <= ? GROUP BY source_id",
+    args: [projectId, asOf],
+  });
+  const lastReceived = new Map(telemetry.rows.map((row) => [String(row.source_id), row.last_received_at == null ? null : Number(row.last_received_at)]));
+  const settings = sourceIds.length === 0 ? { rows: [] } : await analytics.execute({
+    sql: `SELECT 1 AS n FROM source_error_settings WHERE mode != 'off' AND source_id IN (${sourceIds.map(() => "?").join(",")}) LIMIT 1`,
+    args: sourceIds,
+  });
+  const errors = await analytics.execute({
+    sql: "SELECT 1 AS n FROM error_occurrences WHERE project_id = ? AND received_at <= ? LIMIT 1",
+    args: [projectId, asOf],
+  });
+  const standardEvents = await analytics.execute({
+    sql: `SELECT DISTINCT json_extract(properties, '$."$standard".key') AS k FROM events WHERE project_id = ? AND received_at <= ? AND name LIKE '$prism_%'`,
+    args: [projectId, asOf],
+  });
+  return {
+    sourceIds,
+    capabilities: resolveProjectCapabilities({
+      sources: sources.map((source) => ({ platform: String(source.platform), active: source.active === true, lastReceivedAt: lastReceived.get(String(source.id)) ?? null })),
+      errorConfigured: settings.rows.length > 0,
+      errorObserved: errors.rows.length > 0,
+      standardEventsObserved: standardEvents.rows.map((row) => String(row.k ?? "")),
+    }),
+  };
+}
+
 async function buildToolDeps(input: {
   ctx: Context<HonoConfig>;
   scope: ProjectScope;
   userId: string;
   window: { from: number; to: number; compareFrom: number; compareTo: number; asOf: number };
   capabilities: import("@prism-analytics/types").ProjectCapabilities;
+  sourceIds: string[];
   authCache: ReturnType<typeof createAuthorizationCache>;
 }): Promise<{ deps: AssistantToolDeps; authorized: AssistantToolDeps["authorized"] }> {
   const { ctx, scope, userId, window, capabilities, authCache } = input;
@@ -292,19 +341,13 @@ async function buildToolDeps(input: {
     organizationId: scope.organizationId,
     projectId: scope.projectId,
     role: scope.role,
-    allowedSourceIds: [] as string[],
+    allowedSourceIds: [...input.sourceIds],
     permissions: {
       canConfirmMemory: scope.role === "owner" || scope.role === "admin",
       canManageProject: scope.role === "owner" || scope.role === "admin",
     },
     cachedAt: Date.now(),
   };
-  // Resolve allowed sources from product Postgres (server-owned).
-  const sourceRows = (await (DatabaseManager.getInstance(ctx) as never as AssistantDb)`
-    SELECT id FROM project_sources WHERE project_id = ${scope.projectId}`) as Array<{
-    id: string;
-  }>;
-  authorized.allowedSourceIds = sourceRows.map((row) => String(row.id));
   const authorizedContext = { ...authorized };
   const runWindow = { ...window };
   const deps: AssistantToolDeps = {
@@ -373,9 +416,9 @@ async function buildToolDeps(input: {
       });
     },
     proposerId: userId,
-    listIssues: async () => [],
-    getIssue: async () => null,
-    errorAggregates: async () => ({ unresolved: 0, fresh: 0, regressing: 0 }),
+    listIssues: async () => { throw new Error("Issue-detail inspection is not available in the assistant yet. Use measured error metrics."); },
+    getIssue: async () => { throw new Error("Issue-detail inspection is not available in the assistant yet. Use measured error metrics."); },
+    errorAggregates: async () => { throw new Error("Issue-detail inspection is not available in the assistant yet. Use measured error metrics."); },
   };
   return { deps, authorized: authorizedContext };
 }
@@ -462,6 +505,7 @@ async function executeStreamedRun(input: {
   }
   trace("run.gate", "daily quota passed", {});
 
+  let metricWindow = resolveMetricWindow(now, "7d");
   // Verify the snapshot token when supplied (server-side, after member).
   if (input.queryContextToken) {
     try {
@@ -479,6 +523,13 @@ async function executeStreamedRun(input: {
       });
       if (verified.present && !verified.ok) {
         return writeErrorStream("validation-failed", "That snapshot expired. Refresh the overview and ask again.", true);
+      }
+      if (verified.present && verified.ok) {
+        if (verified.context.sourceScope === "selected") {
+          return writeErrorStream("validation-failed", "Source-filtered snapshots are not supported by the assistant yet. Use the unfiltered project overview.", false);
+        }
+        const { from, to, compareFrom, compareTo, asOf } = verified.context;
+        metricWindow = { from, to, compareFrom, compareTo, asOf };
       }
     } catch {
       trace("run.token", "snapshot token verification threw", {});
@@ -557,15 +608,8 @@ async function executeStreamedRun(input: {
       const execute = async (): Promise<Response> => {
 
   // Resolve window + capabilities sequentially (Workers-safe).
-  const metricWindow = resolveMetricWindow(now, "7d");
   trace("run.window", "metric window resolved", { ...metricWindow });
-  const analytics = TursoDatabaseManager.getInstance(ctx);
-  const capabilities = resolveProjectCapabilities({
-    sources: [],
-    errorConfigured: false,
-    errorObserved: false,
-    standardEventsObserved: [],
-  });
+  const { capabilities, sourceIds } = await loadRunCapabilities(ctx, scope.projectId, metricWindow.asOf);
   trace("run.capabilities", "capabilities resolved", {
     web: capabilities.web,
     mobile: capabilities.mobile,
@@ -580,7 +624,7 @@ async function executeStreamedRun(input: {
       organizationId: scope.organizationId,
       projectId: scope.projectId,
       role: scope.role,
-      allowedSourceIds: [],
+      allowedSourceIds: [...sourceIds],
       permissions: {
         canConfirmMemory: scope.role === "owner" || scope.role === "admin",
         canManageProject: scope.role === "owner" || scope.role === "admin",
@@ -594,6 +638,7 @@ async function executeStreamedRun(input: {
     userId,
     window: metricWindow,
     capabilities: capabilities as never,
+    sourceIds,
     authCache,
   });
   trace("run.deps", "run-bound tool dependencies built", {
@@ -608,6 +653,7 @@ async function executeStreamedRun(input: {
       return testAgentRunner({
         question,
         tools: deps,
+        capabilities,
         history: [],
         signal,
         timeoutMs: quotas.config.runTimeoutMs,
@@ -654,6 +700,7 @@ async function executeStreamedRun(input: {
       config: modelConfig as AssistantModelConfig,
       tools: deps,
       capabilities,
+      supportedToolIds: SUPPORTED_TOOL_IDS,
       history: historyRows,
       knowledge,
       trace,
@@ -772,7 +819,6 @@ async function executeStreamedRun(input: {
 
   // Facts/artifacts for the stream: metric facts only (evidence union
   // members that are not MetricFacts never enter the fact channel).
-  void analytics;
   const factFrames: string[] = [];
   const artifactFrames: string[] = [];
   void factFrames;
