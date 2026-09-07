@@ -81,6 +81,10 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [streamByChat, setStreamByChat] = useState<Record<string, StreamState>>({});
   const [pendingChat, setPendingChat] = useState(false);
+  const [pendingMessage, setPendingMessage] = useState<{ content: string; chat: string | null; afterSeq: number } | null>(null);
+  const selectedChatRef = useRef<string | null>(null);
+  selectedChatRef.current = chatSlug;
+  const navigationVersion = useRef(0);
   const [deciding, setDeciding] = useState<string | null>(null);
   const [sendError, setSendError] = useState<{ message: string; retryable: boolean } | null>(null);
   const dockRef = useRef<ComposerDockHandle>(null);
@@ -111,12 +115,14 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
   );
 
   const goToOverview = useCallback(() => {
+    navigationVersion.current += 1;
     returnFocus.current = true;
     void navigate(projectBase);
   }, [navigate, projectBase]);
 
   const openChat = useCallback(
     (conversationSlug: string) => {
+      navigationVersion.current += 1;
       setSendError(null);
       void navigate(`${projectBase}/agent/${conversationSlug}`);
     },
@@ -124,7 +130,9 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
   );
 
   const openFreshChat = useCallback(() => {
+    navigationVersion.current += 1;
     setSendError(null);
+    setPendingMessage(null);
     void navigate(`${projectBase}/agent`);
   }, [navigate, projectBase]);
 
@@ -154,6 +162,12 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
     async (question: string, targetChatSlug: string | null) => {
       if (!slug) return;
       setSendError(null);
+      // The store numbers the first message zero. The optimistic boundary
+      // must precede it, otherwise the persisted first turn never replaces it.
+      const afterSeq = targetChatSlug ? Math.max(-1, ...(detail.data?.messages ?? []).map((message) => message.seq)) : -1;
+      setPendingMessage({ content: question, chat: targetChatSlug, afterSeq });
+      let assignedChat = targetChatSlug;
+      const startedNavigation = navigationVersion.current;
       const controller = new AbortController();
       abortRef.current = controller;
       const token = overview.data?.queryContextToken;
@@ -174,10 +188,16 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
           clientRequestId: clientRequestId(),
           signal: controller.signal,
           onEvent: (state) => {
-            const key = targetChatSlug ?? "new";
-            setStreamByChat((previous) => ({ ...previous, [key]: state }));
-            if (targetChatSlug === null && state.conversationSlug) {
-              openChat(state.conversationSlug);
+            const key = state.conversationSlug ?? assignedChat ?? "new";
+            setStreamByChat((previous) => {
+              const next = { ...previous, [key]: state };
+              if (state.conversationSlug && targetChatSlug === null) delete next.new;
+              return next;
+            });
+            if (assignedChat === null && state.conversationSlug) {
+              assignedChat = state.conversationSlug;
+              setPendingMessage((previous) => previous ? { ...previous, chat: assignedChat } : null);
+              if (navigationVersion.current === startedNavigation && selectedChatRef.current === null) openChat(state.conversationSlug);
             }
           },
         });
@@ -193,7 +213,7 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
               queryKey: conversationDetailKey(slug, persistedSlug),
             });
           }
-          const bucket = targetChatSlug ?? "new";
+          const bucket = assignedChat ?? "new";
           setStreamByChat((previous) => {
             if (!(bucket in previous)) return previous;
             const next = { ...previous };
@@ -205,14 +225,14 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
         if (targetChatSlug === null) setPendingChat(false);
       }
     },
-    [slug, send, overview.data, queryClient, view, navigate, projectBase, openChat],
+    [slug, send, overview.data, detail.data, queryClient, view, navigate, projectBase, openChat],
   );
 
   // A chat created mid-run lands on its URL: move the pending stream
   // state onto the assigned chat key once known.
   const pendingStream: StreamState | null =
     view === "chat"
-      ? ((chatSlug ? streamByChat[chatSlug] : undefined) ?? streamByChat.new ?? null)
+      ? (streamByChat[chatSlug ?? "new"] ?? null)
       : null;
 
   const submitFromDock = useCallback(
@@ -232,17 +252,19 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
       // Investigate creates a NEW chat seeded with the deterministic
       // insight prompt — never appended to a prior topic.
       void navigate(`${projectBase}/agent`);
-      setDraft(insight.askPrompt);
+      const key = draftKey(slug ?? "", "agent-fresh");
+      setDrafts((previous) => ({ ...previous, [key]: insight.askPrompt }));
       dockRef.current?.focus();
     },
-    [navigate, projectBase, setDraft],
+    [navigate, projectBase, slug],
   );
 
   const newChat = useCallback(() => {
     setSendError(null);
+    if (!active) setPendingMessage(null);
     openFreshChat();
     dockRef.current?.focus();
-  }, [openFreshChat]);
+  }, [openFreshChat, active]);
 
   const deleteChat = useCallback(
     async (conversationSlug: string) => {
@@ -276,9 +298,23 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
 
   const stream = view === "chat" ? pendingStream : null;
   const activeStream: StreamState | null =
-    pendingChat && view === "chat" && !chatSlug
+    pendingChat && pendingMessage?.chat === null && view === "chat" && !chatSlug
       ? (streamByChat.new ?? { ...INITIAL_STREAM_STATE })
       : stream;
+  const pendingTurn = pendingMessage?.chat === chatSlug ? pendingMessage : null;
+  const persistedUser = pendingTurn
+    ? detail.data?.messages.find((message) =>
+        message.role === "user" && message.seq > pendingTurn.afterSeq &&
+        message.parts.filter((part) => part.type === "text").map((part) => part.text ?? "").join("\n") === pendingTurn.content,
+      )
+    : undefined;
+  // History can arrive before the stream closes. Once this turn's complete
+  // answer is in the transcript, it owns rendering even while SSE drains.
+  const answerPersisted = Boolean(
+    activeStream?.answer && persistedUser && detail.data?.messages.some((message) =>
+      message.role === "assistant" && message.seq === persistedUser.seq + 1 && message.status === "complete",
+    ),
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -334,13 +370,19 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
       ) : (
         <ChatView
           detail={detail.data ?? null}
-          stream={activeStream}
+          pendingMessage={pendingTurn && !persistedUser ? pendingTurn.content : null}
+          stream={answerPersisted ? null : activeStream}
           streaming={active || detail.isLoading}
-          sendError={sendError}
+          sendError={pendingMessage?.chat === chatSlug ? sendError : null}
           onBack={goToOverview}
           onAsk={(prompt) => {
-            setDraft(prompt);
-            dockRef.current?.focus();
+            // Follow-up pills send immediately; the member never
+            // re-types or confirms them.
+            if (view === "chat" && chatSlug) {
+              void runQuestion(prompt, chatSlug);
+            } else {
+              void runQuestion(prompt, null);
+            }
           }}
           definitionActions={(artifact) =>
             artifact.kind === "definition"

@@ -954,7 +954,7 @@ describe("structured answers", () => {
       primaryArtifactId: "art_1",
       supportingArtifactIds: [],
       assumptions: [],
-      followUps: ["Break that down by source."],
+      followUps: [{ title: "By source", description: "Break that down by source." }],
     };
     expect(AssistantAnswerSchema.safeParse(answer).success).toBe(true);
     expect(

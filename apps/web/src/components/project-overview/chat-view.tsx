@@ -84,8 +84,10 @@ export function ChatView({
   onBack,
   onAsk,
   definitionActions,
+  pendingMessage,
 }: {
   detail: ConversationDetail | null;
+  pendingMessage?: string | null;
   stream: StreamState | null;
   streaming: boolean;
   streamLatencyMs?: number;
@@ -103,12 +105,12 @@ export function ChatView({
   // biome-ignore lint/correctness/useExhaustiveDependencies: deps are intentional scroll triggers, not values read by the effect
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [stream?.text, messages.length]);
+  }, [stream?.text, stream?.answer, stream?.steps.length, pendingMessage, messages.length]);
 
   return (
     <div className="po-chat-in flex min-h-0 flex-1 flex-col" aria-label="Conversation">
       <div className="po-chat-scroll flex flex-1 flex-col gap-[18px] overflow-auto pb-3 pt-7">
-        {messages.length === 0 && !showStream ? (
+        {messages.length === 0 && !showStream && !pendingMessage ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-2.5 px-5 py-10 text-center">
             <MessageSquareText
               aria-hidden="true"
@@ -138,7 +140,9 @@ export function ChatView({
           const artifacts = message.parts
             .map((part) => (part as { artifact?: AssistantArtifact }).artifact)
             .filter((item): item is AssistantArtifact => item !== undefined);
-          if (!text && artifacts.length === 0) return null;
+          const answer = message.parts.find((part) => part.type === "answer")?.answer;
+          const trace = message.parts.find((part) => part.type === "trace")?.steps ?? [];
+          if (!text && !answer && artifacts.length === 0) return null;
           // Widget answers get the fixed column width; text-only answers
           // fit their content.
           const width =
@@ -148,10 +152,12 @@ export function ChatView({
           return (
             <div
               key={message.id}
+              data-message-id={message.id}
               className={`po-msg-in self-start rounded-sm border border-border bg-surface p-[14px_16px] ${width}`}
             >
-              <AssistantText text={text} />
-              {artifacts.map((artifact) =>
+              <TraceBlock steps={trace} />
+              {answer ? <StreamAnswer answer={answer} artifacts={artifacts} onAsk={onAsk} definitionActions={definitionActions} /> : <AssistantText text={text} />}
+              {!answer && artifacts.map((artifact) =>
                 artifact.kind === "coverage" ? (
                   <CoverageNoticeBlock key={artifact.id} artifact={artifact} />
                 ) : artifact.kind === "unavailable" ? (
@@ -168,6 +174,10 @@ export function ChatView({
           );
         })}
 
+        {pendingMessage ? (
+          <div className="po-msg-in max-w-[70%] self-end whitespace-pre-wrap rounded-sm border border-border-strong bg-surface-raised px-3.5 py-2.5 text-[13.5px] text-text">{pendingMessage}</div>
+        ) : null}
+
         {showStream && stream ? (
           <div
             className={`po-msg-in self-start rounded-sm border border-border bg-surface p-[14px_16px] ${
@@ -178,6 +188,7 @@ export function ChatView({
             aria-live="polite"
           >
             <TraceBlock steps={stream.steps} latencyMs={streamLatencyMs} />
+            {streaming && !stream.text && !stream.answer && stream.steps.length === 0 ? <output className="block text-sm text-text-muted">Working…</output> : null}
             {stream.answer ? (
               <StreamAnswer
                 answer={stream.answer}
@@ -218,7 +229,7 @@ export function ChatView({
       <button
         type="button"
         onClick={onBack}
-        className="mt-1 inline-flex h-[30px] items-center gap-2 self-start whitespace-nowrap rounded-sm px-3 text-xs font-medium text-text-muted transition-colors duration-100 hover:bg-surface-hover hover:text-text [&_svg]:h-3.5 [&_svg]:w-3.5"
+        className="mb-2 mt-10 inline-flex h-[30px] items-center gap-2 self-start whitespace-nowrap rounded-sm px-3 text-xs font-medium text-text-muted transition-colors duration-100 hover:bg-surface-hover hover:text-text [&_svg]:h-3.5 [&_svg]:w-3.5"
       >
         <ArrowLeft aria-hidden="true" />
         Back to overview

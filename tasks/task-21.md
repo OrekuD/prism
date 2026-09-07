@@ -851,7 +851,7 @@ type AssistantAnswer = {
   primaryArtifactId: string | null;
   supportingArtifactIds: readonly string[];
   assumptions: readonly string[];
-  followUps: readonly string[];
+  followUps: readonly AssistantFollowUp[];
 };
 ```
 

@@ -30,6 +30,7 @@ vi.mock("../utils/assistantStore", async (importOriginal) => {
 });
 
 import { DatabaseManager } from "../managers/DatabaseManager";
+import { TursoDatabaseManager } from "../managers/TursoDatabaseManager";
 import { AssistantController } from "../controllers/AssistantController";
 import { __setAssistantAgentRunnerForTests } from "../controllers/AssistantController";
 import type { AgentRunResult } from "../utils/toolLoopAgent";
@@ -53,6 +54,7 @@ import {
   confirmMemoryProposal,
 } from "../utils/assistantStore";
 import { makeCtx, makeMockDb } from "./helpers";
+import { issueQueryContextToken } from "../utils/queryContextToken";
 
 const getInstance = vi.mocked(DatabaseManager.getInstance);
 
@@ -99,6 +101,9 @@ async function readSse(response: Response): Promise<string> {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(TursoDatabaseManager.getInstance).mockReturnValue({
+    execute: vi.fn().mockResolvedValue({ rows: [] }),
+  } as never);
   __setAssistantAgentRunnerForTests(null);
   __setAssistantQuotasForTests(
     new AssistantQuotas(resolveQuotaLimits({})),
@@ -123,13 +128,80 @@ it("returns the chat stream before generation completes and persists the structu
   const reader = (streamBody as ReadableStream<Uint8Array>).getReader();
   expect(new TextDecoder().decode((await reader.read()).value)).toContain("data-run-start");
   await vi.waitFor(() => expect(complete).toBeTypeOf("function"));
-  const answer = { summary: "No significant change.", observations: [], primaryArtifactId: null, supportingArtifactIds: [], assumptions: ["Small sample."], followUps: ["Check errors"] };
+  const answer = { summary: "No significant change.", observations: [], primaryArtifactId: null, supportingArtifactIds: [], assumptions: ["Small sample."], followUps: [{ title: "Check errors", description: "Check errors for this period." }] };
   complete({ status: "answered", answer, repaired: false, steps: [], facts: [], factIds: [], toolIds: [], artifactIds: [], artifacts: [], eligibleToolIds: [], usage: { model: "test", gateway: "openrouter", upstreamProvider: null, promptTokens: 1, completionTokens: 1, reasoningTokens: 0, cachedTokens: 0, costMicroUsd: 1 }, quota: { decision: "allowed", limitType: null, retryAfterMs: null }, latencyMs: 1, modelMessages: [] } as AgentRunResult);
   let tail = "";
   for (;;) { const chunk = await reader.read(); if (chunk.done) break; tail += new TextDecoder().decode(chunk.value); }
   expect(tail).toContain("data-run-finish");
   expect(vi.mocked(appendMessage)).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ role: "assistant", status: "complete", parts: expect.arrayContaining([{ type: "answer", answer }]) }));
   expect(vi.mocked(appendMessage).mock.calls.some(([, input]) => input.status === "streaming")).toBe(false);
+});
+
+it("loads real project capabilities and preserves the authorized source scope for measurements", async () => {
+  const asOf = Date.now() - 60_000;
+  const window = { from: asOf - 86_400_000, to: asOf, compareFrom: asOf - 172_800_000, compareTo: asOf - 86_400_000, asOf };
+  const key = { kid: "k1", secret: "test-only-snapshot-secret" };
+  const token = await issueQueryContextToken({ ...window, projectId: PROJECT_ID, organizationId: ORG_ID, sourceScope: "all", sourceIds: [] }, key);
+  const runner = vi.fn(async (input) => {
+    expect(input.tools.window).toEqual(window);
+    expect(input.capabilities).toMatchObject({
+      web: true, server: true,
+      errorCollection: { configured: true, observed: true },
+      standardEventsObserved: ["sign_up"],
+      sources: { total: 2, active: 1, lastReceivedAt: 1000 },
+    });
+    expect(input.tools.authorized.allowedSourceIds).toEqual(["src_web", "src_server"]);
+    return { status: "quota-exhausted", errorMessage: "This response reached Prism's per-run token limit. Try a narrower question; this is not your provider credit balance.", answer: null, repaired: false, steps: [], factIds: [], toolIds: [], artifactIds: [], eligibleToolIds: [], usage: { model: "test", gateway: "openrouter", upstreamProvider: null, promptTokens: 1, completionTokens: 2001, reasoningTokens: 0, cachedTokens: 0, costMicroUsd: 1 }, quota: { decision: "denied-quota", limitType: null, retryAfterMs: null }, latencyMs: 1, modelMessages: [] } as AgentRunResult;
+  });
+  __setAssistantAgentRunnerForTests(runner);
+  vi.mocked(getConversationBySlug).mockResolvedValue({ conversation: { id: "conv_1", slug: "chat_abc123def456" }, messages: [], activeRun: null } as never);
+  vi.mocked(appendMessage).mockResolvedValue({ message: { id: "msg_1" }, created: true } as never);
+  vi.mocked(startRun).mockResolvedValue({ ok: true, run: { id: "run_1" } } as never);
+  vi.mocked(finishRun).mockResolvedValue({ finished: true } as never);
+  const ctx = ctxFor({ slug: SLUG, conversationSlug: "chat_abc123def456" },
+    { clientRequestId: "req_caps", content: "Why did errors increase?", queryContextToken: token }, USER_ID, "member",
+    { PRISM_AI_ENABLED: "1", OPENROUTER_API_KEY: "test-only", QUERY_CONTEXT_TOKEN_KEY: key.secret });
+  getInstance.mockReturnValue(makeMockDb((sql) => {
+    if (sql.includes("FROM projects")) return [{ id: PROJECT_ID, organization_id: ORG_ID }];
+    if (sql.includes("FROM project_sources")) return [
+      { id: "src_web", platform: "web", active: true },
+      { id: "src_server", platform: "server", active: false },
+    ];
+    if (sql.includes("member")) return [{ role: "member" }];
+    return [];
+  }) as never);
+  const execute = vi.fn(async ({ sql, args }) => {
+    if (sql.includes("source_error_settings")) {
+      expect(args).toEqual(["src_web", "src_server"]);
+      return { rows: [{ n: 1 }] };
+    }
+    expect(args[0]).toBe(PROJECT_ID);
+    expect(args[1]).toBe(asOf);
+    if (sql.includes("error_occurrences")) return { rows: [{ n: 1 }] };
+    if (sql.includes("DISTINCT json_extract")) return { rows: [{ k: "sign_up" }] };
+    return { rows: [{ source_id: "src_web", last_received_at: 1000 }] };
+  });
+  vi.mocked(TursoDatabaseManager.getInstance).mockReturnValue({ execute } as never);
+  const response = await AssistantController.postMessage(ctx) as Response;
+  const body = await readSse(response);
+  expect(runner).toHaveBeenCalledOnce();
+  expect(body).toContain("per-run token limit");
+  expect(body).not.toContain("Usage quota exhausted");
+});
+
+it("rejects a selected-source snapshot instead of widening it to all sources", async () => {
+  const asOf = Date.now() - 60_000;
+  const key = { kid: "k1", secret: "test-only-snapshot-secret" };
+  const token = await issueQueryContextToken({ projectId: PROJECT_ID, organizationId: ORG_ID,
+    from: asOf - 86_400_000, to: asOf, compareFrom: asOf - 172_800_000, compareTo: asOf - 86_400_000, asOf,
+    sourceScope: "selected", sourceIds: [] }, key);
+  vi.mocked(getConversationBySlug).mockResolvedValue({ conversation: { id: "conv_1", slug: "chat_abc123def456" }, messages: [], activeRun: null } as never);
+  vi.mocked(appendMessage).mockResolvedValue({ message: { id: "msg_1" }, created: true } as never);
+  const response = await AssistantController.postMessage(ctxFor({ slug: SLUG, conversationSlug: "chat_abc123def456" },
+    { clientRequestId: "req_scope", content: "Why did errors increase?", queryContextToken: token }, USER_ID, "member",
+    { PRISM_AI_ENABLED: "1", OPENROUTER_API_KEY: "test-only", QUERY_CONTEXT_TOKEN_KEY: key.secret })) as Response;
+  expect(await readSse(response)).toContain("Source-filtered snapshots are not supported");
+  expect(startRun).not.toHaveBeenCalled();
 });
 
 describe("assistant stream frames", () => {

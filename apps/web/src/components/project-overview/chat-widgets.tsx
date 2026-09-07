@@ -4,11 +4,13 @@
  * summaries, and snapshot drill-downs — the same fidelity contract as
  * the previous widget set, restyled 1:1 to the mock.
  */
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
+import { buildDrilldownUrl } from "@prism-analytics/types";
 import { Check } from "lucide-react";
 import type {
   ActivityStep,
   AssistantArtifact,
+  AssistantFollowUp,
   MetricFact,
 } from "@prism-analytics/types";
 import { Btn } from "@/components/project-overview/primitives";
@@ -48,6 +50,7 @@ function ArtifactShell({
 }
 
 function ArtifactFoot({ artifact }: { artifact: AssistantArtifact }) {
+  const { wrkSlug, slug } = useParams();
   return (
     <div className="flex items-center gap-2 border-t border-border px-3.5 py-2">
       <span className="font-mono text-[10px] leading-[1.5] text-text-subtle">
@@ -55,7 +58,7 @@ function ArtifactFoot({ artifact }: { artifact: AssistantArtifact }) {
       </span>
       <span className="flex-1" />
       <Link
-        to={artifact.drilldown.destination}
+        to={wrkSlug && slug ? buildDrilldownUrl(wrkSlug, slug, artifact.drilldown) : artifact.drilldown.destination}
         className="inline-flex h-[26px] items-center justify-center gap-2 whitespace-nowrap rounded-sm border border-border-strong px-3 text-[11.5px] font-medium text-text transition-colors duration-100 hover:border-text-subtle hover:bg-surface-hover"
       >
         {artifact.drilldown.label}
@@ -535,20 +538,21 @@ export function FollowUpsBlock({
   followUps,
   onAsk,
 }: {
-  followUps: readonly string[];
+  followUps: readonly AssistantFollowUp[];
   onAsk: (prompt: string) => void;
 }) {
   if (followUps.length === 0) return null;
   return (
     <div className="mt-3 flex flex-wrap gap-2">
-      {followUps.map((prompt) => (
+      {followUps.map((followUp) => (
         <button
-          key={prompt}
+          key={followUp.title}
           type="button"
-          onClick={() => onAsk(prompt)}
+          onClick={() => onAsk(followUp.description)}
+          title={followUp.description}
           className="inline-flex h-[30px] items-center justify-center gap-2 whitespace-nowrap rounded-sm border border-border-strong px-3 text-xs font-medium text-text transition-colors duration-100 hover:border-text-subtle hover:bg-surface-hover"
         >
-          {prompt}
+          {followUp.title}
         </button>
       ))}
     </div>

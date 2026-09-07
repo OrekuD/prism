@@ -2408,10 +2408,31 @@ export function applyActivityStep(
 export const ANSWER_LIMITS = deepFreeze({
   maxObservations: 3,
   maxFollowUps: 3,
+  maxFollowUpTitleChars: 40,
+  maxFollowUpTitleWords: 3,
   maxAssumptions: 5,
   maxSummaryChars: 2000,
   maxQuestionChars: 2000,
 } as const);
+
+/**
+ * A suggested next question. The pill shows the short `title` (two to
+ * three words); clicking it sends the full `description` back as the
+ * next user message. Descriptions carry the complete question text so
+ * the follow-up needs no surrounding context to be understood.
+ */
+export const AssistantFollowUpSchema = z
+  .strictObject({
+    title: z.string().min(1).max(ANSWER_LIMITS.maxFollowUpTitleChars),
+    description: z.string().min(1).max(200),
+  })
+  .refine(
+    (followUp) =>
+      followUp.title.trim().split(/\s+/).filter(Boolean).length <=
+      ANSWER_LIMITS.maxFollowUpTitleWords,
+    { message: "Follow-up title must be three words or fewer" },
+  );
+export type AssistantFollowUp = z.infer<typeof AssistantFollowUpSchema>;
 
 export const AssistantAnswerSchema = z.strictObject({
   summary: z.string().min(1).max(ANSWER_LIMITS.maxSummaryChars),
@@ -2430,7 +2451,7 @@ export const AssistantAnswerSchema = z.strictObject({
     .array(z.string().min(1).max(280))
     .max(ANSWER_LIMITS.maxAssumptions),
   followUps: z
-    .array(z.string().min(1).max(200))
+    .array(AssistantFollowUpSchema)
     .max(ANSWER_LIMITS.maxFollowUps),
 });
 export type AssistantAnswer = z.infer<typeof AssistantAnswerSchema>;
@@ -2800,6 +2821,7 @@ export const AssistantMessagePartSchema = z.discriminatedUnion("type", [
   TextPartSchema,
   ArtifactPartSchema,
   TracePartSchema,
+  z.strictObject({ type: z.literal("answer"), answer: AssistantAnswerSchema }),
 ]);
 export type AssistantMessagePart = z.infer<typeof AssistantMessagePartSchema>;
 

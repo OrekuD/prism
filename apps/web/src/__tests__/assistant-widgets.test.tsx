@@ -5,7 +5,7 @@
  * dropdown, composer).
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -15,6 +15,7 @@ import type {
 } from "@prism-analytics/types";
 
 import { ProjectSummary } from "@/routes/projects/project/summary";
+import { ChatView } from "@/components/project-overview/chat-view";
 import { ChatArtifact, TraceBlock } from "@/components/project-overview/chat-widgets";
 import { sparkPath } from "@/components/project-overview/chart-math";
 import {
@@ -216,6 +217,23 @@ describe("chat widgets render server values unchanged", () => {
 });
 
 describe("trace block", () => {
+  it("replays saved observations, assumptions, follow-ups and activity", () => {
+    const answer = { summary: "Saved answer", observations: [{ text: "Measured observation", factIds: ["f1"] }], primaryArtifactId: null, supportingArtifactIds: [], assumptions: ["Known limitation"], followUps: [{ title: "Inspect release", description: "Inspect the release for this change." }] };
+    render(<MemoryRouter><ChatView detail={{ conversation: { id: "c", slug: "chat_c", title: "Saved", seed: null, createdAt: 1, updatedAt: 1, lastMessageAt: 1 }, messages: [{ id: "m", seq: 2, role: "assistant", status: "complete", failureCode: null, parts: [{ type: "text", text: answer.summary }, { type: "answer", answer }, { type: "trace", steps: [{ stepId: "s", sequence: 0, toolId: "measure_metric", state: "complete", label: "Measured signups" }] }] }], activeRun: null }} stream={null} streaming={false} sendError={null} onAsk={vi.fn()} onBack={vi.fn()} /></MemoryRouter>);
+    expect(screen.getAllByText("Saved answer")).toHaveLength(1);
+    expect(screen.getByText("Measured observation")).toBeVisible();
+    expect(screen.getByText("Known limitation")).toBeVisible();
+    expect(screen.getByText("Measured signups")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Inspect release" })).toBeVisible();
+  });
+  it("sends the follow-up description on pill click, not the title", async () => {
+    const user = userEvent.setup();
+    const onAsk = vi.fn();
+    const answer = { summary: "Saved answer", observations: [], primaryArtifactId: null, supportingArtifactIds: [], assumptions: [], followUps: [{ title: "By source", description: "Break that down by source now." }] };
+    render(<MemoryRouter><ChatView detail={{ conversation: { id: "c", slug: "chat_abc123def456", title: "Saved", seed: null, createdAt: 1, updatedAt: 1, lastMessageAt: 1 }, messages: [{ id: "m", seq: 2, role: "assistant", status: "complete", failureCode: null, parts: [{ type: "text", text: answer.summary }] }], activeRun: null }} stream={{ runId: "r", conversationId: "c", conversationSlug: "chat_abc123def456", steps: [], facts: [], artifacts: [], text: "", answer, error: null, done: true }} streaming={false} sendError={null} onAsk={onAsk} onBack={vi.fn()} /></MemoryRouter>);
+    await user.click(screen.getByRole("button", { name: "By source" }));
+    expect(onAsk).toHaveBeenCalledWith("Break that down by source now.");
+  });
   it("exposes text states and friendly labels only", () => {
     render(
       <TraceBlock
@@ -421,6 +439,99 @@ describe("ProjectSummary v2 scaffold", () => {
     );
   });
 
+  it("shows the submitted message and working state before response headers arrive", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(() => new Promise(() => {}));
+    const user = userEvent.setup();
+    renderRoute("/workspace/wrk/projects/alpha");
+    await screen.findByText("Sessions");
+    await user.type(screen.getByRole("textbox", { name: "Ask Prism a question" }), "How many signups?");
+    await user.click(screen.getByRole("button", { name: "Send question" }));
+    expect(await screen.findByText("How many signups?")).toBeVisible();
+    expect(screen.getByRole("status")).toHaveTextContent("Working");
+    expect(screen.getByRole("button", { name: "Stop the running answer" })).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fetchMock.mockRestore();
+  });
+
+  it("does not pull the user back into a running chat after switching conversations", async () => {
+    const originalGet = getMock.getMockImplementation();
+    getMock.mockImplementation(async (url: string) => {
+      if (String(url).includes("/conversations/")) return { data: { conversation: { id: "conv_other", slug: "chat_abc123def456", title: "Other chat" }, messages: [] }, status: 200 };
+      return originalGet?.(url);
+    });
+    let writer!: ReadableStreamDefaultController<Uint8Array>;
+    const body = new ReadableStream<Uint8Array>({ start(controller) { writer = controller; } });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(body, { headers: { "X-Conversation-Slug": "chat_new123456789" } }));
+    const user = userEvent.setup();
+    renderRoute("/workspace/wrk/projects/alpha");
+    await screen.findByText("Sessions");
+    await user.type(screen.getByRole("textbox", { name: "Ask Prism a question" }), "New question");
+    await user.click(screen.getByRole("button", { name: "Send question" }));
+    await screen.findByText("New question");
+    await user.click(screen.getByRole("button", { name: "Conversations" }));
+    await user.click(await screen.findByRole("menuitem", { name: /Checkout errors deep-dive/ }));
+    await act(async () => {
+      writer.enqueue(new TextEncoder().encode('data: {"kind":"data-run-start","runId":"run_test","conversationId":"conv_new"}\n\n'));
+    });
+    expect(screen.queryByText("New question")).toBeNull();
+    expect(screen.queryByText("Working…")).toBeNull();
+    await act(async () => { writer.close(); });
+    fetchMock.mockRestore();
+  });
+
+  it.each(["success", "failure"])("reconciles the sequence-zero first message through a %s run", async (outcome) => {
+    const question = "Why did errors increase?";
+    const conversationSlug = "chat_new123456789";
+    const answer = { summary: "No measured change is available.", observations: [], primaryArtifactId: null, supportingArtifactIds: [], assumptions: [], followUps: [] };
+    const savedUser = { id: "msg_first", seq: 0, role: "user", status: "complete", failureCode: null, parts: [{ type: "text", text: question }] };
+    const savedAnswer = { id: "msg_answer", seq: 1, role: "assistant", status: "complete", failureCode: null, parts: [{ type: "answer", answer }] };
+    let completed = false;
+    const originalGet = getMock.getMockImplementation();
+    getMock.mockImplementation(async (url: string) => {
+      if (String(url).endsWith(`/conversations/${conversationSlug}`)) return { data: {
+        conversation: { id: "conv_first", slug: conversationSlug, title: question },
+        messages: completed && outcome === "success" ? [savedUser, savedAnswer] : [savedUser],
+        activeRun: completed ? null : { id: "run_first", status: "running" },
+      }, status: 200 };
+      return originalGet?.(url);
+    });
+    let writer!: ReadableStreamDefaultController<Uint8Array>;
+    const body = new ReadableStream<Uint8Array>({ start(controller) { writer = controller; } });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(body, { headers: { "X-Conversation-Slug": conversationSlug } }));
+    try {
+      const user = userEvent.setup();
+      renderRoute("/workspace/wrk/projects/alpha");
+      await screen.findByText("Sessions");
+      await user.type(screen.getByRole("textbox", { name: "Ask Prism a question" }), question);
+      await user.click(screen.getByRole("button", { name: "Send question" }));
+      await waitFor(() => expect(queryClient.getQueryData(["assistant-conversation", "alpha", conversationSlug])).toBeDefined());
+      expect(screen.getAllByText(question)).toHaveLength(1);
+      completed = true;
+      await act(async () => {
+        writer.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(outcome === "success"
+          ? { kind: "data-run-finish", answer, factIds: [], artifactIds: [] }
+          : { kind: "data-run-error", code: "quota-exhausted", message: "This answer reached its token limit.", retryable: true })}\n\n`));
+      });
+      if (outcome === "success") {
+        // History can refresh before the SSE connection closes. The saved
+        // turn must replace, not accompany, its live counterpart.
+        await act(async () => {
+          await queryClient.invalidateQueries({ queryKey: ["assistant-conversation", "alpha", conversationSlug] });
+        });
+        await waitFor(() => expect(document.querySelector('[data-message-id="msg_answer"]')).not.toBeNull());
+        expect(screen.getAllByText(answer.summary)).toHaveLength(1);
+      }
+      await act(async () => { writer.close(); });
+      await screen.findByText(outcome === "success" ? answer.summary : "This answer reached its token limit.");
+      expect(screen.getAllByText(question)).toHaveLength(1);
+      const result = screen.getByText(outcome === "success" ? answer.summary : "This answer reached its token limit.");
+      expect(screen.getByText(question).compareDocumentPosition(result) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
   it("shows the calm empty-insights state, not generic advice", async () => {
     renderRoute("/workspace/wrk/projects/alpha");
     await waitFor(() =>
@@ -439,6 +550,10 @@ describe("ProjectSummary v2 scaffold", () => {
     expect(
       within(menu).getByRole("menuitem", { name: /Checkout errors deep-dive/ }),
     ).toBeInTheDocument();
+    // Day grouping with relative intraday time, no menu title.
+    expect(within(menu).getByText("Today")).toBeInTheDocument();
+    expect(within(menu).getByText("just now")).toBeInTheDocument();
+    expect(within(menu).queryByText("Conversations")).toBeNull();
   });
 
   it("keeps the conversations menu in the chat tab only", async () => {

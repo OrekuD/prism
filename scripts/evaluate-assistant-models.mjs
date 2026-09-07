@@ -87,7 +87,20 @@ const ANSWER_SCHEMA = z.strictObject({
   primaryArtifactId: z.string().max(128).nullable(),
   supportingArtifactIds: z.array(z.string().max(128)).max(4),
   assumptions: z.array(z.string().max(280)).max(5),
-  followUps: z.array(z.string().max(200)).max(3),
+  followUps: z
+    .array(
+      z
+        .strictObject({
+          title: z.string().min(1).max(40),
+          description: z.string().min(1).max(200),
+        })
+        .refine(
+          (followUp) =>
+            followUp.title.trim().split(/\s+/).filter(Boolean).length <= 3,
+          { message: "Follow-up title must be three words or fewer" },
+        ),
+    )
+    .max(3),
 });
 
 function percentile(sorted, p) {
