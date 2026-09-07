@@ -26,7 +26,6 @@ import {
   conversationDetailKey,
   useAssistantConversationQuery,
   useAssistantConversationsQuery,
-  useDeleteAssistantConversation,
   useSendAssistantMessage,
   type StreamState,
 } from "@/network/queries/useAssistantConversations";
@@ -92,7 +91,6 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
   const returnFocus = useRef(false);
 
   const { send, stop, active } = useSendAssistantMessage(slug);
-  const removeConversation = useDeleteAssistantConversation(slug);
   const decideProposal = useDecideAssistantProposal(slug);
 
   const draftScope =
@@ -191,7 +189,11 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
             const key = state.conversationSlug ?? assignedChat ?? "new";
             setStreamByChat((previous) => {
               const next = { ...previous, [key]: state };
-              if (state.conversationSlug && targetChatSlug === null) delete next.new;
+              if (state.conversationSlug && targetChatSlug === null) {
+                const { new: _dropped, ...rest } = next;
+                void _dropped;
+                return rest;
+              }
               return next;
             });
             if (assignedChat === null && state.conversationSlug) {
@@ -216,9 +218,9 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
           const bucket = assignedChat ?? "new";
           setStreamByChat((previous) => {
             if (!(bucket in previous)) return previous;
-            const next = { ...previous };
-            delete next[bucket];
-            return next;
+            const { [bucket]: _dropped, ...rest } = previous;
+            void _dropped;
+            return rest;
           });
         }
       } finally {
@@ -265,16 +267,6 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
     openFreshChat();
     dockRef.current?.focus();
   }, [openFreshChat, active]);
-
-  const deleteChat = useCallback(
-    async (conversationSlug: string) => {
-      const ok = await removeConversation(conversationSlug);
-      if (!ok) return;
-      if (conversationSlug === chatSlug) goToOverview();
-      dockRef.current?.focus();
-    },
-    [removeConversation, chatSlug, goToOverview],
-  );
 
   const stopRun = useCallback(() => {
     abortRef.current?.abort();
@@ -325,7 +317,6 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
             selectedSlug={chatSlug}
             onSelect={openChat}
             onNewChat={newChat}
-            onDelete={(conversationSlug) => void deleteChat(conversationSlug)}
           />
         ) : null}
         <div className="ml-auto">

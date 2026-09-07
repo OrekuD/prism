@@ -23,13 +23,13 @@ function startOfDay(value: number): number {
   return date.getTime();
 }
 
-/** Relative time for today's chats: "just now", "Xm ago", "Xh ago". */
+/** Relative time for today's chats: "now", "5m", "6h". */
 function todayMeta(value: number | null): string | null {
   if (value === null) return null;
   const diffMs = Date.now() - value;
-  if (diffMs < 60_000) return "just now";
-  if (diffMs < 3_600_000) return `${Math.floor(diffMs / 60_000)}m ago`;
-  return `${Math.floor(diffMs / 3_600_000)}h ago`;
+  if (diffMs < 60_000) return "now";
+  if (diffMs < 3_600_000) return `${Math.floor(diffMs / 60_000)}m`;
+  return `${Math.floor(diffMs / 3_600_000)}h`;
 }
 
 function dateMeta(value: number | null): string | null {
@@ -74,13 +74,11 @@ export function ConversationsDropdown({
   selectedSlug,
   onSelect,
   onNewChat,
-  onDelete,
 }: {
   items: ConversationListItem[];
   selectedSlug: string | null;
   onSelect: (conversationSlug: string) => void;
   onNewChat: () => void;
-  onDelete: (conversationSlug: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const selected = items.find((item) => item.slug === selectedSlug) ?? null;
@@ -138,34 +136,21 @@ export function ConversationsDropdown({
                   ? todayMeta(item.lastMessageAt)
                   : dateMeta(item.lastMessageAt);
               return (
-                <div key={item.id} className="group relative flex items-center">
-                  <DropdownMenuItem
-                    onClick={() => onSelect(item.slug)}
-                    className={cn(
-                      "min-w-0 flex-1 gap-2 pr-8",
-                      active && "bg-accent-soft text-text",
-                    )}
-                  >
-                    <span className="min-w-0 flex-1 truncate">{item.title}</span>
-                    {meta ? (
-                      <span className="ml-auto flex-none font-mono text-[10px] text-text-subtle">
-                        {meta}
-                      </span>
-                    ) : null}
-                  </DropdownMenuItem>
-                  <button
-                    type="button"
-                    aria-label={`Delete ${item.title}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setOpen(false);
-                      onDelete(item.slug);
-                    }}
-                    className="absolute right-1.5 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-[2px] text-sm leading-none text-text-subtle opacity-0 transition-all hover:bg-surface-hover hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
-                  >
-                    ×
-                  </button>
-                </div>
+                <DropdownMenuItem
+                  key={item.id}
+                  onClick={() => onSelect(item.slug)}
+                  className={cn(
+                    "min-w-0 gap-2",
+                    active && "bg-accent-soft text-text",
+                  )}
+                >
+                  <span className="min-w-0 flex-1 truncate">{item.title}</span>
+                  {meta ? (
+                    <span className="ml-auto flex-none font-mono text-[10px] text-text-subtle">
+                      {meta}
+                    </span>
+                  ) : null}
+                </DropdownMenuItem>
               );
             })}
           </div>

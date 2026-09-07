@@ -552,7 +552,7 @@ describe("ProjectSummary v2 scaffold", () => {
     ).toBeInTheDocument();
     // Day grouping with relative intraday time, no menu title.
     expect(within(menu).getByText("Today")).toBeInTheDocument();
-    expect(within(menu).getByText("just now")).toBeInTheDocument();
+    expect(within(menu).getByText("now")).toBeInTheDocument();
     expect(within(menu).queryByText("Conversations")).toBeNull();
   });
 

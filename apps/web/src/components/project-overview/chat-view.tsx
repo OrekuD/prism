@@ -229,7 +229,7 @@ export function ChatView({
       <button
         type="button"
         onClick={onBack}
-        className="mb-2 mt-10 inline-flex h-[30px] items-center gap-2 self-start whitespace-nowrap rounded-sm px-3 text-xs font-medium text-text-muted transition-colors duration-100 hover:bg-surface-hover hover:text-text [&_svg]:h-3.5 [&_svg]:w-3.5"
+        className="mb-2 mt-16 inline-flex h-[30px] items-center gap-2 self-start whitespace-nowrap rounded-sm px-3 text-xs font-medium text-text-muted transition-colors duration-100 hover:bg-surface-hover hover:text-text [&_svg]:h-3.5 [&_svg]:w-3.5"
       >
         <ArrowLeft aria-hidden="true" />
         Back to overview
