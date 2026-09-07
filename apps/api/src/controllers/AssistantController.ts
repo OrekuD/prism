@@ -75,6 +75,7 @@ import {
 } from "../utils/assistantTrace";
 import { createAuthorizationCache } from "../utils/assistantAuthCache";
 import {
+  AssistantModelError,
   resolveAssistantModelConfig,
   createAssistantModel,
   type AssistantModelConfig,
@@ -552,9 +553,18 @@ async function executeStreamedRun(input: {
       maxInputTokens: modelConfig.maxInputTokens,
       maxOutputTokens: modelConfig.maxOutputTokens,
     });
-  } catch {
+  } catch (error) {
     configError = "disabled";
-    trace("run.config", "model configuration failed; run will stream disabled", {});
+    // Name the actual gate: "disabled" is the user-facing collapse, but
+    // the operator needs to know which check threw. These messages carry
+    // config names and model IDs only — never secret values.
+    trace("run.config", "model configuration failed; run will stream disabled", {
+      errorCode: error instanceof AssistantModelError ? error.code : "unknown",
+      errorMessage:
+        error instanceof Error
+          ? error.message.slice(0, 300)
+          : String(error).slice(0, 300),
+    });
   }
 
   // Start the run BEFORE any paid work (one-active-run owned by the DB).
