@@ -14,9 +14,10 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * ── Prism design tokens (Task 5) ───────────────────────────────────────────
- * Source of truth: docs/design-system.md sections 5-7. Hex values are the
- * canonical first pass; the dark theme is the brand-forward presentation.
+ * ── Prism design tokens (redesign/web-ui) ────────────────────────────────
+ * Dark: ui-dashboard.jpeg (near-black AI workspace, blue accent, soft radius).
+ * Light: ui-dashboard-light.jpeg (warm white, black primary buttons, soft radius).
+ * Type: Inter exclusively. Mono stack reserved for future JSON views.
  *
  * Canonical names: canvas / canvas-subtle / surface / surface-raised /
  * surface-hover / surface-active / border / border-strong / text /
@@ -28,40 +29,40 @@
 :root {
   color-scheme: light;
 
-  --canvas: #f6f6f8;
-  --canvas-subtle: #f0f0f3;
+  --canvas: #ffffff;
+  --canvas-subtle: #f5f5f5;
   --surface: #ffffff;
-  --surface-raised: #f7f7f9;
-  --surface-hover: #eeeef2;
-  --surface-active: #e6e6ec;
-  --border: #d8d8df;
-  --border-strong: #bcbcc7;
-  --text: #111116;
-  --text-muted: #5d5d68;
-  --text-subtle: #7b7b87;
-  --text-inverse: #f7f7f9;
-  --accent: #5637d4;
-  --accent-hover: #482cb8;
-  --accent-active: #3d249f;
-  --accent-soft: #eae5ff;
-  --focus: #5637d4;
-  --link: #3159d8;
-  --success: #087a55;
-  --warning: #9a6100;
-  --danger: #c72f45;
-  --info: #176fc1;
-  --event: #8b32b5;
+  --surface-raised: #fafafa;
+  --surface-hover: #f5f5f5;
+  --surface-active: #f5f5f5;
+  --border: #e7e5e4;
+  --border-strong: #d6d3d1;
+  --text: #2a2a2a;
+  --text-muted: #5d5d5d;
+  --text-subtle: #a8a29e;
+  --text-inverse: #fafaf9;
+  --accent: #111111;
+  --accent-hover: #000000;
+  --accent-active: #2a2a2a;
+  --accent-soft: #f0efed;
+  --focus: #2563eb;
+  --link: #2563eb;
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --info: #2563eb;
+  --event: #7c3aed;
 
-  /* Charts: the semantic palette, spectrally distinct in both modes. */
-  --chart-1: #6d4af2;
-  --chart-2: #176fc1;
-  --chart-3: #9a6100;
-  --chart-4: #c72f45;
-  --chart-5: #087a55;
+  /* Charts: semantic palette, spectrally distinct in both modes. */
+  --chart-1: #2563eb;
+  --chart-2: #16a34a;
+  --chart-3: #d97706;
+  --chart-4: #dc2626;
+  --chart-5: #7c3aed;
 
-  /* Sharp two-part radius system (design-system.md 4.2). */
-  --radius: 2px;
-  --radius-control: 2px;
+  /* Soft radius system: cards 16, controls 10, pills 999. */
+  --radius: 16px;
+  --radius-control: 10px;
   --radius-global-cta: 999px;
   /* Floated/surface shadows (v2 dashboard). */
   --shadow-dialog: 0 24px 80px rgb(17 17 22 / 0.25);
@@ -92,38 +93,38 @@
 
 .dark {
   color-scheme: dark;
-  --shadow-dialog: 0 24px 80px rgb(0 0 0 / 0.45);
-  --on-accent: #f2f2f4;
+  --shadow-dialog: 0 24px 80px rgb(0 0 0 / 0.55);
+  --on-accent: #ffffff;
 
-  --canvas: #050506;
-  --canvas-subtle: #08080a;
-  --surface: #0b0b0e;
-  --surface-raised: #111116;
-  --surface-hover: #17171d;
-  --surface-active: #1d1d25;
-  --border: #25252c;
-  --border-strong: #383842;
-  --text: #f2f2f4;
-  --text-muted: #a3a3ad;
-  --text-subtle: #6b6b75;
-  --text-inverse: #09090b;
-  --accent: #6547e8;
-  --accent-hover: #765af0;
-  --accent-active: #5337cb;
-  --accent-soft: #241a5a;
-  --focus: #9b89ff;
-  --link: #5f7dff;
-  --success: #20d99a;
-  --warning: #f2a51a;
-  --danger: #f05d6c;
-  --info: #4da3ff;
-  --event: #be5be8;
+  --canvas: #1a1a1a;
+  --canvas-subtle: #202020;
+  --surface: #1a1a1a;
+  --surface-raised: #222225;
+  --surface-hover: #26262b;
+  --surface-active: #212121;
+  --border: #2a2a2e;
+  --border-strong: #3a3a41;
+  --text: #ededed;
+  --text-muted: #a1a1aa;
+  --text-subtle: #6e6e76;
+  --text-inverse: #1a1a1a;
+  --accent: #1d9bf0;
+  --accent-hover: #1a8cd8;
+  --accent-active: #177cc0;
+  --accent-soft: rgb(29 155 240 / 0.15);
+  --focus: #4da3ff;
+  --link: #4da3ff;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #f87171;
+  --info: #38bdf8;
+  --event: #c084fc;
 
-  --chart-1: #8b7cf6;
-  --chart-2: #4da3ff;
-  --chart-3: #f2a51a;
-  --chart-4: #f05d6c;
-  --chart-5: #20d99a;
+  --chart-1: #1d9bf0;
+  --chart-2: #38bdf8;
+  --chart-3: #f59e0b;
+  --chart-4: #f87171;
+  --chart-5: #22c55e;
 
   --background: var(--canvas);
   --foreground: var(--text);
@@ -203,15 +204,14 @@
   --color-code: var(--code);
   --color-code-foreground: var(--code-foreground);
 
-  --radius-sm: var(--radius-control);
-  --radius-md: var(--radius-control);
-  --radius-lg: var(--radius-control);
-  --radius-xl: var(--radius-control);
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
 
-  /* Type ramp matching the v2 dashboard tokens: Geist + Geist Mono, loaded
-     from Google Fonts (see index.html; "Geist" / "Geist Mono" families). */
-  --font-sans: "Geist", "Helvetica Neue", Arial, sans-serif;
-  --font-mono: "Geist Mono", "SFMono-Regular", Consolas, "Liberation Mono",
+  /* Type ramp: Inter exclusively. Mono stack reserved for future JSON views. */
+  --font-sans: "Inter", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono",
     monospace;
 
   --height-full-screen: calc(100dvh - 4rem);

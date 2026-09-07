@@ -45,9 +45,8 @@ import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { DOCS_URL } from "@/lib/docs";
 
 const LINK_BASE =
-	"relative flex h-9 items-center gap-2.5 rounded-[2px] px-3 font-medium text-[13px] text-text-muted transition-colors hover:bg-surface-hover hover:text-text";
-const LINK_ACTIVE =
-	"bg-accent-soft font-medium text-text before:absolute before:-left-3 before:top-0 before:bottom-0 before:w-0.5 before:bg-accent";
+	"relative flex h-9 items-center gap-2.5 rounded-[10px] px-3 text-sm text-[#5D5D5D] transition-colors hover:bg-surface-active dark:text-text";
+const LINK_ACTIVE = "bg-surface-active text-[#2A2A2A] dark:text-text";
 
 function Active({
 	to,
@@ -169,7 +168,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 			id="sidebar"
 			aria-label="Workspace navigation"
 			className={cn(
-				"sticky top-0 z-60 flex h-dvh w-[240px] shrink-0 flex-col border-r border-border bg-canvas-subtle",
+				"sticky top-0 z-60 flex h-dvh w-[260px] shrink-0 flex-col border-r border-border bg-surface",
 				"max-[1023px]:fixed max-[1023px]:bottom-0 max-[1023px]:left-0 max-[1023px]:top-0 max-[1023px]:z-60 max-[1023px]:-translate-x-full max-[1023px]:transition-transform max-[1023px]:duration-200 max-[1023px]:ease-out",
 				navOpen &&
 					"max-[1023px]:translate-x-0 max-[1023px]:shadow-[16px_0_48px_rgb(0_0_0/0.45)]",
@@ -179,15 +178,15 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 				<Link
 					to={`/workspace/${wrkSlug}`}
 					aria-label="Prism home"
-					className="inline-flex items-center gap-2.5 rounded-[2px] transition-opacity hover:opacity-90"
+					className="inline-flex items-center gap-2.5 rounded-[10px] transition-opacity hover:opacity-90"
 				>
 					<PrismLogo size={22} variant="monochrome" className="text-text" />
 				</Link>
 			</div>
 
-			<nav className="flex flex-1 flex-col gap-3 overflow-y-auto px-3 pb-4">
-				<div className="flex flex-col gap-0.5">
-					<div className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
+			<nav className="flex flex-1 flex-col gap-5 overflow-y-auto px-3 pb-4">
+				<div className="flex flex-col gap-1">
+					<div className="px-3 pb-1 pt-1 text-[13px] font-medium tracking-normal text-text-subtle">
 						Project
 					</div>
 					<DropdownMenu>
@@ -196,7 +195,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 								type="button"
 								aria-haspopup="menu"
 								title="Switch project"
-								className="mb-2 flex h-[34px] w-full items-center gap-2 rounded-[2px] border border-border bg-surface px-2.5 text-[13px] font-medium transition-colors hover:bg-surface-hover"
+								className="mb-2 flex h-9 w-full items-center gap-2 rounded-[10px] border border-border bg-surface-raised px-2.5 text-sm font-medium transition-colors hover:bg-surface-hover"
 							>
 								<I.IconFolder />
 								<span className="flex-1 truncate text-left">
@@ -204,7 +203,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 										? (project?.name ??
 											selectedProjectSlug ?? (
 												<span
-													className="inline-block h-[13px] w-20 animate-pulse rounded-[2px] bg-surface-raised"
+													className="inline-block h-[13px] w-20 animate-pulse rounded-md bg-surface-active"
 													aria-hidden="true"
 												/>
 											))
@@ -267,7 +266,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 
 				{effectiveSlug ? (
 					<div className="flex flex-col gap-0.5">
-						<div className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
+						<div className="px-3 pb-1 pt-1 text-[13px] font-medium tracking-normal text-text-subtle">
 							Data
 						</div>
 						{hasWebSource ? (
@@ -304,7 +303,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 
 				{effectiveSlug ? (
 					<div className="flex flex-col gap-0.5">
-						<div className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
+						<div className="px-3 pb-1 pt-1 text-[13px] font-medium tracking-normal text-text-subtle">
 							Diagnose
 						</div>
 						<Active
@@ -317,7 +316,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 
 				{effectiveSlug ? (
 					<div className="flex flex-col gap-0.5">
-						<div className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
+						<div className="px-3 pb-1 pt-1 text-[13px] font-medium tracking-normal text-text-subtle">
 							Configure
 						</div>
 						<Active
@@ -334,7 +333,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 				) : null}
 
 				<div className="flex flex-col gap-0.5 border-t border-border pt-2.5">
-					<div className="flex items-center gap-1.5 px-1 pb-1.5 pt-1 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
+					<div className="px-3 pb-1 pt-1 text-[13px] font-medium tracking-normal text-text-subtle">
 						Workspace
 					</div>
 					<DropdownMenu>
@@ -343,7 +342,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 								type="button"
 								aria-haspopup="menu"
 								title="Switch workspace"
-								className="mb-2 flex h-[34px] w-full items-center gap-2 rounded-[2px] border border-border bg-surface px-2.5 text-[13px] font-medium transition-colors hover:bg-surface-hover"
+								className="mb-2 flex h-9 w-full items-center gap-2 rounded-[10px] border border-border bg-surface-raised px-2.5 text-sm font-medium transition-colors hover:bg-surface-hover"
 							>
 								<span className="flex-1 truncate text-left">
 									{workspacesPending ? (
@@ -444,7 +443,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 						>
 							<I.IconMoon />
 							<span className="flex-1 text-left">Theme</span>
-							<span className="font-mono text-[11px] text-text-subtle">
+							<span className="text-xs text-text-subtle">
 								{themeLabel}
 							</span>
 							<I.IconChevronDown className="size-3" />
@@ -490,7 +489,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 								className="flex w-full items-center gap-2.5 rounded-[2px] px-1 py-1 text-left transition-colors hover:bg-surface-hover"
 							>
 								<span
-									className="grid size-[26px] shrink-0 place-items-center rounded-full border border-border-strong bg-surface-raised font-mono text-[11px] font-semibold text-text"
+									className="grid size-[26px] shrink-0 place-items-center rounded-full border border-border-strong bg-surface-raised text-[11px] font-semibold text-text"
 									aria-hidden="true"
 								>
 									{getInitials(session?.user?.name ?? "Prism")}
