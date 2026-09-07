@@ -53,7 +53,7 @@ function Hero() {
         <Frame className="overflow-hidden p-0">
           <img
             src="/dashboard-preview.png"
-            alt="The Prism workspace overview: usage summary, quick links, and the connect-a-project panel"
+            alt="The Prism analytics dashboard showing project activity and setup information"
             width={1600}
             height={1000}
             fetchPriority="high"

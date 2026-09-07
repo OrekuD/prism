@@ -2,7 +2,9 @@ import type {
   BreakdownResource,
   EventResource,
   PeopleListResource,
+  PeopleRange,
   PeopleResource,
+  PeopleSummaryResource,
   PersonDetailResource,
   TotalsResource,
 } from "@prism-analytics/types";
@@ -52,10 +54,76 @@ function decodeProperties(raw: unknown): Record<string, unknown> | null {
 export interface PeopleListParams {
   cursor?: string;
   limit?: number;
+  from?: number;
+  to?: number;
+  range?: PeopleRange;
   /** Exact external-ID match (no prefix/fuzzy — documented limitation). */
   searchUserId?: string;
   /** Exact indexed safe-trait match: traitKey=value. */
   searchTrait?: { key: string; value: string };
+}
+
+/**
+ * Opaque People cursor on (last_seen_at DESC, person_id DESC). Encoded as
+ * base64url JSON like the canonical Events cursor: the dashboard never
+ * parses it, and the store validates the tuple shape, a finite non-negative
+ * timestamp, and a bounded non-empty person ID before querying.
+ */
+export type PeopleCursor = { lastSeenAt: number; personId: string };
+
+const MAX_PERSON_ID_LENGTH = 128;
+
+export function encodePeopleCursor(cursor: PeopleCursor): string {
+  const json = JSON.stringify([cursor.lastSeenAt, cursor.personId]);
+  if (typeof Buffer !== "undefined") {
+    return (
+      Buffer as unknown as { from(s: string): { toString(e: string): string } }
+    )
+      .from(json)
+      .toString("base64url");
+  }
+  const b64 = btoa(json);
+  return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+export function decodePeopleCursor(cursor: string): PeopleCursor | null {
+  try {
+    let json: string;
+    if (typeof Buffer !== "undefined") {
+      json = (
+        Buffer as unknown as {
+          from(s: string, e: string): { toString(e: string): string };
+        }
+      )
+        .from(cursor, "base64url")
+        .toString("utf8");
+    } else {
+      let b64 = cursor.replace(/-/g, "+").replace(/_/g, "/");
+      while (b64.length % 4) b64 += "=";
+      json = atob(b64);
+    }
+    const parsed = JSON.parse(json) as unknown;
+    if (!Array.isArray(parsed) || parsed.length !== 2) return null;
+    const [lastSeenAt, personId] = parsed as [unknown, unknown];
+    if (typeof lastSeenAt !== "number" || !Number.isSafeInteger(lastSeenAt)) {
+      return null;
+    }
+    if (lastSeenAt < 0) return null;
+    if (typeof personId !== "string") return null;
+    if (personId.length === 0 || personId.length > MAX_PERSON_ID_LENGTH) {
+      return null;
+    }
+    return { lastSeenAt, personId };
+  } catch {
+    return null;
+  }
+}
+
+/** Shared integer clamp for page size — fractions/NaN never reach SQL. */
+export function clampPeopleLimit(raw: number | undefined): number {
+  const value = typeof raw === "number" && Number.isInteger(raw) ? raw : Number.NaN;
+  if (!Number.isFinite(value)) return PAGE_SIZE;
+  return Math.min(Math.max(value, 1), 100);
 }
 
 /**
@@ -69,10 +137,25 @@ export async function peopleList(
   projectId: string,
   params: PeopleListParams = {},
 ): Promise<PeopleListResource> {
-  const limit = Math.min(Math.max(params.limit ?? PAGE_SIZE, 1), 100);
+  const limit = clampPeopleLimit(params.limit);
   const clauses: string[] = ["p.project_id = ?"];
   const args: Array<string | number | null> = [projectId];
-  let searchExact = false;
+
+  // People is the identified-user explorer. Anonymous-only analytics subjects
+  // remain queryable through aggregate analytics, but never masquerade as
+  // named people in this list.
+  clauses.push(`EXISTS (SELECT 1 FROM external_identities identified
+    WHERE identified.project_id = p.project_id
+      AND identified.person_id = p.person_id)`);
+
+  if (params.from !== undefined) {
+    clauses.push("p.last_seen_at >= ?");
+    args.push(params.from);
+  }
+  if (params.to !== undefined) {
+    clauses.push("p.last_seen_at <= ?");
+    args.push(params.to);
+  }
 
   if (params.searchUserId) {
     // Exact external-ID match only — broad PII enumeration is out of
@@ -80,19 +163,21 @@ export async function peopleList(
     clauses.push(`p.person_id = (SELECT person_id FROM external_identities
       WHERE project_id = ? AND user_id = ? LIMIT 1)`);
     args.push(projectId, params.searchUserId);
-    searchExact = true;
   }
   if (params.searchTrait) {
     clauses.push(`p.person_id IN (SELECT person_id FROM person_traits
       WHERE project_id = ? AND key = ? AND value = ?)`);
     args.push(projectId, params.searchTrait.key, JSON.stringify(params.searchTrait.value));
-    searchExact = true;
   }
   if (params.cursor) {
-    const [lastSeen, personId] = params.cursor.split(":");
-    if (lastSeen && personId) {
-      clauses.push("(p.last_seen_at < ? OR (p.last_seen_at = ? AND p.person_id < ?))");
-      args.push(Number(lastSeen), Number(lastSeen), personId);
+    // Strict opaque-cursor decode: a malformed tuple never reaches SQL as a
+    // NaN/extra-component parameter (the controller rejects it with 400).
+    const decoded = decodePeopleCursor(params.cursor);
+    if (decoded) {
+      clauses.push(
+        "(p.last_seen_at < ? OR (p.last_seen_at = ? AND p.person_id < ?))",
+      );
+      args.push(decoded.lastSeenAt, decoded.lastSeenAt, decoded.personId);
     }
   }
 
@@ -102,15 +187,18 @@ export async function peopleList(
             p.person_id,
             p.first_seen_at,
             p.last_seen_at,
+            (SELECT x.user_id FROM external_identities x
+              WHERE x.project_id = p.project_id AND x.person_id = p.person_id
+              ORDER BY x.linked_at ASC, x.user_id ASC LIMIT 1) AS primary_external_id,
             (SELECT COUNT(*) FROM events e
               WHERE e.project_id = p.project_id AND e.person_id = p.person_id) AS event_count,
             (SELECT COUNT(DISTINCT session_id) FROM events e
               WHERE e.project_id = p.project_id AND e.person_id = p.person_id
                 AND e.session_id IS NOT NULL) AS session_count,
             (SELECT COUNT(*) FROM external_identities x
-              WHERE x.project_id = p.project_id AND x.person_id = p.person_id)
-              + (SELECT COUNT(*) FROM anonymous_identities a
-                WHERE a.project_id = p.project_id AND a.person_id = p.person_id) AS identity_count
+              WHERE x.project_id = p.project_id AND x.person_id = p.person_id) AS external_identity_count,
+            (SELECT COUNT(*) FROM anonymous_identities a
+              WHERE a.project_id = p.project_id AND a.person_id = p.person_id) AS anonymous_identity_count
           FROM people p
           WHERE ${where}
           ORDER BY p.last_seen_at DESC, p.person_id DESC
@@ -123,24 +211,110 @@ export async function peopleList(
   const last = page[page.length - 1];
   const nextCursor =
     hasMore && last
-      ? `${String(last.last_seen_at)}:${String(last.person_id)}`
+      ? encodePeopleCursor({
+          lastSeenAt: Number(last.last_seen_at),
+          personId: String(last.person_id),
+        })
       : null;
 
-  const people = await Promise.all(
-    page.map(async (row) => ({
+  const pageIds = page.map((row) => String(row.person_id));
+  const traitsByPerson = new Map<string, Record<string, unknown>>();
+  if (pageIds.length > 0) {
+    // Deterministic trait order (person, key) so "first two visible traits"
+    // cannot change with database row order.
+    const traitRows = await client.execute({
+      sql: `SELECT person_id, key, value FROM person_traits
+            WHERE project_id = ? AND person_id IN (${pageIds.map(() => "?").join(",")})
+            ORDER BY person_id ASC, key ASC`,
+      args: [projectId, ...pageIds],
+    });
+    for (const row of traitRows.rows) {
+      const personId = String(row.person_id);
+      const current = traitsByPerson.get(personId) ?? {};
+      traitsByPerson.set(personId, {
+        ...current,
+        [String(row.key)]: decodeJson(row.value),
+      });
+    }
+  }
+
+  const people: PeopleResource[] = page.map((row) => {
+    const primaryExternalId = row.primary_external_id;
+    return {
       personId: String(row.person_id),
+      primaryExternalId:
+        primaryExternalId === null || primaryExternalId === undefined
+          ? null
+          : String(primaryExternalId),
       firstSeenAt: Number(row.first_seen_at),
       lastSeenAt: Number(row.last_seen_at),
-      traits: await personTraits(client, projectId, String(row.person_id)),
-      identityCount: Number(row.identity_count ?? 0),
+      traits: traitsByPerson.get(String(row.person_id)) ?? {},
+      externalIdentityCount: Number(row.external_identity_count ?? 0),
+      anonymousIdentityCount: Number(row.anonymous_identity_count ?? 0),
       sessionCount: Number(row.session_count ?? 0),
       eventCount: Number(row.event_count ?? 0),
-    })),
-  );
+    };
+  });
 
-  // A search that returned nothing is an honest empty result.
-  void searchExact;
-  return { people, nextCursor };
+  return {
+    people,
+    nextCursor,
+    summary: await peopleSummary(client, projectId, {
+      from: params.from ?? 0,
+      to: params.to ?? Number.MAX_SAFE_INTEGER,
+      range: params.range ?? "30d",
+    }),
+  };
+}
+
+async function peopleSummary(
+  client: AnalyticsClient,
+  projectId: string,
+  range: { from: number; to: number; range: PeopleRange },
+): Promise<PeopleSummaryResource> {
+  const { rows } = await client.execute({
+    sql: `SELECT
+            (SELECT COUNT(*) FROM people p
+              WHERE p.project_id = ?
+                AND EXISTS (SELECT 1 FROM external_identities x
+                  WHERE x.project_id = p.project_id AND x.person_id = p.person_id)) AS identified_people,
+            (SELECT COUNT(*) FROM people p
+              WHERE p.project_id = ? AND p.last_seen_at >= ? AND p.last_seen_at <= ?
+                AND EXISTS (SELECT 1 FROM external_identities x
+                  WHERE x.project_id = p.project_id AND x.person_id = p.person_id)) AS active_people,
+            (SELECT COUNT(*) FROM (
+              SELECT x.person_id FROM external_identities x
+                WHERE x.project_id = ?
+                GROUP BY x.person_id
+                HAVING MIN(x.linked_at) >= ? AND MIN(x.linked_at) <= ?
+            ) AS first_links) AS new_people,
+            (SELECT COUNT(*) FROM people p
+              WHERE p.project_id = ? AND p.last_seen_at >= ? AND p.last_seen_at <= ?
+                AND NOT EXISTS (SELECT 1 FROM external_identities x
+                  WHERE x.project_id = p.project_id AND x.person_id = p.person_id)) AS anonymous_people`,
+    args: [
+      projectId,
+      projectId,
+      range.from,
+      range.to,
+      projectId,
+      range.from,
+      range.to,
+      projectId,
+      range.from,
+      range.to,
+    ],
+  });
+  const row = rows[0] ?? {};
+  return {
+    range: range.range,
+    from: range.from,
+    to: range.to,
+    identifiedPeople: Number(row.identified_people ?? 0),
+    activePeople: Number(row.active_people ?? 0),
+    newPeople: Number(row.new_people ?? 0),
+    anonymousPeople: Number(row.anonymous_people ?? 0),
+  };
 }
 
 async function personTraits(
@@ -149,7 +323,7 @@ async function personTraits(
   personId: string,
 ): Promise<Record<string, unknown>> {
   const { rows } = await client.execute({
-    sql: "SELECT key, value FROM person_traits WHERE project_id = ? AND person_id = ?",
+    sql: "SELECT key, value FROM person_traits WHERE project_id = ? AND person_id = ? ORDER BY key ASC",
     args: [projectId, personId],
   });
   const traits: Record<string, unknown> = {};
@@ -172,14 +346,16 @@ export async function personDetail(
   const person = rows[0];
   if (!person) return null;
 
-  // F14: real project-scoped counts — never hardcoded zeros.
+  // F14: real project-scoped counts — never hardcoded zeros. Identity and
+  // trait lists use deterministic ordering (first-linked first, stable
+  // tie-break) so profiles render identically on every request.
   const [external, anonymous, counts] = await Promise.all([
     client.execute({
-      sql: "SELECT user_id FROM external_identities WHERE project_id = ? AND person_id = ?",
+      sql: "SELECT user_id FROM external_identities WHERE project_id = ? AND person_id = ? ORDER BY linked_at ASC, user_id ASC",
       args: [projectId, personId],
     }),
     client.execute({
-      sql: "SELECT anonymous_id FROM anonymous_identities WHERE project_id = ? AND person_id = ?",
+      sql: "SELECT anonymous_id FROM anonymous_identities WHERE project_id = ? AND person_id = ? ORDER BY linked_at ASC, anonymous_id ASC",
       args: [projectId, personId],
     }),
     client.execute({
@@ -194,10 +370,15 @@ export async function personDetail(
 
   return {
     personId: String(person.person_id),
+    primaryExternalId:
+      external.rows[0]?.user_id === null || external.rows[0]?.user_id === undefined
+        ? null
+        : String(external.rows[0].user_id),
     firstSeenAt: Number(person.first_seen_at),
     lastSeenAt: Number(person.last_seen_at),
     traits: await personTraits(client, projectId, personId),
-    identityCount: external.rows.length + anonymous.rows.length,
+    externalIdentityCount: external.rows.length,
+    anonymousIdentityCount: anonymous.rows.length,
     sessionCount: Number((counts.rows[0] as { sessions?: unknown } | undefined)?.sessions ?? 0),
     eventCount: Number((counts.rows[0] as { events?: unknown } | undefined)?.events ?? 0),
     externalIds: external.rows.map((row) => String(row.user_id)),
@@ -214,7 +395,10 @@ export async function personActivity(
   offset = 0,
 ): Promise<EventResource[]> {
   const { rows } = await client.execute({
-    sql: `SELECT id, session_id, project_id, name, properties, occurred_at, received_at, schema_version
+    sql: `SELECT id, session_id, project_id, name, type, properties, context,
+                 occurred_at, received_at, schema_version,
+                 anonymous_id, user_id, person_id,
+                 source_id, platform, sdk_name, sdk_version
           FROM events
           WHERE project_id = ? AND person_id = ?
           ORDER BY received_at DESC, id DESC
@@ -228,10 +412,40 @@ export async function personActivity(
       : String(row.session_id),
     projectId: String(row.project_id),
     name: String(row.name),
+    type: row.type === null || row.type === undefined ? "track" : String(row.type),
     properties: decodeProperties(row.properties),
+    context: decodeProperties(row.context),
     occurredAt: Number(row.occurred_at),
     receivedAt: Number(row.received_at),
     schemaVersion: Number(row.schema_version),
+    anonymousId:
+      row.anonymous_id === null || row.anonymous_id === undefined
+        ? null
+        : String(row.anonymous_id),
+    userId:
+      row.user_id === null || row.user_id === undefined
+        ? null
+        : String(row.user_id),
+    personId:
+      row.person_id === null || row.person_id === undefined
+        ? null
+        : String(row.person_id),
+    sourceId:
+      row.source_id === null || row.source_id === undefined
+        ? null
+        : String(row.source_id),
+    platform:
+      row.platform === null || row.platform === undefined
+        ? null
+        : String(row.platform),
+    sdkName:
+      row.sdk_name === null || row.sdk_name === undefined
+        ? null
+        : String(row.sdk_name),
+    sdkVersion:
+      row.sdk_version === null || row.sdk_version === undefined
+        ? null
+        : String(row.sdk_version),
   }));
 }
 
@@ -634,39 +848,40 @@ export async function deletePerson(
         }))
       : []),
   ];
-  const results = await client.batch?.(
-    [
-      ...credentialTombstones,
-      ...sessionStatements,
-      { sql: "DELETE FROM external_identities WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
-      { sql: "DELETE FROM anonymous_identities WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
-      { sql: "DELETE FROM person_traits WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
-      // Task 17 slice 4: page projections die WITH their linked events -
-      // no orphan rows may survive person deletion (privacy contract).
-      { sql: "DELETE FROM web_page_views WHERE project_id = ? AND event_id IN (SELECT id FROM events WHERE project_id = ? AND person_id = ?)", args: [projectId, projectId, personId] },
-      { sql: "DELETE FROM events WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
-      // Task 18 (R3-F7): person deletion immediately reconciles mobile
-      // aggregates - screens cascade with their events; sessions and
-      // installations with NO surviving telemetry are removed right here.
-      { sql: `DELETE FROM mobile_app_sessions WHERE project_id = ? AND NOT EXISTS (
-        SELECT 1 FROM events e
-        WHERE e.project_id = mobile_app_sessions.project_id
-        AND e.session_id = mobile_app_sessions.session_id
-      )`, args: [projectId] },
-      { sql: `DELETE FROM mobile_installations WHERE project_id = ? AND installation_digest NOT IN (
-        SELECT DISTINCT installation_digest FROM mobile_app_sessions
-        WHERE project_id = ? AND installation_digest IS NOT NULL
-      )`, args: [projectId, projectId] },
-      { sql: "DELETE FROM people WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
-      { sql: "INSERT INTO deleted_people (project_id, person_id, deleted_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING", args: [projectId, personId, Date.now()] },
-      ...errorPurgeStatements,
-    ],
-    "write",
-  );
+  // R1-F2: build the batch first and CAPTURE the people-DELETE index
+  // immediately before appending it — a positional magic offset silently
+  // drifted to the events DELETE (a person with events reported deleted by
+  // coincidence; an eventless person reported not-deleted).
+  const statements: Array<{ sql: string; args: Array<string | number | null> }> = [
+    ...credentialTombstones,
+    ...sessionStatements,
+    { sql: "DELETE FROM external_identities WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
+    { sql: "DELETE FROM anonymous_identities WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
+    { sql: "DELETE FROM person_traits WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
+    // Task 17 slice 4: page projections die WITH their linked events -
+    // no orphan rows may survive person deletion (privacy contract).
+    { sql: "DELETE FROM web_page_views WHERE project_id = ? AND event_id IN (SELECT id FROM events WHERE project_id = ? AND person_id = ?)", args: [projectId, projectId, personId] },
+    { sql: "DELETE FROM events WHERE project_id = ? AND person_id = ?", args: [projectId, personId] },
+    // Task 18 (R3-F7): person deletion immediately reconciles mobile
+    // aggregates - screens cascade with their events; sessions and
+    // installations with NO surviving telemetry are removed right here.
+    { sql: `DELETE FROM mobile_app_sessions WHERE project_id = ? AND NOT EXISTS (
+      SELECT 1 FROM events e
+      WHERE e.project_id = mobile_app_sessions.project_id
+      AND e.session_id = mobile_app_sessions.session_id
+    )`, args: [projectId] },
+    { sql: `DELETE FROM mobile_installations WHERE project_id = ? AND installation_digest NOT IN (
+      SELECT DISTINCT installation_digest FROM mobile_app_sessions
+      WHERE project_id = ? AND installation_digest IS NOT NULL
+    )`, args: [projectId, projectId] },
+  ];
+  const peopleDeleteIndex = statements.length;
+  statements.push({ sql: "DELETE FROM people WHERE project_id = ? AND person_id = ?", args: [projectId, personId] });
+  statements.push({ sql: "INSERT INTO deleted_people (project_id, person_id, deleted_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING", args: [projectId, personId, Date.now()] });
+  statements.push(...errorPurgeStatements);
+  const results = await client.batch?.(statements, "write");
   // the `deleted` flag reflects the PERSON row removal — the tombstone
   // insert is not evidence that the person existed.
-  const peopleDeleteIndex =
-    credentialTombstones.length + sessionStatements.length + 4;
   const peopleDelete = results?.[peopleDeleteIndex];
   return { deleted: (peopleDelete?.rowsAffected ?? 0) > 0 };
 }

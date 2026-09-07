@@ -60,7 +60,7 @@ export function DataTablePagination<TData>({
 							<SelectValue />
 						</SelectTrigger>
 						<SelectContent side="top">
-							{[25, 50, 100, 200].map((size) => (
+							{[10, 25, 50, 100, 200].map((size) => (
 								<SelectItem key={size} value={String(size)}>
 									{size}
 								</SelectItem>

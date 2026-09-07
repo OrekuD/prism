@@ -483,7 +483,7 @@ class ErrorReporterImpl implements PrismErrorReporter {
 		const body: WireErrorBatch = {
 			schemaVersion: 1,
 			sentAt: this.runtime.now(),
-			sdk: { name: SDK_NAME, version: SDK_VERSION },
+			sdk: { name: SDK_NAME, version: SDK_VERSION, language: "javascript" },
 			errors: batch.map(
 				(entry) => JSON.parse(entry.serialized) as WireErrorItem,
 			),

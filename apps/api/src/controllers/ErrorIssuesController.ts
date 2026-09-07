@@ -23,6 +23,7 @@ import {
 	encodeIssueCursor,
 	decodeIssueCursor,
 } from "../utils/errorIssuesStore";
+import { parseReleaseFilter } from "../utils/projectMetrics";
 import { RateLimiter } from "../utils/RateLimiter";
 import { getWorkspaceRole, isAdminRole } from "../utils/workspaceAuth";
 
@@ -159,7 +160,17 @@ export class ErrorIssuesController {
 			q("platform"),
 			PLATFORM_VALUES,
 		) as ErrorIssuePlatform | undefined;
-		const release = clampFilter(q("release"));
+		// Strict shared release boundary (R8-F7): exact identifiers of
+		// length 1..128 pass through; anything else is a non-disclosing
+		// 400 — never a trim/slice into an unrelated stored prefix.
+		let release: string | undefined;
+		if (q("release") !== undefined) {
+			try {
+				release = parseReleaseFilter(q("release"));
+			} catch {
+				return ctx.json(new ErrorResponse("invalid_filter").toJSON(), 400);
+			}
+		}
 		const search = clampFilter(q("q"));
 		const limit = issueListLimit(q("limit"));
 		const cursor = decodeIssueCursor(q("cursor"));

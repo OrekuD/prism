@@ -3,7 +3,7 @@ title: Node SDK
 description: Server-side setup with @prism-analytics/node for error reporting and @prism-analytics/core for events.
 audience: Developer
 scope: Both
-lastReviewed: "2026-08-24"
+lastReviewed: "2026-09-02"
 ---
 
 `@prism-analytics/node` is the server SDK for Prism. It reports errors from Node processes into the Errors dashboard, and the runtime-neutral `@prism-analytics/core` engine handles event capture when you need it. This page covers server setup and lifecycle ownership.
@@ -70,9 +70,40 @@ Flush-on-shutdown is best-effort via `beforeExit` / `SIGINT` / `SIGTERM`. The re
 await errors.shutdown();
 ```
 
-## Events in Node
+## Events in Node — Standard Events via createNodeClient
 
-For product analytics events from the server, use `@prism-analytics/core` directly with a Node runtime. The core is runtime-neutral — it needs no DOM and has zero import-time side effects. See [SDK API and limits](/docs/reference/sdk-api-and-limits) for the adapter contract.
+For product analytics from the server, use the Node analytics factory:
+
+```ts
+import { createNodeClient } from "@prism-analytics/node";
+
+const prism = await createNodeClient({
+  sourceKey: process.env.PRISM_SOURCE_KEY!,
+  endpoint: process.env.PRISM_ENDPOINT!,
+  collection: { initialState: "granted" },
+});
+
+// concurrency-safe: per-call actor, no global identity mutation
+prism.events.subscriptionCancelled(
+  { subscriptionId: subscription.analyticsId, planId: "pro_monthly" },
+  { userId: user.id },
+);
+prism.events.purchase({
+  transactionId: "order_2026_1042",
+  valueMinor: 1299,
+  currency: "USD",
+});
+```
+
+`createNodeClient` is a thin wrapper around the core engine with a Node
+runtime — the same queue, batching, retry, and `flush()`/`shutdown()`
+lifecycle. It requires an explicit `endpoint`, `sourceKey`, and
+`collection.initialState`, and it uses a server source key, so the source
+platform stays server-authoritative at ingestion. In concurrent handlers,
+always attribute events with the per-call `{ userId }` actor. See
+[Standard Events](/docs/features/standard-events) for the full catalog
+and [SDK API and limits](/docs/reference/sdk-api-and-limits) for the
+adapter contract.
 
 ## Next steps
 

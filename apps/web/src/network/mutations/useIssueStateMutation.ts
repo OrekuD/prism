@@ -5,6 +5,7 @@ import type {
 } from "@prism-analytics/types";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import type { IssueListResult } from "@/network/queries/useIssuesQuery";
 
 /**
  * Issue workflow action (task-15 slice 2 workflow API): resolve / reopen /
@@ -37,25 +38,58 @@ export function useIssueStateMutation(slug: string | undefined) {
 			await queryClient.cancelQueries({ queryKey: prefix });
 			// Snapshot every range variant (7d, 30d, …) so a failed write can
 			// restore each one exactly.
-			const previous = queryClient.getQueriesData<ErrorIssueResource[]>({
+			const previous = queryClient.getQueriesData<IssueListResult>({
 				queryKey: prefix,
 			});
-			queryClient.setQueriesData<ErrorIssueResource[]>(
+			queryClient.setQueriesData<IssueListResult>(
 				{ queryKey: prefix },
-				(issues = []) =>
-					(issues ?? []).map((issue) =>
-						issue.id === input.issueId
-							? { ...issue, status: input.status }
-							: issue,
-					),
+				(old) => {
+					if (!old) return old;
+					return {
+						...old,
+						items: old.items.map((issue) =>
+							issue.id === input.issueId
+								? { ...issue, status: input.status }
+								: issue,
+						),
+					};
+				},
 			);
 			return { previous };
 		},
-		onError: (_error, _input, context) => {
+		onError: (error, _input, context) => {
 			for (const [key, data] of context?.previous ?? []) {
 				queryClient.setQueryData(key, data);
 			}
-			toast.error("Could not update the issue");
+			// Surface the actual server reason for debugging (403, 429, etc.)
+			const message =
+				(error as { response?: { data?: { error?: { code?: string; message?: string } }; status?: number } })?.response
+					?.data?.error?.message ??
+				(error as { message?: string })?.message ??
+				"Could not update the issue";
+			const code =
+				(error as { response?: { data?: { error?: { code?: string } } } })?.response
+					?.data?.error?.code ?? "";
+			const label = code ? `${code}: ${message}` : message;
+			toast.error(label);
+			// Also log for devtools
+			console.error("[issue state] update failed", error);
+		},
+		onSuccess: (updated) => {
+			// Ensure the cache reflects the server's authoritative row
+			const prefix = ISSUES_PREFIX(slug);
+			queryClient.setQueriesData<IssueListResult>(
+				{ queryKey: prefix },
+				(old) => {
+					if (!old) return old;
+					return {
+						...old,
+						items: old.items.map((issue) =>
+							issue.id === updated.id ? updated : issue,
+						),
+					};
+				},
+			);
 		},
 	});
 }

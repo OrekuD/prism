@@ -88,6 +88,7 @@ export type EventResource = {
 	sdkVersion?: string | null;
 	/** Hydrated source attribution (pre-archive interim shape until slice 2 adds status). */
 	source?: { id: string; name: string; platform: string } | null;
+	standardEvent?: StandardEventAttribution | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -107,6 +108,41 @@ export type EventSourceAttribution = {
 	status: SourceStatus;
 };
 
+/** Frozen Standard Event display metadata — derived from the shared Core registry, never from client payload. */
+export type StandardEventKey =
+	| "sign_up"
+	| "login"
+	| "logout"
+	| "onboarding_started"
+	| "onboarding_step_completed"
+	| "onboarding_completed"
+	| "lead_generated"
+	| "invite_sent"
+	| "invite_accepted"
+	| "trial_started"
+	| "trial_ended"
+	| "subscription_started"
+	| "subscription_renewed"
+	| "subscription_changed"
+	| "subscription_paused"
+	| "subscription_resumed"
+	| "subscription_cancelled"
+	| "subscription_expired"
+	| "payment_succeeded"
+	| "payment_failed"
+	| "purchase"
+	| "refund"
+	| "search"
+	| "share"
+	| "feedback_submitted";
+
+export type StandardEventAttribution = {
+	key: StandardEventKey;
+	displayName: string;
+	category: string;
+	schemaVersion: 1;
+};
+
 /** Lightweight list item — what the Events table renders without opening detail. */
 export type EventListItemResource = {
 	id: string;
@@ -118,6 +154,7 @@ export type EventListItemResource = {
 	personId: string | null;
 	sessionId: string | null;
 	source: EventSourceAttribution | null;
+	standardEvent: StandardEventAttribution | null;
 };
 
 /** Full detail — authorized view for the drawer/route. Identity/context/SDK are nullable. */
@@ -185,19 +222,41 @@ export function decodeEventCursor(cursor: string): EventCursor | null {
 	}
 }
 
+/** A bounded time window supported by the People explorer. */
+export type PeopleRange = "7d" | "30d" | "90d";
+
 /**
- * Person resource (task-10 §5): opaque personId (the deterministic
- * internal id — clients need it for detail/export/delete), safe trait
- * values, first/last seen, and honest distinct counts. No email/name
- * inference — only developer-supplied data is ever present.
+ * Summary for the People explorer. Identified and anonymous subjects stay
+ * separate so the dashboard never presents an SDK-generated identifier as a
+ * known user.
+ */
+export type PeopleSummaryResource = {
+	range: PeopleRange;
+	from: number;
+	to: number;
+	/** Every current person with at least one developer-supplied external ID. */
+	identifiedPeople: number;
+	/** Identified people with accepted activity inside the selected range. */
+	activePeople: number;
+	/** People first linked to an external ID inside the selected range. */
+	newPeople: number;
+	/** Anonymous-only analytics subjects active inside the selected range. */
+	anonymousPeople: number;
+};
+
+/**
+ * Identified person resource (task-10 §5): the external ID is the useful
+ * display identity; personId remains an opaque locator for detail/privacy
+ * routes. Traits contain only values explicitly supplied through identify().
  */
 export type PeopleResource = {
 	personId: string;
+	primaryExternalId: string | null;
 	firstSeenAt: number;
 	lastSeenAt: number;
 	traits: Record<string, unknown>;
-	/** Distinct linked identities (external + anonymous). */
-	identityCount: number;
+	externalIdentityCount: number;
+	anonymousIdentityCount: number;
 	/** Distinct sessions across the person's events. */
 	sessionCount: number;
 	/** Event occurrences. */
@@ -211,6 +270,7 @@ export type PersonDetailResource = PeopleResource & {
 
 export type PeopleListResource = {
 	people: Array<PeopleResource>;
+	summary: PeopleSummaryResource;
 	/** Keyset cursor for the next page (opaque; absent on the last page). */
 	nextCursor: string | null;
 };
@@ -315,6 +375,7 @@ export type ErrorOccurrenceSummary = {
 	release?: string;
 	environment?: string;
 	anonymousId?: string;
+	language?: string;
 	exception: {
 		type: string;
 		message?: string;
@@ -324,6 +385,10 @@ export type ErrorOccurrenceSummary = {
 	tagsCount: number;
 	extrasCount: number;
 	breadcrumbsCount: number;
+	/** Sanitized tag map (string values, bounded, redacted) — for UI, not just count. */
+	tags?: Record<string, string>;
+	/** Sanitized extras map (bounded, redacted) — for UI. */
+	extras?: Record<string, unknown>;
 };
 
 export type ErrorIssueActivityAction = "resolved" | "ignored" | "reopened";
@@ -360,3 +425,5 @@ export type ErrorIssueDetailResource = {
 
 export * from "./webAnalytics";
 export * from "./mobileAnalytics";
+export * from "./projectAssistant";
+export * from "./projectAssistantFixtures";

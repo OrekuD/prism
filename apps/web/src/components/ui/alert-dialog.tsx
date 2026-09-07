@@ -35,7 +35,7 @@ function AlertDialogOverlay({
 		<AlertDialogPrimitive.Overlay
 			data-slot="alert-dialog-overlay"
 			className={cn(
-				"fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
+				"fixed inset-0 z-[90] bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
 				className,
 			)}
 			{...props}
@@ -56,7 +56,7 @@ function AlertDialogContent({
 			<AlertDialogPrimitive.Content
 				data-slot="alert-dialog-content"
 				className={cn(
-					"fixed top-[50%] left-[50%] z-50 grid w-full gap-4 translate-x-[-50%] translate-y-[-50%]",
+					"fixed top-[50%] left-[50%] z-[90] grid w-full gap-4 translate-x-[-50%] translate-y-[-50%]",
 					size === "default" ? "max-w-lg" : "max-w-md",
 					"rounded-lg border bg-background p-6 shadow-lg duration-200 outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
 					className,
@@ -104,7 +104,7 @@ function AlertDialogTitle({
 		<AlertDialogPrimitive.Title
 			data-slot="alert-dialog-title"
 			className={cn(
-				"font-mono text-[15px] font-[550] leading-snug tracking-[-0.01em]",
+				"font-sans text-[16px] font-medium leading-snug tracking-[-0.015em] text-text",
 				className,
 			)}
 			{...props}
@@ -120,7 +120,7 @@ function AlertDialogDescription({
 		<AlertDialogPrimitive.Description
 			data-slot="alert-dialog-description"
 			className={cn(
-				"font-mono text-[13px] leading-[1.5] text-muted-foreground",
+				"font-sans text-[13px] leading-[1.5] text-text-muted",
 				className,
 			)}
 			{...props}

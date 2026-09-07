@@ -130,7 +130,10 @@ export interface IngestResult {
 		| "invalid-mobile-screen"
 		| "invalid-mobile-lifecycle"
 		| "mobile-digest-unconfigured"
-		| "mobile-installation-required";
+		| "mobile-installation-required"
+		// Task 19: Standard Event boundary rejections.
+		| "unknown-reserved-event"
+		| "invalid-standard-event";
 }
 
 /** Success body for POST /api/v2/ingest (200). */

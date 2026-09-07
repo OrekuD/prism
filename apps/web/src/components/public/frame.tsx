@@ -86,10 +86,10 @@ export function Frame({
   );
 }
 
-/** Section label (design-system.md 9.7): 11px mono uppercase, optional //. */
+/** Section label (design-system.md 9.7): 11px mono uppercase. */
 export function SectionLabel({
   children,
-  prefix = "//",
+  prefix = null,
   className,
 }: {
   children: React.ReactNode;

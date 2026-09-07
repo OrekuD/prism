@@ -228,6 +228,53 @@ describe("ErrorIssuesController", () => {
 			);
 			expect(statusOf(result)).toBe(404);
 		});
+
+		it("parses release filters strictly: exact through 128, 400 beyond (R8-F7)", async () => {
+			const neon = makeStore("member");
+			getInstance.mockReturnValue(neon as never);
+			const execute = makeTurso({ issues: [] });
+			const exact128 = `rel-${"r".repeat(124)}`;
+			expect(exact128).toHaveLength(128);
+			const pageCtx = (query: Record<string, string>) => {
+				const ctx = makeCtx({ slug: SLUG }, {}, { user: { id: USER_ID } });
+				(ctx as { req: { query: unknown } }).req.query = vi.fn(
+					(key: string) => query[key],
+				);
+				return ctx;
+			};
+
+			const ok = await ErrorIssuesController.paginatedList(
+				pageCtx({ release: exact128 }),
+			);
+			expect(statusOf(ok) ?? 200).toBe(200);
+			const withRelease = execute.mock.calls.filter(([input]) =>
+				String((input as { sql: string }).sql).includes("last_release = ?"),
+			);
+			expect(withRelease.length).toBeGreaterThan(0);
+			for (const [input] of withRelease) {
+				expect((input as { args: unknown[] }).args).toContain(exact128);
+			}
+
+			// 129 characters reject instead of slicing into a stored prefix.
+			const over = await ErrorIssuesController.paginatedList(
+				pageCtx({ release: `${exact128}x` }),
+			);
+			expect(statusOf(over)).toBe(400);
+
+			// Leading/trailing characters are preserved, never trimmed.
+			execute.mockClear();
+			const spaced = await ErrorIssuesController.paginatedList(
+				pageCtx({ release: " v1 " }),
+			);
+			expect(statusOf(spaced) ?? 200).toBe(200);
+			const spacedCalls = execute.mock.calls.filter(([input]) =>
+				String((input as { sql: string }).sql).includes("last_release = ?"),
+			);
+			expect(spacedCalls.length).toBeGreaterThan(0);
+			for (const [input] of spacedCalls) {
+				expect((input as { args: unknown[] }).args).toContain(" v1 ");
+			}
+		});
 	});
 
 	describe("update", () => {

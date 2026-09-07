@@ -439,11 +439,35 @@ export class SourcesController {
       ? "publishable"
       : "secret";
     const key = generateApiKey(keyType);
-    await DatabaseManager.getInstance(ctx)`
+    const [inserted] = (await DatabaseManager.getInstance(ctx)`
       INSERT INTO project_api_keys (source_id, name, key, key_type)
-      VALUES (${source.id}, ${data.name}, ${key}, ${keyType})`;
+      VALUES (${source.id}, ${data.name}, ${key}, ${keyType})
+      RETURNING
+        id,
+        name,
+        key,
+        key_type as "keyType",
+        status,
+        created_at as "createdAt",
+        last_used_at as "lastUsedAt"`) as Array<{
+      id: string;
+      name: string;
+      key: string;
+      keyType: "publishable" | "secret";
+      status: "active" | "revoked";
+      createdAt: string;
+      lastUsedAt: string | null;
+    }>;
 
-    return ctx.json({ id: undefined, name: data.name, keyType, value: key });
+    return ctx.json({
+      id: inserted.id,
+      name: inserted.name,
+      keyType: inserted.keyType,
+      status: inserted.status,
+      createdAt: inserted.createdAt,
+      lastUsedAt: inserted.lastUsedAt,
+      value: inserted.key,
+    });
   }
 
   public static async revokeKey(ctx: Context<HonoConfig>) {

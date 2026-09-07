@@ -141,6 +141,7 @@ export function sanitizeErrorPayload(item: {
 	handled: boolean;
 	release?: string;
 	environment?: string;
+	language?: string;
 	context?: {
 		tags?: Record<string, unknown>;
 		extras?: Record<string, unknown>;
@@ -222,6 +223,9 @@ export function sanitizeErrorPayload(item: {
 		...(item.release !== undefined ? { release: item.release } : {}),
 		...(item.environment !== undefined
 			? { environment: item.environment }
+			: {}),
+		...(item.language !== undefined
+			? { language: item.language.slice(0, 32).toLowerCase() }
 			: {}),
 		context:
 			item.context?.tags || item.context?.extras

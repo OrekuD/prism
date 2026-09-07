@@ -15,6 +15,8 @@ import {
 	validateAppLifecycleProperties,
 	validatePageViewProperties,
 	validateScreenViewProperties,
+	standardEventDefinitionForProtectedName,
+	validateStandardEventProperties,
 } from "@prism-analytics/core";
 import type { SessionResource } from "@prism-analytics/types";
 import { config } from "dotenv";
@@ -417,6 +419,76 @@ export class IngestController {
 					},
 				});
 			}
+		}
+
+		// Task 19: Standard Events — strict, shared validation for every
+		// protected `$prism_*` name. Accepted events persist as normal
+		// canonical events (no second table); rejected ones are partitioned
+		// out of persistence exactly like page/mobile rejections.
+		const STANDARD_ALLOWED_PLATFORMS = new Set(["web", "react-native", "server"]);
+		for (const entry of validEvents) {
+			// Already rejected as page/mobile — never re-evaluate.
+			if (reservedRejectedEvents.has(entry.event)) continue;
+			if (!entry.event.name.startsWith("$prism_")) continue;
+			// Existing automatic events already handled.
+			if (
+				entry.event.name === PAGE_VIEW_EVENT_NAME ||
+				entry.event.name === SCREEN_VIEW_EVENT_NAME ||
+				entry.event.name === APP_LIFECYCLE_EVENT_NAME
+			)
+				continue;
+			const index = entry.index;
+			// R1-F4: registry-definition lookup through the immutable facade.
+			const definition = standardEventDefinitionForProtectedName(entry.event.name);
+			if (!definition) {
+				results[index] = {
+					index,
+					id: entry.event.eventId,
+					status: "rejected",
+					reason: "unknown-reserved-event",
+				};
+				reservedRejectedEvents.add(entry.event);
+				continue;
+			}
+			if (!STANDARD_ALLOWED_PLATFORMS.has(platform)) {
+				results[index] = {
+					index,
+					id: entry.event.eventId,
+					status: "rejected",
+					reason: "invalid-standard-event",
+				};
+				reservedRejectedEvents.add(entry.event);
+				continue;
+			}
+			// R1-F1: identity-required Standard Events (sign_up / login /
+			// logout) must carry a validated, non-empty event userId. The
+			// ingestion service is the trust boundary — SDK-only enforcement
+			// cannot stop an authenticated direct HTTP client from persisting
+			// anonymous identity events. Rejected coarsely, positionally, and
+			// never persisted; nothing about the actor is echoed.
+			if (definition.requiresUser && !entry.event.userId) {
+				results[index] = {
+					index,
+					id: entry.event.eventId,
+					status: "rejected",
+					reason: "invalid-standard-event",
+				};
+				reservedRejectedEvents.add(entry.event);
+				continue;
+			}
+			const validation = validateStandardEventProperties(entry.event.name, entry.event.properties);
+			if (!validation.ok) {
+				results[index] = {
+					index,
+					id: entry.event.eventId,
+					status: "rejected",
+					reason: "invalid-standard-event",
+				};
+				reservedRejectedEvents.add(entry.event);
+				continue;
+			}
+			// Persist the normalized value — never the raw invalid input.
+			entry.event.properties = validation.value as unknown as typeof entry.event.properties;
 		}
 
 		// Enrichment is computed ONCE per request at the trusted boundary:

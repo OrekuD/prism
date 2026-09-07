@@ -3,7 +3,10 @@ import { axiosInstance } from "@/utils/axiosInstance";
 import { toast } from "sonner";
 import type { ErrorResource, OkResource } from "@prism-analytics/types";
 import type { AxiosError } from "axios";
-import type { SourceResource } from "@/network/queries/useSourcesQuery";
+import type {
+  SourceKeyResource,
+  SourceResource,
+} from "@/network/queries/useSourcesQuery";
 
 /**
  * Cache-first mutations: when the server returns the created/updated
@@ -106,22 +109,36 @@ export function useCreateKeyMutation(slug: string | undefined) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (payload: { sourceId: string; name: string }) => {
-      const response = await axiosInstance.post<{
-        name: string;
-        keyType: "publishable" | "secret";
-        value: string;
-      }>(
+      const response = await axiosInstance.post<SourceKeyResource>(
         `/projects/${slug}/sources/${payload.sourceId}/keys`,
-        // The schema is strict: sourceId lives in the URL path, not the body.
         { name: payload.name },
       );
       return response.data;
     },
-    onSuccess: () => {
+    onSuccess: (created: SourceKeyResource, payload) => {
       toast.success("Key created");
-      // The create response has no key id, so a full key row can't be
-      // appended safely — refetch the source instead.
+      const newKey: SourceKeyResource = {
+        id: created.id,
+        name: created.name,
+        keyType: created.keyType,
+        status: created.status ?? "active",
+        createdAt: created.createdAt ?? new Date().toISOString(),
+        lastUsedAt: created.lastUsedAt ?? null,
+        value: created.value,
+      };
+      queryClient.setQueryData<SourceResource[]>(["sources", slug], (list) =>
+        list?.map((source) =>
+          source.id === payload.sourceId
+            ? { ...source, keys: [...source.keys, newKey] }
+            : source,
+        ),
+      );
+      queryClient.setQueryData<SourceResource>(
+        ["source", slug, payload.sourceId],
+        (source) => (source ? { ...source, keys: [...source.keys, newKey] } : source),
+      );
       void queryClient.invalidateQueries({ queryKey: ["sources", slug] });
+      void queryClient.invalidateQueries({ queryKey: ["source", slug, payload.sourceId] });
     },
     onError: () => toast.error("Something went wrong"),
   });

@@ -21,19 +21,22 @@ import type {
  * explicit opt-in).
  */
 
-/** Collision-resistant id via globalThis.crypto (Node 18+); fallback. */
+/** Cryptographically secure id — randomUUID where available, getRandomValues otherwise, loud failure when neither exists. */
 function nodeCreateId(): string {
-	try {
-		const cryptoApi = globalThis.crypto as
-			| { randomUUID?: () => string }
-			| undefined;
-		if (cryptoApi && typeof cryptoApi.randomUUID === "function") {
-			return cryptoApi.randomUUID();
-		}
-	} catch {
-		// crypto unavailable — fall back.
+	const g = globalThis as unknown as { crypto?: Crypto };
+	const crypto = g.crypto;
+	if (crypto?.randomUUID) return crypto.randomUUID();
+	if (crypto?.getRandomValues) {
+		const b = new Uint8Array(16);
+		(crypto as Crypto).getRandomValues(b);
+		b[6] = ((b[6] ?? 0) & 0x0f) | 0x40;
+		b[8] = ((b[8] ?? 0) & 0x3f) | 0x80;
+		const h = [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+		return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 	}
-	return `prism-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+	throw new Error(
+		"prism: no secure random available (crypto.randomUUID or crypto.getRandomValues required)",
+	);
 }
 
 /**

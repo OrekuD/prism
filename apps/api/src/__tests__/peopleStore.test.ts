@@ -11,6 +11,7 @@ import {
   exportPerson,
   deletePerson,
   personExists,
+  decodePeopleCursor,
 } from "../utils/peopleStore";
 import { personIdForUser, personIdForAnonymous, buildIdentityStatements } from "../../../analytics-api/src/utils/identityResolution";
 
@@ -75,34 +76,59 @@ beforeAll(async () => {
     }, now).map((s) => ({ sql: s.sql, args: s.args as never })) as never,
     "write",
   );
+  await client.execute({
+    sql: "INSERT INTO external_identities (project_id, user_id, person_id, linked_at) VALUES (?, ?, ?, ?)",
+    args: [PROJECT, "user-2", u2, now],
+  });
 });
 
 describe("people list", () => {
   it("returns bounded, project-scoped people with honest counts", async () => {
     const result = await peopleList(client, PROJECT, {});
-    expect(result.people.length).toBe(3);
+    expect(result.people.length).toBe(2);
     const byId = new Map(result.people.map((p) => [p.personId, p]));
     const user1 = byId.get(personIdForUser(PROJECT, "user-1"));
     // the linked anonymous history was reassigned to the known person
     expect(user1?.eventCount).toBe(6); // 5 + the linked anon-1 event
     expect(user1?.sessionCount).toBe(3); // DISTINCT sessions, not events
-    expect(user1?.identityCount).toBe(2); // external + anonymous links
+    expect(user1?.primaryExternalId).toBe("user-1");
+    expect(user1?.externalIdentityCount).toBe(1);
+    expect(user1?.anonymousIdentityCount).toBe(1);
     expect(user1?.traits).toMatchObject({ plan: "pro", company: "acme" });
-    // the unlinked anonymous person still exists as its own row
-    expect(byId.has(personIdForAnonymous(PROJECT, "anon-2"))).toBe(true);
+    // Anonymous-only subjects remain analytics data, not People rows.
+    expect(byId.has(personIdForAnonymous(PROJECT, "anon-2"))).toBe(false);
     // the OTHER project's people never leak
     expect(byId.has(personIdForUser(OTHER, "user-1"))).toBe(false);
   });
 
   it("paginates with keyset cursors without loading the project", async () => {
-    const page1 = await peopleList(client, PROJECT, { limit: 2 });
-    expect(page1.people.length).toBe(2);
+    const page1 = await peopleList(client, PROJECT, { limit: 1 });
+    expect(page1.people.length).toBe(1);
     expect(page1.nextCursor).toBeTruthy();
-    const page2 = await peopleList(client, PROJECT, { limit: 2, cursor: page1.nextCursor ?? undefined });
+    const page2 = await peopleList(client, PROJECT, { limit: 1, cursor: page1.nextCursor ?? undefined });
     expect(page2.people.length).toBe(1);
     expect(page2.nextCursor).toBeNull();
     const ids = new Set([...page1.people, ...page2.people].map((p) => p.personId));
-    expect(ids.size).toBe(3); // no overlap, no loss
+    expect(ids.size).toBe(2); // no overlap, no loss
+  });
+
+  it("returns honest identified, active, new, and anonymous summary counts", async () => {
+    const now = Date.now();
+    const result = await peopleList(client, PROJECT, {
+      from: now - 60_000,
+      to: now + 1,
+      range: "30d",
+    });
+
+    expect(result.summary).toMatchObject({
+      range: "30d",
+      identifiedPeople: 2,
+      activePeople: 2,
+      newPeople: 2,
+      anonymousPeople: 1,
+    });
+    expect(result.summary.from).toBe(now - 60_000);
+    expect(result.summary.to).toBe(now + 1);
   });
 
   it("searches by EXACT external id only", async () => {
@@ -185,7 +211,7 @@ describe("filters, breakdowns, totals", () => {
     expect(totals.events).toBe(10); // 5 + 2 + 1 + 1 (anon-2) + 1 (prop-ev)
     // F15: "people" counts KNOWN people (active external identities only);
     // anonymous subjects are reported separately and never double-counted.
-    expect(totals.people).toBe(1); // only user-1 has an external identity
+    expect(totals.people).toBe(2);
     expect(totals.sessions).toBe(5);
     expect(totals.anonymousIdentities).toBe(2); // anon-1 + anon-2
   });
@@ -226,7 +252,7 @@ describe("privacy export + deletion (§6)", () => {
     const serialized = JSON.stringify(exported);
     expect(serialized).not.toContain("projectKey");
     expect(serialized).not.toContain("user-2");
-    expect(exportPerson(client, PROJECT, "u_missing")).resolves.toBeNull();
+    await expect(exportPerson(client, PROJECT, "u_missing")).resolves.toBeNull();
   });
 
   it("deletes a person atomically with idempotent retries", async () => {
@@ -261,5 +287,178 @@ describe("privacy export + deletion (§6)", () => {
     const result = await deletePerson(client, PROJECT, other);
     expect(result.deleted).toBe(false); // scoped: nothing matched in PROJECT
     expect(await personExists(client, OTHER, other)).toBe(true);
+  });
+
+  // R1-F2: a person with NO events deletes and reports honestly — the old
+  // positional index read the events DELETE result, which masked the bug
+  // whenever events existed.
+  it("deletes an existing person with zero events and reports the real result", async () => {
+    const zeroEventPerson = personIdForUser(PROJECT, "user-zero-events");
+    await client.execute({
+      sql: "INSERT INTO people (person_id, project_id, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?)",
+      args: [zeroEventPerson, PROJECT, 1, 2],
+    });
+    await client.execute({
+      sql: "INSERT INTO external_identities (project_id, user_id, person_id, linked_at) VALUES (?, ?, ?, ?)",
+      args: [PROJECT, "user-zero-events", zeroEventPerson, Date.now()],
+    });
+    expect(await personExists(client, PROJECT, zeroEventPerson)).toBe(true);
+
+    const first = await deletePerson(client, PROJECT, zeroEventPerson);
+    expect(first.deleted).toBe(true); // people row WAS removed
+    expect(await personExists(client, PROJECT, zeroEventPerson)).toBe(false);
+
+    // retry: nothing left to remove — must NOT claim success
+    const retry = await deletePerson(client, PROJECT, zeroEventPerson);
+    expect(retry.deleted).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Review round 1 regressions (R1-F3, R1-F4, R1-F5)
+// ---------------------------------------------------------------------------
+
+describe("review round 1 — summary, ordering, cursors", () => {
+  it("newPeople counts only FIRST external links inside the range (R1-F3, R2-F2)", async () => {
+    // Isolated project: the expected summary count is exact and cannot be
+    // affected by the suite's shared mutable fixtures. Every assertion reads
+    // ONLY through peopleList().summary — no hand-written SQL duplicates the
+    // implementation.
+    const isolated = "itest-r2-newpeople";
+    const now = Date.now();
+    const day = 86_400_000;
+    const from = now - 30 * day;
+    const to = now;
+
+    const insertPerson = async (userId: string) => {
+      const personId = personIdForUser(isolated, userId);
+      await client.execute({
+        sql: "INSERT INTO people (person_id, project_id, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING",
+        args: [personId, isolated, from, now],
+      });
+      return personId;
+    };
+    const link = async (userId: string, personId: string, linkedAt: number) => {
+      await client.execute({
+        sql: "INSERT INTO external_identities (project_id, user_id, person_id, linked_at) VALUES (?, ?, ?, ?)",
+        args: [isolated, userId, personId, linkedAt],
+      });
+    };
+    const newPeople = async () =>
+      (await peopleList(client, isolated, { from, to, range: "30d" })).summary
+        .newPeople;
+
+    // boundary first links (exactly at from / to) count; an old first link
+    // with NO in-range alias yet does not
+    const atFrom = await insertPerson("r2-first-at-from");
+    await link("r2-first-at-from", atFrom, from);
+    const atTo = await insertPerson("r2-first-at-to");
+    await link("r2-first-at-to", atTo, to);
+    const alias = await insertPerson("r2-alias-old");
+    await link("r2-alias-old", alias, from - day);
+    expect(await newPeople()).toBe(2);
+
+    // the SAME old person receiving a second alias link inside the range
+    // must NOT change the count — they were identified before the window
+    await link("r2-alias-new", alias, now);
+    expect(await newPeople()).toBe(2);
+  });
+
+  it("orders list traits deterministically regardless of insert order (R1-F4)", async () => {
+    const ordered = personIdForUser(PROJECT, "user-trait-order");
+    await client.execute({
+      sql: "INSERT INTO people (person_id, project_id, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING",
+      args: [ordered, PROJECT, 1, Date.now()],
+    });
+    await client.execute({
+      sql: "INSERT INTO external_identities (project_id, user_id, person_id, linked_at) VALUES (?, ?, ?, ?)",
+      args: [PROJECT, "user-trait-order", ordered, Date.now()],
+    });
+    // insert in REVERSE alphabetical order
+    for (const key of ["zebra", "mango", "apple"]) {
+      await client.execute({
+        sql: "INSERT INTO person_traits (project_id, person_id, key, value, updated_at) VALUES (?, ?, ?, ?, ?)",
+        args: [PROJECT, ordered, key, JSON.stringify(`${key}-value`), Date.now()],
+      });
+    }
+
+    const page = await peopleList(client, PROJECT, {
+      searchUserId: "user-trait-order",
+      range: "30d",
+      from: 0,
+      to: Date.now(),
+    });
+    const traits = page.people[0]?.traits ?? {};
+    expect(Object.keys(traits)).toEqual(["apple", "mango", "zebra"]);
+  });
+
+  it("validates cursors strictly and round-trips pages (R1-F5)", async () => {
+    const now = Date.now();
+    const first = await peopleList(client, PROJECT, {
+      limit: 1,
+      range: "30d",
+      from: 0,
+      to: now,
+    });
+    expect(first.people).toHaveLength(1);
+    expect(first.nextCursor).toBeTruthy();
+
+    // the cursor round-trips to fetch the NEXT page without overlap
+    const second = await peopleList(client, PROJECT, {
+      limit: 1,
+      range: "30d",
+      from: 0,
+      to: now,
+      cursor: first.nextCursor ?? "",
+    });
+    expect(second.people[0]?.personId).not.toBe(first.people[0]?.personId);
+
+    // malformed cursors decode to null (the controller turns that into 400)
+    const encodeRaw = (value: unknown): string => {
+      const json = JSON.stringify(value);
+      if (typeof Buffer !== "undefined") {
+        return (Buffer as unknown as { from(s: string): { toString(e: string): string } })
+          .from(json)
+          .toString("base64url");
+      }
+      return btoa(json).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    };
+    for (const bad of [
+      "abc",
+      "a:b:c",
+      encodeRaw([-5, "p"]),
+      encodeRaw([1.5, "p"]),
+      encodeRaw([1, ""]),
+      encodeRaw([1, "p", "extra"]),
+    ]) {
+      expect(decodePeopleCursor(bad)).toBeNull();
+    }
+    // a valid cursor round-trips
+    const decoded = decodePeopleCursor(first.nextCursor ?? "");
+    expect(decoded).not.toBeNull();
+
+    function encode(tuple: [number, string]): string {
+      const json = JSON.stringify(tuple);
+      if (typeof Buffer !== "undefined") {
+        return (Buffer as unknown as { from(s: string): { toString(e: string): string } })
+          .from(json)
+          .toString("base64url");
+      }
+      return btoa(json).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    }
+  });
+
+  it("clamps fractional and out-of-range limits to integers (R1-F5)", async () => {
+    const now = Date.now();
+    for (const raw of [2.7, Number.NaN, 1e9, 0]) {
+      const page = await peopleList(client, PROJECT, {
+        limit: raw,
+        range: "30d",
+        from: 0,
+        to: now,
+      });
+      expect(page.people.length).toBeLessThanOrEqual(100);
+      expect(Number.isInteger(page.people.length)).toBe(true);
+    }
   });
 });

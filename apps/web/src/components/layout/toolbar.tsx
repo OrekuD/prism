@@ -31,7 +31,7 @@ export function Toolbar({ onMenu }: { onMenu?: () => void }) {
                 return (
                   <React.Fragment key={`${crumb.label}-${index}`}>
                     {index > 0 ? (
-                      <BreadcrumbSeparator className="text-text-subtle">
+                      <BreadcrumbSeparator className="text-text-subtle max-[767px]:hidden">
                         /
                       </BreadcrumbSeparator>
                     ) : null}

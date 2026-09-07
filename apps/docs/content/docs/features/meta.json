@@ -2,6 +2,7 @@
   "title": "Features",
   "pages": [
     "capturing-events",
+    "standard-events",
     "page-analytics",
     "identifying-users",
     "sessions-and-live-activity",

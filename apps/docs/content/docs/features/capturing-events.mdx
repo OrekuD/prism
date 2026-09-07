@@ -3,7 +3,7 @@ title: Capturing events
 description: Track named events, validate properties, and find them in the dashboard.
 audience: Developer
 scope: Both
-lastReviewed: "2026-08-24"
+lastReviewed: "2026-09-02"
 ---
 
 An event is one explicit `track()` call. Events are immutable: the
@@ -68,12 +68,23 @@ Scopes control lifetime: `memory` (default) clears on page unload,
 properties always win over global properties with the same name.
 `reset()` clears every scope.
 
+## Standard Events
+
+For common product and commercial outcomes, use the typed helpers under
+`prism.events` — for example `prism.events.signUp({ method: "email" })`
+and `prism.events.purchase({ transactionId, valueMinor, currency })`.
+Each helper owns a protected `$prism_*` name and an exact, versioned
+schema validated in the SDK and at ingestion. See
+[Standard Events](/docs/features/standard-events) for the full catalog,
+boundaries, and privacy rules.
+
 ## Reserved events
 
 The SDK emits its own events through the same pipeline:
 `session_started` and `session_ended` from session handling, and
 `$prism_page_view` for page analytics. You cannot send reserved names
-through `track()`.
+through `track()` — including the Standard Event names, which only
+`prism.events` can create.
 
 ## Where events appear
 

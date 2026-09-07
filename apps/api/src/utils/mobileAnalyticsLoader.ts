@@ -1,6 +1,4 @@
 import { MOBILE_LIMITS } from "@prism-analytics/core";
-import type { Context } from "hono";
-import { TursoDatabaseManager } from "../managers/TursoDatabaseManager";
 import {
 	type MobileAnalyticsExecuteClient,
 	type MobileAnalyticsQueryParams,
@@ -29,7 +27,7 @@ function bucketMsFor(from: number, to: number): number {
 	return 7 * 24 * 60 * 60 * 1000;
 }
 
-export const MOBILE_MAX_RANGE_MS = MOBILE_LIMITS.maxDashboardRangeMs;
+export const MOBILE_MAX_RANGE_MS = 366 * 24 * 60 * 60 * 1000; // MOBILE_LIMITS.maxDashboardRangeMs — literal to avoid workerd TDZ at startup
 
 /**
  * THE effective filter contract: applied identically to every total,
@@ -42,6 +40,12 @@ function sessionWhere(
 ): { clauses: string[]; args: Array<string | number | null> } {
 	const clauses = ["s.project_id = ?", "s.started_at >= ?", "s.started_at < ?"];
 	const args: Array<string | number | null> = [params.projectId, from, to];
+	if (params.asOf !== undefined) {
+		// Aggregate tables carry no received_at; a session cannot be observed
+		// before it starts, so started_at <= asOf is the honest snapshot bound.
+		clauses.push("s.started_at <= ?");
+		args.push(params.asOf);
+	}
 	if (params.sourceIds.length > 0) {
 		clauses.push(`s.source_id IN (${params.sourceIds.map(() => "?").join(",")})`);
 		args.push(...params.sourceIds);
@@ -65,6 +69,13 @@ function screenWhere(
 ): { clauses: string[]; args: Array<string | number | null> } {
 	const clauses = ["w.project_id = ?", "w.occurred_at >= ?", "w.occurred_at < ?"];
 	const args: Array<string | number | null> = [params.projectId, from, to];
+	if (params.asOf !== undefined) {
+		// Exact snapshot cutoff through the linked accepted event.
+		clauses.push(`EXISTS (SELECT 1 FROM events e
+			WHERE e.project_id = w.project_id AND e.id = w.event_id
+				AND e.received_at <= ?)`);
+		args.push(params.asOf);
+	}
 	if (params.sourceIds.length > 0) {
 		clauses.push(`w.source_id IN (${params.sourceIds.map(() => "?").join(",")})`);
 		args.push(...params.sourceIds);
@@ -96,12 +107,36 @@ async function totalsFor(
 			WHERE ${where.clauses.join(" AND ")}`,
 		args: where.args,
 	});
+	const installClauses = [
+		"i.project_id = ?",
+		"i.first_seen_at < ?",
+		"(i.last_seen_at >= ? OR i.first_seen_at >= ?)",
+	];
+	const installArgs: Array<string | number | null> = [
+		params.projectId,
+		to,
+		from,
+		from,
+	];
+	// Source filtering is exact (R9-F4): installations carry an indexed
+	// source_id. OS/release stay unfiltered — the projection only stores
+	// mutable last_os/last_app_version, which cannot serve as historical
+	// filter truth (see the overview's headline gating).
+	if (params.sourceIds.length > 0) {
+		installClauses.push(
+			`i.source_id IN (${params.sourceIds.map(() => "?").join(",")})`,
+		);
+		installArgs.push(...params.sourceIds);
+	}
+	if (params.asOf !== undefined) {
+		installClauses.push("i.first_seen_at <= ?");
+		installArgs.push(params.asOf);
+	}
 	const installs = await client.execute({
 		sql: `SELECT COUNT(*) AS installations
 			FROM mobile_installations i
-			WHERE i.project_id = ? AND i.first_seen_at < ?
-			AND (i.last_seen_at >= ? OR i.first_seen_at >= ?)`,
-		args: [params.projectId, to, from, from],
+			WHERE ${installClauses.join(" AND ")}`,
+		args: installArgs,
 	});
 	const t = sessions.rows[0] ?? {};
 	const iRow = installs.rows[0] ?? {};
@@ -137,10 +172,29 @@ async function visitorsFor(
 	return Number(result.rows[0]?.visitors ?? 0);
 }
 
+/**
+ * Exact prior-period basis returned with every Mobile read (R8-F3):
+ * previous totals plus previous means, mirroring the assemble formulas
+ * exactly. Callers attach these to facts instead of reversing percentages.
+ */
+export type MobileComparisonBasis = {
+  previous: {
+    appOpens: number;
+    visitors: number;
+    sessions: number;
+    screensPerSession: number;
+    foregroundDurationMs: number | null;
+    installations: number;
+  } | null;
+};
+
 export async function loadMobileAnalytics(
-	ctx: Context,
+	client: MobileAnalyticsExecuteClient,
 	params: MobileAnalyticsQueryParams,
-): Promise<ReturnType<typeof assembleMobileAnalytics>> {
+): Promise<{
+	resource: ReturnType<typeof assembleMobileAnalytics>;
+	basis: MobileComparisonBasis;
+}> {
 	if (params.to - params.from > MOBILE_MAX_RANGE_MS) {
 		throw new Error("mobile_range_too_large");
 	}
@@ -148,8 +202,6 @@ export async function loadMobileAnalytics(
 		throw new Error("mobile_range_invalid");
 	}
 	const span = params.to - params.from;
-	const client: MobileAnalyticsExecuteClient =
-		TursoDatabaseManager.getInstance(ctx);
 
 	// Sequential fixed query set (never concurrent through one libsql client).
 	const totals = await totalsFor(client, params, params.from, params.to);
@@ -160,6 +212,14 @@ export async function loadMobileAnalytics(
 		params.from,
 	);
 	totals.visitors = await visitorsFor(client, params, params.from, params.to);
+	// Previous visitors use the same definition as current visitors
+	// (R9-F4): the session-count placeholder made every comparison invalid.
+	previousTotals.visitors = await visitorsFor(
+		client,
+		params,
+		params.from - span,
+		params.from,
+	);
 
 	const ms = bucketMsFor(params.from, params.to);
 
@@ -254,9 +314,9 @@ export async function loadMobileAnalytics(
 
 	const sizeClasses = await client.execute({
 		sql: `SELECT CASE
-					WHEN MAX(COALESCE(json_extract(e.context, '$.screenSize.width'), 0)) >= 1024 THEN 'large'
-					WHEN MAX(COALESCE(json_extract(e.context, '$.screenSize.width'), 0)) >= 600 THEN 'regular'
-					WHEN MAX(COALESCE(json_extract(e.context, '$.screenSize.width'), 0)) > 0 THEN 'compact'
+					WHEN COALESCE(json_extract(e.context, '$.screenSize.width'), 0) >= 1024 THEN 'large'
+					WHEN COALESCE(json_extract(e.context, '$.screenSize.width'), 0) >= 600 THEN 'regular'
+					WHEN COALESCE(json_extract(e.context, '$.screenSize.width'), 0) > 0 THEN 'compact'
 					ELSE NULL END AS key,
 				COUNT(*) AS screen_views,
 				COUNT(DISTINCT e.person_id) AS visitors,
@@ -300,7 +360,8 @@ export async function loadMobileAnalytics(
 		args: [...sw.args, minSessions, MOBILE_LIMITS.rankingRowLimit],
 	});
 
-	return assembleMobileAnalytics(params, {
+	return {
+		resource: assembleMobileAnalytics(params, {
 		totals,
 		previousTotals,
 		bucket:
@@ -368,5 +429,33 @@ export async function loadMobileAnalytics(
 			visitors: Number(r.visitors ?? 0),
 			sessions: Number(r.sessions ?? 0),
 		})),
-	});
+		}),
+		basis: {
+			previous: previousTotals
+				? {
+						appOpens: Number(previousTotals.app_opens),
+						visitors: Number(previousTotals.visitors),
+						sessions: Number(previousTotals.sessions),
+						screensPerSession:
+							Number(previousTotals.sessions) > 0
+								? Math.round(
+										(Number(previousTotals.screens) /
+											Number(previousTotals.sessions)) *
+											100,
+									) / 100
+								: 0,
+						foregroundDurationMs:
+							previousTotals.duration_ms_total !== null &&
+							previousTotals.duration_ms_total !== undefined &&
+							Number(previousTotals.completed_sessions) > 0
+								? Math.round(
+										Number(previousTotals.duration_ms_total) /
+											Number(previousTotals.completed_sessions),
+									)
+								: null,
+						installations: Number(previousTotals.installations),
+					}
+				: null,
+		},
+	};
 }

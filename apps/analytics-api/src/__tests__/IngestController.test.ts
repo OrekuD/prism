@@ -861,3 +861,198 @@ describe("round-6 review fixes (R6-F3)", () => {
     expect(body.identity?.[2]).toMatchObject({ index: 2, status: "rejected", reason: "duplicate-op-id" });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Standard Events (task-19 review R1-F1 / R1-F5)
+// ---------------------------------------------------------------------------
+
+/** Build a protected Standard Event batch entry with the exact wire shape. */
+function standardEvent(
+  key: string,
+  data: Record<string, unknown>,
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    schemaVersion: 3,
+    eventId: `evt-std-${key}`,
+    type: "track",
+    occurredAt: Date.now(),
+    anonymousId: "anon-std",
+    name: `$prism_${key}`,
+    properties: { $standard: { schemaVersion: 1, key, data } },
+    ...overrides,
+  };
+}
+
+describe("Standard Events ingestion (task-19 review round 1)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    eventInsertOutcomes = [1];
+    claimWins = true;
+    storedOpHash = null;
+    eventLimiter.reset();
+    (
+      TursoDatabaseManager.instance.execute as unknown as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({ rows: [] });
+  });
+
+  it("accepts an IDENTIFIED sign_up from a web source and persists the normalized value", async () => {
+    const ctx = makeContext(
+      batch([standardEvent("sign_up", { method: "email" }, { eventId: "evt-su-ok", userId: "user-123" })]),
+    );
+
+    const result = await ingest(ctx);
+
+    const body = result.__json as IngestResponseBody;
+    expect(body.results).toEqual([{ index: 0, id: "evt-su-ok", status: "accepted" }]);
+    const event = statementContaining("INSERT INTO events") as { args: unknown[] };
+    // the identity-required event resolved to its developer user id
+    expect(event.args[11]).toBe("user-123");
+    // the persisted properties are the exact normalized wire shape
+    expect(event.args[13]).toBe(
+      JSON.stringify({ $standard: { schemaVersion: 1, key: "sign_up", data: { method: "email" } } }),
+    );
+  });
+
+  it("accepts identified login and logout (all identity-required events)", async () => {
+    eventInsertOutcomes = [1, 1];
+    const ctx = makeContext(
+      batch([
+        standardEvent("login", { method: "password" }, { eventId: "evt-li-ok", userId: "user-123" }),
+        standardEvent("logout", { reasonCode: "user_initiated" }, { eventId: "evt-lo-ok", userId: "user-123" }),
+      ]),
+    );
+
+    const result = await ingest(ctx);
+
+    const body = result.__json as IngestResponseBody;
+    expect(body.results).toEqual([
+      { index: 0, id: "evt-li-ok", status: "accepted" },
+      { index: 1, id: "evt-lo-ok", status: "accepted" },
+    ]);
+  });
+
+  it.each([
+    ["sign_up", { method: "email" }, "evt-su-anon"],
+    ["login", { method: "google" }, "evt-li-anon"],
+    ["logout", {}, "evt-lo-anon"],
+  ])(
+    "rejects an ANONYMOUS %s at the trust boundary (R1-F1)",
+    async (key, data, eventId) => {
+      const ctx = makeContext(batch([standardEvent(key, data as Record<string, unknown>, { eventId })]));
+
+      const result = await ingest(ctx);
+
+      const body = result.__json as IngestResponseBody;
+      expect(body.results).toEqual([
+        { index: 0, id: eventId, status: "rejected", reason: "invalid-standard-event" },
+      ]);
+      // rejected protected events persist nothing
+      expect(statementContaining("INSERT INTO events")).toBeUndefined();
+    },
+  );
+
+  it("a mixed batch keeps positional outcomes and never persists the rejected identity event (R1-F1)", async () => {
+    eventInsertOutcomes = [1, 1];
+    const ctx = makeContext(
+      batch([
+        { ...VALID_EVENT, eventId: "evt-custom-1" }, // ordinary custom event
+        standardEvent("sign_up", { method: "email" }, { eventId: "evt-su-anon" }), // NO user — rejected
+        standardEvent("login", { method: "password" }, { eventId: "evt-li-ok", userId: "user-456" }), // valid
+      ]),
+    );
+
+    const result = await ingest(ctx);
+
+    const body = result.__json as IngestResponseBody;
+    expect(body.results).toEqual([
+      { index: 0, id: "evt-custom-1", status: "accepted" },
+      { index: 1, id: "evt-su-anon", status: "rejected", reason: "invalid-standard-event" },
+      { index: 2, id: "evt-li-ok", status: "accepted" },
+    ]);
+    // exactly the two valid events entered the transaction
+    const inserts = executedStatements().filter((s) =>
+      String(s.sql).includes("INSERT INTO events"),
+    );
+    expect(inserts).toHaveLength(2);
+    // the rejected event's id/properties appear in NO persistence input
+    const allArgs = JSON.stringify(executedStatements());
+    expect(allArgs).not.toContain("evt-su-anon");
+  });
+
+  it("rejects a malformed recognized Standard Event and an unknown protected name", async () => {
+    const ctx = makeContext(
+      batch([
+        standardEvent(
+          "sign_up",
+          { method: "email", smuggled: true } as Record<string, unknown>,
+          { eventId: "evt-malformed", userId: "user-123" },
+        ),
+        standardEvent("not_a_catalog_event", {}, { eventId: "evt-unknown" }),
+      ]),
+    );
+
+    const result = await ingest(ctx);
+
+    const body = result.__json as IngestResponseBody;
+    expect(body.results).toEqual([
+      { index: 0, id: "evt-malformed", status: "rejected", reason: "invalid-standard-event" },
+      { index: 1, id: "evt-unknown", status: "rejected", reason: "unknown-reserved-event" },
+    ]);
+    expect(statementContaining("INSERT INTO events")).toBeUndefined();
+  });
+
+  it("rejects Standard Events from a platform outside the frozen allowlist", async () => {
+    // An authenticated source whose platform is not web/react-native/server
+    const ctx = makeContext(
+      batch([standardEvent("sign_up", { method: "email" }, { eventId: "evt-android", userId: "user-123" })]),
+      { platform: "android" },
+    );
+
+    const result = await ingest(ctx);
+
+    const body = result.__json as IngestResponseBody;
+    expect(body.results).toEqual([
+      { index: 0, id: "evt-android", status: "rejected", reason: "invalid-standard-event" },
+    ]);
+    expect(statementContaining("INSERT INTO events")).toBeUndefined();
+  });
+
+  it("accepts Standard Events from react-native and server sources", async () => {
+    eventInsertOutcomes = [1, 1];
+    const mobile = makeContext(
+      batch([standardEvent("search", { category: "docs" }, { eventId: "evt-rn-search" })]),
+      { platform: "react-native" },
+    );
+    const server = makeContext(
+      batch([
+        standardEvent(
+          "subscription_cancelled",
+          { subscriptionId: "sub_01", planId: "pro_monthly", reasonCode: "customer_requested" },
+          { eventId: "evt-srv-sub", userId: "user-789" },
+        ),
+      ]),
+      { platform: "server" },
+    );
+
+    const mobileResult = await ingest(mobile);
+    const serverResult = await ingest(server);
+
+    expect((mobileResult.__json as IngestResponseBody).results[0]?.status).toBe("accepted");
+    expect((serverResult.__json as IngestResponseBody).results[0]?.status).toBe("accepted");
+  });
+
+  it("never echoes standard event properties or actor ids in the response", async () => {
+    const ctx = makeContext(
+      batch([
+        standardEvent("purchase", { transactionId: "txn_secret_99", valueMinor: 100, currency: "USD" }, { eventId: "evt-echo" }),
+      ]),
+    );
+
+    const result = await ingest(ctx);
+
+    const serialized = JSON.stringify(result.__json);
+    expect(serialized).not.toContain("txn_secret_99");
+    expect(serialized).not.toContain("properties");
+  });
+});

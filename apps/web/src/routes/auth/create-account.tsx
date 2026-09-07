@@ -57,7 +57,7 @@ export function CreateAccount() {
       // pending. Hard-navigate after the session is durable so the fresh
       // boot reads the cookie and never bounces back to this page.
       // Verified accounts continue into onboarding; unverified ones land
-      // on the dashboard, where the verification banner offers a resend.
+      // in the product shell, where the verification banner offers a resend.
       await waitForSession();
       window.location.assign(
         response.data?.user?.emailVerified ? "/onboarding" : "/overview",

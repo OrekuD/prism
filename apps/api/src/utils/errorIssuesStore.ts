@@ -553,21 +553,42 @@ export async function issueOccurrenceSummaries(
 				payload = {};
 			}
 			const record = payload as {
+				language?: unknown;
 				context?: {
 					tags?: Record<string, unknown>;
 					extras?: Record<string, unknown>;
 				};
 				breadcrumbs?: Array<unknown>;
 			};
-			const tagsCount = record.context?.tags
-				? Object.keys(record.context.tags).length
-				: 0;
-			const extrasCount = record.context?.extras
-				? Object.keys(record.context.extras).length
-				: 0;
+			const rawTags = record.context?.tags as
+				| Record<string, unknown>
+				| undefined;
+			const rawExtras = record.context?.extras as
+				| Record<string, unknown>
+				| undefined;
+			const tagsCount = rawTags ? Object.keys(rawTags).length : 0;
+			const extrasCount = rawExtras ? Object.keys(rawExtras).length : 0;
 			const breadcrumbsCount = Array.isArray(record.breadcrumbs)
 				? record.breadcrumbs.length
 				: 0;
+			const language =
+				typeof record.language === "string" && record.language.trim() !== ""
+					? record.language.trim().slice(0, 32).toLowerCase()
+					: undefined;
+			// Expose sanitized maps for UI (bounded to 12 keys each, already redacted)
+			const tags = rawTags
+				? Object.fromEntries(
+						Object.entries(rawTags)
+							.slice(0, 12)
+							.map(([k, v]) => [
+								k,
+								typeof v === "string" ? v : String(v ?? ""),
+							]),
+					)
+				: undefined;
+			const extras = rawExtras
+				? Object.fromEntries(Object.entries(rawExtras).slice(0, 12))
+				: undefined;
 			return {
 				id: row.id,
 				occurredAt: Number(row.occurred_at),
@@ -577,10 +598,13 @@ export async function issueOccurrenceSummaries(
 				...(row.release ? { release: row.release } : {}),
 				...(row.environment ? { environment: row.environment } : {}),
 				...(row.anonymous_id ? { anonymousId: row.anonymous_id } : {}),
+				...(language ? { language } : {}),
 				exception: exceptionFromPayload(payload),
 				tagsCount,
 				extrasCount,
 				breadcrumbsCount,
+				...(tags && Object.keys(tags).length > 0 ? { tags } : {}),
+				...(extras && Object.keys(extras).length > 0 ? { extras } : {}),
 			};
 		});
 	return { summaries, hasMore };

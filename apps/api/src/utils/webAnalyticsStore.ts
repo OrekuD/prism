@@ -15,6 +15,7 @@ import type {
 import {
 	WEB_ANALYTICS_OTHER_LABEL,
 	WEB_ANALYTICS_UNKNOWN_LABEL,
+	compareValues,
 } from "@prism-analytics/types";
 
 /**
@@ -49,6 +50,12 @@ export interface WebAnalyticsQueryParams {
 	host: string | null;
 	path: string | null;
 	traffic: "human" | "all";
+	/**
+	 * Snapshot cutoff (Task 21 slice 2): page views received after `asOf`
+	 * are excluded via the joined accepted event. Omitted = unbounded
+	 * (pre-snapshot behavior, unchanged).
+	 */
+	asOf?: number;
 }
 
 /* ------------------------------------------------------------------ */
@@ -86,20 +93,6 @@ function percent(part: number, whole: number): number {
 	return whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0;
 }
 
-/** §7: prior zero → New (current>0) / No prior data (both zero). */
-function comparisonValue(
-	current: number,
-	prior: number,
-): WebAnalyticsComparisonValue {
-	if (prior === 0) {
-		return current > 0 ? { kind: "new" } : { kind: "no-prior-data" };
-	}
-	const percentChange = Math.round(((current - prior) / prior) * 1000) / 10;
-	const direction =
-		percentChange > 0 ? "up" : percentChange < 0 ? "down" : "flat";
-	return { kind: "percent", direction, percent: percentChange };
-}
-
 export interface SessionEntryRow {
 	session_id: string | null;
 	referrer_host: string | null;
@@ -129,6 +122,12 @@ export function foldEntrySessions(
 	directSessions: number;
 	totalEntrySessions: number;
 	campaignEntrySessions: number;
+	/**
+	 * Eligible bounce denominator (R7-F2): completed entry sessions under
+	 * the same cutoff that gates the rate. Rate insights must use this —
+	 * never total sessions — for the frozen 30/30 denominator rule.
+	 */
+	completedEntrySessions: number;
 } {
 	type NarrowedEntry = SessionEntryRow & { session_id: string };
 	const bySession = new Map<string, NarrowedEntry>();
@@ -252,6 +251,7 @@ export function foldEntrySessions(
 		directSessions: direct,
 		totalEntrySessions,
 		campaignEntrySessions: campaignEntries,
+		completedEntrySessions: completed,
 	};
 }
 
@@ -396,10 +396,18 @@ export interface WebAnalyticsRawAggregates {
 	languages: Array<{ language: string; pageViews: number; visitors: number }>;
 }
 
+/**
+ * One canonical comparison function (R9-F1): every comparison in this read
+ * model derives from the frozen shared `compareValues` — prior-null yields
+ * no-prior-data, prior-zero yields new/flat, percentages are signed, and
+ * the same semantics cover counts, means, and point-scale rates. No local
+ * variant may shadow it.
+ */
 export function assembleWebAnalytics(
 	params: WebAnalyticsQueryParams,
 	raw: WebAnalyticsRawAggregates,
 	nowMs: number,
+	previousBounceRate: number | null,
 ): WebAnalyticsResource {
 	const { from, to } = params;
 	const totalsPv = raw.totals.pageViews;
@@ -421,10 +429,10 @@ export function assembleWebAnalytics(
 	const folded = foldEntrySessions(raw.entrySessionRows, nowMs);
 
 	const comparison: WebAnalyticsComparison = {
-		pageViews: comparisonValue(totalsPv, raw.previousTotals.pageViews),
-		visitors: comparisonValue(raw.totals.visitors, raw.previousTotals.visitors),
-		sessions: comparisonValue(raw.totals.sessions, raw.previousTotals.sessions),
-		viewsPerSession: comparisonValue(
+		pageViews: compareValues(totalsPv, raw.previousTotals.pageViews),
+		visitors: compareValues(raw.totals.visitors, raw.previousTotals.visitors),
+		sessions: compareValues(raw.totals.sessions, raw.previousTotals.sessions),
+		viewsPerSession: compareValues(
 			raw.totals.sessions > 0
 				? Math.round((totalsPv / raw.totals.sessions) * 100) / 100
 				: 0,
@@ -434,10 +442,12 @@ export function assembleWebAnalytics(
 					) / 100
 				: 0,
 		),
+		// A missing prior rate stays no prior data (R9-F1) — never zeroed
+		// into a `new` claim and never compared against itself.
 		bounceRate:
 			folded.bounceRate === null
 				? null
-				: comparisonValue(folded.bounceRate, folded.bounceRate),
+				: compareValues(folded.bounceRate, previousBounceRate),
 	};
 
 	const devices: WebAnalyticsTechnologyGroups["devices"] = raw.devices

@@ -22,6 +22,21 @@ export type Bindings = {
   IP_INFO_API_TOKEN: string;
   TURSO_DATABASE_URL: string;
   TURSO_AUTH_TOKEN: string;
+  /**
+   * Server-held HMAC secret for snapshot query-context tokens (Task 21).
+   * Required by GET /projects/:slug/metrics; absent = 503 with an operator
+   * action, never an unsigned token.
+   */
+  QUERY_CONTEXT_TOKEN_KEY?: string;
+  QUERY_CONTEXT_TOKEN_KID?: string;
+  /**
+   * Retiring signing key for drill-down verification during rotation
+   * (R6-F5). When present, both the previous KID and KEY are required;
+   * tokens signed with the retiring key stay valid until it is removed
+   * (only after its maximum seven-day token lifetime passes).
+   */
+  QUERY_CONTEXT_TOKEN_PREVIOUS_KID?: string;
+  QUERY_CONTEXT_TOKEN_PREVIOUS_KEY?: string;
 };
 
 export type HonoConfig = {
@@ -52,6 +67,11 @@ export class DatabaseTables {
   static PROJECTS = "projects";
   static PROJECT_SOURCES = "project_sources";
   static PROJECT_API_KEYS = "project_api_keys";
+  static ASSISTANT_CONVERSATIONS = "assistant_conversations";
+  static ASSISTANT_MESSAGES = "assistant_messages";
+  static ASSISTANT_RUNS = "assistant_runs";
+  static ASSISTANT_MEMORY = "assistant_memory";
+  static ASSISTANT_MEMORY_AUDIT = "assistant_memory_audit";
 }
 
 export type CorrectTimeStamps<T> = T & {

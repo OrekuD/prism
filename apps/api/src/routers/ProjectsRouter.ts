@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { AssistantController } from "../controllers/AssistantController";
 import { ErrorIssuesController } from "../controllers/ErrorIssuesController";
 import { PeopleController } from "../controllers/PeopleController";
 import { ProjectsController } from "../controllers/ProjectsController";
@@ -19,6 +20,33 @@ router.get("/:slug", ProjectsController.getProjectBySlug);
 router.get("/:slug/mobile-analytics", ProjectsController.getMobileAnalytics);
 router.get("/:slug/web-analytics", ProjectsController.getWebAnalytics);
 router.get("/:slug/events", ProjectsController.getProjectEvents);
+router.get("/:slug/metrics", ProjectsController.getMetrics);
+router.get("/:slug/overview", ProjectsController.getOverview);
+// Task 21 slice 6: authorized streaming assistant API (member-owned
+// chats, snapshot-verified runs, typed memory confirm/reject).
+router.get("/:slug/assistant/conversations", AssistantController.listConversations);
+router.post("/:slug/assistant/conversations", AssistantController.createConversation);
+router.get(
+  "/:slug/assistant/conversations/:conversationSlug",
+  AssistantController.getConversation,
+);
+router.delete(
+  "/:slug/assistant/conversations/:conversationSlug",
+  AssistantController.deleteConversation,
+);
+router.post(
+  "/:slug/assistant/conversations/:conversationSlug/messages",
+  AssistantController.postMessage,
+);
+router.get("/:slug/assistant/memory", AssistantController.getMemory);
+router.post(
+  "/:slug/assistant/memory/:proposalId/confirm",
+  AssistantController.confirmProposal,
+);
+router.post(
+  "/:slug/assistant/memory/:proposalId/reject",
+  AssistantController.rejectProposal,
+);
 // Error tracking (task-15 slices 2 + 4): issue list + detail + workflow
 // state. Detail summarizes sanitized occurrences and workflow history with
 // no occurrence endpoint (occurrence ids are unguessable UUIDs, only ever

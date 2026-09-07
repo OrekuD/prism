@@ -19,21 +19,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { DeleteWorkspace } from "@/components/workspace/delete-workspace";
 
 /**
  * Workspace settings — General tab (/:wrkSlug/settings/general). Rename uses
  * the same read-only-name + dialog flow as project settings; delete stays
- * owner-only for non-default workspaces, confirmed via AlertDialog.
+ * owner-only for non-default workspaces, confirmed via the DeleteWorkspace dialog.
  */
 export function WorkspaceSettingsGeneral() {
   const { data: activeWorkspace } = useActiveWorkspace();
@@ -52,8 +43,6 @@ export function WorkspaceSettingsGeneral() {
   const [open, setOpen] = React.useState(false);
   const [name, setName] = React.useState("");
   const [saving, setSaving] = React.useState(false);
-  const [deleting, setDeleting] = React.useState(false);
-  const [confirmOpen, setConfirmOpen] = React.useState(false);
 
   const onRename = async () => {
     if (!workspace || !name.trim()) return;
@@ -73,19 +62,6 @@ export function WorkspaceSettingsGeneral() {
     }
   };
 
-  async function onDelete() {
-    if (!workspace || !canDelete) return;
-    setDeleting(true);
-    try {
-      await workspaceActions.delete(workspace.id);
-      toast.success("Workspace deleted");
-      window.location.href = "/overview";
-    } catch {
-      toast.error("Something went wrong.");
-    } finally {
-      setDeleting(false);
-    }
-  }
 
   return (
     <div className="grid gap-6">
@@ -158,43 +134,17 @@ export function WorkspaceSettingsGeneral() {
               : "Only the workspace owner can delete it."}
         </p>
         <div className="mt-4">
-          <Button
-            variant="destructive"
-            onClick={() => setConfirmOpen(true)}
-            disabled={!canDelete || deleting}
+          <DeleteWorkspace
+            workspace={
+              workspace ? { id: workspace.id, name: workspace.name } : null
+            }
           >
-            Delete workspace
-          </Button>
+            <Button variant="destructive" disabled={!canDelete}>
+              Delete workspace
+            </Button>
+          </DeleteWorkspace>
         </div>
       </Frame>
-
-      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this workspace?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete “{workspace?.name}” and all of its
-              projects, sources, and analytics. This can’t be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(event) => {
-                event.preventDefault();
-                void onDelete();
-              }}
-              disabled={deleting}
-              className="bg-danger text-white hover:bg-danger/90"
-            >
-              {deleting ? (
-                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-              ) : null}
-              Delete workspace
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

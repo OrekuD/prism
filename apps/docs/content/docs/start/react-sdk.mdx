@@ -3,7 +3,7 @@ title: React SDK
 description: Add Prism to a React app with a drop-in component or a custom provider setup.
 audience: Developer
 scope: Both
-lastReviewed: "2026-08-27"
+lastReviewed: "2026-09-02"
 ---
 
 `@prism-analytics/react` connects your React app to Prism through the
@@ -122,10 +122,28 @@ function CheckoutButton() {
 }
 ```
 
-The facade exposes `track`, `startSession`, `setCollectionState`,
+The facade exposes `track`, `events`, `startSession`, `setCollectionState`,
 `flush`, `shutdown`, `onDiagnostic`, and the read-only `client`,
 `collectionState`, and `identity` fields. Bound methods keep the same
 identity across renders.
+
+```tsx
+function SignUpButton() {
+  const prism = usePrism();
+  return (
+    <button
+      onClick={async () => {
+        await prism.identify(user.id);
+        prism.events.signUp({ method: "email" });
+      }}
+    >
+      Sign up
+    </button>
+  );
+}
+```
+
+See [Standard Events](/docs/features/standard-events) for the full catalog.
 
 You must call hooks at the top of your component. Don't wrap them in
 conditions or `try/catch` blocks. If part of your tree can render
@@ -145,11 +163,12 @@ function AnalyticsButton() {
 }
 ```
 
-`track` and `startSession` run synchronously and return a
-discriminated result. They never throw and never require `await`:
+`track`, `prism.events.*`, and `startSession` run synchronously. Invalid
+input throws; consent, shutdown, and queue-full return a `dropped`
+result:
 
-* `track` returns `{ status: "queued", eventId }` or
-  `{ status: "dropped", reason }`.
+* `track` and `prism.events.signUp(...)` return
+  `{ status: "queued", eventId }` or `{ status: "dropped", reason }`.
 * `startSession` returns `{ status: "started", session }` or
   `{ status: "blocked", reason }`.
 

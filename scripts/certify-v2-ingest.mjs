@@ -633,8 +633,13 @@ client.close();
   const peopleList = await request(`/api/v1/projects/${slug}/people`, { cookie });
   const personRow = peopleList.data?.people?.[0];
   check(
-    "people list through the dashboard API (project-authorized)",
-    peopleList.status === 200 && personRow?.eventCount >= 2 && personRow?.identityCount >= 2,
+    "people list through the dashboard API (project-authorized, external/anonymous links separated)",
+    peopleList.status === 200 &&
+      personRow?.eventCount >= 2 &&
+      personRow?.externalIdentityCount >= 1 &&
+      personRow?.anonymousIdentityCount >= 1 &&
+      typeof personRow?.primaryExternalId === "string" &&
+      personRow.primaryExternalId.length > 0,
     JSON.stringify(peopleList.data).slice(0, 300),
   );
   const personDetail = await request(

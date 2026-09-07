@@ -101,6 +101,7 @@ const envelopeSchema = z
 			.object({
 				name: z.string().max(128).optional(),
 				version: z.string().max(64).optional(),
+				language: z.string().max(32).optional(),
 			})
 			.optional(),
 		errors: z.array(z.unknown()).max(MAX.maxErrorsPerBatch),
@@ -157,7 +158,11 @@ export type ErrorItemValidationResult =
 export function parseErrorEnvelope(
 	body: string,
 ):
-	| { ok: true; errors: unknown[]; sdk?: { name?: string; version?: string } }
+	| {
+			ok: true;
+			errors: unknown[];
+			sdk?: { name?: string; version?: string; language?: string };
+	  }
 	| { ok: false; reason: "invalid-envelope" | "unsupported-schema" } {
 	let parsed: unknown;
 	try {

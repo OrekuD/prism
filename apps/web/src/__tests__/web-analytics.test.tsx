@@ -220,7 +220,7 @@ describe("web analytics page", () => {
 
 		// Head + metric strip labels (one-to-one with the design).
 		for (const label of [
-			"Web analytics",
+			"Web Analytics",
 			"Page views",
 			"Unique visitors",
 			"Sessions",
@@ -231,7 +231,8 @@ describe("web analytics page", () => {
 		}
 		// Frozen comparison vocabulary, never fabricated percentages:
 		expect(container.textContent).toContain("New");
-		expect(container.textContent).toContain("no prior data");
+		// no-prior-data now renders as quiet em dash with tooltip, not repeated text
+		expect(container.querySelector('[title="No prior data to compare"]')).not.toBeNull();
 		// Bounce renders its real value (not 0) and views/session is formatted.
 		expect(container.textContent).toContain("41%");
 		expect(container.textContent).toContain("1.5");
@@ -243,18 +244,14 @@ describe("web analytics page", () => {
 		// Top pages table shows path rows from the server payload.
 		expect(container.textContent).toContain("/menu");
 
-		// Referrers include the explicit Direct row.
+		// Referrers include the explicit Direct row (under Acquisition > Referrers).
 		expect(container.textContent).toContain("Direct / none");
 
-		// Locations use country code chips; coverage note present.
+		// Locations use country code chips.
 		expect(container.textContent).toContain("US");
-		expect(container.textContent).toContain(
-			"Country-level precision available for 64% of sessions.",
-		);
 
-		// Technology table + viewport chip + attribution note.
+		// Technology table + viewport chip.
 		expect(container.textContent).toContain("Chrome");
-		expect(container.textContent).toContain("96% of pageviews attributed");
 
 		// Non-web sources are excluded from the source picker.
 		expect(container.textContent).not.toContain("API");

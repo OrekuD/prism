@@ -23,13 +23,17 @@ export function makeCtx(
   params: Record<string, string>,
   body: unknown,
   vars: Record<string, unknown> = {},
+  query: Record<string, string> = {},
 ) {
   return {
     req: {
       param: (key: string) => params[key],
       json: vi.fn(async () => body),
       header: vi.fn(() => undefined),
-      query: vi.fn(() => undefined),
+      query: vi.fn((key: string) => query[key]),
+      queries: vi.fn((key: string) =>
+        query[key] === undefined ? [] : [query[key]],
+      ),
       raw: { headers: new Headers() },
     },
     json: vi.fn((value: unknown, status?: number) => ({

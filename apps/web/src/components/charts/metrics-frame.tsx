@@ -13,7 +13,12 @@ export type MetricCell = {
   id: string;
   label: string;
   icon: "visitors" | "sessions" | "events" | "error";
-  value: number;
+  /**
+   * Null renders an explicit unavailable state (em dash), never a
+   * synthesized zero. Loading still uses skeletons; real zeros render only
+   * after a successful response.
+   */
+  value: number | null;
   unit?: string;
 };
 
@@ -63,6 +68,20 @@ export function MetricsFrame({
             </div>
             {isLoading ? (
               <div className="mt-4 h-8 w-24 animate-pulse rounded-[2px] bg-surface-hover" />
+            ) : cell.value === null ? (
+              <div className="mt-4 flex items-baseline gap-2">
+                <span
+                  className="font-mono text-[32px] font-semibold leading-none tabular-nums tracking-[-0.04em] text-text-muted"
+                  aria-label={`${cell.label} unavailable`}
+                >
+                  —
+                </span>
+                {cell.unit ? (
+                  <span className="text-[12px] text-text-subtle">
+                    {cell.unit}
+                  </span>
+                ) : null}
+              </div>
             ) : (
               <div className="mt-4 flex items-baseline gap-2">
                 <span className="font-mono text-[32px] font-semibold leading-none tabular-nums tracking-[-0.04em] text-text">

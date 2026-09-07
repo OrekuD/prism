@@ -42,6 +42,13 @@ export const projects = pgTable(
   (table) => {
     return {
       projectSlugIndex: uniqueIndex("project_slug_index").on(table.slug),
+      // Task 21 slice 4 (R12-F3): composite tenant identity so assistant
+      // rows can foreign-key (project, organization) together — a project
+      // row can never be paired with another workspace's organization.
+      projectTenantIndex: uniqueIndex("project_tenant_uidx").on(
+        table.id,
+        table.organization_id,
+      ),
     };
   },
 );

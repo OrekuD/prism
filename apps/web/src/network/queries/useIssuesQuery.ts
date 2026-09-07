@@ -1,6 +1,6 @@
 import { axiosInstance } from "@/utils/axiosInstance";
 import type { ErrorIssueResource } from "@prism-analytics/types";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 /**
  * Project-scoped, server-filtered issue list (task-15 Errors list). Filters
@@ -16,6 +16,8 @@ export interface IssueListQuery {
 	platform?: string;
 	release?: string;
 	q?: string;
+	cursor?: string;
+	limit?: number;
 }
 
 export interface IssueListResult {
@@ -36,6 +38,8 @@ async function projectIssues(
 			...(params.platform ? { platform: params.platform } : {}),
 			...(params.release ? { release: params.release } : {}),
 			...(params.q?.trim() ? { q: params.q.trim() } : {}),
+			...(params.cursor ? { cursor: params.cursor } : {}),
+			...(params.limit ? { limit: params.limit } : {}),
 		},
 	});
 	const nextCursor =
@@ -59,10 +63,13 @@ export function useIssuesQuery(slug: string | undefined, params: IssueListQuery)
 			params.platform ?? "all",
 			params.release ?? "all",
 			params.q?.trim() ?? "",
+			params.cursor ?? null,
+			params.limit ?? null,
 		],
 		queryFn: () => projectIssues(slug, params),
 		enabled: Boolean(slug),
 		refetchOnWindowFocus: false,
+		placeholderData: keepPreviousData,
 	});
 }
 
