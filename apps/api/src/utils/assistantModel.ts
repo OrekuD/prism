@@ -50,6 +50,17 @@ export const MODEL_ALLOWLIST: readonly ModelCandidate[] = [
     completionPricePerMillionMicroUsd: 1_200_000,
     evaluated: true,
   },
+  {
+    // Base luna: same underlying model without pro reasoning mode —
+    // identical 5/5 correctness gates at ~1/7th cost and ~1/2 latency
+    // (see `evals/model-eval-gpt-5.6-luna-v1.json`). Opt in per
+    // deployment with `PRISM_AI_MODEL=openai/gpt-5.6-luna`; the pinned
+    // default (first entry) stays pro.
+    id: "openai/gpt-5.6-luna",
+    promptPricePerMillionMicroUsd: 200_000,
+    completionPricePerMillionMicroUsd: 1_200_000,
+    evaluated: true,
+  },
 ] as const;
 
 export const DEFAULT_MODEL_ID = MODEL_ALLOWLIST[0]?.id ?? "";

@@ -641,6 +641,16 @@ describe("model configuration", () => {
     expect(config.requireZeroDataRetention).toBe(true);
   });
 
+  it("resolves a non-default evaluated allowlist entry via PRISM_AI_MODEL", () => {
+    const config = resolveAssistantModelConfig({
+      ...baseEnv,
+      PRISM_AI_MODEL: "openai/gpt-5.6-luna",
+    });
+    expect(config.model.id).toBe("openai/gpt-5.6-luna");
+    expect(config.model.evaluated).toBe(true);
+    expect(config.routing.allowedModels).toEqual(["openai/gpt-5.6-luna"]);
+  });
+
   it("fails closed when disabled, keyless, off-allowlist, or over-cap", () => {
     expect(() =>
       resolveAssistantModelConfig({ ...baseEnv, PRISM_AI_ENABLED: "0" }),
