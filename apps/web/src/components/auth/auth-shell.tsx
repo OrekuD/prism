@@ -76,7 +76,7 @@ export function AuthShell({
     <div className="flex min-h-dvh flex-1 flex-col items-center justify-center px-6 py-12 sm:py-20">
       <DebugThemeToggle />
       <div className="w-full max-w-[360px] sm:-translate-y-6">
-        <div className="animate-in fade-in slide-in-from-bottom-3 delay-200 duration-400 ease-out fill-mode-both">
+        <div className="animate-in fade-in slide-in-from-bottom-3 delay-200 duration-300 ease-out fill-mode-both">
           <div className="mb-7 flex justify-center">
             <Link
               to="/"
