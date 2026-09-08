@@ -59,7 +59,7 @@ function Checklist({ current, steps }: { current: number; steps: readonly string
             <li
               key={label}
               className={cn(
-                "flex items-center gap-2.5 font-mono text-[12px]",
+                "flex items-center gap-2.5 text-[12px]",
                 state === "done" && "text-text-muted",
                 state === "current" && "text-text",
                 state === "waiting" && "text-text-subtle",
@@ -68,7 +68,7 @@ function Checklist({ current, steps }: { current: number; steps: readonly string
               <span
                 aria-hidden="true"
                 className={cn(
-                  "grid size-5 place-items-center rounded-[2px] border",
+                  "grid size-5 place-items-center rounded-full border",
                   state === "done" && "border-success text-success",
                   state === "current" && "border-accent text-accent",
                   state === "waiting" && "border-border-strong text-text-subtle",
@@ -198,7 +198,7 @@ export function Onboarding() {
         <div className="mt-6">
           <SectionLabel>First boot</SectionLabel>
         </div>
-        <h1 className="mt-3 font-mono text-[26px] font-semibold tracking-[-0.025em] text-text">
+        <h1 className="mt-3 text-[26px] font-semibold tracking-[-0.025em] text-text">
           Set up {config.instanceName}
         </h1>
         <p className="mt-2 max-w-[60ch] text-[14px] text-text-muted">
@@ -245,7 +245,7 @@ export function Onboarding() {
   return (
     <div className="mx-auto w-full max-w-[1500px] px-4 py-10 md:px-6 md:py-12">
       <SectionLabel>Get started</SectionLabel>
-      <h1 className="mt-3 font-mono text-[26px] font-semibold tracking-[-0.025em] text-text">
+      <h1 className="mt-3 text-[26px] font-semibold tracking-[-0.025em] text-text">
         Connect your first project
       </h1>
       <p className="mt-2 max-w-[60ch] text-[14px] text-text-muted">
@@ -273,21 +273,21 @@ export function Onboarding() {
                 </div>
                 <dl className="grid gap-4 text-[14px]">
                   <div className="grid gap-1">
-                    <dt className="font-mono text-[11px] uppercase tracking-[0.09em] text-text-subtle">
+                    <dt className="text-[11px] tracking-normal text-text-subtle">
                       Instance name
                     </dt>
                     <dd className="text-text">{config.instanceName}</dd>
                   </div>
                   <div className="grid gap-1">
-                    <dt className="font-mono text-[11px] uppercase tracking-[0.09em] text-text-subtle">
+                    <dt className="text-[11px] tracking-normal text-text-subtle">
                       Public URL
                     </dt>
-                    <dd className="font-mono text-[13px] text-text">
+                    <dd className="text-[13px] text-text">
                       {config.baseUrl}
                     </dd>
                   </div>
                   <div className="grid gap-1">
-                    <dt className="font-mono text-[11px] uppercase tracking-[0.09em] text-text-subtle">
+                    <dt className="text-[11px] tracking-normal text-text-subtle">
                       Registration policy
                     </dt>
                     <dd className="text-text">
@@ -299,7 +299,7 @@ export function Onboarding() {
                     </dd>
                   </div>
                   <div className="grid gap-1">
-                    <dt className="font-mono text-[11px] uppercase tracking-[0.09em] text-text-subtle">
+                    <dt className="text-[11px] tracking-normal text-text-subtle">
                       Email provider
                     </dt>
                     <dd className="text-text">
@@ -307,7 +307,7 @@ export function Onboarding() {
                     </dd>
                   </div>
                   <div className="grid gap-1">
-                    <dt className="font-mono text-[11px] uppercase tracking-[0.09em] text-text-subtle">
+                    <dt className="text-[11px] tracking-normal text-text-subtle">
                       Social providers
                     </dt>
                     <dd className="text-text">
@@ -325,7 +325,7 @@ export function Onboarding() {
                 <button
                   type="button"
                   onClick={() => advance(2)}
-                  className="inline-flex h-10 w-fit items-center rounded-[2px] bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
+                  className="inline-flex h-10 w-fit items-center rounded-full bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
                 >
                   Looks right, continue
                 </button>
@@ -345,13 +345,13 @@ export function Onboarding() {
                 </div>
                 <dl className="grid gap-4 text-[14px]">
                   <div className="grid gap-1">
-                    <dt className="font-mono text-[11px] uppercase tracking-[0.09em] text-text-subtle">
+                    <dt className="text-[11px] tracking-normal text-text-subtle">
                       Name
                     </dt>
                     <dd className="text-text">{name}</dd>
                   </div>
                   <div className="grid gap-1">
-                    <dt className="font-mono text-[11px] uppercase tracking-[0.09em] text-text-subtle">
+                    <dt className="text-[11px] tracking-normal text-text-subtle">
                       Email
                     </dt>
                     <dd className="text-text">{email}</dd>
@@ -360,7 +360,7 @@ export function Onboarding() {
                 <button
                   type="button"
                   onClick={() => advance(2 + offset)}
-                  className="inline-flex h-10 w-fit items-center rounded-[2px] bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
+                  className="inline-flex h-10 w-fit items-center rounded-full bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
                 >
                   Looks good, continue
                 </button>
@@ -380,7 +380,7 @@ export function Onboarding() {
                 </div>
                 <dl className="grid gap-4 text-[14px]">
                   <div className="grid gap-1">
-                    <dt className="font-mono text-[11px] uppercase tracking-[0.09em] text-text-subtle">
+                    <dt className="text-[11px] tracking-normal text-text-subtle">
                       Workspace
                     </dt>
                     <dd className="text-text">
@@ -391,7 +391,7 @@ export function Onboarding() {
                 <button
                   type="button"
                   onClick={() => advance(3 + offset)}
-                  className="inline-flex h-10 w-fit items-center rounded-[2px] bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
+                  className="inline-flex h-10 w-fit items-center rounded-full bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
                 >
                   Continue
                 </button>
@@ -422,13 +422,13 @@ export function Onboarding() {
                     onChange={(event) => setProjectName(event.target.value)}
                     placeholder="My product"
                     autoComplete="off"
-                    className="h-10 rounded-[2px] border border-border-strong bg-surface px-3 text-[14px] text-text placeholder:text-text-subtle focus:border-focus focus:outline-2 focus:outline-offset-2 focus:outline-focus"
+                    className="h-10 rounded-[10px] border border-border-strong bg-surface px-3 text-[14px] text-text placeholder:text-text-subtle focus:border-focus focus:outline-2 focus:outline-offset-2 focus:outline-focus"
                   />
                 </div>
                 {createError ? (
                   <div
                     role="alert"
-                    className="flex items-start gap-2.5 rounded-[2px] border border-danger/40 bg-danger/10 px-3.5 py-2.5 text-[13px] leading-relaxed text-text"
+                    className="flex items-start gap-2.5 rounded-[12px] border border-danger/40 bg-danger/10 px-3.5 py-2.5 text-[13px] leading-relaxed text-text"
                   >
                     <AlertCircle
                       className="mt-0.5 size-4 shrink-0 text-danger"
@@ -442,7 +442,7 @@ export function Onboarding() {
                   onClick={onCreateProject}
                   disabled={isCreating || projectName.trim().length === 0}
                   aria-busy={isCreating}
-                  className="inline-flex h-10 w-fit items-center gap-2 rounded-[2px] bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover disabled:opacity-45"
+                  className="inline-flex h-10 w-fit items-center gap-2 rounded-full bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover disabled:opacity-45"
                 >
                   {isCreating ? (
                     <Loader2 className="size-4 animate-spin" aria-hidden="true" />
@@ -464,7 +464,7 @@ export function Onboarding() {
                   </p>
                 </div>
                 <div className="flex h-[42px] items-stretch bg-surface-raised">
-                  <code className="flex flex-1 items-center overflow-x-auto px-3 font-mono text-[13px] text-text">
+                  <code className="flex flex-1 items-center overflow-x-auto px-3 text-[13px] text-text">
                     {progress.apiKey}
                   </code>
                   <button
@@ -499,7 +499,7 @@ export function Onboarding() {
                     saveProgress(updated);
                   }}
                   disabled={!keyConfirmed}
-                  className="inline-flex h-10 w-fit items-center rounded-[2px] bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover disabled:opacity-45"
+                  className="inline-flex h-10 w-fit items-center rounded-full bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover disabled:opacity-45"
                 >
                   Install the SDK
                 </button>
@@ -549,7 +549,7 @@ export function Onboarding() {
                     onClick={onVerify}
                     disabled={verifying}
                     aria-busy={verifying}
-                    className="inline-flex h-8 items-center gap-2 rounded-[2px] border border-border-strong px-3 text-[12px] font-medium text-text transition-colors duration-150 hover:border-text-subtle hover:bg-surface-hover disabled:opacity-45"
+                    className="inline-flex h-8 items-center gap-2 rounded-full border border-border-strong px-3 text-[12px] font-medium text-text transition-colors duration-150 hover:border-text-subtle hover:bg-surface-hover disabled:opacity-45"
                   >
                     {verifying ? (
                       <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
@@ -576,7 +576,7 @@ export function Onboarding() {
                 <div className="flex items-center gap-3">
                   <Link
                     to={`/projects/${projectSlug}`}
-                    className="inline-flex h-10 items-center rounded-[2px] bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
+                    className="inline-flex h-10 items-center rounded-full bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
                   >
                     Open project overview
                   </Link>

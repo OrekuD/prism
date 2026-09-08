@@ -2,11 +2,10 @@ import type React from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * v2 page header — monospace title + muted subtitle, with an optional
+ * Page header — Inter title + muted subtitle, with an optional
  * right-aligned action slot. The single canonical title section for every
- * workspace/project page (matches overview, members, projects, and
- * create-project). Pages that need an action (Create, Invite, Delete …)
- * pass it as children and it sits on the right.
+ * workspace/project page. Pages that need an action (Create, Invite,
+ * Delete …) pass it as children and it sits on the right.
  */
 export function PageHeader({
   title,
@@ -27,7 +26,7 @@ export function PageHeader({
       )}
     >
       <div className="min-w-0">
-        <h1 className="font-mono text-[26px] font-[650] leading-[1.18] tracking-[-0.025em] text-text">
+        <h1 className="text-[26px] font-[650] leading-[1.18] tracking-[-0.025em] text-text">
           {title}
         </h1>
         {description ? (

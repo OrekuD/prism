@@ -153,7 +153,7 @@ export function OwnerSetup({
                 type="submit"
                 aria-busy={isPending}
                 disabled={isPending}
-                className="flex h-10 w-fit items-center gap-2 rounded-[2px] bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover disabled:opacity-45"
+                className="flex h-10 w-fit items-center gap-2 rounded-full bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover disabled:opacity-45"
               >
                 {isPending ? (
                   <Loader2 className="size-4 animate-spin" aria-hidden="true" />
@@ -173,7 +173,7 @@ export function OwnerSetup({
               </div>
               <div className="flex justify-between gap-4">
                 <dt className="text-text-subtle">Public URL</dt>
-                <dd className="font-mono text-[12px] text-text">
+                <dd className="text-[12px] text-text">
                   {config?.baseUrl ?? "…"}
                 </dd>
               </div>

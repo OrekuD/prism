@@ -64,7 +64,7 @@ export function PublicNav() {
 						)}
 						<Link
 							to={isAuthenticated ? dashboardHref : "/auth/create-account"}
-							className="inline-flex h-[38px] items-center rounded-[2px] bg-accent px-5 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
+							className="inline-flex h-[38px] items-center rounded-full bg-accent px-5 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
 						>
 							{isAuthenticated ? "Dashboard" : "Get started"}
 						</Link>
@@ -110,7 +110,7 @@ export function PublicNav() {
 								to={isAuthenticated ? dashboardHref : "/auth/create-account"}
 								onClick={() => setOpen(false)}
 								className={cn(
-									"my-4 flex h-11 items-center justify-center rounded-[2px]",
+									"my-4 flex h-11 items-center justify-center rounded-full",
 									"bg-accent text-[14px] font-medium text-primary-foreground",
 								)}
 							>

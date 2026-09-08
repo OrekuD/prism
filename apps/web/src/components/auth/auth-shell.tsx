@@ -55,10 +55,10 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
               or on your own infrastructure.
             </p>
             <div className="mt-auto">
-              <p className="font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-subtle">
+              <p className="text-[13px] font-medium tracking-normal text-text-subtle">
                 Instance
               </p>
-              <p className="mt-1.5 font-mono text-[13px] text-text">
+              <p className="mt-1.5 text-[13px] text-text">
                 {instanceHost}
               </p>
             </div>
@@ -66,7 +66,7 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
 
           {/* Mobile: instance identity + one sentence only. */}
           <div className="border-b border-border bg-canvas-subtle px-5 py-3 md:hidden">
-            <p className="font-mono text-[11px] uppercase tracking-[0.09em] text-text-subtle">
+            <p className="text-[11px] tracking-normal text-text-subtle">
               {instanceName} · {instanceHost}
             </p>
             <p className="mt-1 text-[13px] text-text-muted">
@@ -88,7 +88,7 @@ export function OrEmailDivider() {
   return (
     <div className="flex items-center gap-3">
       <span aria-hidden="true" className="h-px flex-1 bg-border" />
-      <span className="font-mono text-[10px] uppercase tracking-[0.09em] text-text-subtle">
+      <span className="text-[10px] tracking-normal text-text-subtle">
         Or email
       </span>
       <span aria-hidden="true" className="h-px flex-1 bg-border" />
@@ -106,7 +106,7 @@ export function AuthHeading({
 }) {
   return (
     <div>
-      <h1 className="font-mono text-[26px] font-semibold tracking-[-0.025em] text-text">
+      <h1 className="text-[26px] font-semibold tracking-[-0.025em] text-text">
         {title}
       </h1>
       {description ? (

@@ -35,7 +35,7 @@ export function SocialAuthButtons({
   if (!enabled) return null;
 
   const buttonClass =
-    "flex h-[42px] items-center justify-center gap-2.5 rounded-[2px] border border-border-strong bg-canvas text-[13px] font-medium text-text transition-colors duration-150 hover:border-text-subtle hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-45";
+    "flex h-[42px] items-center justify-center gap-2.5 rounded-[10px] border border-border-strong bg-canvas text-[13px] font-medium text-text transition-colors duration-150 hover:border-text-subtle hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-45";
 
   return (
     <div className={cn("grid gap-2.5", className)}>
@@ -68,7 +68,7 @@ export function SocialAuthButtons({
           ) : (
             <span
               aria-hidden="true"
-              className="grid size-4 place-items-center rounded-full border border-border-strong font-mono text-[10px] font-bold"
+              className="grid size-4 place-items-center rounded-full border border-border-strong text-[10px] font-bold"
             >
               G
             </span>

@@ -347,7 +347,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 								<span className="flex-1 truncate text-left">
 									{workspacesPending ? (
 										<span
-											className="inline-block h-[13px] w-28 animate-pulse rounded-[2px] bg-surface-raised"
+											className="inline-block h-[13px] w-28 animate-pulse rounded-md bg-surface-raised"
 											aria-hidden="true"
 										/>
 									) : (
@@ -486,7 +486,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 							<button
 								type="button"
 								aria-haspopup="menu"
-								className="flex w-full items-center gap-2.5 rounded-[2px] px-1 py-1 text-left transition-colors hover:bg-surface-hover"
+								className="flex w-full items-center gap-2.5 rounded-[10px] px-1 py-1 text-left transition-colors hover:bg-surface-hover"
 							>
 								<span
 									className="grid size-[26px] shrink-0 place-items-center rounded-full border border-border-strong bg-surface-raised text-[11px] font-semibold text-text"
