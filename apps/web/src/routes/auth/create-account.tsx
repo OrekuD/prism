@@ -2,18 +2,12 @@ import { Check, Loader2 } from "lucide-react";
 import React from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import {
-  authClient,
-  fetchEnabledProviders,
-} from "@/lib/authClient";
+import { authClient } from "@/lib/authClient";
 import { AuthAlert } from "@/components/auth/auth-alert";
 import { AuthShell, OrEmailDivider } from "@/components/auth/auth-shell";
 import { isNetworkError, oauthErrorMessage } from "@/components/auth/auth-errors";
 import { PasswordInput } from "@/components/auth/password-input";
-import {
-  type EnabledProviders,
-  SocialAuthButtons,
-} from "@/components/auth/social-auth-buttons";
+import { SocialAuthButtons } from "@/components/auth/social-auth-buttons";
 import { waitForSession } from "@/lib/session";
 import { loadRuntimeConfig, type RuntimeConfig } from "@/lib/runtimeConfig";
 import { workspaceActions } from "@/lib/workspace";
@@ -68,18 +62,13 @@ export function CreateAccount() {
   const [workspaceName, setWorkspaceName] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [isPending, setIsPending] = React.useState(false);
-  const [pendingProvider, setPendingProvider] = React.useState<
-    "github" | "google" | null
-  >(null);
-  const [providers, setProviders] = React.useState<EnabledProviders>({
-    github: false,
-    google: false,
-  });
+  const [providerNotice, setProviderNotice] = React.useState<string | null>(
+    null,
+  );
   const [config, setConfig] = React.useState<RuntimeConfig | null>(null);
   const headingRef = React.useRef<HTMLHeadingElement>(null);
 
   React.useEffect(() => {
-    fetchEnabledProviders().then(setProviders);
     loadRuntimeConfig().then(setConfig);
   }, []);
 
@@ -190,32 +179,10 @@ export function CreateAccount() {
   };
 
   const onSocial = async (provider: "github" | "google") => {
-    if (pendingProvider) return; // duplicate-submit guard
-    setError(null);
-    setPendingProvider(provider);
-    try {
-      const response = await authClient.signIn.social({
-        provider,
-        callbackURL: "/overview",
-      });
-      if (response.error) {
-        setError("Sign-in with the provider failed. Try again.");
-        return;
-      }
-      if (response.data?.url) {
-        trackTelemetry(TELEMETRY_EVENTS.signupMethod, {
-          method: provider,
-        });
-        window.location.assign(response.data.url);
-      }
-    } catch (err) {
-      setError(
-        isNetworkError(err)
-          ? "Cannot reach Prism. Check your connection and try again."
-          : "Sign-in with the provider failed. Try again.",
-      );
-      setPendingProvider(null);
-    }
+    // Presentation-only until the provider integrations land (same as log-in).
+    setProviderNotice(
+      `${provider === "github" ? "GitHub" : "Google"} sign-up isn't available yet. Please use email.`,
+    );
   };
 
   if (registrationClosed && config) {
@@ -328,10 +295,17 @@ export function CreateAccount() {
           <div className="mt-8 grid gap-5">
             {oauthError ? <AuthAlert>{oauthError}</AuthAlert> : null}
             <SocialAuthButtons
-              providers={providers}
+              providers={{ github: true, google: true }}
               onSocial={onSocial}
-              pendingProvider={pendingProvider}
             />
+            {providerNotice ? (
+              <p
+                role="status"
+                className="text-center text-[12px] leading-relaxed text-text-muted"
+              >
+                {providerNotice}
+              </p>
+            ) : null}
             <OrEmailDivider />
             <form onSubmit={onSubmitEmail} className="grid gap-4" noValidate>
               <div className="grid gap-2">
