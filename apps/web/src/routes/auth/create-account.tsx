@@ -140,6 +140,18 @@ export function CreateAccount() {
       // pending. Hard-navigate after the session is durable so the fresh
       // boot reads the cookie and never bounces back to this page.
       await waitForSession();
+      // Personal-workspace provisioning is lazy on the API side: it runs
+      // on the first authenticated /api/v1 request. Better Auth endpoints
+      // (organization.list) don't pass through that middleware, so hit one
+      // product endpoint first to guarantee the workspace exists before
+      // resolving and renaming it.
+      try {
+        await fetch(`${API_BASE_URL}/api/v1/user`, {
+          credentials: "include",
+        });
+      } catch {
+        // Provisioning retries on the app's first real request anyway.
+      }
       // Apply the chosen workspace name to the auto-provisioned default
       // workspace. Non-blocking on failure: the workspace keeps its
       // default name (renameable in settings) and the user still lands
