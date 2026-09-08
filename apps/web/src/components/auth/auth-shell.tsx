@@ -3,10 +3,40 @@ import { Link, Navigate } from "react-router-dom";
 import { authClient } from "@/lib/authClient";
 import { loadRuntimeConfig } from "@/lib/runtimeConfig";
 import { PrismMark } from "@/components/brand/prism-mark";
+import { useTheme } from "@/components/theme-provider";
+import { Monitor, Moon, Sun } from "lucide-react";
 import {
   HomeSkeleton,
   useWorkspaceHome,
 } from "@/components/workspace/workspace-scope";
+
+/**
+ * Debug-only theme switcher (remove before shipping): cycles
+ * dark → light → system from a fixed button at the top-right of any
+ * auth screen.
+ */
+function DebugThemeToggle() {
+  const { theme, setTheme } = useTheme();
+  const next = theme === "dark" ? "light" : theme === "light" ? "system" : "dark";
+  const label = next === "system" ? "system" : next;
+  return (
+    <button
+      type="button"
+      onClick={() => setTheme(next)}
+      className="fixed top-3 right-3 z-100 inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-canvas px-2.5 text-xs font-medium text-text-muted shadow-md transition-colors hover:bg-surface-hover hover:text-text"
+      title={`Theme: ${theme} — click for ${next}`}
+    >
+      {theme === "dark" ? (
+        <Moon className="size-3.5" aria-hidden="true" />
+      ) : theme === "light" ? (
+        <Sun className="size-3.5" aria-hidden="true" />
+      ) : (
+        <Monitor className="size-3.5" aria-hidden="true" />
+      )}
+      Theme: {theme}
+    </button>
+  );
+}
 
 /**
  * Shared authentication shell: a single centered column under the Prism
@@ -44,8 +74,9 @@ export function AuthShell({
 
   return (
     <div className="flex min-h-dvh flex-1 flex-col items-center justify-center px-6 py-12 sm:py-20">
+      <DebugThemeToggle />
       <div className="w-full max-w-[360px] sm:-translate-y-6">
-        <div className="animate-in fade-in slide-in-from-bottom-3 delay-300 duration-500 ease-out fill-mode-both">
+        <div className="animate-in fade-in slide-in-from-bottom-3 delay-200 duration-400 ease-out fill-mode-both">
           <div className="mb-7 flex justify-center">
             <Link
               to="/"
