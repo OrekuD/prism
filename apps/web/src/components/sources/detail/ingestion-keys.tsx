@@ -164,7 +164,7 @@ export function IngestionKeys({
                   </span>
                   <span
                     className={cn(
-                      "border px-[5px] py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em]",
+                      "border rounded-full px-[8px] py-0.5 text-[10px] font-medium tracking-normal",
                       key.status === "active"
                         ? "border-success/60 text-success"
                         : "border-border-strong text-text-subtle",

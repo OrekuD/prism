@@ -116,7 +116,7 @@ export function MembersPage() {
           </thead>
           <tbody>
             {members === null ? (
-              <tr><td colSpan={5} className={TD}><span className="inline-block h-[14px] w-[72px] animate-pulse rounded-[2px] bg-surface-raised" /></td></tr>
+              <tr><td colSpan={5} className={TD}><span className="inline-block h-[14px] w-[72px] animate-pulse rounded-md bg-surface-raised" /></td></tr>
             ) : members.length === 0 ? (
               <tr><td colSpan={5} className={`${TD} text-text-muted`}>No members yet.</td></tr>
             ) : (
@@ -163,7 +163,7 @@ export function MembersPage() {
                         ROLE_LABELS[member.role] ?? member.role
                       )}
                     </td>
-                    <td className={TD}><span className="inline-flex h-[22px] items-center gap-1.5 rounded-[2px] border border-success/40 px-2 font-mono text-[11px] whitespace-nowrap text-success">Active</span></td>
+                    <td className={TD}><span className="inline-flex h-[22px] items-center gap-1.5 rounded-full border border-success/40 px-2 text-[11px] whitespace-nowrap text-success">Active</span></td>
                     <td className={`${TD} text-[12px] text-text-muted`}>—</td>
                     <td className={TD}>
                       <span className="flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
@@ -173,7 +173,7 @@ export function MembersPage() {
                             disabled={busy}
                             aria-label={`Remove ${displayName}`}
                             onClick={() => void run(() => workspaceActions.removeMember({ memberId: member.id, organizationId }), "Member removed")}
-                            className="inline-flex h-[30px] items-center gap-2 rounded-[2px] px-3 text-[13px] text-text-muted transition-colors hover:bg-surface-hover hover:text-text"
+                            className="inline-flex h-[30px] items-center gap-2 rounded-full px-3 text-[13px] text-text-muted transition-colors hover:bg-surface-hover hover:text-text"
                           >
                             <Trash2 className="size-3.5" />
                           </button>
@@ -192,7 +192,7 @@ export function MembersPage() {
         <>
           <div className="mb-3 mt-10 text-[13px] font-medium tracking-normal text-text-subtle">Pending invitations</div>
           {invitations === null ? (
-            <span className="inline-block h-[14px] w-[72px] animate-pulse rounded-[2px] bg-surface-raised" />
+            <span className="inline-block h-[14px] w-[72px] animate-pulse rounded-md bg-surface-raised" />
           ) : (invitations ?? []).filter((invite) => invite.status === "pending").length === 0 ? (
             <p className="text-[13px] text-text-muted">No pending invitations.</p>
           ) : (
@@ -206,7 +206,7 @@ export function MembersPage() {
                       <tr key={invite.id} className="group">
                         <td className={TD}>{invite.email}</td>
                         <td className={TD}>{ROLE_LABELS[invite.role ?? "member"] ?? invite.role}</td>
-                        <td className={TD}><span className="inline-flex h-[22px] items-center gap-1.5 rounded-[2px] border border-warning/40 px-2 font-mono text-[11px] whitespace-nowrap text-warning">Pending</span></td>
+                        <td className={TD}><span className="inline-flex h-[22px] items-center gap-1.5 rounded-full border border-warning/40 px-2 text-[11px] whitespace-nowrap text-warning">Pending</span></td>
                         <td className={`${TD} text-[12px] text-text-muted`}>{new Date(invite.expiresAt).toLocaleDateString()}</td>
                         <td className={TD}>
                           <span className="flex items-center justify-end opacity-0 transition-opacity group-hover:opacity-100">
@@ -214,7 +214,7 @@ export function MembersPage() {
                               type="button"
                               disabled={busy}
                               onClick={() => void run(() => workspaceActions.cancelInvitation(invite.id), "Invitation cancelled")}
-                              className="inline-flex h-[30px] items-center gap-2 rounded-[2px] px-3 text-[13px] text-text-muted transition-colors hover:bg-surface-hover hover:text-text"
+                              className="inline-flex h-[30px] items-center gap-2 rounded-full px-3 text-[13px] text-text-muted transition-colors hover:bg-surface-hover hover:text-text"
                             >
                               Cancel
                             </button>

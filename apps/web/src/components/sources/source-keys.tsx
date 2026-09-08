@@ -306,7 +306,7 @@ export function SourceKeys({
                       ) : (
                         <>
                           <tr className="border-t border-border bg-canvas-subtle/50 text-text-muted">
-                            <th className="px-3.5 py-2 pl-6 text-left font-mono text-[11px] font-medium uppercase tracking-[0.09em]">
+                            <th className="px-3.5 py-2 pl-6 text-left text-[13px] font-medium tracking-normal">
                               Name
                             </th>
                             <th className="px-3.5 py-2 text-left text-[13px] font-medium tracking-normal">

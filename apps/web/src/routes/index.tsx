@@ -34,7 +34,7 @@ function Hero() {
         <div className="mt-8 flex flex-wrap items-center gap-3">
           <Link
             to="/auth/create-account"
-            className="inline-flex h-[42px] items-center rounded-[2px] bg-accent px-[18px] text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
+            className="inline-flex h-[42px] items-center rounded-full bg-accent px-[18px] text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
           >
             Start hosted
           </Link>
@@ -42,7 +42,7 @@ function Hero() {
             href={`${DOCS_URL}/docs/self-hosting/self-host-prism`}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex h-[42px] items-center rounded-[2px] border border-border-strong px-[18px] text-[13px] font-medium text-text transition-colors duration-150 hover:border-text-subtle hover:bg-surface-hover"
+            className="inline-flex h-[42px] items-center rounded-full border border-border-strong px-[18px] text-[13px] font-medium text-text transition-colors duration-150 hover:border-text-subtle hover:bg-surface-hover"
           >
             Self-host Prism
           </a>
@@ -175,7 +175,7 @@ function SetupSection() {
           href={`${DOCS_URL}/docs/start/quickstart`}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex h-[36px] items-center rounded-[2px] border border-border-strong px-3.5 text-[13px] font-medium text-text transition-colors duration-150 hover:border-text-subtle hover:bg-surface-hover"
+          className="inline-flex h-[36px] items-center rounded-full border border-border-strong px-3.5 text-[13px] font-medium text-text transition-colors duration-150 hover:border-text-subtle hover:bg-surface-hover"
         >
           Read the docs
         </a>
@@ -196,7 +196,7 @@ function SetupSection() {
                 aria-selected={framework === name}
                 onClick={() => setFramework(name)}
                 className={cn(
-                  "h-[30px] rounded-[2px] px-3 font-mono text-[12px] transition-colors duration-150",
+                  "h-[30px] rounded-full px-3 text-[12px] transition-colors duration-150",
                   framework === name
                     ? "bg-accent text-primary-foreground"
                     : "text-text-muted hover:bg-surface-hover hover:text-text"
@@ -213,7 +213,7 @@ function SetupSection() {
               <li key={label} className="flex items-center gap-2.5">
                 <span
                   aria-hidden="true"
-                  className="grid size-5 place-items-center rounded-[2px] border border-border-strong font-mono text-[11px] text-text-subtle"
+                  className="grid size-5 place-items-center rounded-full border border-border-strong text-[11px] text-text-subtle"
                 >
                   {index + 1}
                 </span>
@@ -261,7 +261,7 @@ function HostedVsSelfHosted() {
           </ul>
           <Link
             to="/auth/create-account"
-            className="mt-8 inline-flex h-[38px] items-center rounded-[2px] bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
+            className="mt-8 inline-flex h-[38px] items-center rounded-full bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
           >
             Start hosted
           </Link>
@@ -283,7 +283,7 @@ function HostedVsSelfHosted() {
             href={`${DOCS_URL}/docs/self-hosting/self-host-prism`}
             target="_blank"
             rel="noreferrer"
-            className="mt-8 inline-flex h-[38px] items-center rounded-[2px] border border-border-strong px-4 text-[13px] font-medium text-text transition-colors duration-150 hover:border-text-subtle hover:bg-surface-hover"
+            className="mt-8 inline-flex h-[38px] items-center rounded-full border border-border-strong px-4 text-[13px] font-medium text-text transition-colors duration-150 hover:border-text-subtle hover:bg-surface-hover"
           >
             Deployment guide
           </a>

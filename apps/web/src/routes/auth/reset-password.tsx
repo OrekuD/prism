@@ -61,7 +61,7 @@ export function ResetPassword() {
           </p>
           <Link
             to="/auth/forgot-password"
-            className="inline-flex h-10 w-fit items-center rounded-[2px] bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
+            className="inline-flex h-10 w-fit items-center rounded-full bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
           >
             Request a new link
           </Link>
@@ -104,7 +104,7 @@ export function ResetPassword() {
             type="submit"
             aria-busy={isPending}
             disabled={isPending}
-            className="flex h-10 items-center justify-center gap-2 rounded-[2px] bg-accent text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-45"
+            className="flex h-10 items-center justify-center gap-2 rounded-full bg-accent text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-45"
           >
             {isPending ? (
               <Loader2 className="size-4 animate-spin" aria-hidden="true" />

@@ -135,7 +135,7 @@ export function Gallery() {
         description="PrismMark and PrismLogo at every target size on dark and light surfaces (task-7 section 10)."
       >
         <div className="grid gap-8">
-          <div className="grid gap-3 rounded-[2px] border border-border bg-canvas p-6">
+          <div className="grid gap-3 rounded-[16px] border border-border bg-canvas p-6">
             <p className="font-mono text-[11px] uppercase tracking-[0.09em] text-text-subtle">
               Dark surface
             </p>
@@ -148,7 +148,7 @@ export function Gallery() {
               </div>
             ))}
           </div>
-          <div className="grid gap-3 rounded-[2px] border border-border bg-surface p-6">
+          <div className="grid gap-3 rounded-[16px] border border-border bg-surface p-6">
             <p className="font-mono text-[11px] uppercase tracking-[0.09em] text-text-subtle">
               Light surface
             </p>

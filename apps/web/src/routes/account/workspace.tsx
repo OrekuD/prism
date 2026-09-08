@@ -205,7 +205,7 @@ function WorkspacePanel({ organizationId }: { organizationId: string }) {
   return (
     <div className="space-y-6">
       <div className="mt-10 mb-3.5 flex items-baseline gap-1.5 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">Members</div>
-      <div className="overflow-auto rounded-[2px] border border-border">
+      <div className="overflow-auto rounded-[16px] border border-border">
         <table className="w-full border-collapse text-[13px]">
           <thead>
             <tr>
@@ -218,7 +218,7 @@ function WorkspacePanel({ organizationId }: { organizationId: string }) {
           </thead>
           <tbody>
             {members === null ? (
-              <tr><td colSpan={5} className="border-t border-border px-3.5 py-[11px]"><span className="inline-block h-[14px] w-[72px] animate-pulse rounded-[2px] bg-surface-raised" /></td></tr>
+              <tr><td colSpan={5} className="border-t border-border px-3.5 py-[11px]"><span className="inline-block h-[14px] w-[72px] animate-pulse rounded-md bg-surface-raised" /></td></tr>
             ) : members.length === 0 ? (
               <tr><td colSpan={5} className="border-t border-border px-3.5 py-[11px] text-text-muted">No members.</td></tr>
             ) : (
@@ -266,7 +266,7 @@ function WorkspacePanel({ organizationId }: { organizationId: string }) {
                         ROLE_LABELS[member.role] ?? member.role
                       )}
                     </td>
-                    <td className="border-t border-border px-3.5 py-[11px]"><span className="inline-flex h-[22px] items-center gap-1.5 rounded-[2px] border border-success/40 px-2 font-mono text-[11px] whitespace-nowrap text-success">Active</span></td>
+                    <td className="border-t border-border px-3.5 py-[11px]"><span className="inline-flex h-[22px] items-center gap-1.5 rounded-full border border-success/40 px-2 text-[11px] whitespace-nowrap text-success">Active</span></td>
                     <td className="border-t border-border px-3.5 py-[11px] text-[12px] text-text-muted">—</td>
                     <td className="border-t border-border px-3.5 py-[11px]">
                       <span className="flex items-center justify-end opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
@@ -280,7 +280,7 @@ function WorkspacePanel({ organizationId }: { organizationId: string }) {
                                 "Member removed",
                               )
                             }
-                            className="inline-flex h-[30px] items-center gap-2 rounded-[2px] px-3 text-[13px] text-text-muted transition-colors hover:bg-surface-hover hover:text-text"
+                            className="inline-flex h-[30px] items-center gap-2 rounded-full px-3 text-[13px] text-text-muted transition-colors hover:bg-surface-hover hover:text-text"
                           >
                             <Trash2 className="size-3.5" />
                           </button>
