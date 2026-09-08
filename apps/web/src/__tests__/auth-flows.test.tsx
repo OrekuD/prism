@@ -236,18 +236,17 @@ describe("auth failure states", () => {
   });
 
   it("records and shows the last-used sign-in method", async () => {
+    // Password method: pill sits on the email label row.
     localStorage.setItem("prism.lastAuth:user@example.com", "password");
-    renderPage(<LogIn />);
-
+    const first = renderPage(<LogIn />);
     await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
-    expect(
-      screen.queryByText(/· Last used/),
-    ).not.toBeInTheDocument(); // password hint shows nowhere — badge is social-only
+    expect(screen.getByText("Last used")).toBeInTheDocument();
+    first.unmount();
 
+    // Social method: floating pill on the matching provider button.
     localStorage.setItem("prism.lastAuth:oauth@example.com", "google");
     renderPage(<LogIn />, "/auth/log-in?email=oauth@example.com");
-    const badge = await screen.findByText(/· Last used/);
-    expect(badge).toBeInTheDocument();
+    expect(await screen.findByText("Last used")).toBeInTheDocument();
   });
 
   it("reports a network failure instead of invalid credentials", async () => {

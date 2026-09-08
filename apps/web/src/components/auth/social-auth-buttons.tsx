@@ -36,6 +36,18 @@ function GoogleMark(props: React.SVGProps<SVGSVGElement>) {
 
 export type EnabledProviders = { github: boolean; google: boolean };
 
+/** Tiny floating pill marking the last-used provider (top-right corner). */
+function LastUsedBadge() {
+  return (
+    <span
+      aria-hidden="true"
+      className="absolute -top-1.5 left-3 rounded-full border border-border bg-canvas px-1.5 py-px text-[9px] font-medium leading-[1.4] tracking-normal text-text-muted"
+    >
+      Last used
+    </span>
+  );
+}
+
 /**
  * Provider sign-in buttons (design-system.md 11.3): 42px secondary
  * outlined, icon left. Providers with no credentials on this instance are
@@ -72,19 +84,15 @@ export function SocialAuthButtons({
           onClick={() => onSocial("github")}
           disabled={pendingProvider !== null}
           aria-busy={pendingProvider === "github"}
-          className={buttonClass}
+          className={cn(buttonClass, "relative")}
         >
+          {lastUsed === "github" ? <LastUsedBadge /> : null}
           {pendingProvider === "github" ? (
             <Loader2 className="size-4 animate-spin" aria-hidden="true" />
           ) : (
             <GitHubMark className="size-4" />
           )}
           {actionLabel} GitHub
-          {lastUsed === "github" ? (
-            <span className="text-[11px] font-medium text-text-subtle">
-              · Last used
-            </span>
-          ) : null}
         </button>
       ) : null}
       {providers.google ? (
@@ -93,19 +101,15 @@ export function SocialAuthButtons({
           onClick={() => onSocial("google")}
           disabled={pendingProvider !== null}
           aria-busy={pendingProvider === "google"}
-          className={buttonClass}
+          className={cn(buttonClass, "relative")}
         >
+          {lastUsed === "google" ? <LastUsedBadge /> : null}
           {pendingProvider === "google" ? (
             <Loader2 className="size-4 animate-spin" aria-hidden="true" />
           ) : (
             <GoogleMark className="size-4" />
           )}
           {actionLabel} Google
-          {lastUsed === "google" ? (
-            <span className="text-[11px] font-medium text-text-subtle">
-              · Last used
-            </span>
-          ) : null}
         </button>
       ) : null}
     </div>
