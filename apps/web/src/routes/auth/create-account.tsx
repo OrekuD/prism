@@ -3,7 +3,7 @@ import React from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { authClient, fetchEnabledProviders } from "@/lib/authClient";
 import { AuthAlert } from "@/components/auth/auth-alert";
-import { AuthHeading, AuthShell, OrEmailDivider } from "@/components/auth/auth-shell";
+import { AuthShell, OrEmailDivider } from "@/components/auth/auth-shell";
 import { isNetworkError, oauthErrorMessage } from "@/components/auth/auth-errors";
 import { PasswordInput } from "@/components/auth/password-input";
 import {
@@ -110,34 +110,42 @@ export function CreateAccount() {
   return (
     <AuthShell>
       {registrationClosed && config ? (
-        <div className="grid gap-6">
-          <AuthHeading
-            title="Registration is closed."
-            description={
-              config.signupPolicy === "invite-only"
-                ? `Accounts on ${config.instanceName} are created by invitation only.`
-                : `New accounts on ${config.instanceName} are not being accepted right now.`
-            }
-          />
-          <p className="text-[14px] leading-relaxed text-text-muted">
+        <div className="text-center">
+          <h1 className="text-[22px] font-semibold leading-tight tracking-[-0.03em] text-text">
+            Registration is closed.
+          </h1>
+          <p className="mt-2 text-[13px] text-text-muted">
             {config.signupPolicy === "invite-only"
-              ? "Use the invite link you received, or sign in if you already have an account."
-              : "Sign in if you already have an account, or contact the instance operator."}
+              ? `Accounts on ${config.instanceName} are created by invitation only.`
+              : `New accounts on ${config.instanceName} are not being accepted right now.`}
           </p>
-          <Link
-            to="/auth/log-in"
-            className="inline-flex h-10 w-fit items-center rounded-full bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
-          >
-            Sign in
-          </Link>
+          <div className="mt-8 grid gap-5">
+            <p className="text-[13px] leading-relaxed text-text-muted">
+              {config.signupPolicy === "invite-only"
+                ? "Use the invite link you received, or sign in if you already have an account."
+                : "Sign in if you already have an account, or contact the instance operator."}
+            </p>
+            <Link
+              to="/auth/log-in"
+              className="inline-flex h-10 w-fit items-center justify-center self-center rounded-full bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
+            >
+              Sign in
+            </Link>
+          </div>
         </div>
       ) : (
-        <div className="grid gap-6">
-          <AuthHeading
-            title={selfHosted ? `Create an account on ${config?.instanceName ?? "this instance"}.` : "Create your account."}
-            description="A personal workspace is created for you automatically."
-          />
-          <div className="grid gap-4">
+        <div>
+          <div className="text-center">
+            <h1 className="text-[22px] font-semibold leading-tight tracking-[-0.03em] text-text">
+              {selfHosted
+                ? `Create an account on ${config?.instanceName ?? "this instance"}.`
+                : "Create your account."}
+            </h1>
+            <p className="mt-2 text-[13px] text-text-muted">
+              A personal workspace is created for you automatically.
+            </p>
+          </div>
+          <div className="mt-8 grid gap-5">
             {oauthError ? <AuthAlert>{oauthError}</AuthAlert> : null}
             {error ? <AuthAlert>{error}</AuthAlert> : null}
             <SocialAuthButtons
@@ -190,12 +198,15 @@ export function CreateAccount() {
                 Create account
               </button>
             </form>
-            <Link
-              to="/auth/log-in"
-              className="w-fit text-[13px] text-text-muted transition-colors duration-150 hover:text-text hover:underline"
-            >
-              Already have an account? Sign in
-            </Link>
+            <p className="text-center text-[13px] text-text-muted">
+              Already have an account?{" "}
+              <Link
+                to="/auth/log-in"
+                className="font-medium text-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus"
+              >
+                Sign in
+              </Link>
+            </p>
           </div>
         </div>
       )}

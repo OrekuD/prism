@@ -2,14 +2,13 @@ import { Loader2 } from "lucide-react";
 import React from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { authClient, fetchEnabledProviders } from "@/lib/authClient";
-import { AuthHeading, AuthShell, OrEmailDivider } from "@/components/auth/auth-shell";
+import { authClient } from "@/lib/authClient";
+import { AuthShell } from "@/components/auth/auth-shell";
 import { isNetworkError, oauthErrorMessage } from "@/components/auth/auth-errors";
 import { waitForSession } from "@/lib/session";
 import { resolveDefaultWorkspacePath } from "@/lib/workspace";
 import { PasswordInput } from "@/components/auth/password-input";
 import {
-  type EnabledProviders,
   SocialAuthButtons,
 } from "@/components/auth/social-auth-buttons";
 import { Input } from "@/components/ui/input";
@@ -25,17 +24,7 @@ export function LogIn() {
   React.useEffect(() => {
     if (oauthError) toast.error(oauthError);
   }, [oauthError]);
-  const [pendingProvider, setPendingProvider] = React.useState<
-    "github" | "google" | null
-  >(null);
-  const [providers, setProviders] = React.useState<EnabledProviders>({
-    github: false,
-    google: false,
-  });
-
-  React.useEffect(() => {
-    fetchEnabledProviders().then(setProviders);
-  }, []);
+  const [providerNotice, setProviderNotice] = React.useState<string | null>(null);
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -68,41 +57,28 @@ export function LogIn() {
     }
   };
 
-  const onSocial = async (provider: "github" | "google") => {
-    if (pendingProvider) return; // duplicate-submit guard
-    setPendingProvider(provider);
-    try {
-      const response = await authClient.signIn.social({
-        provider,
-        callbackURL: "/overview",
-      });
-      if (response.error) {
-        toast.error("Sign-in with the provider failed. Try again.");
-        return;
-      }
-      if (response.data?.url) {
-        window.location.assign(response.data.url);
-      }
-    } catch (err) {
-      toast.error(
-        isNetworkError(err)
-          ? "Cannot reach Prism. Check your connection and try again."
-          : "Sign-in with the provider failed. Try again.",
-      );
-      setPendingProvider(null);
-    }
+  const onSocial = (provider: "github" | "google") => {
+    // Presentation only until provider sign-in is enabled in a separate task.
+    setProviderNotice(`${provider === "github" ? "GitHub" : "Google"} sign-in isn't available yet. Please use email and password.`);
   };
 
   return (
-    <AuthShell>
-      <AuthHeading title="Welcome back." description="Use your Prism account to continue." />
-      <div className="mt-8 grid gap-4">
+    <AuthShell title="Sign in to Prism">
+      <div className="text-center">
+        <h1 className="text-[22px] font-semibold leading-tight tracking-[-0.03em] text-text">Sign in to Prism</h1>
+        <p className="mt-2 text-[13px] text-text-muted">Welcome back. Pick up where you left off.</p>
+      </div>
+      <div className="mt-8 grid gap-5">
         <SocialAuthButtons
-          providers={providers}
+          providers={{ github: true, google: true }}
           onSocial={onSocial}
-          pendingProvider={pendingProvider}
         />
-        <OrEmailDivider />
+        {providerNotice ? <p role="status" className="text-center text-[12px] leading-relaxed text-text-muted">{providerNotice}</p> : null}
+        <div className="flex items-center gap-4 py-1">
+          <span aria-hidden="true" className="h-px flex-1 bg-border" />
+          <span className="text-[12px] text-text-muted">or continue with email</span>
+          <span aria-hidden="true" className="h-px flex-1 bg-border" />
+        </div>
         <form onSubmit={onSubmit} className="grid gap-4">
           <div className="grid gap-2">
             <Label htmlFor="email">Email</Label>
@@ -111,6 +87,7 @@ export function LogIn() {
               type="email"
               autoComplete="email"
               required
+              placeholder="you@company.com"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               className="h-10"
@@ -123,6 +100,9 @@ export function LogIn() {
             value={password}
             onChange={setPassword}
           />
+          <Link to="/auth/forgot-password" className="-mt-1 justify-self-end text-[12px] text-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus">
+            Forgot password?
+          </Link>
           <button
             type="submit"
             aria-busy={isPending}
@@ -135,20 +115,15 @@ export function LogIn() {
             Sign in
           </button>
         </form>
-        <div className="flex items-center justify-between gap-4">
-          <Link
-            to="/auth/log-in"
-            className="text-[13px] text-text-muted transition-colors duration-150 hover:text-text hover:underline"
-          >
-            Forgot password
-          </Link>
+        <p className="mt-1 text-center text-[13px] text-text-muted">
+          New to Prism?{" "}
           <Link
             to="/auth/create-account"
-            className="text-[13px] font-medium text-link transition-colors duration-150 hover:underline"
+            className="font-medium text-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus"
           >
             Create account
           </Link>
-        </div>
+        </p>
       </div>
     </AuthShell>
   );

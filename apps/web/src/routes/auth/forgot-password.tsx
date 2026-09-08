@@ -3,7 +3,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { authClient } from "@/lib/authClient";
 import { AuthAlert } from "@/components/auth/auth-alert";
-import { AuthHeading, AuthShell } from "@/components/auth/auth-shell";
+import { AuthShell } from "@/components/auth/auth-shell";
 import { isNetworkError } from "@/components/auth/auth-errors";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,31 +39,39 @@ export function ForgotPassword() {
   };
 
   return (
-    <AuthShell>
+    <AuthShell title="Reset your password.">
       {submitted ? (
-        <div className="grid gap-6">
-          <AuthHeading
-            title="Check your email."
-            description="We sent you a link to set a new password."
-          />
-          <p className="text-[14px] leading-relaxed text-text-muted">
-            If an account exists for that address, the reset link is on its
-            way. It expires after a short window.
+        <div className="text-center">
+          <h1 className="text-[22px] font-semibold leading-tight tracking-[-0.03em] text-text">
+            Check your email.
+          </h1>
+          <p className="mt-2 text-[13px] text-text-muted">
+            We sent you a link to set a new password.
           </p>
-          <Link
-            to="/auth/log-in"
-            className="w-fit text-[13px] text-text-muted transition-colors duration-150 hover:text-text hover:underline"
-          >
-            Back to sign in
-          </Link>
+          <div className="mt-8 grid gap-5">
+            <p className="text-[13px] leading-relaxed text-text-muted">
+              If an account exists for that address, the reset link is on its
+              way. It expires after a short window.
+            </p>
+            <Link
+              to="/auth/log-in"
+              className="text-[13px] text-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus"
+            >
+              Back to sign in
+            </Link>
+          </div>
         </div>
       ) : (
-        <div className="grid gap-6">
-          <AuthHeading
-            title="Reset your password."
-            description="We'll email you a link to set a new password."
-          />
-          <form onSubmit={onSubmit} className="grid gap-4">
+        <div>
+          <div className="text-center">
+            <h1 className="text-[22px] font-semibold leading-tight tracking-[-0.03em] text-text">
+              Reset your password.
+            </h1>
+            <p className="mt-2 text-[13px] text-text-muted">
+              We'll email you a link to set a new password.
+            </p>
+          </div>
+          <form onSubmit={onSubmit} className="mt-8 grid gap-4">
             <div className="grid gap-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -89,12 +97,14 @@ export function ForgotPassword() {
               Send reset link
             </button>
           </form>
-          <Link
-            to="/auth/log-in"
-            className="w-fit text-[13px] text-text-muted transition-colors duration-150 hover:text-text hover:underline"
-          >
-            Back to sign in
-          </Link>
+          <p className="mt-5 text-center text-[13px] text-text-muted">
+            <Link
+              to="/auth/log-in"
+              className="font-medium text-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus"
+            >
+              Back to sign in
+            </Link>
+          </p>
         </div>
       )}
     </AuthShell>

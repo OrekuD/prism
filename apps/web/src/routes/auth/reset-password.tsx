@@ -3,7 +3,7 @@ import React from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { authClient } from "@/lib/authClient";
 import { AuthAlert } from "@/components/auth/auth-alert";
-import { AuthHeading, AuthShell } from "@/components/auth/auth-shell";
+import { AuthShell } from "@/components/auth/auth-shell";
 import { isNetworkError } from "@/components/auth/auth-errors";
 import { PasswordInput } from "@/components/auth/password-input";
 
@@ -49,41 +49,51 @@ export function ResetPassword() {
 
   if (!token || invalidLink) {
     return (
-      <AuthShell>
-        <div className="grid gap-6">
-          <AuthHeading
-            title="Invalid or expired link."
-            description="Reset links expire after a short window."
-          />
-          <p className="text-[14px] leading-relaxed text-text-muted">
-            Request a new link and try again. If the problem persists, check
-            that you opened the full link from the email.
+      <AuthShell title="Reset your password.">
+        <div className="text-center">
+          <h1 className="text-[22px] font-semibold leading-tight tracking-[-0.03em] text-text">
+            Invalid or expired link.
+          </h1>
+          <p className="mt-2 text-[13px] text-text-muted">
+            Reset links expire after a short window.
           </p>
-          <Link
-            to="/auth/forgot-password"
-            className="inline-flex h-10 w-fit items-center rounded-full bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
-          >
-            Request a new link
-          </Link>
-          <Link
-            to="/auth/log-in"
-            className="w-fit text-[13px] text-text-muted transition-colors duration-150 hover:text-text hover:underline"
-          >
-            Back to sign in
-          </Link>
+          <div className="mt-8 grid gap-5">
+            <p className="text-[13px] leading-relaxed text-text-muted">
+              Request a new link and try again. If the problem persists, check
+              that you opened the full link from the email.
+            </p>
+            <Link
+              to="/auth/forgot-password"
+              className="inline-flex h-10 w-fit items-center justify-center self-center rounded-full bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
+            >
+              Request a new link
+            </Link>
+            <p className="text-center text-[13px] text-text-muted">
+              <Link
+                to="/auth/log-in"
+                className="font-medium text-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus"
+              >
+                Back to sign in
+              </Link>
+            </p>
+          </div>
         </div>
       </AuthShell>
     );
   }
 
   return (
-    <AuthShell>
-      <div className="grid gap-6">
-        <AuthHeading
-          title="Set a new password."
-          description="Choose a strong password you don't use anywhere else."
-        />
-        <form onSubmit={onSubmit} className="grid gap-4">
+    <AuthShell title="Reset your password.">
+      <div>
+        <div className="text-center">
+          <h1 className="text-[22px] font-semibold leading-tight tracking-[-0.03em] text-text">
+            Set a new password.
+          </h1>
+          <p className="mt-2 text-[13px] text-text-muted">
+            Choose a strong password you don't use anywhere else.
+          </p>
+        </div>
+        <form onSubmit={onSubmit} className="mt-8 grid gap-4">
           <PasswordInput
             id="password"
             label="New password"
@@ -112,12 +122,14 @@ export function ResetPassword() {
             Reset password
           </button>
         </form>
-        <Link
-          to="/auth/log-in"
-          className="w-fit text-[13px] text-text-muted transition-colors duration-150 hover:text-text hover:underline"
-        >
-          Back to sign in
-        </Link>
+        <p className="mt-5 text-center text-[13px] text-text-muted">
+          <Link
+            to="/auth/log-in"
+            className="font-medium text-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus"
+          >
+            Back to sign in
+          </Link>
+        </p>
       </div>
     </AuthShell>
   );
