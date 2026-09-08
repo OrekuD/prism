@@ -118,7 +118,7 @@ export const ComposerDock = forwardRef<
             submit();
           }}
         >
-          <div className="flex min-h-11 flex-1 items-end gap-2.5 rounded-sm border border-border-strong bg-surface px-[14px] py-2 transition-colors duration-100 focus-within:border-accent">
+          <div className="flex min-h-11 flex-1 items-end gap-2.5 rounded-[16px] border border-border-strong bg-surface px-[14px] py-2 transition-colors duration-100 focus-within:border-accent">
             <label htmlFor="ask-prism-input" className="sr-only">
               Ask Prism a question
             </label>
@@ -153,7 +153,7 @@ export const ComposerDock = forwardRef<
               type="button"
               onClick={onStop}
               aria-label="Stop the running answer"
-              className="inline-flex h-11 w-11 flex-none items-center justify-center rounded-sm bg-danger text-white transition-opacity hover:opacity-90"
+              className="inline-flex h-11 w-11 flex-none items-center justify-center rounded-full bg-danger text-white transition-opacity hover:opacity-90"
             >
               <Square aria-hidden="true" className="h-4 w-4" />
             </button>
@@ -163,7 +163,7 @@ export const ComposerDock = forwardRef<
               aria-label="Send question"
               disabled={draft.trim().length === 0 || disabled}
               className={cn(
-                "inline-flex h-11 w-11 flex-none items-center justify-center rounded-sm bg-accent text-white shadow-[inset_0_1px_0_rgb(0_0_0/0.12),0_2px_8px_color-mix(in_oklab,var(--accent)_22%,transparent)] transition-all duration-100 hover:bg-accent-hover active:translate-y-px active:bg-accent-active active:shadow-none disabled:opacity-45",
+                "inline-flex h-11 w-11 flex-none items-center justify-center rounded-full bg-accent text-primary-foreground shadow-[inset_0_1px_0_rgb(0_0_0/0.12),0_2px_8px_color-mix(in_oklab,var(--accent)_22%,transparent)] transition-all duration-100 hover:bg-accent-hover active:translate-y-px active:bg-accent-active active:shadow-none disabled:opacity-45",
                 "[&_svg]:h-4 [&_svg]:w-4",
               )}
             >
@@ -193,7 +193,7 @@ export const ComposerDock = forwardRef<
                   onDraftChange(suggestion);
                   inputRef.current?.focus();
                 }}
-                className="inline-flex h-7 items-center rounded-sm border border-border px-3 font-mono text-xs font-normal text-text-muted transition-colors duration-100 hover:border-border-strong hover:bg-surface-hover hover:text-text"
+                className="inline-flex h-7 items-center rounded-full border border-border px-3 text-xs font-normal text-text-muted transition-colors duration-100 hover:border-border-strong hover:bg-surface-hover hover:text-text"
               >
                 {suggestion}
               </button>

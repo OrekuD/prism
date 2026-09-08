@@ -104,7 +104,7 @@ function PersonIdentity({ person }: { person: PeopleResource }) {
 	return (
 		<div className="flex min-w-0 items-center gap-3">
 			<span
-				className="grid size-8 shrink-0 place-items-center rounded-[2px] border border-border bg-surface font-mono text-[11px] font-semibold text-text-muted"
+				className="grid size-8 shrink-0 place-items-center rounded-[10px] border border-border bg-surface text-[11px] font-semibold text-text-muted"
 				aria-hidden="true"
 			>
 				{personInitials(person)}
@@ -115,7 +115,7 @@ function PersonIdentity({ person }: { person: PeopleResource }) {
 				</p>
 				{secondary && secondary !== name ? (
 					<p
-						className="mt-1 truncate font-mono text-[11px] leading-none text-text-subtle"
+						className="mt-1 truncate text-[11px] leading-none text-text-subtle"
 						title={secondary}
 					>
 						{secondary}
@@ -135,7 +135,7 @@ function TraitSummary({ person }: { person: PeopleResource }) {
 		<div className="flex min-w-0 flex-wrap gap-x-3 gap-y-1">
 			{traits.map(([key, value]) => (
 				<span key={key} className="min-w-0 text-[12px]">
-					<span className="font-mono text-text-subtle">{key}</span>{" "}
+					<span className="text-text-subtle">{key}</span>{" "}
 					<span className="text-text-muted">{value}</span>
 				</span>
 			))}
@@ -187,10 +187,10 @@ function PeopleMetrics({
 			{metrics.map((metric) => (
 				<MetricCard key={metric.label} label={metric.label} caption={metric.caption}>
 					{isLoading || metric.value === undefined ? (
-						<Skeleton className="h-[23px] w-14 rounded-[2px]" />
+						<Skeleton className="h-[23px] w-14 rounded-md" />
 					) : (
 						<span
-							className="font-mono text-[23px] leading-none tracking-[-0.06em] text-text tabular-nums"
+							className="text-[23px] leading-none tracking-[-0.06em] text-text tabular-nums"
 							title={numberFormat.format(metric.value)}
 						>
 							{compactNumber(metric.value)}
@@ -265,7 +265,7 @@ export function ProjectPeople() {
 				>
 					<SelectTrigger
 					aria-label="People date range"
-					className="h-9 w-[132px] font-mono text-[12px]"
+					className="h-9 w-[132px] text-[12px]"
 				>
 						<SelectValue />
 					</SelectTrigger>
@@ -289,7 +289,7 @@ export function ProjectPeople() {
 				>
 					<label
 						htmlFor="people-search"
-						className="mb-1.5 block font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted"
+						className="mb-1.5 block text-[13px] font-medium tracking-normal text-text-subtle"
 					>
 						Search by exact user ID
 					</label>
@@ -305,7 +305,7 @@ export function ProjectPeople() {
 								value={search}
 								onChange={(event) => setSearch(event.target.value)}
 								placeholder="user_123"
-								className="h-9 w-full rounded-[2px] border border-border bg-background py-2 pl-9 pr-8 font-mono text-[13px] text-text placeholder:text-text-subtle focus-visible:border-border-strong focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-border-strong [&::-webkit-search-cancel-button]:hidden"
+								className="h-9 w-full rounded-[10px] border border-border bg-background py-2 pl-9 pr-8 text-[13px] text-text placeholder:text-text-subtle focus-visible:border-border-strong focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-border-strong [&::-webkit-search-cancel-button]:hidden"
 							/>
 							{search ? (
 								<button
@@ -315,7 +315,7 @@ export function ProjectPeople() {
 										setSearch("");
 										updateUrl({ q: null });
 									}}
-									className="absolute right-1.5 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-[2px] text-text-subtle hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
+									className="absolute right-1.5 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-full text-text-subtle hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
 								>
 									<X className="size-3.5" />
 								</button>
@@ -334,7 +334,7 @@ export function ProjectPeople() {
 			<div className="mt-4 flex-1">
 				{isLoading ? (
 					<div
-						className="overflow-hidden rounded-[2px] border border-border"
+						className="overflow-hidden rounded-[16px] border border-border"
 						aria-busy="true"
 						aria-label="Loading people"
 					>
@@ -344,7 +344,7 @@ export function ProjectPeople() {
 						<div className="divide-y divide-border">
 							{Array.from({ length: 5 }).map((_, index) => (
 								<div key={`person-skeleton-${index}`} className="flex h-[58px] items-center gap-3 px-3.5">
-									<Skeleton className="size-8 rounded-[2px]" />
+									<Skeleton className="size-8 rounded-md" />
 									<Skeleton className="h-3 w-36" />
 									<Skeleton className="ml-auto h-3 w-20" />
 								</div>
@@ -364,7 +364,7 @@ export function ProjectPeople() {
 					/>
 				) : people.length > 0 ? (
 					<>
-						<div className="hidden overflow-hidden rounded-[2px] border border-border bg-background md:block">
+						<div className="hidden overflow-hidden rounded-[16px] border border-border bg-background md:block">
 							<Table aria-label="Identified people" className="table-fixed">
 								<TableHeader className="bg-surface/50">
 									<TableRow className="hover:bg-transparent">
@@ -382,19 +382,19 @@ export function ProjectPeople() {
 										return (
 											<TableRow key={person.personId} className="h-[58px] hover:bg-surface/60">
 												<TableCell>
-													<Link className="block rounded-[2px] focus-visible:outline-2 focus-visible:outline-focus" to={href} data-presentation-trigger={`person:${person.personId}`}>
+													<Link className="block rounded-md focus-visible:outline-2 focus-visible:outline-focus" to={href} data-presentation-trigger={`person:${person.personId}`}>
 														<PersonIdentity person={person} />
 													</Link>
 												</TableCell>
 												<TableCell>
-													<span className="block truncate font-mono text-[12px] text-text-muted" title={person.primaryExternalId ?? undefined}>
+													<span className="block truncate text-[12px] text-text-muted" title={person.primaryExternalId ?? undefined}>
 														{person.primaryExternalId ?? "Not set"}
 													</span>
 												</TableCell>
 												<TableCell><TraitSummary person={person} /></TableCell>
-												<TableCell className="text-right font-mono tabular-nums">{numberFormat.format(person.sessionCount)}</TableCell>
-												<TableCell className="text-right font-mono tabular-nums">{numberFormat.format(person.eventCount)}</TableCell>
-												<TableCell className="whitespace-nowrap text-right font-mono text-[12px] text-text-muted tabular-nums">
+												<TableCell className="text-right tabular-nums">{numberFormat.format(person.sessionCount)}</TableCell>
+												<TableCell className="text-right tabular-nums">{numberFormat.format(person.eventCount)}</TableCell>
+												<TableCell className="whitespace-nowrap text-right text-[12px] text-text-muted tabular-nums">
 													<time dateTime={new Date(person.lastSeenAt).toISOString()}>{timeLabel(person.lastSeenAt)}</time>
 												</TableCell>
 											</TableRow>
@@ -404,7 +404,7 @@ export function ProjectPeople() {
 							</Table>
 						</div>
 
-						<div className="divide-y divide-border rounded-[2px] border border-border md:hidden">
+						<div className="divide-y divide-border rounded-[16px] border border-border md:hidden">
 							{people.map((person) => (
 								<Link
 									key={person.personId}
@@ -413,7 +413,7 @@ export function ProjectPeople() {
 									className="block px-3.5 py-3.5 hover:bg-surface/60 focus-visible:outline-2 focus-visible:outline-focus"
 								>
 									<PersonIdentity person={person} />
-									<div className="mt-3 grid grid-cols-3 gap-3 font-mono text-[11px] text-text-subtle">
+									<div className="mt-3 grid grid-cols-3 gap-3 text-[11px] text-text-subtle">
 										<span>{person.sessionCount} sessions</span>
 										<span>{person.eventCount} events</span>
 										<span className="text-right">{timeLabel(person.lastSeenAt)}</span>
@@ -423,16 +423,16 @@ export function ProjectPeople() {
 						</div>
 
 						<div className="flex flex-wrap items-center justify-between gap-3 px-0.5 pt-3">
-							<p className="font-mono text-[12px] text-text-muted tabular-nums">
+							<p className="text-[12px] text-text-muted tabular-nums">
 								{isFetching
 									? "Loading..."
 									: `Page ${pageIndex + 1}. ${people.length} ${people.length === 1 ? "person" : "people"}${nextCursor ? ". More available" : ""}`}
 							</p>
 							<div className="flex items-center gap-4">
 								<div className="flex items-center gap-2">
-									<span className="hidden font-mono text-[11px] text-text-subtle sm:inline">Rows per page</span>
+									<span className="hidden text-[11px] text-text-subtle sm:inline">Rows per page</span>
 									<Select value={String(limit)} onValueChange={(value) => setLimit(Number(value))}>
-										<SelectTrigger className="h-8 w-[72px] font-mono text-[12px]"><SelectValue /></SelectTrigger>
+										<SelectTrigger className="h-8 w-[72px] text-[12px]"><SelectValue /></SelectTrigger>
 										<SelectContent side="top">
 											{[10, 25, 50].map((size) => <SelectItem key={size} value={String(size)}>{size}</SelectItem>)}
 										</SelectContent>

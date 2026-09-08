@@ -15,7 +15,7 @@ import type { SourceResource } from "@/network/queries/useSourcesQuery";
 
 function ConfiguredTag() {
   return (
-    <span className="inline-flex h-6 items-center gap-1.5 rounded-[2px] border border-success/40 px-2.5 font-mono text-[11px] font-medium text-success">
+    <span className="inline-flex h-6 items-center gap-1.5 rounded-full border border-success/40 px-2.5 text-[11px] font-medium text-success">
       <span
         className="size-[7px] rounded-full bg-success"
         aria-hidden="true"
@@ -121,7 +121,7 @@ export function SourceOverview({
       <span className="hidden">{installCmd}</span>
 
       {sources.length === 0 ? (
-        <div className="mt-3 flex flex-col items-center justify-center gap-2.5 rounded-[2px] p-6 text-center">
+        <div className="mt-3 flex flex-col items-center justify-center gap-2.5 rounded-[16px] p-6 text-center">
           <KeyRound className="size-[22px] text-text-subtle" aria-hidden="true" />
           <p className="font-mono text-[13px] text-text-muted">
             No {label} source in this project yet.

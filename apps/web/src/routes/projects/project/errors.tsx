@@ -71,7 +71,7 @@ const RANGE_LABEL: Record<string, string> = {
 };
 
 const TH =
-	"px-3.5 py-2.5 text-left font-mono text-[11px] font-medium uppercase tracking-[0.09em]";
+	"px-4 py-2.5 text-left text-[13px] font-medium tracking-normal text-text-subtle";
 
 const fmt = new Intl.NumberFormat();
 const fmtCompact = new Intl.NumberFormat("en-US", {
@@ -222,37 +222,37 @@ export function ProjectErrors() {
 			{isLoading ? (
 				<div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
 					<MetricCard label="Error events" caption="occurrences in range">
-						<Skeleton className="h-[23px] w-16 rounded-[2px]" />
+						<Skeleton className="h-[23px] w-16 rounded-md" />
 					</MetricCard>
 					<MetricCard label="Unresolved" caption="issues needing triage">
-						<Skeleton className="h-[23px] w-12 rounded-[2px]" />
+						<Skeleton className="h-[23px] w-12 rounded-md" />
 					</MetricCard>
 					<MetricCard label="New in range" caption="first seen this range">
-						<Skeleton className="h-[23px] w-12 rounded-[2px]" />
+						<Skeleton className="h-[23px] w-12 rounded-md" />
 					</MetricCard>
 					<MetricCard label="Users affected" caption="across all issues">
-						<Skeleton className="h-[23px] w-16 rounded-[2px]" />
+						<Skeleton className="h-[23px] w-16 rounded-md" />
 					</MetricCard>
 				</div>
 			) : (
 				<div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
 					<MetricCard label="Error events" caption="occurrences in range">
-						<span className="font-mono text-[23px] leading-none tracking-[-0.06em] text-text">
+						<span className="text-[23px] leading-none tracking-[-0.06em] text-text">
 							{fmtC(totalEvents)}
 						</span>
 					</MetricCard>
 					<MetricCard label="Unresolved" caption="issues needing triage">
-						<span className="font-mono text-[23px] leading-none tracking-[-0.06em] text-text">
+						<span className="text-[23px] leading-none tracking-[-0.06em] text-text">
 							{fmtC(unresolvedCount)}
 						</span>
 					</MetricCard>
 					<MetricCard label="New in range" caption="first seen this range">
-						<span className="font-mono text-[23px] leading-none tracking-[-0.06em] text-text">
+						<span className="text-[23px] leading-none tracking-[-0.06em] text-text">
 							{fmtC(newInRange)}
 						</span>
 					</MetricCard>
 					<MetricCard label="Users affected" caption="across all issues">
-						<span className="font-mono text-[23px] leading-none tracking-[-0.06em] text-text">
+						<span className="text-[23px] leading-none tracking-[-0.06em] text-text">
 							{fmtC(usersAffected)}
 						</span>
 					</MetricCard>
@@ -260,7 +260,7 @@ export function ProjectErrors() {
 			)}
 
 			<div className="mt-5 flex flex-wrap items-center gap-3">
-				<fieldset className="m-0 inline-flex min-w-0 items-center overflow-hidden rounded-[2px] border border-border p-0">
+				<fieldset className="m-0 inline-flex min-w-0 items-center overflow-hidden rounded-full border border-border p-0">
 					<legend className="sr-only">Issue status</legend>
 					{(["all", "unresolved", "resolved", "ignored"] as const).map(
 						(entry, index) => {
@@ -289,7 +289,7 @@ export function ProjectErrors() {
 									{entry === "all" ? "All" : STATUS_LABELS[entry]}
 									<span
 										className={cn(
-											"font-mono text-[13px] font-medium tabular-nums leading-none",
+											"text-[13px] font-medium tabular-nums leading-none",
 											status === entry ? "text-accent" : "text-text-muted",
 										)}
 									>
@@ -302,7 +302,7 @@ export function ProjectErrors() {
 				</fieldset>
 
 				<div className="ml-auto flex flex-wrap items-center gap-3">
-					<div className="flex h-9 items-center gap-2 rounded-[2px] border border-border-strong bg-surface px-2.5">
+					<div className="flex h-9 items-center gap-2 rounded-[10px] border border-border-strong bg-surface px-2.5">
 						<Search className="size-[14px] text-text-subtle" aria-hidden="true" />
 						<input
 							type="search"
@@ -383,7 +383,7 @@ export function ProjectErrors() {
 					</div>
 				) : !showEmpty ? (
 					<>
-						<div className="overflow-x-auto rounded-[2px] border border-border">
+						<div className="overflow-x-auto rounded-[16px] border border-border">
 							<table className="w-full border-collapse text-[13px]">
 								<thead>
 									<tr className="bg-canvas-subtle text-text-muted">
@@ -407,7 +407,7 @@ export function ProjectErrors() {
 													<td className="px-3.5 py-2.5">
 														<Skeleton className="h-3 w-[180px]" />
 														<div className="mt-1 flex gap-2">
-															<Skeleton className="h-4 w-12 rounded-[2px]" />
+															<Skeleton className="h-4 w-12 rounded-md" />
 															<Skeleton className="h-3 w-20" />
 														</div>
 													</td>
@@ -418,19 +418,19 @@ export function ProjectErrors() {
 														<Skeleton className="ml-auto h-3 w-10" />
 													</td>
 													<td className="px-3.5 py-2.5">
-														<Skeleton className="h-5 w-12 rounded-[2px]" />
+														<Skeleton className="h-5 w-12 rounded-md" />
 													</td>
 													<td className="px-3.5 py-2.5">
-														<Skeleton className="h-5 w-12 rounded-[2px]" />
-													</td>
-													<td className="px-3.5 py-2.5">
-														<Skeleton className="h-3 w-20" />
+														<Skeleton className="h-5 w-12 rounded-md" />
 													</td>
 													<td className="px-3.5 py-2.5">
 														<Skeleton className="h-3 w-20" />
 													</td>
 													<td className="px-3.5 py-2.5">
-														<Skeleton className="ml-auto size-8 rounded-[2px]" />
+														<Skeleton className="h-3 w-20" />
+													</td>
+													<td className="px-3.5 py-2.5">
+														<Skeleton className="ml-auto size-8 rounded-md" />
 													</td>
 												</tr>
 											))
@@ -453,7 +453,7 @@ export function ProjectErrors() {
 																	`/workspace/${wrkSlug ?? ""}/projects/${slug ?? ""}/errors/${issue.id}`,
 																);
 															}}
-															className="block max-w-full truncate text-left font-mono text-[13px] font-[550] text-text transition-colors hover:text-link group-hover:text-link focus-visible:outline-2 focus-visible:outline-focus"
+															className="block max-w-full truncate text-left text-[13px] font-[550] text-text transition-colors hover:text-link group-hover:text-link focus-visible:outline-2 focus-visible:outline-focus"
 															title={issue.title}
 															aria-label={`Open issue: ${issue.title}`}
 														>
@@ -465,16 +465,16 @@ export function ProjectErrors() {
 																level={issue.level}
 															/>
 															{issue.location ? (
-																<span className="min-w-0 truncate font-mono text-[11px] text-text-subtle">
+																<span className="min-w-0 truncate text-[11px] text-text-subtle">
 																	{issue.location}
 																</span>
 															) : null}
 														</div>
 													</td>
-													<td className="px-3.5 py-2.5 text-right font-mono text-text">
+													<td className="px-3.5 py-2.5 text-right text-text">
 														{fmtC(issue.count)}
 													</td>
-													<td className="px-3.5 py-2.5 text-right font-mono text-text">
+													<td className="px-3.5 py-2.5 text-right text-text">
 														{fmtC(issue.users)}
 													</td>
 													<td className="px-3.5 py-2.5">
@@ -504,7 +504,7 @@ export function ProjectErrors() {
 							</table>
 						</div>
 						<div className="flex flex-wrap items-center justify-between gap-3 px-0.5 pt-3">
-							<div className="font-mono text-[12px] text-text-muted tabular-nums">
+							<div className="text-[12px] text-text-muted tabular-nums">
 								{isFetching ? (
 									"Loading…"
 								) : (
@@ -517,14 +517,14 @@ export function ProjectErrors() {
 							</div>
 							<div className="flex items-center gap-4">
 								<div className="flex items-center gap-2">
-									<span className="hidden font-mono text-[11px] text-text-subtle sm:inline">
+									<span className="hidden text-[11px] text-text-subtle sm:inline">
 										Rows per page
 									</span>
 									<Select
 										value={String(limit)}
 										onValueChange={(value) => setLimit(Number(value))}
 									>
-										<SelectTrigger className="h-8 w-[72px] font-mono text-[12px]">
+										<SelectTrigger className="h-8 w-[72px] text-[12px]">
 											<SelectValue />
 										</SelectTrigger>
 										<SelectContent side="top">

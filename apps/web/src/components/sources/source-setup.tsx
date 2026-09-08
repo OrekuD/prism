@@ -26,7 +26,7 @@ function StepRow({
         {num}
       </span>
       <div className="min-w-0">
-        <div className="mb-2 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
+        <div className="mb-2 text-[13px] font-medium tracking-normal text-text-subtle">
           {label}
         </div>
         <CodeCopyRow command={code} language={language} />
@@ -99,7 +99,7 @@ track("page_viewed", { url: window.location.href });`
             aria-selected={framework === "javascript"}
             onClick={() => setFramework("javascript")}
             className={cn(
-              "h-[30px] rounded-[2px] px-3 font-mono text-[12px] transition-colors duration-150",
+              "h-[30px] rounded-full px-3 text-[12px] transition-colors duration-150",
               framework === "javascript"
                 ? "bg-accent text-primary-foreground"
                 : "text-text-muted hover:bg-surface-hover hover:text-text"
@@ -113,7 +113,7 @@ track("page_viewed", { url: window.location.href });`
             aria-selected={framework === "react"}
             onClick={() => setFramework("react")}
             className={cn(
-              "h-[30px] rounded-[2px] px-3 font-mono text-[12px] transition-colors duration-150",
+              "h-[30px] rounded-full px-3 text-[12px] transition-colors duration-150",
               framework === "react"
                 ? "bg-accent text-primary-foreground"
                 : "text-text-muted hover:bg-surface-hover hover:text-text"

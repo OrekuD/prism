@@ -136,10 +136,10 @@ function relativeTime(timestamp: number): string {
 function Kv({ k, children }: { k: string; children: React.ReactNode }) {
 	return (
 		<Frame inset className="min-w-0 px-3 py-3">
-			<div className="mb-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
+			<div className="mb-1.5 text-[13px] font-medium tracking-normal text-text-subtle">
 				{k}
 			</div>
-			<div className="break-words font-mono text-[12.5px] leading-[1.5] text-text">
+			<div className="break-words text-[12.5px] leading-[1.5] text-text">
 				{children}
 			</div>
 		</Frame>
@@ -156,8 +156,8 @@ function IdentityRow({ id, kind }: { id: string; kind: "external" | "anonymous" 
 				)}
 				aria-hidden="true"
 			/>
-			<span className="min-w-0 break-all font-mono text-[12px] text-text">{id}</span>
-			<span className="ml-auto shrink-0 font-mono text-[10px] uppercase tracking-[0.08em] text-text-subtle">
+			<span className="min-w-0 break-all text-[12px] text-text tabular-nums">{id}</span>
+			<span className="ml-auto shrink-0 text-[10px] tracking-normal text-text-subtle">
 				{kind}
 			</span>
 		</div>
@@ -191,12 +191,12 @@ function ActivityRow({
 					<time
 						dateTime={new Date(event.occurredAt).toISOString()}
 						title={fullTimestamp(event.occurredAt)}
-						className="shrink-0 font-mono text-[10.5px] leading-none text-text-subtle tabular-nums"
+						className="shrink-0 text-[10.5px] leading-none text-text-subtle tabular-nums"
 					>
 						{relativeTime(event.occurredAt)}
 					</time>
 				</span>
-				<span className="flex items-center gap-2 font-mono text-[10.5px] leading-none text-text-muted">
+				<span className="flex items-center gap-2 text-[10.5px] leading-none text-text-muted">
 					{platform ? (
 						<span
 							className={cn("size-1.5 shrink-0 rounded-full", platformDotClass(platform))}
@@ -275,7 +275,7 @@ function PersonEventLayer({
 			<div className="flex flex-col gap-4 p-6">
 				<Skeleton className="h-4 w-3/4" />
 				<Skeleton className="h-3 w-1/2" />
-				<Skeleton className="h-[120px] w-full rounded-[2px]" />
+				<Skeleton className="h-[120px] w-full rounded-md" />
 			</div>
 		);
 	}
@@ -284,13 +284,13 @@ function PersonEventLayer({
 			<p className="font-sans text-[14px] font-medium tracking-[-0.01em] text-text">
 				Event not in this person&apos;s activity
 			</p>
-			<p className="max-w-[320px] text-pretty font-mono text-[12.5px] leading-[1.5] text-text-muted">
+			<p className="max-w-[320px] text-pretty text-[12.5px] leading-[1.5] text-text-muted">
 				This event isn&apos;t in the loaded activity window. It may have
 				aged out or the person&apos;s activity was cleared.
 			</p>
 			<Link
 				to={{ pathname: personPath, search }}
-				className="mt-1 inline-flex h-8 items-center rounded-[2px] border border-border bg-surface px-3 font-mono text-[12px] font-medium text-text hover:bg-surface-hover"
+				className="mt-1 inline-flex h-8 items-center rounded-full border border-border bg-surface px-3 text-[12px] font-medium text-text hover:bg-surface-hover"
 			>
 				Back to person
 			</Link>
@@ -441,7 +441,7 @@ function PersonProfile({
 				</SheetTitle>
 				{showPrimaryId && data.primaryExternalId ? (
 					<p
-						className="truncate font-mono text-[12.5px] leading-none text-text-subtle"
+						className="truncate text-[12.5px] leading-none text-text-subtle"
 						title={data.primaryExternalId}
 					>
 						{data.primaryExternalId}
@@ -474,7 +474,7 @@ function PersonProfile({
 					</div>
 					{profileEntries.length > 0 ? (
 						<div className="mt-4">
-							<div className="mb-2 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
+							<div className="mb-2 text-[13px] font-medium tracking-normal text-text-subtle">
 								Supplied traits
 							</div>
 							<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -491,20 +491,20 @@ function PersonProfile({
 				<section>
 					<div className="flex items-center justify-between gap-2">
 						<SectionLabel className="leading-none">Linked identities</SectionLabel>
-						<span className="font-mono text-[10px] text-text-subtle">
+						<span className="text-[10px] text-text-subtle">
 							{externalCount} external · {anonymousCount} anonymous
 						</span>
 					</div>
 					<div className="mt-3">
 						{linkedIdsCount === 0 ? (
 							<Frame inset className="border-dashed bg-surface/40 px-3 py-6 text-center">
-								<p className="font-mono text-[12px] leading-none text-text-subtle">
+								<p className="text-[12px] leading-none text-text-subtle">
 									No linked identities.
 								</p>
 							</Frame>
 						) : (
 							<Frame inset className="p-0">
-								<div className="overflow-hidden rounded-[2px]">
+								<div className="overflow-hidden rounded-[16px]">
 									{data.externalIds.map((id) => (
 										<div key={`ext-${id}`} className="border-t border-border px-3 first:border-t-0">
 											<IdentityRow id={id} kind="external" />
@@ -512,7 +512,7 @@ function PersonProfile({
 									))}
 									{data.anonymousIds.length > 0 ? (
 										<details className="border-t border-border px-3 py-2">
-											<summary className="cursor-pointer font-mono text-[11px] text-text-subtle transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-focus">
+											<summary className="cursor-pointer text-[11px] text-text-subtle transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-focus">
 												Anonymous history ({data.anonymousIds.length})
 											</summary>
 											<div className="pb-1">
@@ -531,18 +531,18 @@ function PersonProfile({
 				<section>
 					<div className="flex items-center justify-between gap-2">
 						<SectionLabel className="leading-none">Activity</SectionLabel>
-						<span className="font-mono text-[10px] text-text-subtle">newest first</span>
+						<span className="text-[10px] text-text-subtle">newest first</span>
 					</div>
 					<div className="mt-3">
 						{activity.isLoading ? (
 							<div aria-busy="true" aria-label="Loading activity">
-								<Skeleton className="h-[46px] w-full rounded-[2px]" />
-								<Skeleton className="mt-2 h-[46px] w-full rounded-[2px]" />
-								<Skeleton className="mt-2 h-[46px] w-full rounded-[2px]" />
+								<Skeleton className="h-[46px] w-full rounded-md" />
+								<Skeleton className="mt-2 h-[46px] w-full rounded-md" />
+								<Skeleton className="mt-2 h-[46px] w-full rounded-md" />
 							</div>
 						) : activity.isError ? (
 							<Frame className="border-dashed bg-surface/40 px-3 py-6 text-center">
-								<p className="font-mono text-[12px] text-text-subtle">
+								<p className="text-[12px] text-text-subtle">
 									Could not load activity.
 								</p>
 								<Button
@@ -556,13 +556,13 @@ function PersonProfile({
 							</Frame>
 						) : (activity.data?.length ?? 0) === 0 ? (
 							<Frame className="border-dashed bg-surface/40 px-3 py-6 text-center">
-								<p className="font-mono text-[12px] leading-none text-text-subtle">
+								<p className="text-[12px] leading-none text-text-subtle">
 									No events recorded under this person&apos;s identities yet.
 								</p>
 							</Frame>
 						) : (
 							<Frame className="p-0">
-								<div className="overflow-hidden rounded-[2px]">
+								<div className="overflow-hidden rounded-[16px]">
 									<ol aria-label="Event timeline">
 										{activity.data?.map((event) => (
 											<ActivityRow
@@ -588,7 +588,7 @@ function PersonProfile({
 								htmlFor="delete-confirm"
 								className="w-full text-[12px] text-text-subtle"
 							>
-								Type <code className="font-mono">delete</code> to confirm:
+								Type <code className="tabular-nums">delete</code> to confirm:
 							</label>
 							<Input
 								id="delete-confirm"
@@ -596,7 +596,7 @@ function PersonProfile({
 								onChange={(event) => setConfirmText(event.target.value)}
 								placeholder="delete"
 								autoComplete="off"
-								className="h-8 min-w-0 flex-1 basis-40 font-mono text-[12.5px]"
+								className="h-8 min-w-0 flex-1 basis-40 tabular-nums text-[12.5px]"
 								aria-describedby="delete-confirm-hint"
 							/>
 							<p id="delete-confirm-hint" className="sr-only">
@@ -635,7 +635,7 @@ function PersonProfile({
 					) : (
 						<div className="flex w-full items-center gap-2">
 							<span
-								className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-subtle"
+								className="min-w-0 flex-1 truncate text-[11px] text-text-subtle"
 								title={data.personId}
 							>
 								{data.personId}
@@ -660,7 +660,7 @@ function PersonProfile({
 								type="button"
 								size="sm"
 								variant="destructive"
-								className="h-8 shrink-0 bg-danger text-white hover:bg-danger/90"
+								className="h-8 shrink-0 bg-danger text-primary-foreground hover:bg-danger/90"
 								onClick={() => setConfirmingDelete(true)}
 							>
 								Delete person
@@ -670,7 +670,7 @@ function PersonProfile({
 				) : (
 					<div className="flex w-full items-center gap-2">
 						<span
-							className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-subtle"
+							className="min-w-0 flex-1 truncate text-[11px] text-text-subtle"
 							title={data.personId}
 						>
 							{data.personId}

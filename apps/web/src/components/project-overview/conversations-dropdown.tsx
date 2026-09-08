@@ -99,7 +99,7 @@ export function ConversationsDropdown({
         <button
           type="button"
           aria-label="Conversations"
-          className="flex h-[30px] max-w-[260px] items-center gap-1.5 rounded-[2px] border border-border bg-surface py-0 pl-2.5 pr-2 text-[12.5px] font-medium text-text transition-colors hover:border-border-strong hover:bg-surface-hover"
+          className="flex h-[30px] max-w-[260px] items-center gap-1.5 rounded-[10px] border border-border bg-surface py-0 pl-2.5 pr-2 text-[12.5px] font-medium text-text transition-colors hover:border-border-strong hover:bg-surface-hover"
         >
           <MessageSquareText
             aria-hidden="true"
@@ -135,7 +135,7 @@ export function ConversationsDropdown({
           <div key={group.label}>
             <p
               aria-hidden="true"
-              className="px-2 pb-0.5 pt-2 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle"
+              className="px-2 pb-0.5 pt-2 text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle"
             >
               {group.label}
             </p>

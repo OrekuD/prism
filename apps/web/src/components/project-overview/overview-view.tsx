@@ -34,17 +34,17 @@ export function OverviewView({
     return (
       <div className="flex flex-1 flex-col pb-2" aria-label="Loading project overview">
         <div className="mb-1.5 mt-10">
-          <div className="h-7 w-56 animate-pulse rounded-sm bg-border-subtle/40" />
-          <div className="mt-2 h-4 w-96 animate-pulse rounded-sm bg-border-subtle/40" />
+          <div className="h-7 w-56 animate-pulse rounded-md bg-border-subtle/40" />
+          <div className="mt-2 h-4 w-96 animate-pulse rounded-md bg-border-subtle/40" />
         </div>
-        <div className="mb-3 mt-9 h-4 w-40 animate-pulse rounded-sm bg-border-subtle/40" />
-        <div className="h-48 animate-pulse rounded-sm bg-border-subtle/40" />
-        <div className="mb-3 mt-9 h-4 w-40 animate-pulse rounded-sm bg-border-subtle/40" />
+        <div className="mb-3 mt-9 h-4 w-40 animate-pulse rounded-md bg-border-subtle/40" />
+        <div className="h-48 animate-pulse rounded-md bg-border-subtle/40" />
+        <div className="mb-3 mt-9 h-4 w-40 animate-pulse rounded-md bg-border-subtle/40" />
         <div className="grid grid-cols-3 gap-2.5">
           {[0, 1, 2].map((index) => (
             <div
               key={index}
-              className="h-[108px] animate-pulse rounded-sm bg-border-subtle/40"
+              className="h-[108px] animate-pulse rounded-md bg-border-subtle/40"
             />
           ))}
         </div>
@@ -55,7 +55,7 @@ export function OverviewView({
     return (
       <div
         role="alert"
-        className="mt-10 rounded-sm border border-danger/40 bg-danger/5 p-5"
+        className="mt-10 rounded-[16px] border border-danger/40 bg-danger/5 p-5"
       >
         <h1 className="text-[26px] font-semibold leading-[1.2] tracking-[-0.022em]">
           Project overview unavailable

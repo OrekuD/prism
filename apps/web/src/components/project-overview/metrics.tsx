@@ -14,23 +14,23 @@ import { cn } from "@/lib/utils";
 function TrendBadge({ fact }: { fact: MetricFact }) {
   const comparison = fact.comparison;
   if (comparison === null)
-    return <span className="trend font-mono text-[10px] text-text-muted">—</span>;
+    return <span className="trend text-[10px] text-text-muted">—</span>;
   if (comparison.kind === "new")
     return (
-      <span className="inline-flex items-center gap-0.5 font-mono text-[10px] text-success">
+      <span className="inline-flex items-center gap-0.5 text-[10px] text-success">
         new
       </span>
     );
   if (comparison.kind === "no-prior-data")
     return (
-      <span className="inline-flex items-center gap-0.5 font-mono text-[10px] text-text-muted">
+      <span className="inline-flex items-center gap-0.5 text-[10px] text-text-muted">
         no prior data
       </span>
     );
   const percent = Math.abs(comparison.percent ?? 0);
   if (comparison.direction === "flat")
     return (
-      <span className="inline-flex items-center gap-0.5 font-mono text-[10px] text-text-muted">
+      <span className="inline-flex items-center gap-0.5 text-[10px] text-text-muted">
         <span aria-hidden="true">—</span>
         <span>{percent}%</span>
       </span>
@@ -39,7 +39,7 @@ function TrendBadge({ fact }: { fact: MetricFact }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-0.5 font-mono text-[10px]",
+        "inline-flex items-center gap-0.5 text-[10px]",
         down ? "text-danger" : "text-success",
       )}
     >
@@ -103,14 +103,14 @@ export function MetricCard({
     <Frame className="flex min-h-[108px] flex-col bg-surface p-[16px_12px_12px]">
       <div className="flex items-center justify-between gap-2">
         <span
-          className="whitespace-nowrap font-mono text-xl tracking-[-0.05em] text-text tabular-nums"
+          className="whitespace-nowrap text-xl tracking-[-0.05em] text-text tabular-nums"
           aria-label={`${fact.label}: ${fact.formattedValue}`}
         >
           {fact.value === null ? "—" : fact.formattedValue}
         </span>
         <TrendBadge fact={fact} />
       </div>
-      <span className="mt-1.5 block font-mono text-[10px] font-medium uppercase leading-[1.2] tracking-[0.04em] text-text-muted">
+      <span className="mt-1.5 block text-[10px] font-medium uppercase leading-[1.2] tracking-[0.04em] text-text-muted">
         {fact.label}
       </span>
       {spark ? (

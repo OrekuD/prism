@@ -29,6 +29,7 @@ import {
   conversationDetailKey,
   useAssistantConversationQuery,
   useAssistantConversationsQuery,
+  usePrefetchAssistantConversation,
   useSendAssistantMessage,
   type StreamState,
 } from "@/network/queries/useAssistantConversations";
@@ -76,6 +77,7 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
 
   const overview = useProjectOverviewQuery(slug, { range });
   const conversations = useAssistantConversationsQuery(slug);
+  const prefetchConversation = usePrefetchAssistantConversation(slug);
   const detail = useAssistantConversationQuery(
     slug,
     view === "chat" ? chatSlug : null
@@ -161,7 +163,12 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
     [goToOverview, openFreshChat]
   );
 
-  const chatMissing = view === "chat" && chatSlug !== null && detail.isError;
+  const chatFetchFailed = view === "chat" && chatSlug !== null && detail.isError;
+  const chatErrorStatus = (
+    detail.error as { response?: { status?: number } } | null
+  )?.response?.status;
+  const chatMissing = chatFetchFailed && chatErrorStatus === 404;
+  const chatLoadFailed = chatFetchFailed && !chatMissing;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: refocus after any view change; the effect reads no reactive values
   useEffect(() => {
@@ -368,6 +375,7 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
             selectedSlug={chatSlug}
             onSelect={openChat}
             onNewChat={newChat}
+            onPrefetch={prefetchConversation}
           />
         ) : null}
         <div className="ml-auto">
@@ -398,7 +406,7 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
       ) : chatMissing ? (
         <div
           role="alert"
-          className="mt-6 rounded-[2px] border border-border p-5"
+          className="mt-6 rounded-[16px] border border-border p-5"
         >
           <h1 className="text-[26px] font-semibold leading-[1.2] tracking-[-0.022em]">
             That chat isn&apos;t available
@@ -410,19 +418,49 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
           <button
             type="button"
             onClick={goToOverview}
-            className="mt-3 inline-flex h-9 items-center justify-center gap-2 whitespace-nowrap rounded-[2px] border border-accent bg-accent px-3.5 text-[13px] font-medium text-white transition-colors duration-100 hover:border-accent-hover hover:bg-accent-hover"
+            className="mt-3 inline-flex h-9 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-accent px-4 text-sm font-medium text-primary-foreground transition-colors duration-100 hover:bg-accent-hover"
           >
             Back to overview
           </button>
         </div>
       ) : (
+        <>
+        {chatLoadFailed ? (
+          <div role="alert" className="mt-6 rounded-[16px] border border-border p-5">
+            {detail.data ? (
+              <p className="text-sm text-text-muted">
+                Couldn't refresh this chat. Showing saved messages.
+              </p>
+            ) : (
+              <>
+                <h1 className="text-[26px] font-semibold leading-[1.2] tracking-[-0.022em]">
+                  Couldn't load this chat
+                </h1>
+                <p className="mt-1.5 text-sm text-text-muted">
+                  Something went wrong while loading the conversation. Try again.
+                </p>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => { void detail.refetch(); }}
+              disabled={detail.isFetching}
+              aria-busy={detail.isFetching}
+              className="mt-3 inline-flex h-9 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-accent px-4 text-sm font-medium text-primary-foreground transition-colors duration-100 hover:bg-accent-hover disabled:opacity-50"
+            >
+              {detail.isFetching ? "Retrying…" : "Retry"}
+            </button>
+          </div>
+        ) : null}
+        {!chatLoadFailed || detail.data ? (
         <ChatView
           detail={detail.data ?? null}
           pendingMessage={
             pendingTurn && !persistedUser ? pendingTurn.content : null
           }
           stream={answerPersisted ? null : activeStream}
-          streaming={active || detail.isLoading}
+          streaming={active}
+          loading={detail.isLoading}
           sendError={pendingMessage?.chat === chatSlug ? sendError : null}
           onBack={goToOverview}
           onAsk={(prompt) => {
@@ -440,6 +478,8 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
               : undefined
           }
         />
+        ) : null}
+        </>
       )}
 
       {/* Bottom clearance for the fixed dock. */}

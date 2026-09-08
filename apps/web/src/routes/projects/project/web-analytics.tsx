@@ -257,7 +257,7 @@ export function ProjectWebAnalytics() {
         {snapshotCtx ? (
           <div
             role="status"
-            className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-[2px] border border-border bg-canvas px-3 py-2"
+            className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-[12px] border border-border bg-canvas px-3 py-2"
           >
             <span className="text-[13px] text-text-muted">
               This snapshot link is invalid or expired.
@@ -265,7 +265,7 @@ export function ProjectWebAnalytics() {
             <button
               type="button"
               onClick={exitSnapshot}
-              className="inline-flex h-8 items-center rounded-[2px] border border-border bg-canvas px-3 text-[13px] font-medium hover:bg-surface-hover"
+              className="inline-flex h-8 items-center rounded-full border border-border bg-canvas px-3 text-[13px] font-medium hover:bg-surface-hover"
             >
               Exit snapshot
             </button>
@@ -278,7 +278,7 @@ export function ProjectWebAnalytics() {
             <button
               type="button"
               onClick={() => query.refetch()}
-              className="inline-flex h-8 items-center rounded-[2px] border border-border bg-canvas px-3 text-[13px] font-medium hover:bg-surface-hover"
+              className="inline-flex h-8 items-center rounded-full border border-border bg-canvas px-3 text-[13px] font-medium hover:bg-surface-hover"
             >
               Retry
             </button>
@@ -300,7 +300,7 @@ export function ProjectWebAnalytics() {
             <button
               type="button"
               onClick={resetFilters}
-              className="inline-flex h-8 items-center rounded-[2px] border border-border bg-canvas px-3 text-[13px] font-medium hover:bg-surface-hover"
+              className="inline-flex h-8 items-center rounded-full border border-border bg-canvas px-3 text-[13px] font-medium hover:bg-surface-hover"
             >
               Reset
             </button>
@@ -311,7 +311,7 @@ export function ProjectWebAnalytics() {
               setParam({ src: v === "all" ? null : v, host: null })
             }
           >
-            <SelectTrigger className="h-8 w-[170px] rounded-[2px] border-border bg-canvas text-[13px] data-[size=default]:h-8">
+            <SelectTrigger className="h-8 w-[170px] rounded-[10px] border-border bg-canvas text-[13px] data-[size=default]:h-8">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -329,7 +329,7 @@ export function ProjectWebAnalytics() {
               value={effHost}
               onValueChange={(v) => setParam({ host: v === "all" ? null : v })}
             >
-              <SelectTrigger className="h-8 w-[150px] rounded-[2px] border-border bg-canvas text-[13px] data-[size=default]:h-8">
+              <SelectTrigger className="h-8 w-[150px] rounded-[10px] border-border bg-canvas text-[13px] data-[size=default]:h-8">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -349,7 +349,7 @@ export function ProjectWebAnalytics() {
               setParam({ traffic: v === "all" ? "all" : null })
             }
           >
-            <SelectTrigger className="h-8 w-[140px] rounded-[2px] border-border bg-canvas text-[13px] data-[size=default]:h-8">
+            <SelectTrigger className="h-8 w-[140px] rounded-[10px] border-border bg-canvas text-[13px] data-[size=default]:h-8">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -364,7 +364,7 @@ export function ProjectWebAnalytics() {
             value={normalizedRange}
             onValueChange={(v) => setParam({ range: v })}
           >
-            <SelectTrigger className="h-8 w-[90px] rounded-[2px] border-border bg-canvas text-[13px] data-[size=default]:h-8">
+            <SelectTrigger className="h-8 w-[90px] rounded-[10px] border-border bg-canvas text-[13px] data-[size=default]:h-8">
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="min-w-[90px]">
@@ -381,7 +381,7 @@ export function ProjectWebAnalytics() {
             aria-pressed={compare}
             onClick={() => setParam({ cmp: compare ? "off" : null })}
             className={cn(
-              "inline-flex h-8 items-center justify-center rounded-[2px] border px-3 text-[13px] font-medium leading-none transition-colors",
+              "inline-flex h-8 items-center justify-center rounded-full border px-3 text-[13px] font-medium leading-none transition-colors",
               compare
                 ? "border-accent/45 bg-accent-soft text-text"
                 : "border-border bg-canvas text-text-muted hover:bg-surface-hover hover:text-text"
@@ -392,19 +392,19 @@ export function ProjectWebAnalytics() {
 
           <span
             title="All trend buckets and ranges are evaluated in UTC, not your local timezone"
-            className="font-mono text-[11px] font-medium tracking-[0.04em] text-text-subtle"
+            className="text-[11px] font-medium tracking-[0.04em] text-text-subtle"
           >
             UTC
           </span>
 
           {path ? (
-            <span className="inline-flex h-8 items-center gap-1.5 rounded-[2px] border border-border bg-canvas px-2 font-mono text-[11px] font-medium text-accent">
+            <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-canvas px-2 text-[11px] font-medium text-accent">
               <span className="max-w-[200px] truncate">{path}</span>
               <button
                 type="button"
                 aria-label="Remove page filter"
                 onClick={() => setParam({ path: null })}
-                className="ml-0.5 flex size-5 items-center justify-center rounded-[2px] hover:bg-accent/20"
+                className="ml-0.5 flex size-5 items-center justify-center rounded-full hover:bg-accent/20"
               >
                 ×
               </button>
@@ -417,7 +417,7 @@ export function ProjectWebAnalytics() {
       {snapshotCtx ? (
         <div
           role="status"
-          className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-[2px] border border-border bg-canvas px-3 py-2"
+          className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-[12px] border border-border bg-canvas px-3 py-2"
         >
           <span className="text-[13px] text-text-muted">
             Viewing a shared snapshot — range and sources are fixed by the link.
@@ -425,7 +425,7 @@ export function ProjectWebAnalytics() {
           <button
             type="button"
             onClick={exitSnapshot}
-            className="inline-flex h-8 items-center rounded-[2px] border border-border bg-canvas px-3 text-[13px] font-medium hover:bg-surface-hover"
+            className="inline-flex h-8 items-center rounded-full border border-border bg-canvas px-3 text-[13px] font-medium hover:bg-surface-hover"
           >
             Exit snapshot
           </button>
@@ -484,14 +484,14 @@ export function ProjectWebAnalytics() {
               key={label}
               className="flex h-[86px] min-w-0 flex-col justify-between bg-canvas p-4"
             >
-              <span className="font-mono text-[10px] font-medium uppercase tracking-[0.09em] text-text-muted">
+              <span className="text-[13px] font-medium tracking-normal text-text-subtle">
                 {label}
               </span>
               <div className="flex h-[22px] items-center justify-between gap-2">
                 {loading || value === undefined ? (
                   <Skeleton className="h-6 w-20" />
                 ) : (
-                  <span className="whitespace-nowrap font-mono text-[22px] leading-none tracking-[-0.06em] tabular-nums">
+                  <span className="whitespace-nowrap text-[22px] leading-none tracking-[-0.06em] tabular-nums">
                     {value === null
                       ? "—"
                       : typeof value === "number"
@@ -526,14 +526,14 @@ export function ProjectWebAnalytics() {
             <div className="flex flex-wrap items-center gap-3">
               {compare ? (
                 <div className="flex items-center gap-4">
-                  <span className="inline-flex items-center gap-1.5 font-mono text-[11px] tracking-[0.04em] text-text-muted">
+                  <span className="inline-flex items-center gap-1.5 text-[11px] tracking-[0.04em] text-text-muted">
                     <i
                       className="inline-block size-2 rounded-[1px]"
                       style={{ background: SERIES_META[series].color }}
                     />
                     Current
                   </span>
-                  <span className="inline-flex items-center gap-1.5 font-mono text-[11px] tracking-[0.04em] text-text-muted">
+                  <span className="inline-flex items-center gap-1.5 text-[11px] tracking-[0.04em] text-text-muted">
                     <i className="inline-block h-0.5 w-3.5 bg-[repeating-linear-gradient(90deg,var(--text-subtle)_0_4px,transparent_4px_7px)]" />
                     Previous
                   </span>
@@ -568,7 +568,7 @@ export function ProjectWebAnalytics() {
 
       {/* empty overall state — replaces tables + trend when no page views */}
       {isEmpty ? (
-        <div className="rounded-[2px] border border-dashed border-border bg-canvas p-8 text-center">
+        <div className="rounded-[16px] border border-dashed border-border bg-canvas p-8 text-center">
           <h3 className="text-[15px] font-medium">No page views yet</h3>
           <p className="mx-auto mt-1.5 max-w-[480px] text-sm leading-6 text-text-muted">
             Web analytics appears here once your Web source sends page views.
@@ -577,7 +577,7 @@ export function ProjectWebAnalytics() {
             href="https://prism-analytics-docs.vercel.app/docs/features/page-analytics"
             target="_blank"
             rel="noreferrer"
-            className="mt-4 inline-flex h-8 items-center gap-1.5 rounded-[2px] bg-accent px-3.5 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/90"
+            className="mt-4 inline-flex h-8 items-center gap-1.5 rounded-full bg-accent px-3.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-accent/90"
           >
             View page analytics docs
             <span aria-hidden="true">→</span>
@@ -623,12 +623,12 @@ export function ProjectWebAnalytics() {
               </div>
               {loading || !data ? (
                 <div className="space-y-2">
-                  <Skeleton className="h-8 w-full rounded-[2px]" />
-                  <Skeleton className="h-[42px] w-full rounded-[2px]" />
-                  <Skeleton className="h-[42px] w-full rounded-[2px]" />
-                  <Skeleton className="h-[42px] w-full rounded-[2px]" />
-                  <Skeleton className="h-[42px] w-full rounded-[2px]" />
-                  <Skeleton className="h-[42px] w-full rounded-[2px]" />
+                  <Skeleton className="h-8 w-full rounded-md" />
+                  <Skeleton className="h-[42px] w-full rounded-md" />
+                  <Skeleton className="h-[42px] w-full rounded-md" />
+                  <Skeleton className="h-[42px] w-full rounded-md" />
+                  <Skeleton className="h-[42px] w-full rounded-md" />
+                  <Skeleton className="h-[42px] w-full rounded-md" />
                 </div>
               ) : data.pages.length === 0 ? (
                 <p className="py-10 text-center text-sm text-text-subtle">
@@ -687,7 +687,7 @@ export function ProjectWebAnalytics() {
                                   }
                                   className="block w-full text-left"
                                 >
-                                  <b className="block truncate font-mono text-[12.5px] font-medium">
+                                  <b className="block truncate text-[12.5px] font-medium">
                                     {p.path}
                                   </b>
                                   {/* <span className="block truncate text-[11px] text-text-muted">
@@ -728,7 +728,7 @@ export function ProjectWebAnalytics() {
                                     }
                                     className="block w-full text-left"
                                   >
-                                    <b className="block truncate font-mono text-[12.5px] font-medium">
+                                    <b className="block truncate text-[12.5px] font-medium">
                                       {p.path}
                                     </b>
                                     {/* <span className="block truncate text-[11px] text-text-muted">
@@ -795,12 +795,12 @@ export function ProjectWebAnalytics() {
               </div>
               {loading || !data ? (
                 <div className="space-y-2">
-                  <Skeleton className="h-6 w-full rounded-[2px]" />
-                  <Skeleton className="h-[36px] w-full rounded-[2px]" />
-                  <Skeleton className="h-[36px] w-full rounded-[2px]" />
-                  <Skeleton className="h-[36px] w-full rounded-[2px]" />
-                  <Skeleton className="h-[36px] w-full rounded-[2px]" />
-                  <Skeleton className="h-[36px] w-full rounded-[2px]" />
+                  <Skeleton className="h-6 w-full rounded-md" />
+                  <Skeleton className="h-[36px] w-full rounded-md" />
+                  <Skeleton className="h-[36px] w-full rounded-md" />
+                  <Skeleton className="h-[36px] w-full rounded-md" />
+                  <Skeleton className="h-[36px] w-full rounded-md" />
+                  <Skeleton className="h-[36px] w-full rounded-md" />
                 </div>
               ) : acqDim === "referrers" ? (
                 data.referrers.length === 0 ? (
@@ -923,11 +923,11 @@ export function ProjectWebAnalytics() {
               </div>
               {loading || !data ? (
                 <div className="space-y-2">
-                  <Skeleton className="h-6 w-full rounded-[2px]" />
-                  <Skeleton className="h-[36px] w-full rounded-[2px]" />
-                  <Skeleton className="h-[36px] w-full rounded-[2px]" />
-                  <Skeleton className="h-[36px] w-full rounded-[2px]" />
-                  <Skeleton className="h-[36px] w-full rounded-[2px]" />
+                  <Skeleton className="h-6 w-full rounded-md" />
+                  <Skeleton className="h-[36px] w-full rounded-md" />
+                  <Skeleton className="h-[36px] w-full rounded-md" />
+                  <Skeleton className="h-[36px] w-full rounded-md" />
+                  <Skeleton className="h-[36px] w-full rounded-md" />
                 </div>
               ) : (
                 <AnalyticsTable>
@@ -954,7 +954,7 @@ export function ProjectWebAnalytics() {
                       >
                         <AnalyticsTableCell>
                           <span className="inline-flex items-center gap-1.5">
-                            <span className="inline-flex h-[18px] min-w-[26px] items-center justify-center rounded-[2px] border border-border px-1 font-mono text-[9.5px] font-medium tracking-[0.06em] text-text-muted">
+                            <span className="inline-flex h-[18px] min-w-[26px] items-center justify-center rounded-full border border-border px-1 text-[9.5px] font-medium tracking-[0.06em] text-text-muted">
                               {r.countryCode ?? "?"}
                             </span>
                             {r.countryCode ?? "Unknown"}
@@ -1025,11 +1025,11 @@ export function ProjectWebAnalytics() {
               </div>
               {loading || !data ? (
                 <div className="space-y-2">
-                  <Skeleton className="h-8 w-full rounded-[2px]" />
-                  <Skeleton className="h-[36px] w-full rounded-[2px]" />
-                  <Skeleton className="h-[36px] w-full rounded-[2px]" />
-                  <Skeleton className="h-[36px] w-full rounded-[2px]" />
-                  <Skeleton className="h-[36px] w-full rounded-[2px]" />
+                  <Skeleton className="h-8 w-full rounded-md" />
+                  <Skeleton className="h-[36px] w-full rounded-md" />
+                  <Skeleton className="h-[36px] w-full rounded-md" />
+                  <Skeleton className="h-[36px] w-full rounded-md" />
+                  <Skeleton className="h-[36px] w-full rounded-md" />
                 </div>
               ) : (
                 <AnalyticsTable>
@@ -1155,7 +1155,7 @@ export function ProjectWebAnalytics() {
                               }}
                               className="block w-full text-left"
                             >
-                              <b className="block truncate font-mono text-[12.5px] font-medium">
+                              <b className="block truncate text-[12.5px] font-medium">
                                 {p.path}
                               </b>
                               {/* <span className="block truncate text-[11px] text-text-muted">
@@ -1193,7 +1193,7 @@ export function ProjectWebAnalytics() {
                                 }}
                                 className="block w-full text-left"
                               >
-                                <b className="block truncate font-mono text-[12.5px] font-medium">
+                                <b className="block truncate text-[12.5px] font-medium">
                                   {p.path}
                                 </b>
                                 {/* <span className="block truncate text-[11px] text-text-muted">
@@ -1333,7 +1333,7 @@ export function ProjectWebAnalytics() {
                     >
                       <AnalyticsTableCell>
                         <span className="inline-flex items-center gap-1.5">
-                          <span className="inline-flex h-[18px] min-w-[26px] items-center justify-center rounded-[2px] border border-border px-1 font-mono text-[9.5px] font-medium tracking-[0.06em] text-text-muted">
+                          <span className="inline-flex h-[18px] min-w-[26px] items-center justify-center rounded-full border border-border px-1 text-[9.5px] font-medium tracking-[0.06em] text-text-muted">
                             {r.countryCode ?? "?"}
                           </span>
                           {r.countryCode ?? "Unknown"}

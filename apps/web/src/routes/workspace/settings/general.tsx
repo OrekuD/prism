@@ -77,7 +77,12 @@ export function WorkspaceSettingsGeneral() {
           </p>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button disabled={!workspace}>Rename workspace</Button>
+              <Button
+                disabled={!workspace}
+                className="rounded-full border border-black/10 bg-white text-black hover:bg-neutral-200"
+              >
+                Rename
+              </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
@@ -139,8 +144,12 @@ export function WorkspaceSettingsGeneral() {
               workspace ? { id: workspace.id, name: workspace.name } : null
             }
           >
-            <Button variant="destructive" disabled={!canDelete}>
-              Delete workspace
+            <Button
+              variant="destructive"
+              disabled={!canDelete}
+              className="rounded-full"
+            >
+              Delete
             </Button>
           </DeleteWorkspace>
         </div>

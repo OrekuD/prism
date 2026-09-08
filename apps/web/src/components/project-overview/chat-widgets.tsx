@@ -39,8 +39,8 @@ function ArtifactShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="mt-2.5 overflow-hidden rounded-sm border border-border bg-surface-raised">
-      <div className="px-3.5 pt-2.5 font-mono text-[10px] font-medium uppercase leading-[1.4] tracking-[0.07em] text-text-subtle">
+    <div className="mt-2.5 overflow-hidden rounded-[16px] border border-border bg-surface-raised">
+      <div className="px-3.5 pt-2.5 text-[10px] font-medium uppercase leading-[1.4] tracking-[0.07em] text-text-subtle">
         {artifact.title}
       </div>
       {children}
@@ -53,13 +53,13 @@ function ArtifactFoot({ artifact }: { artifact: AssistantArtifact }) {
   const { wrkSlug, slug } = useParams();
   return (
     <div className="flex items-center gap-2 border-t border-border px-3.5 py-2">
-      <span className="font-mono text-[10px] leading-[1.5] text-text-subtle">
+      <span className="text-[10px] leading-[1.5] text-text-subtle">
         {artifact.summary.slice(0, 120)}
       </span>
       <span className="flex-1" />
       <Link
         to={wrkSlug && slug ? buildDrilldownUrl(wrkSlug, slug, artifact.drilldown) : artifact.drilldown.destination}
-        className="inline-flex h-[26px] items-center justify-center gap-2 whitespace-nowrap rounded-sm border border-border-strong px-3 text-[11.5px] font-medium text-text transition-colors duration-100 hover:border-text-subtle hover:bg-surface-hover"
+        className="inline-flex h-[26px] items-center justify-center gap-2 whitespace-nowrap rounded-full border border-border-strong px-3 text-[11.5px] font-medium text-text transition-colors duration-100 hover:border-text-subtle hover:bg-surface-hover"
       >
         {artifact.drilldown.label}
       </Link>
@@ -76,7 +76,7 @@ export function IssueListBlock({
     .filter((issue) => issue.status === "unresolved")
     .slice(0, 3);
   return (
-    <div className="mt-2.5 overflow-hidden rounded-sm border border-border">
+    <div className="mt-2.5 overflow-hidden rounded-[16px] border border-border">
       {unresolved.map((issue) => (
         <div
           key={issue.id}
@@ -85,7 +85,7 @@ export function IssueListBlock({
           <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-text-muted">
             <b className="font-semibold text-text">{issue.title}</b>
           </span>
-          <span className="ml-auto flex-none whitespace-nowrap font-mono text-[10.5px] font-normal leading-none text-text-subtle tabular-nums">
+          <span className="ml-auto flex-none whitespace-nowrap text-[10.5px] font-normal leading-none text-text-subtle tabular-nums">
             {issue.users} users · {issue.count} ev
           </span>
         </div>
@@ -103,8 +103,8 @@ export function TraceBlock({
 }) {
   if (steps.length === 0) return null;
   return (
-    <div className="mb-3 rounded-sm border border-border bg-surface-raised px-3 py-[9px]">
-      <div className="flex items-center gap-2 font-mono text-[10px] font-medium uppercase leading-none tracking-[0.08em] text-text-subtle">
+    <div className="mb-3 rounded-[12px] border border-border bg-surface-raised px-3 py-[9px]">
+      <div className="flex items-center gap-2 text-[10px] font-medium uppercase leading-none tracking-[0.08em] text-text-subtle">
         Activity
         <span className="ml-auto normal-case tracking-[0.04em]">
           {steps.length} steps
@@ -120,7 +120,7 @@ export function TraceBlock({
             {step.state === "failed" ? (
               <span
                 aria-hidden="true"
-                className="inline-block h-[13px] w-[13px] flex-none text-center font-mono text-[11px] leading-[13px] text-danger"
+                className="inline-block h-[13px] w-[13px] flex-none text-center text-[11px] leading-[13px] text-danger"
               >
                 ×
               </span>
@@ -146,7 +146,7 @@ export function TraceBlock({
               </svg>
             )}
             <span className="min-w-0 flex-1 truncate">{step.label}</span>
-            <span className="ml-auto flex-none font-mono text-[10px] font-normal leading-none text-text-subtle">
+            <span className="ml-auto flex-none text-[10px] font-normal leading-none text-text-subtle">
               {step.state}
             </span>
           </div>
@@ -165,11 +165,11 @@ export function MetricArtifactBlock({
   return (
     <ArtifactShell artifact={artifact}>
       <div className="flex items-baseline gap-3 px-3.5 pb-3 pt-1.5">
-        <span className="font-mono text-[28px] font-normal leading-none tracking-[-0.03em] text-text tabular-nums">
+        <span className="text-[28px] font-normal leading-none tracking-[-0.03em] text-text tabular-nums">
           {artifact.fact.formattedValue}
         </span>
         {delta ? (
-          <span className="font-mono text-[11px] font-medium leading-none text-success">
+          <span className="text-[11px] font-medium leading-none text-success">
             {delta}
           </span>
         ) : null}
@@ -201,7 +201,7 @@ export function BarsCompareBlock({
           />
         </div>
       </div>
-      <div className="flex justify-between gap-2 px-3.5 pb-2.5 pt-2 font-mono text-[9.5px] font-normal leading-[1.5] tracking-[0.04em] text-text-subtle">
+      <div className="flex justify-between gap-2 px-3.5 pb-2.5 pt-2 text-[9.5px] font-normal leading-[1.5] tracking-[0.04em] text-text-subtle">
         <span>PREV · {artifact.previous.formattedValue}</span>
         <span>CUR · {artifact.current.formattedValue}</span>
       </div>
@@ -239,7 +239,7 @@ export function TimeseriesBlock({
           />
         </svg>
       </div>
-      <div className="flex justify-between gap-2 px-3.5 pb-2.5 pt-2 font-mono text-[9.5px] font-normal leading-[1.5] tracking-[0.04em] text-text-subtle">
+      <div className="flex justify-between gap-2 px-3.5 pb-2.5 pt-2 text-[9.5px] font-normal leading-[1.5] tracking-[0.04em] text-text-subtle">
         <span>
           {first ? new Date(first.t).toISOString().slice(0, 10).toUpperCase() : "—"}
         </span>
@@ -276,7 +276,7 @@ export function BreakdownBlock({
                 style={{ width: `${(row.value / max) * 100}%` }}
               />
             </span>
-            <span className="text-right font-mono text-[11px] font-normal leading-none text-text tabular-nums">
+            <span className="text-right text-[11px] font-normal leading-none text-text tabular-nums">
               {row.value}
             </span>
           </div>
@@ -303,7 +303,7 @@ export function RankedListBlock({
           >
             <span
               className={cn(
-                "font-mono text-[11px] font-normal leading-none tabular-nums",
+                "text-[11px] font-normal leading-none tabular-nums",
                 index === 0 ? "text-text" : "text-text-subtle",
               )}
             >
@@ -320,7 +320,7 @@ export function RankedListBlock({
                 />
               </span>
             </span>
-            <span className="text-right font-mono text-[11px] font-normal leading-none text-text tabular-nums">
+            <span className="text-right text-[11px] font-normal leading-none text-text tabular-nums">
               {row.value}
             </span>
           </div>
@@ -346,7 +346,7 @@ export function DataTableBlock({
                 <th
                   key={column}
                   className={cn(
-                    "whitespace-nowrap border-b border-border px-3.5 pb-[7px] pt-[9px] text-left font-mono text-[10px] font-medium uppercase leading-[1.4] tracking-[0.06em] text-text-subtle",
+                    "whitespace-nowrap border-b border-border px-3.5 pb-[7px] pt-[9px] text-left text-[10px] font-medium uppercase leading-[1.4] tracking-[0.06em] text-text-subtle",
                     index > 0 && "text-right tabular-nums",
                   )}
                 >
@@ -395,7 +395,7 @@ export function DefinitionPickerBlock({
   return (
     <ArtifactShell artifact={artifact}>
       {artifact.status === "confirmed" ? (
-        <p className="flex items-center gap-2 px-3.5 pb-3 pt-2.5 font-mono text-[11px] leading-[1.5] text-success">
+        <p className="flex items-center gap-2 px-3.5 pb-3 pt-2.5 text-[11px] leading-[1.5] text-success">
           <Check aria-hidden="true" className="h-[13px] w-[13px] flex-none" />
           <span>Saved to project memory</span>
         </p>
@@ -405,7 +405,7 @@ export function DefinitionPickerBlock({
             type="button"
             disabled={deciding || !onConfirm}
             onClick={onConfirm}
-            className="flex w-full gap-2.5 rounded-sm border border-border p-[10px_12px] text-left text-[12.5px] leading-[1.5] text-text-muted transition-colors duration-100 hover:border-border-strong hover:bg-surface-hover hover:text-text disabled:opacity-60"
+            className="flex w-full gap-2.5 rounded-[12px] border border-border p-[10px_12px] text-left text-[12.5px] leading-[1.5] text-text-muted transition-colors duration-100 hover:border-border-strong hover:bg-surface-hover hover:text-text disabled:opacity-60"
           >
             <span
               aria-hidden="true"
@@ -436,7 +436,7 @@ export function EmptyBoxBlock({
 }) {
   return (
     <ArtifactShell artifact={artifact}>
-      <div className="m-[12px_14px_14px] flex flex-col items-center gap-2 rounded-sm border border-dashed border-border-strong px-4 py-[22px] text-center">
+      <div className="m-[12px_14px_14px] flex flex-col items-center gap-2 rounded-[12px] border border-dashed border-border-strong px-4 py-[22px] text-center">
         <svg
           viewBox="0 0 24 24"
           fill="none"
@@ -457,7 +457,7 @@ export function EmptyBoxBlock({
         </span>
         <Link
           to={artifact.drilldown.destination}
-          className="inline-flex h-[30px] items-center justify-center gap-2 whitespace-nowrap rounded-sm border border-border-strong px-3 text-xs font-medium text-text transition-colors duration-100 hover:border-text-subtle hover:bg-surface-hover"
+          className="inline-flex h-[30px] items-center justify-center gap-2 whitespace-nowrap rounded-full border border-border-strong px-3 text-xs font-medium text-text transition-colors duration-100 hover:border-text-subtle hover:bg-surface-hover"
         >
           {artifact.drilldown.label}
         </Link>
@@ -474,7 +474,7 @@ export function CoverageNoticeBlock({
   const warnings = artifact.coverage.warnings;
   if (warnings.length === 0) return null;
   return (
-    <div className="mt-2.5 flex items-start gap-2.5 rounded-sm border border-warning/40 p-[10px_12px] text-[12.5px] text-text-muted">
+    <div className="mt-2.5 flex items-start gap-2.5 rounded-[12px] border border-warning/40 p-[10px_12px] text-[12.5px] text-text-muted">
       <span
         aria-hidden="true"
         className="mt-[5px] h-[7px] w-[7px] flex-none rounded-full bg-warning"
@@ -493,7 +493,7 @@ export function UnavailableBlock({
   artifact: Extract<AssistantArtifact, { kind: "unavailable" }>;
 }) {
   return (
-    <div className="mt-2.5 flex items-start gap-2.5 rounded-sm border border-warning/40 p-[10px_12px] text-[12.5px] text-text-muted">
+    <div className="mt-2.5 flex items-start gap-2.5 rounded-[12px] border border-warning/40 p-[10px_12px] text-[12.5px] text-text-muted">
       <span
         aria-hidden="true"
         className="mt-[5px] h-[7px] w-[7px] flex-none rounded-full bg-warning"
@@ -514,7 +514,7 @@ export function EvidenceBlock({
   if (observations.length === 0) return null;
   return (
     <div className="mt-3 flex flex-col gap-[5px] border-t border-dashed border-border pt-2.5 text-xs text-text-muted">
-      <div className="font-mono text-[10px] font-medium uppercase leading-[1.4] tracking-[0.07em] text-text-subtle">
+      <div className="text-[10px] font-medium uppercase leading-[1.4] tracking-[0.07em] text-text-subtle">
         Evidence
       </div>
       {observations.map((observation) => (
@@ -523,7 +523,7 @@ export function EvidenceBlock({
           {observation.factIds.map((id) => (
             <code
               key={id}
-              className="rounded-[3px] border border-border bg-surface-raised px-[5px] py-0 font-mono text-[10.5px] leading-[1.5] text-text-muted"
+              className="rounded-md border border-border bg-surface-raised px-[5px] py-0 text-[10.5px] leading-[1.5] text-text-muted"
             >
               {id}
             </code>
@@ -550,7 +550,7 @@ export function FollowUpsBlock({
           type="button"
           onClick={() => onAsk(followUp.description)}
           title={followUp.description}
-          className="inline-flex h-[30px] items-center justify-center gap-2 whitespace-nowrap rounded-sm border border-border-strong px-3 text-xs font-medium text-text transition-colors duration-100 hover:border-text-subtle hover:bg-surface-hover"
+          className="inline-flex h-[30px] items-center justify-center gap-2 whitespace-nowrap rounded-full border border-border-strong px-3 text-xs font-medium text-text transition-colors duration-100 hover:border-text-subtle hover:bg-surface-hover"
         >
           {followUp.title}
         </button>

@@ -37,7 +37,7 @@ export function SdkSetup({ platform, endpoint, snippetKey }: SdkSetupProps) {
             aria-selected={setupFramework === "javascript"}
             onClick={() => setSetupFramework("javascript")}
             className={cn(
-              "h-[30px] rounded-[2px] px-3 font-mono text-[12px] transition-colors duration-150",
+              "h-[30px] rounded-full px-3 text-[12px] transition-colors duration-150",
               setupFramework === "javascript"
                 ? "bg-accent text-primary-foreground"
                 : "text-text-muted hover:bg-surface-hover hover:text-text"
@@ -51,7 +51,7 @@ export function SdkSetup({ platform, endpoint, snippetKey }: SdkSetupProps) {
             aria-selected={setupFramework === "react"}
             onClick={() => setSetupFramework("react")}
             className={cn(
-              "h-[30px] rounded-[2px] px-3 font-mono text-[12px] transition-colors duration-150",
+              "h-[30px] rounded-full px-3 text-[12px] transition-colors duration-150",
               setupFramework === "react"
                 ? "bg-accent text-primary-foreground"
                 : "text-text-muted hover:bg-surface-hover hover:text-text"

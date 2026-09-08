@@ -37,8 +37,8 @@ const ROLE_LABELS: Record<string, string> = {
 
 type MemberRow = WorkspaceMember & { user?: { name?: string; email?: string } };
 
-const TH = "whitespace-nowrap border-b border-border bg-canvas-subtle px-3.5 py-2.5 text-left font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted";
-const TD = "border-t border-border px-3.5 py-[11px] align-middle leading-[1.4]";
+const TH = "whitespace-nowrap border-b border-border bg-transparent px-4 py-2.5 text-left text-[13px] font-medium tracking-normal text-text-subtle";
+const TD = "border-t border-border px-4 py-[11px] align-middle leading-[1.4]";
 
 export function MembersPage() {
   const { data: activeWorkspace } = useActiveWorkspace();
@@ -101,16 +101,16 @@ export function MembersPage() {
           <button
             type="button"
             onClick={() => setInviteOpen(true)}
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-[2px] bg-accent px-3.5 text-[13px] font-medium text-primary-foreground transition-colors hover:bg-accent-hover"
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-full bg-accent px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-accent-hover"
           >
             <UserPlus className="size-4" />Invite member
           </button>
         ) : null}
       </PageHeader>
 
-      <div className="mt-10 mb-3.5 flex items-baseline gap-1.5 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">Members</div>
-      <div className="overflow-auto rounded-[2px] border border-border">
-        <table className="w-full border-collapse text-[13px]">
+      <div className="mb-3 mt-10 text-[13px] font-medium tracking-normal text-text-subtle">Members</div>
+      <div className="overflow-auto rounded-[16px] border border-border">
+        <table className="w-full border-collapse text-sm">
           <thead>
             <tr><th className={TH}>Member</th><th className={TH}>Role</th><th className={TH}>Status</th><th className={TH}>Last active</th><th className={`${TH} text-right`}>Actions</th></tr>
           </thead>
@@ -126,16 +126,16 @@ export function MembersPage() {
                   <tr key={member.id} className="group transition-colors hover:bg-surface-hover">
                     <td className={TD}>
                       <span className="flex items-center gap-2.5">
-                        <span className="grid size-6 shrink-0 place-items-center rounded-full border border-border-strong bg-surface-raised font-mono text-[10px] font-semibold text-text" aria-hidden="true">
+                        <span className="grid size-6 shrink-0 place-items-center rounded-full border border-border-strong bg-surface-raised text-[10px] font-semibold text-text" aria-hidden="true">
                           {getInitials(displayName)}
                         </span>
                         <span>
-                          <span className="block text-[13px] font-medium">{displayName}</span>
-                          <span className="block text-[12px] text-text-subtle">{member.user?.email ?? member.userId}</span>
+                          <span className="block text-sm font-medium">{displayName}</span>
+                          <span className="block text-xs text-text-subtle">{member.user?.email ?? member.userId}</span>
                         </span>
                       </span>
                     </td>
-                    <td className={`${TD} font-mono`}>
+                    <td className={TD}>
                       {canManage && member.role !== "owner" && organizationId ? (
                         <Select
                           value={member.role}
@@ -151,10 +151,10 @@ export function MembersPage() {
                             )
                           }
                         >
-                          <SelectTrigger className="h-7 w-[110px]">
+                          <SelectTrigger className="h-7 w-[180px]">
                             <SelectValue />
                           </SelectTrigger>
-                          <SelectContent>
+                          <SelectContent align="start" className="w-[180px]">
                             <SelectItem value="admin">Admin</SelectItem>
                             <SelectItem value="member">Member</SelectItem>
                           </SelectContent>
@@ -190,14 +190,14 @@ export function MembersPage() {
 
       {canManage ? (
         <>
-          <div className="mt-10 mb-3.5 flex items-baseline gap-1.5 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">Pending invitations</div>
+          <div className="mb-3 mt-10 text-[13px] font-medium tracking-normal text-text-subtle">Pending invitations</div>
           {invitations === null ? (
             <span className="inline-block h-[14px] w-[72px] animate-pulse rounded-[2px] bg-surface-raised" />
           ) : (invitations ?? []).filter((invite) => invite.status === "pending").length === 0 ? (
             <p className="text-[13px] text-text-muted">No pending invitations.</p>
           ) : (
-            <div className="overflow-auto rounded-[2px] border border-border">
-              <table className="w-full border-collapse text-[13px]">
+            <div className="overflow-auto rounded-[16px] border border-border">
+              <table className="w-full border-collapse text-sm">
                 <thead><tr><th className={TH}>Email</th><th className={TH}>Role</th><th className={TH}>Status</th><th className={TH}>Expires</th><th className={`${TH} text-right`}>Actions</th></tr></thead>
                 <tbody>
                   {(invitations ?? [])
@@ -205,7 +205,7 @@ export function MembersPage() {
                     .map((invite) => (
                       <tr key={invite.id} className="group">
                         <td className={TD}>{invite.email}</td>
-                        <td className={`${TD} font-mono`}>{ROLE_LABELS[invite.role ?? "member"] ?? invite.role}</td>
+                        <td className={TD}>{ROLE_LABELS[invite.role ?? "member"] ?? invite.role}</td>
                         <td className={TD}><span className="inline-flex h-[22px] items-center gap-1.5 rounded-[2px] border border-warning/40 px-2 font-mono text-[11px] whitespace-nowrap text-warning">Pending</span></td>
                         <td className={`${TD} text-[12px] text-text-muted`}>{new Date(invite.expiresAt).toLocaleDateString()}</td>
                         <td className={TD}>
@@ -248,9 +248,15 @@ function InviteDialog({ open, onOpenChange, onInvited }: { open: boolean; onOpen
   const [email, setEmail] = React.useState("");
   const [role, setRole] = React.useState("member");
 
+  const trimmedEmail = email.trim();
+  const emailError =
+    trimmedEmail !== "" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)
+      ? "Enter a valid email address."
+      : null;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[90vw] md:w-full rounded-lg">
+      <DialogContent className="w-[90vw] rounded-lg sm:max-w-xl md:w-full">
         <DialogHeader>
           <DialogTitle>Invite member</DialogTitle>
           <DialogDescription>They receive an email with a link to join the workspace. Invitations are managed by Better Auth and expire automatically.</DialogDescription>
@@ -259,32 +265,40 @@ function InviteDialog({ open, onOpenChange, onInvited }: { open: boolean; onOpen
           className="space-y-4"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!email.trim()) return;
-            onInvited(email.trim(), role);
+            if (!trimmedEmail || emailError) return;
+            onInvited(trimmedEmail, role);
             setEmail("");
             onOpenChange(false);
           }}
         >
-          <div className="space-y-2">
-            <Label>Email</Label>
-            <Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="teammate@example.com" />
-          </div>
-          <div className="space-y-2">
-            <Label>Role</Label>
-            <Select value={role} onValueChange={setRole}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="member">Member</SelectItem>
-                <SelectItem value="admin">Admin</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">Admins can manage keys, billing, and members.</p>
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1 space-y-2">
+              <Label htmlFor="invite-email">Email</Label>
+              <Input
+                id="invite-email"
+                type="email"
+                value={email}
+                aria-invalid={Boolean(emailError)}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="teammate@example.com"
+              />
+            </div>
+            <div className="shrink-0 space-y-2">
+              <Label>Role</Label>
+              <Select value={role} onValueChange={setRole}>
+                <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                <SelectContent align="start">
+                  <SelectItem value="member">Member</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <DialogFooter>
             <DialogClose asChild>
-              <button type="button" className="inline-flex h-9 items-center gap-2 rounded-[2px] border border-border-strong px-3.5 text-[13px] font-medium text-text transition-colors hover:bg-surface-hover">Cancel</button>
+              <button type="button" className="inline-flex h-9 items-center gap-2 rounded-full border border-border-strong px-4 text-sm font-medium text-text transition-colors hover:bg-surface-hover">Cancel</button>
             </DialogClose>
-            <button type="submit" className="inline-flex h-9 items-center gap-2 rounded-[2px] bg-accent px-3.5 text-[13px] font-medium text-primary-foreground transition-colors hover:bg-accent-hover">Send invitation</button>
+            <button type="submit" disabled={!trimmedEmail || Boolean(emailError)} className="inline-flex h-9 items-center gap-2 rounded-full bg-accent px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-accent-hover">Send invitation</button>
           </DialogFooter>
         </form>
       </DialogContent>

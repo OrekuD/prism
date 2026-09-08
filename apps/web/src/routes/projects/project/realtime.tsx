@@ -182,20 +182,20 @@ export function ProjectRealtime() {
 
   if (!mapboxToken) {
     return (
-      <div className="flex flex-1 min-h-0 w-full items-center justify-center rounded-[2px] border border-border bg-surface">
+      <div className="flex flex-1 min-h-0 w-full items-center justify-center rounded-[16px] border border-border bg-surface">
         <div className="max-w-[420px] p-6 text-center">
           <p className="font-sans text-[14px] font-medium text-text">
             Map unavailable
           </p>
-          <p className="mt-1.5 font-mono text-[12px] leading-[1.5] text-text-muted">
+          <p className="mt-1.5 text-[12px] leading-[1.5] text-text-muted">
             Set{" "}
             <span className="font-medium text-text">
               VITE_MAPBOX_ACCESS_TOKEN
             </span>{" "}
             in
-            <span className="font-mono"> apps/web/.env.local</span> to see the
+            <span className="tabular-nums"> apps/web/.env.local</span> to see the
             live globe. Live dots are city-level derived from
-            <span className="font-mono"> country_code</span>.
+            <span className="tabular-nums"> country_code</span>.
           </p>
         </div>
       </div>
@@ -204,7 +204,7 @@ export function ProjectRealtime() {
 
   return (
     <WebSocketManager projectId={projectQuery.data?.id}>
-      <div className="relative flex flex-1 min-h-0 w-full flex-col overflow-hidden rounded-[2px] border border-border bg-[#0a0a0a]">
+      <div className="relative flex flex-1 min-h-0 w-full flex-col overflow-hidden rounded-[16px] border border-border bg-[#0a0a0a]">
         <MapGL
           ref={mapRef}
           mapboxAccessToken={mapboxToken}
@@ -264,7 +264,7 @@ export function ProjectRealtime() {
                           duration: 500,
                         });
                       }}
-                      className="grid place-items-center rounded-full border border-white/15 bg-accent font-mono text-[11px] font-medium text-white shadow-[0_2px_10px_rgba(0,0,0,0.35)] transition-transform hover:scale-105"
+                      className="grid place-items-center rounded-full border border-white/15 bg-accent text-[11px] font-medium text-primary-foreground shadow-[0_2px_10px_rgba(0,0,0,0.35)] transition-transform hover:scale-105"
                       style={{ width: size, height: size }}
                       aria-label={`Cluster of ${count} users`}
                     >
@@ -313,7 +313,7 @@ export function ProjectRealtime() {
               className="size-2 animate-pulse rounded-full bg-emerald-400"
               aria-hidden="true"
             />
-            <span className="font-mono text-[11px] font-medium tracking-[0.06em] text-white">
+            <span className="text-[11px] font-medium tracking-[0.06em] text-white">
               LIVE ·{" "}
               {livePoints.length > 0
                 ? `${livePoints.length} now`
@@ -323,14 +323,14 @@ export function ProjectRealtime() {
           </div>
           <div className="pointer-events-auto hidden items-center gap-1.5 rounded-full border border-white/15 bg-black/35 px-2.5 py-1 backdrop-blur sm:flex">
             <span className="size-1.5 rounded-full bg-white/80" />
-            <span className="font-mono text-[11px] text-white/80">
+            <span className="text-[11px] text-white/80">
               {Math.round(zoom * 10) / 10}× zoom
             </span>
           </div>
         </div>
 
         {/* Zoom hint */}
-        <div className="pointer-events-none absolute bottom-2 right-2 rounded-[2px] border border-white/10 bg-black/35 px-2 py-1 font-mono text-[11px] leading-none text-white/70 backdrop-blur">
+        <div className="pointer-events-none absolute bottom-2 right-2 rounded-md border border-white/10 bg-black/35 px-2 py-1 text-[11px] leading-none text-white/70 backdrop-blur">
           Scroll to zoom · clusters expand
         </div>
       </div>

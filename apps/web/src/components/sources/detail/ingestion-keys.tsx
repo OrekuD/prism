@@ -155,7 +155,7 @@ export function IngestionKeys({
           keys.map((key) => (
             <div
               key={key.id}
-              className="flex items-center justify-between rounded-[2px] border border-border bg-surface p-3"
+              className="flex items-center justify-between rounded-[12px] border border-border bg-surface p-3"
             >
               <div className="min-w-0 space-y-0.5">
                 <div className="flex items-center gap-2">

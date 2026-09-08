@@ -81,7 +81,7 @@ export function ProjectSources() {
         }. Pick a source to get its setup, keys, and settings.`}
       />
 
-      <div className="mb-3.5 flex items-baseline gap-1.5 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
+      <div className="mb-3 text-[13px] font-medium tracking-normal text-text-subtle">
         Sources
       </div>
 
@@ -122,7 +122,7 @@ export function ProjectSources() {
                 type="button"
                 onClick={() => navigate(`${basePath}/${entry.type}`)}
                 className={cn(
-                  "flex flex-col items-start gap-2 rounded-[2px] border p-[14px_14px_12px] text-left transition-colors",
+                  "flex flex-col items-start gap-2 rounded-[16px] border p-[14px_14px_12px] text-left transition-colors",
                   active
                     ? "border-accent/45 bg-accent-soft"
                     : "border-border bg-surface hover:border-border-strong hover:bg-surface-hover"
@@ -132,7 +132,7 @@ export function ProjectSources() {
               >
                 <span
                   className={cn(
-                    "grid size-[30px] place-items-center rounded-[2px] border bg-surface-raised",
+                    "grid size-[30px] place-items-center rounded-[10px] border bg-surface-raised",
                     active
                       ? "border-accent/40 text-accent"
                       : "border-border text-text-muted"
@@ -153,7 +153,7 @@ export function ProjectSources() {
       )}
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <fieldset className="inline-flex w-fit items-center overflow-hidden rounded-[2px] border border-border p-0">
+        <fieldset className="inline-flex w-fit items-center overflow-hidden rounded-full border border-border p-0">
           <legend className="sr-only">Source configuration</legend>
           {SOURCE_TABS.filter((entry) => entry.tab !== "settings").map(
             (entry, index) => (

@@ -51,7 +51,7 @@ function MetricCell({
 	sub?: string;
 }) {
 	return (
-		<div className="border-fd-border rounded-[2px] border p-4">
+		<div className="border-fd-border rounded-[16px] border p-4">
 			<div className="text-fd-muted-foreground text-xs">{label}</div>
 			<div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
 			{sub !== undefined ? (
@@ -66,7 +66,7 @@ function LoadingState() {
 		<div className="grid grid-cols-2 gap-3 md:grid-cols-5">
 			{["App opens", "Visitors", "App sessions", "Screens/session", "Installations"].map(
 				(label) => (
-					<div key={label} className="border-fd-border animate-pulse rounded-[2px] border p-4">
+					<div key={label} className="border-fd-border animate-pulse rounded-[16px] border p-4">
 						<div className="bg-fd-muted h-3 w-20 rounded" />
 						<div className="bg-fd-muted mt-2 h-6 w-16 rounded" />
 					</div>
@@ -130,7 +130,7 @@ export default function MobileAnalyticsPage() {
 								key={key}
 								type="button"
 								onClick={() => setParam("range", key)}
-								className={`border-fd-border rounded-[2px] border px-2 py-1 text-xs ${
+								className={`border-fd-border rounded-full border px-2 py-1 text-xs ${
 									key === rangeKey ? "bg-fd-primary text-fd-primary-foreground" : ""
 								}`}
 							>
@@ -140,7 +140,7 @@ export default function MobileAnalyticsPage() {
 						<button
 							type="button"
 							onClick={() => setParam("compare", compare ? null : "1")}
-							className={`border-fd-border rounded-[2px] border px-2 py-1 text-xs ${
+							className={`border-fd-border rounded-full border px-2 py-1 text-xs ${
 								compare ? "bg-fd-primary text-fd-primary-foreground" : ""
 							}`}
 						>
@@ -151,7 +151,7 @@ export default function MobileAnalyticsPage() {
 								key={os}
 								type="button"
 								onClick={() => setParam("os", osFilter === os ? null : os)}
-								className={`border-fd-border rounded-[2px] border px-2 py-1 text-xs capitalize ${
+								className={`border-fd-border rounded-full border px-2 py-1 text-xs capitalize ${
 									osFilter === os ? "bg-fd-primary text-fd-primary-foreground" : ""
 								}`}
 							>
@@ -164,7 +164,7 @@ export default function MobileAnalyticsPage() {
 				{snapshotCtx ? (
 					<div
 						role="status"
-						className="border-fd-border mb-4 flex flex-wrap items-center justify-between gap-2 rounded-[2px] border p-3"
+						className="border-fd-border mb-4 flex flex-wrap items-center justify-between gap-2 rounded-[16px] border p-3"
 					>
 						<span className="text-fd-muted-foreground text-sm">
 							Viewing a shared snapshot — range and sources are fixed by the
@@ -173,7 +173,7 @@ export default function MobileAnalyticsPage() {
 						<button
 							type="button"
 							onClick={exitSnapshot}
-							className="border-fd-border rounded-[2px] border px-3 py-1 text-xs"
+							className="border-fd-border rounded-full border px-3 py-1 text-xs"
 						>
 							Exit snapshot
 						</button>
@@ -183,12 +183,12 @@ export default function MobileAnalyticsPage() {
 				{query.isPending ? <LoadingState /> : null}
 
 				{query.isError ? (
-					<div className="border-fd-border rounded-[2px] border p-6">
+					<div className="border-fd-border rounded-[16px] border p-6">
 						<p className="text-sm">Failed to load mobile analytics.</p>
 						<button
 							type="button"
 							onClick={() => query.refetch()}
-							className="border-fd-border mt-3 rounded-[2px] border px-3 py-1 text-xs"
+							className="border-fd-border mt-3 rounded-full border px-3 py-1 text-xs"
 						>
 							Retry
 						</button>
@@ -197,7 +197,7 @@ export default function MobileAnalyticsPage() {
 
 				{data && totals ? (
 					totals.appOpens === 0 && totals.visitors === 0 ? (
-						<div className="border-fd-border rounded-[2px] border p-6">
+						<div className="border-fd-border rounded-[16px] border p-6">
 							<h2 className="text-sm font-semibold">No mobile data yet</h2>
 							<p className="text-fd-muted-foreground mt-1 text-sm">
 								Install @prism-analytics/react-native, grant consent in the app,
@@ -232,7 +232,7 @@ export default function MobileAnalyticsPage() {
 									No screen views in this period.
 								</p>
 							) : (
-								<ul className="border-fd-border mt-2 divide-y rounded-[2px] border">
+								<ul className="border-fd-border mt-2 divide-y rounded-[16px] border">
 									{data.screens.map((screen) => (
 										<li
 											key={`${screen.name}:${screen.routePattern ?? ""}`}
@@ -255,7 +255,7 @@ export default function MobileAnalyticsPage() {
 									No release metadata reported yet.
 								</p>
 							) : (
-								<ul className="border-fd-border mt-2 divide-y rounded-[2px] border">
+								<ul className="border-fd-border mt-2 divide-y rounded-[16px] border">
 									{data.releases.map((release) => (
 										<li key={release.version} className="flex items-center justify-between px-4 py-2 text-sm">
 											<span className="font-medium">

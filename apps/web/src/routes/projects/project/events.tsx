@@ -64,7 +64,7 @@ function formatTimeDisplay(ts: number): string {
 function SourceCell({ event }: { event: EventResource }) {
   const source = event.source;
   if (!source) {
-    return <span className="font-mono text-[11px] text-text-subtle">—</span>;
+    return <span className="text-[11px] text-text-subtle">—</span>;
   }
   return (
     <div className="flex min-w-0 items-center gap-2">
@@ -75,10 +75,10 @@ function SourceCell({ event }: { event: EventResource }) {
         )}
         aria-hidden="true"
       />
-      <span className="truncate whitespace-nowrap font-mono text-[12.5px] font-medium leading-none tracking-[-0.01em] text-text">
+      <span className="truncate whitespace-nowrap text-[12.5px] font-medium leading-none tracking-[-0.01em] text-text">
         {source.name}
       </span>
-      <span className="shrink-0 whitespace-nowrap font-mono text-[11px] leading-none text-text-subtle">
+      <span className="shrink-0 whitespace-nowrap text-[11px] leading-none text-text-subtle">
         {platformLabel(source.platform)}
       </span>
     </div>
@@ -195,22 +195,22 @@ export function ProjectEvents() {
                     e.stopPropagation();
                     onOpen(row);
                   }}
-                  className="max-w-[160px] truncate rounded-[2px] text-left font-mono text-[13px] font-medium leading-none tracking-[-0.01em] text-text underline-offset-4 hover:text-link hover:underline focus-visible:outline-2 focus-visible:outline-focus"
+                  className="max-w-[160px] truncate rounded-md text-left text-[13px] font-medium leading-none tracking-[-0.01em] text-text underline-offset-4 hover:text-link hover:underline focus-visible:outline-2 focus-visible:outline-focus"
                   title={`Open ${std.displayName} — ${event.name}`}
                   aria-label={`${std.displayName}, Standard ${std.category}`}
                 >
                   {std.displayName}
                 </button>
                 <span className="inline-flex shrink-0 items-center gap-1" aria-hidden="true">
-                  <span className="rounded-[2px] border border-border bg-surface px-1 py-0.5 font-mono text-[9px] font-medium uppercase leading-none tracking-[0.08em] text-text-subtle">
+                  <span className="rounded-full border border-border bg-surface px-1.5 py-0.5 text-[9px] font-medium leading-none tracking-normal text-text-subtle">
                     Standard
                   </span>
-                  <span className="font-mono text-[10px] uppercase leading-none tracking-[0.05em] text-text-subtle">
+                  <span className="text-[10px] leading-none tracking-normal text-text-subtle">
                     {std.category}
                   </span>
                 </span>
               </div>
-              <span className="block max-w-[260px] truncate font-mono text-[11px] leading-none text-text-subtle" title={event.name}>
+              <span className="block max-w-[260px] truncate text-[11px] leading-none text-text-subtle" title={event.name}>
                 {event.name}
               </span>
             </div>
@@ -224,7 +224,7 @@ export function ProjectEvents() {
                 e.stopPropagation();
                 onOpen(row);
               }}
-              className="block max-w-[260px] cursor-pointer truncate rounded-[2px] text-left font-mono text-[13px] font-medium leading-none tracking-[-0.01em] text-text underline-offset-4 hover:text-link hover:underline focus-visible:outline-2 focus-visible:outline-focus"
+              className="block max-w-[260px] cursor-pointer truncate rounded-md text-left text-[13px] font-medium leading-none tracking-[-0.01em] text-text underline-offset-4 hover:text-link hover:underline focus-visible:outline-2 focus-visible:outline-focus"
               title={`Open ${event.name}`}
             >
               {event.name}
@@ -249,13 +249,13 @@ export function ProjectEvents() {
       cell: ({ row }) =>
         row.original.sessionId ? (
           <span
-            className="block max-w-[112px] truncate font-mono text-[12px] leading-none text-text-muted tabular-nums"
+            className="block max-w-[112px] truncate text-[12px] leading-none text-text-muted tabular-nums"
             title={row.original.sessionId}
           >
             {row.original.sessionId.slice(0, 8)}…
           </span>
         ) : (
-          <span className="font-mono text-[12px] leading-none text-text-subtle">
+          <span className="text-[12px] leading-none text-text-subtle">
             —
           </span>
         ),
@@ -266,7 +266,7 @@ export function ProjectEvents() {
       header: "Time",
       size: 152,
       cell: ({ row }) => (
-        <div className="whitespace-nowrap text-right font-mono text-[12.5px] leading-none tracking-[-0.01em] text-text tabular-nums">
+        <div className="whitespace-nowrap text-right text-[12.5px] leading-none tracking-[-0.01em] text-text tabular-nums">
           <span
             title={`${agoLabel(row.original.occurredAt)} · ${clockLabel(row.original.occurredAt)} — ${new Date(row.original.occurredAt).toLocaleString()}`}
           >
@@ -307,12 +307,12 @@ export function ProjectEvents() {
       {snapshotCtx ? (
         <div
           role="status"
-          className="mt-6 flex flex-wrap items-center justify-between gap-2 rounded-[2px] border border-border bg-surface px-3 py-2"
+          className="mt-6 flex flex-wrap items-center justify-between gap-2 rounded-[12px] border border-border bg-surface px-3 py-2"
         >
           <span className="text-[13px] text-text-muted">
             Viewing a shared snapshot — range and sources are fixed by the link.
           </span>
-          <Button variant="ghost" size="sm" onClick={exitSnapshot} className="h-8 px-3 font-mono text-[13px]">
+          <Button variant="ghost" size="sm" onClick={exitSnapshot} className="h-8 px-3 text-[13px]">
             Exit snapshot
           </Button>
         </div>
@@ -336,7 +336,7 @@ export function ProjectEvents() {
                 updateFilter({ q: value || null });
               }, 250);
             }}
-            className="h-9 w-full rounded-[2px] border border-border bg-background py-2 pl-9 pr-8 font-mono text-[13px] leading-none text-text placeholder:text-text-subtle focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-border-strong focus-visible:border-border-strong [&::-webkit-search-cancel-button]:hidden"
+            className="h-9 w-full rounded-[10px] border border-border bg-background py-2 pl-9 pr-8 text-[13px] leading-none text-text placeholder:text-text-subtle focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-border-strong focus-visible:border-border-strong [&::-webkit-search-cancel-button]:hidden"
           />
           {q ? (
             <button
@@ -346,7 +346,7 @@ export function ProjectEvents() {
                 if (searchInputRef.current) searchInputRef.current.value = "";
                 updateFilter({ q: null });
               }}
-              className="absolute right-1.5 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-[2px] text-text-subtle hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
+              className="absolute right-1.5 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-full text-text-subtle hover:bg-surface hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
             >
               <X className="size-3.5" />
             </button>
@@ -361,7 +361,7 @@ export function ProjectEvents() {
             })
           }
         >
-          <SelectTrigger className="h-9 w-[172px] font-mono text-[13px]">
+          <SelectTrigger className="h-9 w-[172px] text-[13px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -377,7 +377,7 @@ export function ProjectEvents() {
             updateFilter({ source: value === "all" ? null : value })
           }
         >
-          <SelectTrigger className="h-9 w-[188px] font-mono text-[13px]">
+          <SelectTrigger className="h-9 w-[188px] text-[13px]">
             <SelectValue placeholder="All sources" />
           </SelectTrigger>
           <SelectContent>
@@ -394,7 +394,7 @@ export function ProjectEvents() {
             variant="ghost"
             size="sm"
             onClick={() => updateFilter({ q: null, type: null, source: null })}
-            className="h-9 px-3 font-mono text-[13px]"
+            className="h-9 px-3 text-[13px]"
           >
             Clear
           </Button>
@@ -403,7 +403,7 @@ export function ProjectEvents() {
             variant="ghost"
             size="sm"
             disabled
-            className="h-9 px-3 font-mono text-[13px] disabled:opacity-40"
+            className="h-9 px-3 text-[13px] disabled:opacity-40"
           >
             Clear
           </Button>
@@ -412,7 +412,7 @@ export function ProjectEvents() {
 
       <div className="mt-4 flex-1">
         {isLoading ? (
-          <div className="overflow-hidden rounded-[2px] border border-border">
+          <div className="overflow-hidden rounded-[16px] border border-border">
             <div className="border-b border-border bg-surface/50 px-3.5 py-2.5">
               <Skeleton className="h-3 w-24" />
             </div>
@@ -443,7 +443,7 @@ export function ProjectEvents() {
           />
         ) : table.getRowModel().rows.length > 0 ? (
           <>
-            <div className="overflow-hidden rounded-[2px] border border-border bg-background">
+            <div className="overflow-hidden rounded-[16px] border border-border bg-background">
               <Table aria-label="Events" className="table-fixed">
                 <TableHeader className="bg-surface/50">
                   {table.getHeaderGroups().map((headerGroup) => (
@@ -517,7 +517,7 @@ export function ProjectEvents() {
               </Table>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3 px-0.5 pt-3">
-              <div className="font-mono text-[12px] text-text-muted tabular-nums">
+              <div className="text-[12px] text-text-muted tabular-nums">
                 {isFetching ? (
                   "Loading…"
                 ) : (
@@ -530,14 +530,14 @@ export function ProjectEvents() {
               </div>
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
-                  <span className="hidden font-mono text-[11px] text-text-subtle sm:inline">
+                  <span className="hidden text-[11px] text-text-subtle sm:inline">
                     Rows per page
                   </span>
                   <Select
                     value={String(limit)}
                     onValueChange={(value) => setLimit(Number(value))}
                   >
-                    <SelectTrigger className="h-8 w-[72px] font-mono text-[12px]">
+                    <SelectTrigger className="h-8 w-[72px] text-[12px]">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent side="top">
@@ -588,7 +588,7 @@ export function ProjectEvents() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-8 font-mono text-[13px]"
+                  className="h-8 text-[13px]"
                   onClick={() => updateFilter({ q: null, type: null, source: null })}
                 >
                   Clear filters
@@ -597,12 +597,12 @@ export function ProjectEvents() {
                 <>
                   <Button
                     size="sm"
-                    className="h-8 font-mono text-[13px]"
+                    className="h-8 text-[13px]"
                     onClick={() => navigate(`/workspace/${wrkSlug ?? ""}/projects/${slug ?? ""}/sources`)}
                   >
                     View sources
                   </Button>
-                  <Button variant="outline" size="sm" className="h-8 font-mono text-[13px]" asChild>
+                  <Button variant="outline" size="sm" className="h-8 text-[13px]" asChild>
                     <a href="https://prism.dev/docs" target="_blank" rel="noreferrer">
                       View docs
                     </a>

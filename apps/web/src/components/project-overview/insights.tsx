@@ -111,7 +111,7 @@ function InsightActions({
       ) : (
         <Link
           to={insight.drilldown.destination}
-          className="inline-flex h-[30px] items-center justify-center gap-2 whitespace-nowrap rounded-sm border border-border-strong px-3 text-xs font-medium text-text transition-colors duration-100 hover:border-text-subtle hover:bg-surface-hover"
+          className="inline-flex h-[30px] items-center justify-center gap-2 whitespace-nowrap rounded-full border border-border-strong px-3 text-xs font-medium text-text transition-colors duration-100 hover:border-text-subtle hover:bg-surface-hover"
         >
           {insight.drilldown.label}
         </Link>
@@ -119,7 +119,7 @@ function InsightActions({
       {primary ? (
         <Link
           to={insight.drilldown.destination}
-          className="inline-flex h-[30px] items-center justify-center gap-2 whitespace-nowrap rounded-sm border border-border-strong px-3 text-xs font-medium text-text transition-colors duration-100 hover:border-text-subtle hover:bg-surface-hover"
+          className="inline-flex h-[30px] items-center justify-center gap-2 whitespace-nowrap rounded-full border border-border-strong px-3 text-xs font-medium text-text transition-colors duration-100 hover:border-text-subtle hover:bg-surface-hover"
         >
           {insight.drilldown.label}
         </Link>
@@ -210,7 +210,7 @@ export function DataQualityStrip({
       </div>
       <Link
         to="sources"
-        className="inline-flex h-[30px] items-center justify-center gap-2 whitespace-nowrap rounded-sm border border-border-strong px-3 text-xs font-medium text-text transition-colors duration-100 hover:border-text-subtle hover:bg-surface-hover"
+        className="inline-flex h-[30px] items-center justify-center gap-2 whitespace-nowrap rounded-full border border-border-strong px-3 text-xs font-medium text-text transition-colors duration-100 hover:border-text-subtle hover:bg-surface-hover"
       >
         Check source
       </Link>
@@ -238,7 +238,7 @@ export function InsightsGrid({
     <>
       <SectionLabel right={rangeLabel}>Insights</SectionLabel>
       {insights.length === 0 && warnings.length === 0 && !definitionMissing ? (
-        <p className="rounded-sm border border-border p-4 text-sm text-text-muted">
+        <p className="rounded-[12px] border border-border p-4 text-sm text-text-muted">
           No significant changes detected in this range. Coverage and pulse
           below reflect the current snapshot.
         </p>

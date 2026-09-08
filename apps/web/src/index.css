@@ -94,11 +94,11 @@
 .dark {
   color-scheme: dark;
   --shadow-dialog: 0 24px 80px rgb(0 0 0 / 0.55);
-  --on-accent: #ffffff;
+  --on-accent: #161616;
 
-  --canvas: #1a1a1a;
-  --canvas-subtle: #202020;
-  --surface: #1a1a1a;
+  --canvas: #161616;
+  --canvas-subtle: #1c1c1c;
+  --surface: #161616;
   --surface-raised: #222225;
   --surface-hover: #26262b;
   --surface-active: #212121;
@@ -108,10 +108,10 @@
   --text-muted: #a1a1aa;
   --text-subtle: #6e6e76;
   --text-inverse: #1a1a1a;
-  --accent: #1d9bf0;
-  --accent-hover: #1a8cd8;
-  --accent-active: #177cc0;
-  --accent-soft: rgb(29 155 240 / 0.15);
+  --accent: #ffffff;
+  --accent-hover: #e8e8e8;
+  --accent-active: #d4d4d4;
+  --accent-soft: rgb(255 255 255 / 0.12);
   --focus: #4da3ff;
   --link: #4da3ff;
   --success: #22c55e;
@@ -133,7 +133,7 @@
   --popover: var(--surface-raised);
   --popover-foreground: var(--text);
   --primary: var(--accent);
-  --primary-foreground: #f7f7f9;
+  --primary-foreground: #161616;
   --secondary: var(--surface-raised);
   --secondary-foreground: var(--text);
   --muted: var(--surface-raised);

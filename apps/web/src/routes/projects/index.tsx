@@ -29,7 +29,7 @@ export function Projects() {
         <button
           type="button"
           onClick={() => setNewProjectOpen(true)}
-          className="inline-flex h-9 items-center gap-2 rounded-[2px] bg-accent px-3.5 text-[13px] font-medium text-primary-foreground transition-colors hover:bg-accent-hover"
+          className="inline-flex h-9 items-center gap-2 rounded-full bg-accent px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-accent-hover"
         >
           New project
         </button>
@@ -39,7 +39,7 @@ export function Projects() {
         onOpenChange={setNewProjectOpen}
       />
 
-      <div className="mt-10 mb-3.5 flex items-baseline gap-1.5 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
+      <div className="mb-3 mt-10 text-[13px] font-medium tracking-normal text-text-subtle">
         All projects
       </div>
 
@@ -50,18 +50,18 @@ export function Projects() {
               className="flex min-h-[122px] flex-col gap-3 p-5"
               key={key}
             >
-              <span className="h-[26px] w-[110px] animate-pulse rounded-[2px] bg-surface-raised" />
-              <span className="h-[14px] w-[72px] animate-pulse rounded-[2px] bg-surface-raised" />
+              <span className="h-[26px] w-[110px] animate-pulse rounded-md bg-surface-raised" />
+              <span className="h-[14px] w-[72px] animate-pulse rounded-md bg-surface-raised" />
             </Frame>
           ))}
         </div>
       ) : isError ? (
         <Frame className="flex min-h-[120px] items-start gap-3 p-5">
-          <p className="text-[13px] text-text-muted">
+          <p className="text-sm text-text-muted">
             Could not load projects.
           </p>
           <button
-            className="inline-flex h-[30px] items-center gap-2 rounded-[2px] border border-border-strong px-3 text-[13px] font-medium text-text transition-colors hover:bg-surface-hover"
+            className="inline-flex h-[30px] items-center gap-2 rounded-full border border-border-strong px-3 text-[13px] font-medium text-text transition-colors hover:bg-surface-hover"
             type="button"
             onClick={() => refetch()}
           >
@@ -80,14 +80,14 @@ export function Projects() {
                   to={`/workspace/${wrkSlug}/projects/${project.slug}`}
                   className="flex h-full flex-col gap-3.5"
                 >
-                  <span className="grid size-9 place-items-center rounded-[2px] border border-border bg-surface-raised">
+                  <span className="grid size-9 place-items-center rounded-[10px] border border-border bg-surface-raised">
                     <IconFolder />
                   </span>
                   <h3 className="text-[15px] font-semibold tracking-[-0.01em]">
                     {project.name}
                   </h3>
                   <p>
-                    <span className="font-mono text-[12px] text-text-subtle">
+                    <span className="text-xs tabular-nums text-text-subtle">
                       {project.slug}
                     </span>
                   </p>
@@ -105,14 +105,14 @@ export function Projects() {
                   ? `No projects in ${workspaceName}`
                   : "No projects yet"}
               </h3>
-              <p className="mt-1.5 text-[13px] text-text-muted">
+              <p className="mt-1.5 text-sm text-text-muted">
                 Create your first project, add a source, then install the SDK
                 and verify your first event.
               </p>
             </div>
           <Link
               to="/onboarding"
-              className="inline-flex h-[30px] shrink-0 items-center gap-2 rounded-[2px] border border-border-strong px-3 text-[13px] font-medium text-text transition-colors hover:bg-surface-hover"
+              className="inline-flex h-[30px] shrink-0 items-center gap-2 rounded-full border border-border-strong px-3 text-[13px] font-medium text-text transition-colors hover:bg-surface-hover"
             >
               Set up your first project
             </Link>

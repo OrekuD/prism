@@ -70,7 +70,7 @@ function StreamAnswer({
         />
       ))}
       {answer.assumptions.length > 0 ? (
-        <div className="mt-2.5 flex items-start gap-2.5 rounded-sm border border-warning/40 p-[10px_12px] text-[12.5px] text-text-muted">
+        <div className="mt-2.5 flex items-start gap-2.5 rounded-[12px] border border-warning/40 p-[10px_12px] text-[12.5px] text-text-muted">
           <span
             aria-hidden="true"
             className="mt-[5px] h-[7px] w-[7px] flex-none rounded-full bg-warning"
@@ -132,8 +132,8 @@ export function ChatView({
         {loading && !detail && !showStream && !pendingMessage ? (
           <div role="status" aria-label="Loading conversation" className="flex flex-col gap-5 py-2" aria-busy="true">
             <span className="sr-only">Loading conversation…</span>
-            <div aria-hidden="true" className="h-12 w-2/5 self-end rounded-sm bg-surface-raised" />
-            <div aria-hidden="true" className="h-24 w-3/5 rounded-sm bg-surface-raised" />
+            <div aria-hidden="true" className="h-12 w-2/5 self-end rounded-md bg-surface-raised" />
+            <div aria-hidden="true" className="h-24 w-3/5 rounded-md bg-surface-raised" />
           </div>
         ) : null}
         {!loading && messages.length === 0 && !showStream && !pendingMessage ? (
@@ -157,7 +157,7 @@ export function ChatView({
             return (
               <div
                 key={message.id}
-                className="po-msg-in max-w-[70%] self-end whitespace-pre-wrap rounded-sm border border-border-strong bg-surface-raised px-3.5 py-2.5 text-[13.5px] text-text"
+                className="po-msg-in max-w-[70%] self-end whitespace-pre-wrap rounded-[16px] border border-border-strong bg-surface-raised px-3.5 py-2.5 text-[13.5px] text-text"
               >
                 {text}
               </div>
@@ -182,7 +182,7 @@ export function ChatView({
             <div
               key={message.id}
               data-message-id={message.id}
-              className={`po-msg-in self-start rounded-sm border border-border bg-surface p-[14px_16px] ${width}`}
+              className={`po-msg-in self-start rounded-[16px] border border-border bg-surface p-[14px_16px] ${width}`}
             >
               <TraceBlock steps={trace} />
               {answer ? (
@@ -217,14 +217,14 @@ export function ChatView({
         })}
 
         {pendingMessage ? (
-          <div className="po-msg-in max-w-[70%] self-end whitespace-pre-wrap rounded-sm border border-border-strong bg-surface-raised px-3.5 py-2.5 text-[13.5px] text-text">
+          <div className="po-msg-in max-w-[70%] self-end whitespace-pre-wrap rounded-[16px] border border-border-strong bg-surface-raised px-3.5 py-2.5 text-[13.5px] text-text">
             {pendingMessage}
           </div>
         ) : null}
 
         {showStream && stream ? (
           <div
-            className={`po-msg-in self-start rounded-sm border border-border bg-surface p-[14px_16px] ${
+            className={`po-msg-in self-start rounded-[16px] border border-border bg-surface p-[14px_16px] ${
               stream.artifacts.length > 0
                 ? "w-full max-w-[70%] max-[760px]:max-w-full"
                 : "w-fit max-w-[70%]"
@@ -265,7 +265,7 @@ export function ChatView({
         {stream?.error || sendError ? (
           <div
             role="alert"
-            className="mt-2.5 flex w-fit max-w-full items-start gap-2.5 rounded-sm border border-danger/40 p-[10px_12px] text-[12.5px] text-text-muted"
+            className="mt-2.5 flex w-fit max-w-full items-start gap-2.5 rounded-[12px] border border-danger/40 p-[10px_12px] text-[12.5px] text-text-muted"
           >
             <span
               aria-hidden="true"
@@ -280,7 +280,7 @@ export function ChatView({
       <button
         type="button"
         onClick={onBack}
-        className="mb-2 mt-16 inline-flex h-[30px] items-center gap-2 self-start whitespace-nowrap rounded-sm px-3 text-xs font-medium text-text-muted transition-colors duration-100 hover:bg-surface-hover hover:text-text [&_svg]:h-3.5 [&_svg]:w-3.5"
+        className="mb-2 mt-16 inline-flex h-[30px] items-center gap-2 self-start whitespace-nowrap rounded-full px-3 text-xs font-medium text-text-muted transition-colors duration-100 hover:bg-surface-hover hover:text-text [&_svg]:h-3.5 [&_svg]:w-3.5"
       >
         <ArrowLeft aria-hidden="true" />
         Back to overview

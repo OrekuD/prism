@@ -17,14 +17,14 @@ export function Toolbar({ onMenu }: { onMenu?: () => void }) {
       <div className="flex min-w-0 items-center gap-3">
         <button
           type="button"
-          className="hidden size-[30px] items-center justify-center gap-2 rounded-[2px] text-[13px] font-medium transition-colors hover:bg-surface-hover max-[1023px]:inline-flex"
+          className="hidden size-[30px] items-center justify-center gap-2 rounded-full text-[13px] font-medium transition-colors hover:bg-surface-hover max-[1023px]:inline-flex"
           aria-label="Open navigation"
           onClick={onMenu}
         >
           <IconMenu />
         </button>
         <div className="flex min-w-0 items-center whitespace-nowrap">
-          <ShadcnBreadcrumb className="font-mono text-[13px]">
+          <ShadcnBreadcrumb className="text-[13px]">
             <BreadcrumbList className="flex-nowrap gap-1.5">
               {trail.map((crumb, index) => {
                 const isLast = index === trail.length - 1;

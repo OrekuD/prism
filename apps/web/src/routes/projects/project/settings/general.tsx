@@ -45,23 +45,23 @@ export function ProjectSettingsGeneral() {
 
   return (
     <div className="grid gap-6">
-      <Frame className="p-6">
-        <SectionLabel>Project name</SectionLabel>
-        <p className="mt-1.5 text-[13px] text-text-muted">
+      <Frame className="rounded-[20px] p-6">
+        <SectionLabel className="font-sans text-sm font-medium normal-case tracking-normal">Project name</SectionLabel>
+        <p className="mt-1.5 text-sm text-text-muted">
           Identifies your project across the Dashboard, Prism CLI, and
           Deployment URLs.
         </p>
         <div className="mt-4 flex items-center justify-between gap-4">
           {isLoading || !data ? (
             <div className="flex-1">
-              <Skeleton className="h-6 w-1/3" />
+              <Skeleton className="h-6 w-1/3 rounded-md" />
             </div>
           ) : (
-            <p className="text-[14px] font-medium text-text">{data.name}</p>
+            <p className="text-sm text-text">{data.name}</p>
           )}
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button disabled={!data || isLoading}>Rename project</Button>
+              <Button disabled={!data || isLoading} className="rounded-full border border-black/10 bg-white text-black hover:bg-neutral-200">Rename</Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
@@ -87,6 +87,7 @@ export function ProjectSettingsGeneral() {
                   type="button"
                   variant="outline"
                   onClick={() => setOpen(false)}
+                  className="rounded-full"
                 >
                   Cancel
                 </Button>
@@ -94,6 +95,7 @@ export function ProjectSettingsGeneral() {
                   type="button"
                   onClick={onRename}
                   disabled={renameProjectMutation.isPending || !name.trim()}
+                  className="rounded-full"
                 >
                   {renameProjectMutation.isPending ? (
                     <Loader2 className="size-4 animate-spin" />
@@ -107,16 +109,16 @@ export function ProjectSettingsGeneral() {
         </div>
       </Frame>
 
-      <Frame destructive className="p-6">
-        <SectionLabel className="text-danger">Delete project</SectionLabel>
-        <p className="mt-1.5 text-[13px] text-text-muted">
+      <Frame destructive className="rounded-[20px] p-6">
+        <SectionLabel className="font-sans text-sm font-medium normal-case tracking-normal text-danger">Delete project</SectionLabel>
+        <p className="mt-1.5 text-sm text-text-muted">
           This will irreversibly remove your project and all associated
           content from Prism.
         </p>
         <div className="mt-4">
           <DeleteProject>
-            <Button variant="destructive" disabled={!data || isLoading}>
-              Delete project
+            <Button variant="destructive" disabled={!data || isLoading} className="rounded-full">
+              Delete
             </Button>
           </DeleteProject>
         </div>

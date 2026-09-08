@@ -100,7 +100,7 @@ export function AllowedOrigins({
             origins.map((origin) => (
               <li
                 key={origin}
-                className="flex items-center justify-between gap-2 rounded-[2px] border border-border bg-surface px-3 py-2"
+                className="flex items-center justify-between gap-2 rounded-[12px] border border-border bg-surface px-3 py-2"
               >
                 <code className="truncate font-mono text-[12px] text-text">
                   {origin}
