@@ -216,9 +216,21 @@ export function CreateAccount() {
   }`;
 
   const stepIndicator = (
-    <p className="text-center text-xs text-text-subtle" aria-live="polite">
-      Step {step} of 3
-    </p>
+    <div
+      className="flex items-center justify-center gap-1.5"
+      aria-live="polite"
+      aria-label={`Step ${step} of 3`}
+    >
+      {[1, 2, 3].map((index) => (
+        <span
+          key={index}
+          aria-hidden="true"
+          className={`h-[3px] w-5 rounded-full transition-colors duration-200 ${
+            index === step ? "bg-text" : index < step ? "bg-border-strong" : "bg-border"
+          }`}
+        />
+      ))}
+    </div>
   );
 
   // Duplicate probe hit an existing account (or the authoritative signup
