@@ -27,12 +27,12 @@ export function EmptyState({
     <Frame className={cn("p-8 text-center", className)} marks={false}>
       <div className="mx-auto flex max-w-[420px] flex-col items-center">
         {icon ? (
-          <span className="grid size-9 place-items-center rounded-[2px] border border-border bg-surface text-text-subtle">
+          <span className="grid size-9 place-items-center rounded-[10px] border border-border bg-surface text-text-subtle">
             {icon}
           </span>
         ) : null}
         {label && !icon ? (
-          <p className="font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-subtle">
+          <p className="text-[13px] font-medium tracking-normal text-text-subtle">
             {label}
           </p>
         ) : null}
@@ -43,11 +43,11 @@ export function EmptyState({
         </h2>
         {description ? (
           typeof description === "string" ? (
-            <p className="mt-1.5 text-pretty font-mono text-[12.5px] leading-[1.5] text-text-muted">
+            <p className="mt-1.5 text-pretty text-[12.5px] leading-[1.5] text-text-muted">
               {description}
             </p>
           ) : (
-            <div className="mt-1.5 text-pretty font-mono text-[12.5px] leading-[1.5] text-text-muted">
+            <div className="mt-1.5 text-pretty text-[12.5px] leading-[1.5] text-text-muted">
               {description}
             </div>
           )

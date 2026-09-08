@@ -62,16 +62,16 @@ export function MetricsFrame({
                 strokeWidth={1.75}
                 aria-hidden="true"
               />
-              <span className="font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
+              <span className="text-[13px] font-medium tracking-normal text-text-subtle">
                 {cell.label}
               </span>
             </div>
             {isLoading ? (
-              <div className="mt-4 h-8 w-24 animate-pulse rounded-[2px] bg-surface-hover" />
+              <div className="mt-4 h-8 w-24 animate-pulse rounded-md bg-surface-hover" />
             ) : cell.value === null ? (
               <div className="mt-4 flex items-baseline gap-2">
                 <span
-                  className="font-mono text-[32px] font-semibold leading-none tabular-nums tracking-[-0.04em] text-text-muted"
+                  className="text-[32px] font-semibold leading-none tabular-nums tracking-[-0.04em] text-text-muted"
                   aria-label={`${cell.label} unavailable`}
                 >
                   —
@@ -84,7 +84,7 @@ export function MetricsFrame({
               </div>
             ) : (
               <div className="mt-4 flex items-baseline gap-2">
-                <span className="font-mono text-[32px] font-semibold leading-none tabular-nums tracking-[-0.04em] text-text">
+                <span className="text-[32px] font-semibold leading-none tabular-nums tracking-[-0.04em] text-text">
                   {cell.value.toLocaleString()}
                 </span>
                 {cell.unit ? (

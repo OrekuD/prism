@@ -41,7 +41,7 @@ export function PublicFooter() {
         </div>
         {columns.map((column) => (
           <div key={column.title}>
-            <p className="font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-subtle">
+            <p className="text-[13px] font-medium tracking-normal text-text-subtle">
               {column.title}
             </p>
             <ul className="mt-4 grid gap-2.5">

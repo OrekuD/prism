@@ -238,7 +238,7 @@ export function TrendChart({
 			</svg>
 			{hv ? (
 				<div
-					className="pointer-events-none absolute z-[5] whitespace-nowrap rounded-[2px] border border-border bg-surface-raised px-2.5 py-2 font-mono text-[11px] leading-[1.5] shadow-[0_8px_24px_rgb(0_0_0/0.3)]"
+					className="pointer-events-none absolute z-[5] whitespace-nowrap rounded-md border border-border bg-surface-raised px-2.5 py-2 text-[11px] leading-[1.5] tabular-nums shadow-[0_8px_24px_rgb(0_0_0/0.3)]"
 					style={{
 						left: `calc(${Math.min(92, Math.max(2, tipLeft))}% + 10px)`,
 						top: `calc(${tipTop}% - 52px)`,

@@ -9,7 +9,7 @@ export function AnalyticsTable({
   className?: string;
 }) {
   return (
-    <div className={cn("overflow-auto rounded-[2px] border border-border", className)}>
+    <div className={cn("overflow-auto rounded-[16px] border border-border", className)}>
       <table className="w-full border-collapse font-sans text-[13px]">{children}</table>
     </div>
   );
@@ -33,7 +33,7 @@ export function AnalyticsTableHeaderCell({
   return (
     <th
       className={cn(
-        "border-b border-border bg-canvas-subtle px-3.5 py-2.5 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted",
+        "border-b border-border bg-canvas-subtle px-4 py-2.5 text-[13px] font-medium tracking-normal text-text-subtle",
         align === "right" ? "text-right" : "text-left",
       )}
     >
@@ -89,7 +89,7 @@ export function AnalyticsTableCell({
 export function PageCellMain({ path, title, host }: { path: string; title?: string | null; host?: string | null }) {
   return (
     <>
-      <b className="block truncate font-mono text-[12.5px] font-medium leading-[1.35]">{path}</b>
+      <b className="block truncate text-[12.5px] font-medium leading-[1.35] tabular-nums">{path}</b>
       <span className="block truncate text-[11px] text-text-muted">
         {title ?? ""}
         {host ? ` · ${host}` : ""}

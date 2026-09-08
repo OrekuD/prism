@@ -27,7 +27,7 @@ export function ErrorState({
         <button
           type="button"
           onClick={onRetry}
-          className="mt-1 inline-flex h-9 items-center gap-2 rounded-[2px] border border-border-strong bg-canvas px-3.5 text-[13px] font-medium text-text transition-colors duration-150 hover:border-text-subtle hover:bg-surface-hover"
+          className="mt-1 inline-flex h-9 items-center gap-2 rounded-full border border-border-strong bg-canvas px-3.5 text-[13px] font-medium text-text transition-colors duration-150 hover:border-text-subtle hover:bg-surface-hover"
         >
           <RefreshCw className="size-3.5" aria-hidden="true" />
           Try again

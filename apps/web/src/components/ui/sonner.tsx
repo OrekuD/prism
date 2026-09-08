@@ -35,13 +35,13 @@ const Toaster = ({ ...props }: ToasterProps) => {
 			toastOptions={{
 				classNames: {
 					toast:
-						"!rounded-[2px] !border-border-strong !bg-surface-raised !text-text !text-[13px] !shadow-none",
+						"!rounded-full !border-border-strong !bg-surface-raised !text-text !text-[13px] !shadow-none",
 					title: "!text-[13px] !font-medium !text-text",
 					description: "!text-[12px] !text-text-muted",
 					actionButton:
-						"!rounded-[2px] !bg-accent !text-primary-foreground !h-8 !px-3 !text-[13px] !font-medium",
+						"!rounded-full !bg-accent !text-primary-foreground !h-8 !px-3 !text-[13px] !font-medium",
 					cancelButton:
-						"!rounded-[2px] !bg-surface-hover !text-text !h-8 !px-3 !text-[13px]",
+						"!rounded-full !bg-surface-hover !text-text !h-8 !px-3 !text-[13px]",
 					closeButton: "!text-text-muted",
 				},
 			}}
