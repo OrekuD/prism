@@ -434,7 +434,7 @@ export function CreateAccount() {
                   required
                   value={name}
                   onChange={(event) => setName(event.target.value)}
-                  placeholder="David"
+                  placeholder="Jane Smith"
                   className="h-10"
                 />
               </div>
@@ -446,7 +446,7 @@ export function CreateAccount() {
                   required
                   value={workspaceName}
                   onChange={(event) => setWorkspaceName(event.target.value)}
-                  placeholder="Oreku"
+                  placeholder="Acme Inc."
                   className="h-10"
                 />
                 <p className="text-xs text-text-muted">
