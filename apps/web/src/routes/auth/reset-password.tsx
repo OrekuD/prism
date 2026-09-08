@@ -11,11 +11,15 @@ export function ResetPassword() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token") ?? "";
+  // Arriving via the API's redirect with ?error=INVALID_TOKEN means the link
+  // was stale/expired — show the invalid screen immediately.
+  const [invalidLink, setInvalidLink] = React.useState(
+    Boolean(searchParams.get("error")),
+  );
   const [password, setPassword] = React.useState("");
   const [confirm, setConfirm] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [isPending, setIsPending] = React.useState(false);
-  const [invalidLink, setInvalidLink] = React.useState(false);
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();

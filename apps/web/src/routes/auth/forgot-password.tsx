@@ -20,7 +20,12 @@ export function ForgotPassword() {
     setError(null);
     setIsPending(true);
     try {
-      const response = await authClient.requestPasswordReset({ email });
+      const response = await authClient.requestPasswordReset({
+        email,
+        // Send the reset link back to the app's reset screen, not the API's
+        // built-in error page (Better Auth appends ?callbackURL= to the link).
+        redirectTo: `${window.location.origin}/auth/reset-password`,
+      });
       if (response.error) {
         // Identical response for known and unknown accounts: no enumeration.
         setSubmitted(true);
