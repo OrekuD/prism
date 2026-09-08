@@ -1,5 +1,5 @@
 import type React from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useMatch } from "react-router-dom";
 import { PublicFooter } from "@/components/public/public-footer";
 import { PublicNav } from "@/components/public/public-nav";
 
@@ -13,6 +13,10 @@ export function PublicLayout({
 }: {
   children?: React.ReactNode;
 }) {
+  const isAuthRoute = useMatch("/auth/*");
+  if (isAuthRoute) {
+    return <main className="flex min-h-dvh flex-col bg-canvas text-text">{children ?? <Outlet />}</main>;
+  }
   return (
     <div className="flex min-h-dvh flex-col bg-canvas text-text">
       <PublicNav />

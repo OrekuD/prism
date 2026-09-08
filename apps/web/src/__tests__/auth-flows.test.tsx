@@ -8,6 +8,7 @@ import axe from "axe-core";
 import { CreateAccount } from "@/routes/auth/create-account";
 import { ForgotPassword } from "@/routes/auth/forgot-password";
 import { Toaster } from "@/components/ui/sonner";
+import { PublicLayout } from "@/components/layout/public-layout";
 
 const signInEmail = vi.fn();
 const signUpEmail = vi.fn();
@@ -84,6 +85,23 @@ beforeEach(() => {
 });
 
 describe("auth failure states", () => {
+  it("keeps login focused and provider buttons presentation-only", async () => {
+    renderPage(<PublicLayout><LogIn /></PublicLayout>);
+    expect(screen.getByRole("heading", { name: "Sign in to Prism" })).toBeVisible();
+    expect(screen.queryByText("Instance")).toBeNull();
+    expect(screen.queryByText("localhost:8787")).toBeNull();
+    expect(screen.queryByRole("contentinfo")).toBeNull();
+    expect(screen.getByRole("link", { name: "Forgot password?" })).toHaveAttribute("href", "/auth/forgot-password");
+    const submit = screen.getByRole("button", { name: "Sign in" });
+    expect(submit).toHaveClass("rounded-full", "bg-accent", "h-10");
+    await userEvent.click(screen.getByRole("button", { name: "Continue with Google" }));
+    expect(screen.getByRole("status")).toHaveTextContent("Google sign-in isn't available yet");
+    await userEvent.click(screen.getByRole("button", { name: "Continue with GitHub" }));
+    expect(screen.getByRole("status")).toHaveTextContent("GitHub sign-in isn't available yet");
+    expect(signInSocial).not.toHaveBeenCalled();
+    expect(signInEmail).not.toHaveBeenCalled();
+  });
+
   it("shows the OAuth denied state from ?error=access_denied", async () => {
     renderPage(<LogIn />, "/auth/log-in?error=access_denied");
     expect(
