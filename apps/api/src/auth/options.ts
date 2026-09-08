@@ -109,8 +109,15 @@ export function buildAuthOptions(
         role: {
           type: "number",
           required: false,
-          defaultValue: 1,
           input: false,
+        },
+        // Signup-only: the workspace name chosen in the third signup step.
+        // Read by the user.create.after hook to provision the personal
+        // workspace with the user's chosen name, then nulled out.
+        signupWorkspaceName: {
+          type: "string",
+          required: false,
+          input: true,
         },
       },
     },

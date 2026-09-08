@@ -22,6 +22,7 @@ export const user = pgTable("user", {
     .notNull(),
   userName: text("user_name"),
   role: integer("role").default(1),
+  signupWorkspaceName: text("signup_workspace_name"),
 });
 
 export const session = pgTable(

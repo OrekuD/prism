@@ -155,21 +155,17 @@ describe("auth failure states", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "Create account" }),
     );
+    // The chosen workspace name rides in-band; provisioning is
+    // server-side — the client never renames.
     await waitFor(() => expect(signUpEmail).toHaveBeenCalledTimes(1));
     expect(signUpEmail).toHaveBeenCalledWith(
       expect.objectContaining({
         email: "newuser@example.com",
         name: "David",
+        signupWorkspaceName: "Oreku",
       }),
     );
-    // The chosen workspace name is applied to the provisioned org.
-    await waitFor(() =>
-      expect(organizationUpdate).toHaveBeenCalledWith({
-        organizationId: "workspace-1",
-        data: { name: "Oreku" },
-      }),
-    );
-    expect(signUpEmail.mock.calls[0][0].password).toBe("hunter2222");
+    expect(organizationUpdate).not.toHaveBeenCalled();    expect(signUpEmail.mock.calls[0][0].password).toBe("hunter2222");
     fetchSpy.mockRestore();
   });
 

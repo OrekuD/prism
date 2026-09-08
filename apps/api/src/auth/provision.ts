@@ -8,7 +8,7 @@
  * Auth user id, so retries (e.g. after a partial failure) never duplicate
  * rows.
  */
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type { NeonDatabase } from "drizzle-orm/neon-serverless";
@@ -57,12 +57,12 @@ function newWorkspaceSlug(): string {
 
 export async function createPersonalWorkspace(
   api: AuthLike["api"],
-  user: { id: string; name: string },
+  user: { id: string; name: string; workspaceName?: string },
 ): Promise<void> {
   try {
     await api.createOrganization({
       body: {
-        name: `${user.name}'s workspace`,
+        name: user.workspaceName?.trim() || `${user.name}'s workspace`,
         slug: newWorkspaceSlug(),
         userId: user.id,
         // This is the user's default (undeletable) personal workspace.
@@ -120,8 +120,13 @@ export async function ensurePersonalWorkspace(
 
 export async function provisionUserResources(
   db: ProvisionDb,
-  user: { id: string; name: string; email: string },
-  _context?: GenericEndpointContext | null,
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    signupWorkspaceName?: string | null;
+  },
+  context?: GenericEndpointContext | null,
 ): Promise<void> {
   const existingProfile = await db
     .select({ id: profiles.id })
@@ -137,7 +142,22 @@ export async function provisionUserResources(
       last_name,
     });
   }
-  // The personal workspace is provisioned lazily by the authentication
-  // middleware (see ensurePersonalWorkspace) — the 1.6.26 hook context has
-  // no server API handle.
+  // The personal workspace is created here — inside the signup request —
+  // using the name chosen in step 3, falling back to the historical
+  // default when absent. The authentication middleware keeps the lazy
+  // fallback for users created before this path existed; their hook
+  // never runs again.
+  const api = context?.context?.api as AuthLike["api"] | undefined;
+  if (!api) return;
+  const workspaceName = user.signupWorkspaceName?.trim() || `${user.name}'s workspace`;
+  await createPersonalWorkspace(api, {
+    id: user.id,
+    name: user.name,
+    workspaceName,
+  });
+  // The signup field is transient: clear it once consumed so the user
+  // record never carries stale form data.
+  await db.execute(
+    sql`UPDATE "user" SET signup_workspace_name = NULL WHERE id = ${user.id}`,
+  );
 }

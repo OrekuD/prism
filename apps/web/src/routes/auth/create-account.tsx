@@ -9,7 +9,6 @@ import { PasswordInput } from "@/components/auth/password-input";
 import { SocialAuthButtons } from "@/components/auth/social-auth-buttons";
 import { waitForSession } from "@/lib/session";
 import { loadRuntimeConfig, type RuntimeConfig } from "@/lib/runtimeConfig";
-import { workspaceActions } from "@/lib/workspace";
 import { getLastAuthMethod } from "@/lib/lastAuth";
 import { API_BASE_URL } from "@/lib/api";
 import { TELEMETRY_EVENTS, trackTelemetry } from "@/lib/telemetry";
@@ -111,11 +110,15 @@ export function CreateAccount() {
     setError(null);
     setIsPending(true);
     try {
+      // signupWorkspaceName is a server-side user additionalField the
+      // client's generated types don't know about — typed at the API
+      // (options.ts) and consumed by the user.create.after hook.
       const response = await authClient.signUp.email({
         email: email.trim(),
         password,
         name: name.trim(),
-      });
+        signupWorkspaceName: workspaceName.trim(),
+      } as Parameters<typeof authClient.signUp.email>[0]);
       if (response.error) {
         const message = response.error.message ?? "";
         const duplicate = response.error.status === 422 || /already exists/i.test(message);
@@ -138,39 +141,10 @@ export function CreateAccount() {
       trackTelemetry(TELEMETRY_EVENTS.signupMethod, { method: "email" });
       // Sign-up creates a session immediately, even with verification
       // pending. Hard-navigate after the session is durable so the fresh
-      // boot reads the cookie and never bounces back to this page.
+      // boot reads the cookie and never bounces back to this page. The
+      // workspace was provisioned server-side with the chosen name —
+      // no client-side rename needed.
       await waitForSession();
-      // Personal-workspace provisioning is lazy on the API side: it runs
-      // on the first authenticated /api/v1 request. Better Auth endpoints
-      // (organization.list) don't pass through that middleware, so hit one
-      // product endpoint first to guarantee the workspace exists before
-      // resolving and renaming it.
-      try {
-        await fetch(`${API_BASE_URL}/api/v1/user`, {
-          credentials: "include",
-        });
-      } catch {
-        // Provisioning retries on the app's first real request anyway.
-      }
-      // Apply the chosen workspace name to the auto-provisioned default
-      // workspace. Non-blocking on failure: the workspace keeps its
-      // default name (renameable in settings) and the user still lands
-      // in their workspace. The rename is an update on the provisioned
-      // org, so retries can never duplicate workspaces.
-      try {
-        const orgs = await authClient.organization.list();
-        const first = (
-          orgs.data as Array<{ id: string }> | null | undefined
-        )?.[0];
-        if (first && workspaceName.trim()) {
-          await workspaceActions.update({
-            organizationId: first.id,
-            name: workspaceName.trim(),
-          });
-        }
-      } catch {
-        // Rename is best-effort; never block first-run on it.
-      }
       // Verified accounts continue into onboarding; unverified ones land
       // in the product shell, where the verification banner offers a resend.
       window.location.assign(
