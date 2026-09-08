@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { resolvePrismConfig } from "../config";
 import { isMailConfigured } from "../auth/mail";
+import { AuthController } from "../controllers/AuthController";
 import { SetupController } from "../controllers/SetupController";
 import { DatabaseManager } from "../managers/DatabaseManager";
 import type { Bindings, HonoConfig } from "../types/types";
@@ -48,6 +49,9 @@ router.get("/config", async (ctx) => {
 
 /** One-time first-owner setup (self-hosted + empty database only). */
 router.post("/setup/owner", SetupController.createOwner);
+
+/** Public signup duplicate check (rate-limited per IP). */
+router.get("/auth/email-available", AuthController.emailAvailable);
 
 router.route("/user", UserRouter);
 router.route("/projects", ProjectsRouter);
