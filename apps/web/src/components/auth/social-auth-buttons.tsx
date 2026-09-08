@@ -41,7 +41,7 @@ function LastUsedBadge() {
   return (
     <span
       aria-hidden="true"
-      className="absolute -top-1.5 left-3 rounded-full border border-border bg-canvas px-1.5 py-px text-[9px] font-medium leading-[1.4] tracking-normal text-text-muted"
+      className="absolute -top-1.5 right-3 rounded-full bg-accent px-1.5 py-px text-[9px] font-medium leading-[1.4] tracking-normal text-primary-foreground"
     >
       Last used
     </span>
