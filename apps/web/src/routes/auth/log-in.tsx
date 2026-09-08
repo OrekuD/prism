@@ -7,6 +7,7 @@ import { AuthShell } from "@/components/auth/auth-shell";
 import { isNetworkError, oauthErrorMessage } from "@/components/auth/auth-errors";
 import { waitForSession } from "@/lib/session";
 import { resolveDefaultWorkspacePath } from "@/lib/workspace";
+import { getLastAuthMethod, setLastAuthMethod } from "@/lib/lastAuth";
 import { PasswordInput } from "@/components/auth/password-input";
 import {
   SocialAuthButtons,
@@ -17,7 +18,12 @@ import { Label } from "@/components/ui/label";
 export function LogIn() {
   const [searchParams] = useSearchParams();
   const oauthError = oauthErrorMessage(searchParams.get("error"));
-  const [email, setEmail] = React.useState("");
+  // ?email= prefill — used by the signup "account exists" hand-off so the
+  // user lands on sign-in with their address already filled.
+  const [email, setEmail] = React.useState(
+    () => searchParams.get("email") ?? "",
+  );
+  const lastUsed = email.trim() ? getLastAuthMethod(email.trim()) : null;
   const [password, setPassword] = React.useState("");
   const [isPending, setIsPending] = React.useState(false);
 
@@ -42,6 +48,9 @@ export function LogIn() {
       // Better Auth's organization endpoints require the cookie session, so
       // starting this lookup earlier creates a guaranteed post-sign-in 401.
       await waitForSession();
+      // Record the successful method so future visits show the "Last used"
+      // hint on the right button (and the signup hand-off can reference it).
+      setLastAuthMethod(email.trim(), "password");
       const home = await resolveDefaultWorkspacePath();
       // A full navigation (fresh boot) reads the confirmed session cookie, so
       // the router never briefly sees a signed-out state and bounces back.
@@ -72,6 +81,7 @@ export function LogIn() {
         <SocialAuthButtons
           providers={{ github: true, google: true }}
           onSocial={onSocial}
+          lastUsed={lastUsed === "github" || lastUsed === "google" ? lastUsed : null}
         />
         {providerNotice ? <p role="status" className="text-center text-[12px] leading-relaxed text-text-muted">{providerNotice}</p> : null}
         <div className="flex items-center gap-4 py-1">

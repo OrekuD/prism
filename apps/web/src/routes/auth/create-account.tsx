@@ -1,7 +1,6 @@
 import { Check, Loader2 } from "lucide-react";
 import React from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { toast } from "sonner";
 import { authClient } from "@/lib/authClient";
 import { AuthAlert } from "@/components/auth/auth-alert";
 import { AuthShell, OrEmailDivider } from "@/components/auth/auth-shell";
@@ -11,6 +10,7 @@ import { SocialAuthButtons } from "@/components/auth/social-auth-buttons";
 import { waitForSession } from "@/lib/session";
 import { loadRuntimeConfig, type RuntimeConfig } from "@/lib/runtimeConfig";
 import { workspaceActions } from "@/lib/workspace";
+import { getLastAuthMethod } from "@/lib/lastAuth";
 import { API_BASE_URL } from "@/lib/api";
 import { TELEMETRY_EVENTS, trackTelemetry } from "@/lib/telemetry";
 import { Input } from "@/components/ui/input";
@@ -120,13 +120,9 @@ export function CreateAccount() {
         const message = response.error.message ?? "";
         const duplicate = response.error.status === 422 || /already exists/i.test(message);
         if (duplicate) {
-          // Private email flow: never reveal "email is taken" in the UI.
-          // The reset email only reaches the account owner and links to
-          // sign-in. Consistent public response either way.
-          void authClient.requestPasswordReset({
-            email: email.trim(),
-            redirectTo: `${window.location.origin}/auth/log-in`,
-          });
+          // Race between the step-1 probe and account creation: route to
+          // the same "account exists" hand-off (direct disclosure per the
+          // availability-probe design).
           setEmailTaken(true);
           setIsPending(false);
           return;
@@ -225,26 +221,38 @@ export function CreateAccount() {
     </p>
   );
 
-  // Duplicate at submit: consistent public response + private sign-in email.
+  // Duplicate probe hit an existing account (or the authoritative signup
+  // submit raced the probe): tell the user directly and hand off to
+  // sign-in with the email pre-filled.
   if (emailTaken) {
+    const lastUsed = getLastAuthMethod(email.trim());
     return (
       <AuthShell>
-        {stepIndicator}
-        <div className="mt-3 text-center">
+        <div className="text-center">
           <h1
             ref={headingRef}
             tabIndex={-1}
             className="outline-none text-[22px] font-semibold leading-tight tracking-[-0.03em] text-text"
           >
-            Check your email.
+            You already have an account.
           </h1>
           <p className="mt-2 text-[13px] text-text-muted">
-            If an account already exists for {email.trim()}, we've sent a
-            link to sign in.
+            An account already exists for {email.trim()}.
           </p>
           <div className="mt-8 grid gap-5">
+            {lastUsed ? (
+              <p className="text-[13px] text-text-muted">
+                You last signed in with{" "}
+                {lastUsed === "password"
+                  ? "your password"
+                  : lastUsed === "google"
+                    ? "Google"
+                    : "GitHub"}
+                .
+              </p>
+            ) : null}
             <Link
-              to="/auth/log-in"
+              to={`/auth/log-in?email=${encodeURIComponent(email.trim())}`}
               className="inline-flex h-10 w-fit items-center justify-center self-center rounded-full bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
             >
               Sign in
@@ -253,6 +261,7 @@ export function CreateAccount() {
               type="button"
               onClick={() => {
                 setEmailTaken(false);
+                setEmail("");
                 setPassword("");
                 goTo(1);
               }}

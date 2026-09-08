@@ -46,6 +46,7 @@ export function SocialAuthButtons({
   onSocial,
   actionLabel = "Continue with",
   pendingProvider = null,
+  lastUsed = null,
   className,
 }: {
   providers: EnabledProviders;
@@ -53,6 +54,8 @@ export function SocialAuthButtons({
   actionLabel?: string;
   /** Provider currently redirecting; both buttons disable while set. */
   pendingProvider?: "github" | "google" | null;
+  /** Provider the stored "last used" hint points at; badge that button. */
+  lastUsed?: "github" | "google" | null;
   className?: string;
 }) {
   const enabled = providers.github || providers.google;
@@ -77,6 +80,11 @@ export function SocialAuthButtons({
             <GitHubMark className="size-4" />
           )}
           {actionLabel} GitHub
+          {lastUsed === "github" ? (
+            <span className="text-[11px] font-medium text-text-subtle">
+              · Last used
+            </span>
+          ) : null}
         </button>
       ) : null}
       {providers.google ? (
@@ -93,6 +101,11 @@ export function SocialAuthButtons({
             <GoogleMark className="size-4" />
           )}
           {actionLabel} Google
+          {lastUsed === "google" ? (
+            <span className="text-[11px] font-medium text-text-subtle">
+              · Last used
+            </span>
+          ) : null}
         </button>
       ) : null}
     </div>

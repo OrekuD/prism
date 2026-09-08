@@ -186,17 +186,19 @@ describe("auth failure states", () => {
     await userEvent.click(screen.getByRole("button", { name: "Continue" }));
 
     expect(
-      await screen.findByRole("heading", { name: "Check your email." }),
+      await screen.findByRole("heading", { name: "You already have an account." }),
     ).toBeInTheDocument();
     expect(screen.getByText(/taken@example.com/)).toBeInTheDocument();
-    // The private email flow directs the owner to sign in without
-    // confirming registration state in the UI response itself.
-    expect(requestPasswordReset).not.toHaveBeenCalled();
+    const signInLink = screen.getByRole("link", { name: "Sign in" });
+    expect(signInLink).toHaveAttribute(
+      "href",
+      "/auth/log-in?email=taken%40example.com",
+    );
     expect(signUpEmail).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
   });
 
-  it("falls back to the private email flow when a duplicate races the probe", async () => {
+  it("falls back to the account-exists hand-off when a duplicate races the probe", async () => {
     signUpEmail.mockResolvedValue({
       data: null,
       error: { status: 422, message: "User already exists" },
@@ -220,13 +222,32 @@ describe("auth failure states", () => {
     );
 
     expect(
-      await screen.findByRole("heading", { name: "Check your email." }),
+      await screen.findByRole("heading", { name: "You already have an account." }),
     ).toBeInTheDocument();
-    await waitFor(() => expect(requestPasswordReset).toHaveBeenCalledTimes(1));
-    expect(requestPasswordReset).toHaveBeenCalledWith(
-      expect.objectContaining({ email: "racer@example.com" }),
-    );
+    expect(requestPasswordReset).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
+  });
+
+  it("prefills the login email from ?email= hand-off", () => {
+    renderPage(<LogIn />, "/auth/log-in?email=prefill@example.com");
+    expect(
+      screen.getByLabelText("Email"),
+    ).toHaveValue("prefill@example.com");
+  });
+
+  it("records and shows the last-used sign-in method", async () => {
+    localStorage.setItem("prism.lastAuth:user@example.com", "password");
+    renderPage(<LogIn />);
+
+    await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
+    expect(
+      screen.queryByText(/· Last used/),
+    ).not.toBeInTheDocument(); // password hint shows nowhere — badge is social-only
+
+    localStorage.setItem("prism.lastAuth:oauth@example.com", "google");
+    renderPage(<LogIn />, "/auth/log-in?email=oauth@example.com");
+    const badge = await screen.findByText(/· Last used/);
+    expect(badge).toBeInTheDocument();
   });
 
   it("reports a network failure instead of invalid credentials", async () => {
