@@ -113,10 +113,10 @@ function useIssueFromCache(
 function Kv({ k, children }: { k: string; children: React.ReactNode }) {
 	return (
 		<Frame inset className="min-w-0 px-3 py-3">
-			<div className="mb-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
+			<div className="mb-1.5 text-[13px] font-medium tracking-normal text-text-subtle">
 				{k}
 			</div>
-			<div className="break-words font-mono text-[12.5px] leading-[1.5] text-text">
+			<div className="break-words text-[12.5px] leading-[1.5] text-text">
 				{children}
 			</div>
 		</Frame>
@@ -224,7 +224,7 @@ function FrameRow({ frame, index }: { frame: ErrorStackFrame; index: number }) {
 			? `${rawFile}:${frame.line}${frame.column !== null ? `:${frame.column}` : ""}`
 			: (rawFile ?? "<unknown>");
 	return (
-		<Frame className="flex items-start gap-3 px-3 py-2 font-mono text-[11px] leading-relaxed">
+		<Frame className="flex items-start gap-3 px-3 py-2 text-[11px] leading-relaxed">
 			<span className="shrink-0 pt-px text-[10px] text-text-subtle">
 				{index}
 			</span>
@@ -262,23 +262,23 @@ function OccurrenceCard({
 	return (
 		<Frame inset className="space-y-1.5 p-2.5">
 			<div className="flex items-center gap-2">
-				<span className="min-w-0 flex-1 break-words font-mono text-[11.5px] leading-snug text-text">
+				<span className="min-w-0 flex-1 break-words text-[11.5px] leading-snug text-text">
 					{occurrence.exception.type}
 					{occurrence.exception.message
 						? `: ${occurrence.exception.message}`
 						: ""}
 				</span>
-				<span className="shrink-0 font-mono text-[10.5px] text-text-subtle">
+				<span className="shrink-0 text-[10.5px] text-text-subtle">
 					{relativeTime(occurrence.receivedAt)}
 				</span>
 			</div>
 			<div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[10.5px] text-text-muted">
 				<span>{occurrence.handled ? "handled" : "unhandled"}</span>
 				{occurrence.release ? (
-					<span className="font-mono">{occurrence.release}</span>
+					<span className="tabular-nums">{occurrence.release}</span>
 				) : null}
 				{occurrence.environment ? (
-					<span className="font-mono">{occurrence.environment}</span>
+					<span>{occurrence.environment}</span>
 				) : null}
 				{latest ? (
 					<span className="font-medium text-accent">latest</span>
@@ -303,10 +303,10 @@ function ActivityItem({ item }: { item: ErrorIssueActivityItem }) {
 	return (
 		<div className="flex items-center gap-2 py-1.5 text-[11.5px]">
 			<span className="font-medium text-text">{ACTION_LABEL[item.action]}</span>
-			<span className="font-mono text-[10.5px] text-text-muted">
+			<span className="text-[10.5px] text-text-muted">
 				{item.priorState} → {item.newState}
 			</span>
-			<span className="flex-1 truncate text-right font-mono text-[10.5px] text-text-subtle">
+			<span className="flex-1 truncate text-right text-[10.5px] text-text-subtle">
 				{relativeTime(item.timestamp)}
 			</span>
 		</div>
@@ -406,8 +406,8 @@ function IssueDetails({
 							</>
 						) : (
 							<>
-								<Skeleton className="h-[76px] w-full rounded-[2px]" />
-								<Skeleton className="h-[76px] w-full rounded-[2px]" />
+								<Skeleton className="h-[76px] w-full rounded-md" />
+								<Skeleton className="h-[76px] w-full rounded-md" />
 							</>
 						)}
 					</div>
@@ -429,7 +429,7 @@ function IssueDetails({
 						<div className="flex items-center justify-between gap-2">
 							<div className="flex items-baseline gap-2">
 								<SectionLabel>Stack trace</SectionLabel>
-								<span className="font-mono text-[10px] text-text-subtle">
+								<span className="text-[10px] text-text-subtle">
 									({latest.exception.frames.length} frames · sanitized)
 								</span>
 							</div>
@@ -443,7 +443,7 @@ function IssueDetails({
 						<div className="mt-3">
 							{latest.exception.frames.length > 0 ? (
 								<Frame inset className="p-0">
-									<div className="overflow-hidden rounded-[2px]">
+									<div className="overflow-hidden rounded-[16px]">
 										<ShikiStack
 											code={chainText(latest)}
 											language={latest.language}
@@ -452,7 +452,7 @@ function IssueDetails({
 								</Frame>
 							) : (
 								<Frame className="border-dashed bg-surface/40 px-3 py-6 text-center">
-									<p className="font-mono text-[12px] leading-none text-text-subtle">
+									<p className="text-[12px] leading-none text-text-subtle">
 										No captured stack frames for this occurrence.
 									</p>
 								</Frame>
@@ -468,7 +468,7 @@ function IssueDetails({
 				) : detail?.isFetching ? (
 					<section>
 						<SectionLabel>Stack trace</SectionLabel>
-						<Skeleton className="mt-3 h-[120px] w-full rounded-[2px]" />
+						<Skeleton className="mt-3 h-[120px] w-full rounded-md" />
 					</section>
 				) : null}
 
@@ -482,7 +482,7 @@ function IssueDetails({
 										<button
 											type="button"
 											aria-label="Breadcrumbs privacy info"
-											className="inline-flex size-4 shrink-0 -translate-y-[0.5px] items-center justify-center rounded-[2px] text-text-subtle hover:bg-surface-hover hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
+											className="inline-flex size-4 shrink-0 -translate-y-[0.5px] items-center justify-center rounded-full text-text-subtle hover:bg-surface-hover hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
 										>
 											<Info className="size-3" aria-hidden="true" />
 										</button>
@@ -494,13 +494,13 @@ function IssueDetails({
 								</Tooltip>
 							</TooltipProvider>
 						</div>
-						<span className="font-mono text-[10px] text-text-subtle">
+						<span className="text-[10px] text-text-subtle">
 							{latest ? `${latest.breadcrumbsCount} · safe · bounded` : "—"}
 						</span>
 					</div>
 					{latest && latest.breadcrumbsCount > 0 ? (
 						<Frame inset className="mt-3 p-0">
-							<div className="overflow-hidden rounded-[2px]">
+							<div className="overflow-hidden rounded-[16px]">
 								{BREADCRUMB_PLACEHOLDERS.slice(
 									0,
 									Math.min(latest.breadcrumbsCount, 6),
@@ -513,10 +513,10 @@ function IssueDetails({
 											className="h-1.5 w-1.5 shrink-0 rounded-full bg-info"
 											aria-hidden
 										/>
-										<span className="min-w-0 flex-1 truncate font-mono text-[11px] leading-relaxed text-text-muted">
+										<span className="min-w-0 flex-1 truncate text-[11px] leading-relaxed text-text-muted">
 											Breadcrumb {index + 1} — safe, sanitized
 										</span>
-										<span className="shrink-0 font-mono text-[10px] text-text-subtle">
+										<span className="shrink-0 text-[10px] text-text-subtle">
 											{relativeTime(latest.receivedAt - (index + 1) * 90_000)}
 										</span>
 									</div>
@@ -525,7 +525,7 @@ function IssueDetails({
 						</Frame>
 					) : (
 						<Frame className="mt-3 border-dashed bg-surface/40 px-3 py-6 text-center">
-							<p className="font-mono text-[12px] leading-none text-text-subtle">
+							<p className="text-[12px] leading-none text-text-subtle">
 								No breadcrumbs collected for this occurrence.
 							</p>
 						</Frame>
@@ -542,7 +542,7 @@ function IssueDetails({
 						<div className="mt-3 space-y-4">
 							{latest.environment || latest.release ? (
 								<div>
-									<div className="mb-2 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
+									<div className="mb-2 text-[13px] font-medium tracking-normal text-text-subtle">
 										Deployment
 									</div>
 									<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -557,7 +557,7 @@ function IssueDetails({
 							) : null}
 							{latest.tags && Object.keys(latest.tags).length > 0 ? (
 								<div>
-									<div className="mb-2 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
+									<div className="mb-2 text-[13px] font-medium tracking-normal text-text-subtle">
 										Tags
 									</div>
 									<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -571,7 +571,7 @@ function IssueDetails({
 							) : null}
 							{latest.extras && Object.keys(latest.extras).length > 0 ? (
 								<div>
-									<div className="mb-2 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
+									<div className="mb-2 text-[13px] font-medium tracking-normal text-text-subtle">
 										Extras
 									</div>
 									<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -590,7 +590,7 @@ function IssueDetails({
 						</div>
 					) : (
 						<Frame className="mt-3 border-dashed bg-surface/40 px-3 py-6 text-center">
-							<p className="font-mono text-[12px] leading-none text-text-subtle">
+							<p className="text-[12px] leading-none text-text-subtle">
 								No additional context for this occurrence.
 							</p>
 						</Frame>
@@ -609,7 +609,7 @@ function IssueDetails({
 										search,
 									}}
 									data-presentation-trigger={`occurrence:0:${occurrence.id}`}
-									className="block rounded-[2px] focus-visible:outline-2 focus-visible:outline-focus"
+									className="block rounded-md focus-visible:outline-2 focus-visible:outline-focus"
 								>
 									<div className="transition-colors hover:opacity-80">
 										<OccurrenceCard occurrence={occurrence} latest={false} />
@@ -618,7 +618,7 @@ function IssueDetails({
 							))}
 						</div>
 						{detailData?.hasMoreOccurrences ? (
-							<p className="mt-2 px-1 font-mono text-[10.5px] text-text-subtle">
+							<p className="mt-2 px-1 text-[10.5px] text-text-subtle">
 								Only the most recent occurrences are shown.
 							</p>
 						) : null}
@@ -681,12 +681,12 @@ function IssueDetailSkeleton() {
 			<Skeleton className="h-4 w-3/4" />
 			<Skeleton className="h-3 w-1/2" />
 			<div className="mt-2 grid grid-cols-2 gap-3">
-				<Skeleton className="h-[76px] w-full rounded-[2px]" />
-				<Skeleton className="h-[76px] w-full rounded-[2px]" />
-				<Skeleton className="h-[76px] w-full rounded-[2px]" />
-				<Skeleton className="h-[76px] w-full rounded-[2px]" />
+				<Skeleton className="h-[76px] w-full rounded-md" />
+				<Skeleton className="h-[76px] w-full rounded-md" />
+				<Skeleton className="h-[76px] w-full rounded-md" />
+				<Skeleton className="h-[76px] w-full rounded-md" />
 			</div>
-			<Skeleton className="h-[120px] w-full rounded-[2px]" />
+			<Skeleton className="h-[120px] w-full rounded-md" />
 		</div>
 	);
 }
@@ -694,7 +694,7 @@ function IssueDetailSkeleton() {
 function IssueMissing({ base }: { base: string }) {
 	return (
 		<div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
-			<p className="font-mono text-[13px] text-text-muted">
+			<p className="text-[13px] text-text-muted">
 				This issue isn't in the loaded range.
 			</p>
 			<span className="max-w-[300px] text-[12px] leading-[1.5] text-text-subtle">
@@ -798,22 +798,22 @@ function OccurrenceDetails({
 						platform={issue.platform}
 						level={occurrence.level}
 					/>
-					<span className="inline-flex h-[18px] items-center rounded-[2px] border border-border bg-surface px-[6px] font-mono text-[10px] font-medium uppercase tracking-[0.05em] text-text-muted">
+					<span className="inline-flex h-[18px] items-center rounded-full border border-border bg-surface px-[6px] text-[10px] font-medium tracking-normal text-text-muted">
 						{occurrence.handled ? "handled" : "unhandled"}
 					</span>
 					{occurrence.environment ? (
-						<span className="inline-flex h-[18px] items-center rounded-[2px] border border-border bg-surface px-[6px] font-mono text-[10px] font-medium uppercase tracking-[0.05em] text-text-muted">
+						<span className="inline-flex h-[18px] items-center rounded-full border border-border bg-surface px-[6px] text-[10px] font-medium tracking-normal text-text-muted">
 							{occurrence.environment}
 						</span>
 					) : null}
 				</div>
-				<SheetTitle className="break-words pr-2 text-left font-mono text-[13px] font-[550] leading-snug text-text">
+				<SheetTitle className="break-words pr-2 text-left text-[15px] font-semibold leading-snug text-text">
 					{occurrence.exception.type}
 					{occurrence.exception.message
 						? `: ${occurrence.exception.message}`
 						: ""}
 				</SheetTitle>
-				<SheetDescription className="flex flex-wrap items-center gap-1.5 font-mono text-[11px] leading-none text-text-subtle">
+				<SheetDescription className="flex flex-wrap items-center gap-1.5 text-[11px] leading-none text-text-subtle">
 					<span>{dateLabel(occurrence.receivedAt)}</span>
 					<span className="size-1 rounded-full bg-border-strong" aria-hidden />
 					<span>{relativeTime(occurrence.receivedAt)}</span>
@@ -828,13 +828,13 @@ function OccurrenceDetails({
 					<div className="mt-3">
 						{occurrence.exception.frames.length > 0 ? (
 							<Frame inset className="p-0">
-								<div className="overflow-hidden rounded-[2px]">
+								<div className="overflow-hidden rounded-[16px]">
 									<ShikiStack code={code} language={occurrence.language} />
 								</div>
 							</Frame>
 						) : (
 							<Frame className="border-dashed bg-surface/40 px-3 py-6 text-center">
-								<p className="font-mono text-[12px] leading-none text-text-subtle">
+								<p className="text-[12px] leading-none text-text-subtle">
 									No captured stack frames for this occurrence.
 								</p>
 							</Frame>
@@ -851,7 +851,7 @@ function OccurrenceDetails({
 						<div className="mt-3 space-y-4">
 							{occurrence.environment || occurrence.release ? (
 								<div>
-									<div className="mb-2 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
+									<div className="mb-2 text-[13px] font-medium tracking-normal text-text-subtle">
 										Deployment
 									</div>
 									<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -866,7 +866,7 @@ function OccurrenceDetails({
 							) : null}
 							{occurrence.tags && Object.keys(occurrence.tags).length > 0 ? (
 								<div>
-									<div className="mb-2 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
+									<div className="mb-2 text-[13px] font-medium tracking-normal text-text-subtle">
 										Tags
 									</div>
 									<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -881,7 +881,7 @@ function OccurrenceDetails({
 							{occurrence.extras &&
 							Object.keys(occurrence.extras).length > 0 ? (
 								<div>
-									<div className="mb-2 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
+									<div className="mb-2 text-[13px] font-medium tracking-normal text-text-subtle">
 										Extras
 									</div>
 									<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -907,7 +907,7 @@ function OccurrenceDetails({
 						</div>
 					) : (
 						<Frame className="mt-3 border-dashed bg-surface/40 px-3 py-6 text-center">
-							<p className="font-mono text-[12px] leading-none text-text-subtle">
+							<p className="text-[12px] leading-none text-text-subtle">
 								No additional context for this occurrence.
 							</p>
 						</Frame>
@@ -923,7 +923,7 @@ function OccurrenceDetails({
 									<button
 										type="button"
 										aria-label="Breadcrumbs privacy info"
-										className="inline-flex size-4 shrink-0 -translate-y-[0.5px] items-center justify-center rounded-[2px] text-text-subtle hover:bg-surface-hover hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
+										className="inline-flex size-4 shrink-0 -translate-y-[0.5px] items-center justify-center rounded-full text-text-subtle hover:bg-surface-hover hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
 									>
 										<Info className="size-3" aria-hidden="true" />
 									</button>
@@ -935,12 +935,12 @@ function OccurrenceDetails({
 							</Tooltip>
 						</TooltipProvider>
 					</div>
-					<div className="mt-3 flex items-center gap-2 font-mono text-[10px] text-text-subtle">
+					<div className="mt-3 flex items-center gap-2 text-[10px] text-text-subtle">
 						<span>{occurrence.breadcrumbsCount} · safe · bounded</span>
 					</div>
 					{occurrence.breadcrumbsCount > 0 ? (
 						<Frame inset className="mt-3 p-0">
-							<div className="overflow-hidden rounded-[2px]">
+							<div className="overflow-hidden rounded-[16px]">
 								{BREADCRUMB_PLACEHOLDERS.slice(
 									0,
 									Math.min(occurrence.breadcrumbsCount, 6),
@@ -953,10 +953,10 @@ function OccurrenceDetails({
 											className="h-1.5 w-1.5 shrink-0 rounded-full bg-info"
 											aria-hidden
 										/>
-										<span className="min-w-0 flex-1 truncate font-mono text-[11px] leading-relaxed text-text-muted">
+										<span className="min-w-0 flex-1 truncate text-[11px] leading-relaxed text-text-muted">
 											Breadcrumb {index + 1} — safe, sanitized
 										</span>
-										<span className="shrink-0 font-mono text-[10px] text-text-subtle">
+										<span className="shrink-0 text-[10px] text-text-subtle">
 											{relativeTime(
 												occurrence.receivedAt - (index + 1) * 90_000,
 											)}
@@ -967,7 +967,7 @@ function OccurrenceDetails({
 						</Frame>
 					) : (
 						<Frame className="mt-3 border-dashed bg-surface/40 px-3 py-6 text-center">
-							<p className="font-mono text-[12px] leading-none text-text-subtle">
+							<p className="text-[12px] leading-none text-text-subtle">
 								No breadcrumbs collected for this occurrence.
 							</p>
 						</Frame>
@@ -1006,13 +1006,13 @@ function OccurrencePresentationContent({
 			<div className="flex flex-col gap-4 p-6">
 				<Skeleton className="h-4 w-3/4" />
 				<Skeleton className="h-3 w-1/2" />
-				<Skeleton className="mt-2 h-[120px] w-full rounded-[2px]" />
+				<Skeleton className="mt-2 h-[120px] w-full rounded-md" />
 			</div>
 		);
 	}
 	return (
 		<div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
-			<p className="font-mono text-[13px] text-text-muted">
+			<p className="text-[13px] text-text-muted">
 				Occurrence not found
 			</p>
 			<span className="max-w-[300px] text-[12px] leading-[1.5] text-text-subtle">
