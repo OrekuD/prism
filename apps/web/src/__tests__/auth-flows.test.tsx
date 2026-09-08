@@ -15,6 +15,7 @@ const signUpEmail = vi.fn();
 const signInSocial = vi.fn();
 const requestPasswordReset = vi.fn();
 const listOrganizations = vi.fn();
+const organizationUpdate = vi.fn();
 let sessionVisible = true;
 
 vi.mock("@/lib/authClient", () => ({
@@ -41,6 +42,7 @@ vi.mock("@/lib/authClient", () => ({
     },
     organization: {
       list: () => listOrganizations(sessionVisible),
+      update: (...args: unknown[]) => organizationUpdate(...args),
     },
     signIn: {
       email: (...args: unknown[]) => signInEmail(...args),
@@ -78,6 +80,7 @@ function renderPage(page: React.ReactNode, initialPath = "/auth/log-in") {
 beforeEach(() => {
   vi.clearAllMocks();
   sessionVisible = true;
+  organizationUpdate.mockResolvedValue({ data: null, error: null });
   listOrganizations.mockImplementation((hasSession: boolean) => ({
     data: hasSession ? [{ id: "workspace-1", slug: "workspace-one" }] : null,
     error: hasSession ? null : { status: 401 },
@@ -114,6 +117,116 @@ describe("auth failure states", () => {
     expect(
       await screen.findByText(/not linked to a Prism account/i),
     ).toBeInTheDocument();
+  });
+
+  it("advances through email → password → details and submits", async () => {
+    signUpEmail.mockResolvedValue({
+      data: { user: { emailVerified: false } },
+      error: null,
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify({ available: true })));
+    renderPage(<CreateAccount />);
+
+    // Step 1: email only.
+    await userEvent.type(
+      screen.getByLabelText("Email"),
+      "newuser@example.com",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(
+      screen.getByRole("heading", { name: "Secure your account" }),
+    ).toBeInTheDocument();
+
+    // Step 2: password; the button enables once the requirement is met.
+    const continueStep2 = screen.getByRole("button", { name: "Continue" });
+    expect(continueStep2).toBeDisabled();
+    await userEvent.type(screen.getByLabelText("Password"), "hunter2222");
+    expect(continueStep2).toBeEnabled();
+    await userEvent.click(continueStep2);
+    expect(
+      screen.getByRole("heading", { name: "Tell us about yourself" }),
+    ).toBeInTheDocument();
+
+    // Step 3: name + workspace, then create.
+    await userEvent.type(screen.getByLabelText("Your name"), "David");
+    await userEvent.type(screen.getByLabelText("Workspace name"), "Oreku");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Create account" }),
+    );
+    await waitFor(() => expect(signUpEmail).toHaveBeenCalledTimes(1));
+    expect(signUpEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: "newuser@example.com",
+        name: "David",
+      }),
+    );
+    // The chosen workspace name is applied to the provisioned org.
+    await waitFor(() =>
+      expect(organizationUpdate).toHaveBeenCalledWith({
+        organizationId: "workspace-1",
+        data: { name: "Oreku" },
+      }),
+    );
+    expect(signUpEmail.mock.calls[0][0].password).toBe("hunter2222");
+    fetchSpy.mockRestore();
+  });
+
+  it("routes taken emails to sign-in at step 1", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify({ available: false })));
+    renderPage(<CreateAccount />);
+
+    await userEvent.type(
+      screen.getByLabelText("Email"),
+      "taken@example.com",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Check your email." }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/taken@example.com/)).toBeInTheDocument();
+    // The private email flow directs the owner to sign in without
+    // confirming registration state in the UI response itself.
+    expect(requestPasswordReset).not.toHaveBeenCalled();
+    expect(signUpEmail).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it("falls back to the private email flow when a duplicate races the probe", async () => {
+    signUpEmail.mockResolvedValue({
+      data: null,
+      error: { status: 422, message: "User already exists" },
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify({ available: true })));
+    renderPage(<CreateAccount />);
+
+    await userEvent.type(
+      screen.getByLabelText("Email"),
+      "racer@example.com",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await userEvent.type(screen.getByLabelText("Password"), "hunter2222");
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await userEvent.type(screen.getByLabelText("Your name"), "David");
+    await userEvent.type(screen.getByLabelText("Workspace name"), "Oreku");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Create account" }),
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "Check your email." }),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(requestPasswordReset).toHaveBeenCalledTimes(1));
+    expect(requestPasswordReset).toHaveBeenCalledWith(
+      expect.objectContaining({ email: "racer@example.com" }),
+    );
+    fetchSpy.mockRestore();
   });
 
   it("reports a network failure instead of invalid credentials", async () => {
