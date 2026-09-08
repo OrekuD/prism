@@ -91,6 +91,7 @@ import {
   resolveProjectCapabilities,
 } from "../utils/projectMetrics";
 import { verifyDrilldownToken } from "../utils/queryContextToken";
+import { conversationalResult } from "../utils/assistantConversation";
 import {
   assistantQuotas,
   type QuotaDecision,
@@ -441,6 +442,8 @@ async function executeStreamedRun(input: {
   conversationSlug: string;
   userMessageId: string;
   question: string;
+  /** Already authorized history from the request handler; avoids rereading it. */
+  history?: NonNullable<Awaited<ReturnType<typeof getConversation>>>["messages"];
   queryContextToken?: string;
   now: number;
 }): Promise<Response> {
@@ -617,6 +620,13 @@ async function executeStreamedRun(input: {
       emit(encodeStreamFrame({ kind: "data-run-start", runId: run.id, conversationId }));
       const execute = async (): Promise<Response> => {
 
+  const runAgent = async (): Promise<AgentRunResult> => {
+    const greeting = conversationalResult(question, (modelConfig as AssistantModelConfig).model.id);
+    if (greeting) {
+      trace("run.shortcut", "standalone greeting; skipped analytics and model setup", {});
+      return greeting;
+    }
+
   // Resolve window + capabilities sequentially (Workers-safe).
   trace("run.window", "metric window resolved", { ...metricWindow });
   const { capabilities, sourceIds } = await loadRunCapabilities(ctx, scope.projectId, metricWindow.asOf);
@@ -657,20 +667,33 @@ async function executeStreamedRun(input: {
   });
   void authorized;
 
-  const runAgent = async (): Promise<AgentRunResult> => {
+    // Product-store reads are independent; analytics reads above remain
+    // sequential. New conversations already have known-empty history.
+    const historyPromise = input.history !== undefined
+      ? Promise.resolve(input.history)
+      : getConversation(db, { projectId: scope.projectId, userId, conversationId }).then((detail) => detail?.messages ?? []);
+    const [priorMessages, knowledge] = await Promise.all([
+      historyPromise,
+      testAgentRunner ? Promise.resolve({ project: [], workspace: [], member: [] }) : deps.readKnowledge(),
+    ]);
+    const eligibleHistory = priorMessages
+      .filter((message) => message.id !== userMessageId && message.status === "complete")
+      .map((message) => ({ seq: message.seq, role: message.role as "user" | "assistant",
+        text: message.parts.filter((part) => part.type === "text").map((part) => (part as { text: string }).text).join("\n").slice(0, 2000),
+      }));
+    const historyRows = selectRecentTurns(eligibleHistory).messages.map((entry) => ({ role: entry.role, text: entry.text }));
     if (testAgentRunner) {
       trace("run.agent", "using injected test agent runner", {});
       return testAgentRunner({
         question,
         tools: deps,
         capabilities,
-        history: [],
+        history: historyRows,
         signal,
         timeoutMs: quotas.config.runTimeoutMs,
         maxRunCostMicroUsd: quotas.config.maxRunCostMicroUsd,
       });
     }
-    const knowledge = await deps.readKnowledge();
     trace("run.knowledge", "confirmed knowledge loaded", {
       project: knowledge.project.length,
       workspace: knowledge.workspace.length,
@@ -681,21 +704,6 @@ async function executeStreamedRun(input: {
         ...knowledge.member.map((entry) => entry.key),
       ],
     });
-    const historyRows = await (async () => {
-      const detail = await getConversation(db, { projectId: scope.projectId, userId, conversationId });
-      const eligible = (detail?.messages ?? [])
-        .filter((message) => message.id !== userMessageId && message.status === "complete")
-        .map((message) => ({
-          seq: message.seq,
-          role: message.role as "user" | "assistant",
-          text: message.parts
-            .filter((part) => part.type === "text")
-            .map((part) => (part as { text: string }).text)
-            .join("\n")
-            .slice(0, 2000),
-        }));
-      return selectRecentTurns(eligible).messages.map((entry) => ({ role: entry.role, text: entry.text }));
-    })();
     trace("run.history", "bounded history selected for model context", {
       turns: historyRows.length,
       texts: historyRows.map((entry) => traceText(entry.text, 200)),
@@ -1046,6 +1054,7 @@ export class AssistantController {
         conversationSlug: created.conversation.slug,
         userMessageId: created.message.id,
         question: parsed.data.firstMessage,
+        history: created.createdConversation ? [] : undefined,
         queryContextToken: parsed.data.queryContextToken,
         now,
       });
@@ -1218,6 +1227,7 @@ export class AssistantController {
         conversationSlug: detail.conversation.slug,
         userMessageId: appended.message.id,
         question: parsed.data.content,
+        history: detail.messages,
         queryContextToken: parsed.data.queryContextToken,
         now,
       });

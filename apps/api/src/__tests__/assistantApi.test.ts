@@ -137,6 +137,28 @@ it("returns the chat stream before generation completes and persists the structu
   expect(vi.mocked(appendMessage).mock.calls.some(([, input]) => input.status === "streaming")).toBe(false);
 });
 
+it("persists a friendly greeting without analytics setup, redundant history, or model calls", async () => {
+  const runner = vi.fn();
+  __setAssistantAgentRunnerForTests(runner);
+  vi.mocked(getConversationBySlug).mockResolvedValue({ conversation: { id: "conv_1", slug: "chat_abc123def456" }, messages: [], activeRun: null } as never);
+  vi.mocked(appendMessage).mockResolvedValue({ message: { id: "msg_1" }, created: true } as never);
+  vi.mocked(startRun).mockResolvedValue({ ok: true, run: { id: "run_1" } } as never);
+  vi.mocked(finishRun).mockResolvedValue({ finished: true } as never);
+  const response = await AssistantController.postMessage(ctxFor(
+    { slug: SLUG, conversationSlug: "chat_abc123def456" },
+    { clientRequestId: "req_hello", content: "yoo" }, USER_ID, "member",
+    { PRISM_AI_ENABLED: "1", OPENROUTER_API_KEY: "test-only" },
+  )) as Response;
+  const body = await readSse(response);
+  expect(body).toContain("Hey! What would you like to know about this project?");
+  expect(body).toContain("data-run-finish");
+  expect(runner).not.toHaveBeenCalled();
+  expect(TursoDatabaseManager.getInstance).not.toHaveBeenCalled();
+  expect(getConversation).not.toHaveBeenCalled();
+  expect(appendMessage).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ role: "assistant", status: "complete" }));
+  expect(finishRun).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ usage: expect.objectContaining({ costMicroUsd: 0 }) }));
+});
+
 it("loads real project capabilities and preserves the authorized source scope for measurements", async () => {
   const asOf = Date.now() - 60_000;
   const window = { from: asOf - 86_400_000, to: asOf, compareFrom: asOf - 172_800_000, compareTo: asOf - 86_400_000, asOf };
@@ -144,6 +166,7 @@ it("loads real project capabilities and preserves the authorized source scope fo
   const token = await issueQueryContextToken({ ...window, projectId: PROJECT_ID, organizationId: ORG_ID, sourceScope: "all", sourceIds: [] }, key);
   const runner = vi.fn(async (input) => {
     expect(input.tools.window).toEqual(window);
+    expect(input.history).toEqual([{ role: "user", text: "Check last week." }, { role: "assistant", text: "I checked last week." }]);
     expect(input.capabilities).toMatchObject({
       web: true, server: true,
       errorCollection: { configured: true, observed: true },
@@ -154,7 +177,11 @@ it("loads real project capabilities and preserves the authorized source scope fo
     return { status: "quota-exhausted", errorMessage: "This response reached Prism's per-run token limit. Try a narrower question; this is not your provider credit balance.", answer: null, repaired: false, steps: [], factIds: [], toolIds: [], artifactIds: [], eligibleToolIds: [], usage: { model: "test", gateway: "openrouter", upstreamProvider: null, promptTokens: 1, completionTokens: 2001, reasoningTokens: 0, cachedTokens: 0, costMicroUsd: 1 }, quota: { decision: "denied-quota", limitType: null, retryAfterMs: null }, latencyMs: 1, modelMessages: [] } as AgentRunResult;
   });
   __setAssistantAgentRunnerForTests(runner);
-  vi.mocked(getConversationBySlug).mockResolvedValue({ conversation: { id: "conv_1", slug: "chat_abc123def456" }, messages: [], activeRun: null } as never);
+  vi.mocked(getConversationBySlug).mockResolvedValue({ conversation: { id: "conv_1", slug: "chat_abc123def456" }, messages: [
+    { id: "old_user", seq: 1, role: "user", status: "complete", parts: [{ type: "text", text: "Check last week." }] },
+    { id: "old_answer", seq: 2, role: "assistant", status: "complete", parts: [{ type: "text", text: "I checked last week." }, { type: "trace-snapshot", payload: "must not enter model context" }] },
+    { id: "failed_answer", seq: 3, role: "assistant", status: "failed", parts: [{ type: "text", text: "Incomplete answer" }] },
+  ], activeRun: null } as never);
   vi.mocked(appendMessage).mockResolvedValue({ message: { id: "msg_1" }, created: true } as never);
   vi.mocked(startRun).mockResolvedValue({ ok: true, run: { id: "run_1" } } as never);
   vi.mocked(finishRun).mockResolvedValue({ finished: true } as never);
@@ -185,6 +212,7 @@ it("loads real project capabilities and preserves the authorized source scope fo
   const response = await AssistantController.postMessage(ctx) as Response;
   const body = await readSse(response);
   expect(runner).toHaveBeenCalledOnce();
+  expect(getConversation).not.toHaveBeenCalled();
   expect(body).toContain("per-run token limit");
   expect(body).not.toContain("Usage quota exhausted");
 });

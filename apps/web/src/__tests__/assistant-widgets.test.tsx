@@ -539,6 +539,43 @@ describe("ProjectSummary v2 scaffold", () => {
     );
   });
 
+  it("prefetches recent transcripts before selection and switches from cache", async () => {
+    const chats = Array.from({ length: 5 }, (_, i) => ({ id: `conv_${i}`, slug: `chat_${i}`, title: `Saved chat ${i}`, lastMessageAt: Date.now(), messageCount: 1, hasActiveRun: false }));
+    const originalGet = getMock.getMockImplementation();
+    getMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/assistant/conversations")) return { data: { items: chats, nextCursor: null } };
+      const chat = chats.find((item) => url.endsWith(`/conversations/${item.slug}`));
+      if (chat) return { data: { conversation: chat, messages: [{ id: `msg_${chat.slug}`, seq: 0, role: "user", status: "complete", parts: [{ type: "text", text: `Transcript ${chat.slug}` }] }], activeRun: null } };
+      return originalGet?.(url);
+    });
+    const user = userEvent.setup();
+    renderRoute("/workspace/wrk/projects/alpha/agent");
+    await waitFor(() => expect(queryClient.getQueryData(["assistant-conversations", "alpha"])).toBeDefined());
+    await user.click(screen.getByRole("button", { name: "Conversations" }));
+    await waitFor(() => expect(queryClient.getQueryData(["assistant-conversation", "alpha", "chat_2"])).toBeDefined());
+    expect(queryClient.getQueryData(["assistant-conversation", "alpha", "chat_3"])).toBeUndefined();
+    await user.hover(screen.getByRole("menuitem", { name: /Saved chat 4/ }));
+    await waitFor(() => expect(queryClient.getQueryData(["assistant-conversation", "alpha", "chat_4"])).toBeDefined());
+    await user.click(screen.getByRole("menuitem", { name: /Saved chat 0/ }));
+    expect(screen.getByText("Transcript chat_0")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Conversations" }));
+    await user.click(screen.getByRole("menuitem", { name: /Saved chat 4/ }));
+    expect(screen.getByText("Transcript chat_4")).toBeVisible();
+    expect(screen.queryByText("Transcript chat_0")).toBeNull();
+    for (const chatSlug of ["chat_0", "chat_4"]) {
+      expect(getMock.mock.calls.filter(([url]) => String(url).endsWith(`/conversations/${chatSlug}`))).toHaveLength(1);
+    }
+  });
+
+  it("shows loading rather than a new-chat prompt while an uncached transcript loads", async () => {
+    const originalGet = getMock.getMockImplementation();
+    getMock.mockImplementation((url: string) => url.includes("/conversations/") ? new Promise(() => {}) : originalGet?.(url));
+    renderRoute("/workspace/wrk/projects/alpha/agent/chat_cold");
+    expect(await screen.findByRole("status", { name: "Loading conversation" })).toBeVisible();
+    expect(screen.queryByText("Ask about this project")).toBeNull();
+    expect(screen.queryByText("Working…")).toBeNull();
+  });
+
   it("opens the conversations dropdown with real chats", async () => {
     const user = userEvent.setup();
     renderRoute("/workspace/wrk/projects/alpha/agent");
@@ -573,6 +610,45 @@ describe("ProjectSummary v2 scaffold", () => {
     expect(
       within(menu).getByRole("menuitem", { name: /New chat/ }),
     ).toBeInTheDocument();
+  });
+
+  it.each(["server", "network"])("offers retry for a %s load failure without claiming the chat was deleted", async (failure) => {
+    const user = userEvent.setup();
+    const originalGet = getMock.getMockImplementation();
+    let attempts = 0;
+    getMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/conversations/chat_retry")) {
+        attempts += 1;
+        if (attempts === 1) throw failure === "server" ? { response: { status: 500 } } : new Error("Network Error");
+        return { data: { conversation: { id: "conv_retry", slug: "chat_retry", title: "Retry chat" }, messages: [{ id: "msg_retry", seq: 0, role: "user", status: "complete", parts: [{ type: "text", text: "Recovered transcript" }] }], activeRun: null } };
+      }
+      return originalGet?.(url);
+    });
+    renderRoute("/workspace/wrk/projects/alpha/agent/chat_retry");
+    expect(await screen.findByText("Couldn't load this chat")).toBeVisible();
+    expect(screen.queryByText("That chat isn't available")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("Recovered transcript")).toBeVisible();
+    expect(screen.queryByText("Couldn't load this chat")).not.toBeInTheDocument();
+    expect(attempts).toBe(2);
+  });
+
+  it("keeps cached messages visible when a background refresh fails", async () => {
+    queryClient.setQueryData(["assistant-conversation", "alpha", "chat_cached"], {
+      conversation: { id: "conv_cached", slug: "chat_cached", title: "Cached chat" },
+      messages: [{ id: "msg_cached", seq: 0, role: "user", status: "complete", parts: [{ type: "text", text: "Cached transcript" }] }],
+      activeRun: null,
+    }, { updatedAt: Date.now() - 60_000 });
+    const originalGet = getMock.getMockImplementation();
+    getMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/conversations/chat_cached")) throw { response: { status: 500 } };
+      return originalGet?.(url);
+    });
+    renderRoute("/workspace/wrk/projects/alpha/agent/chat_cached");
+    expect(screen.getByText("Cached transcript")).toBeVisible();
+    expect(await screen.findByText("Couldn't refresh this chat. Showing saved messages.")).toBeVisible();
+    expect(screen.getByText("Cached transcript")).toBeVisible();
+    expect(screen.queryByText("That chat isn't available")).not.toBeInTheDocument();
   });
 
   it("offers a safe return for a missing chat", async () => {

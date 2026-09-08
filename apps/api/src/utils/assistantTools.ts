@@ -298,11 +298,24 @@ function factSummaryItems(facts: readonly MetricFact[]): Array<{
   label: string;
   value: string;
 }> {
-  return facts.map((fact) => ({
-    id: fact.id,
-    label: fact.label,
-    value: fact.formattedValue,
-  }));
+  return facts.map((fact) => {
+    const comparison = fact.comparison;
+    const comparisonText = !comparison
+      ? "comparison unavailable"
+      : comparison.kind === "percent"
+        ? `${comparison.percent}% vs previous period (${comparison.direction})`
+        : comparison.kind === "new"
+          ? "new vs zero previous period"
+          : "no prior data";
+    const value = [fact.formattedValue, comparisonText, fact.coverageNote]
+      .filter(Boolean)
+      .join("; ");
+    return {
+      id: fact.id,
+      label: fact.label,
+      value: value.length > 200 ? `${value.slice(0, 199)}…` : value,
+    };
+  });
 }
 
 function collectOutcome(
@@ -399,8 +412,10 @@ function previousFactId(currentId: string): string {
 
 /**
  * Memoized tool dispatch (run-level memoization): identical tool calls
- * within one run execute once. The key covers the tool ID plus the exact
- * input JSON — no timestamps, no random fields.
+ * within one run reuse successful results. Schema parsing gives object
+ * keys a stable order before keying; array order and scope stay intact.
+ * Read failures may be retried, but proposal failures stay memoized since
+ * a lost write acknowledgement does not prove the proposal was not saved.
  */
 export async function executeToolCached(
   definitions: Record<string, ToolDefinitionEntry<unknown>>,
@@ -409,16 +424,12 @@ export async function executeToolCached(
   toolId: string,
   input: unknown,
 ): Promise<ToolOutcome> {
-  const key = `${toolId}:${JSON.stringify(input) ?? "null"}`;
-  const hit = run.memo.get(key);
-  if (hit) return hit;
   const definition = definitions[toolId];
   if (!definition) {
     const failure: ToolOutcome = {
       ok: false,
       failure: { code: "invalid-input", message: `Unknown tool ${toolId}` },
     };
-    run.memo.set(key, failure);
     return failure;
   }
   const parsed = definition.inputSchema.safeParse(input);
@@ -427,11 +438,19 @@ export async function executeToolCached(
       ok: false,
       failure: { code: "invalid-input", message: "Invalid tool input" },
     };
-    run.memo.set(key, failure);
     return failure;
   }
+  const key = `${toolId}:${JSON.stringify(parsed.data) ?? "null"}`;
+  const hit = run.memo.get(key);
+  if (hit) return hit;
   const outcome = await definition.execute(deps, parsed.data, run);
-  run.memo.set(key, outcome);
+  if (
+    outcome.ok ||
+    outcome.failure.code !== "tool-error" ||
+    toolId === "propose_definition"
+  ) {
+    run.memo.set(key, outcome);
+  }
   return outcome;
 }
 
@@ -1667,6 +1686,36 @@ const TOOL_INPUT_FIELDS: Record<ToolId, number> = {
   propose_definition: 5,
 };
 
+/** Server-owned planning guidance, aligned with the executable schemas. */
+const TOOL_DESCRIPTIONS: Readonly<Record<ToolId, string>> = {
+  resolve_definition:
+    "Resolve a standard-event key, project-definition key (such as signup-definition), or business-term name before measuring an ambiguous concept. Returns its known, confirmed, proposed, or missing state; a proposal is not an active definition.",
+  measure_metric:
+    "Measure a known metricId for the run's fixed time window. Use only filters supported by that metric; omit sourceIds for all authorized sources. Returns exact facts, including available comparison and coverage context; use this for a single total, not a trend.",
+  compare_periods:
+    "Measure a known metricId in the current and previous run windows for an explicit period comparison. Requires a single-row result; select one currency for multi-currency revenue. Do not call merely to repeat comparison context already returned by measure_metric.",
+  analyze_trend:
+    "Measure a known metricId across 3–12 sequential time buckets in the run window (points defaults to 8). Use for a requested trend or change over time; each point requires a measurement, so use fewer points when sufficient. Does not discover causes.",
+  break_down_metric:
+    "Group a known metricId by os or platform only, returning measured groups and shares. The metric must support the requested dimension and its filter. Do not use for page, country, referrer, or arbitrary property breakdowns.",
+  rank_entities:
+    "Rank 1–10 supplied page or event candidates by a known metricId. Each candidate needs key, label, and value; value is an exact path for page or standardEventKey for event. Use only known candidates: this tool does not discover all pages or events, and ranks only those supplied.",
+  review_error_health:
+    "Review project error health. Set view to aggregates for unresolved, new, and regressing issue counts, or issues for an issue list. Optional platform and release filters apply to the issues view only. Use returned issue IDs for inspect_issue.",
+  inspect_issue:
+    "Read one authorized issue by a known issueId, normally returned by review_error_health. Returns its sanitized title, status, occurrence count, affected users, and delta; does not provide a stack trace or establish root cause.",
+  check_coverage:
+    "Check counts of authorized sources and confirmed definitions with no input fields. Use when source visibility or missing setup matters; this is not event discovery and does not measure ingestion health, active traffic, or enrichment completeness.",
+  read_project_knowledge:
+    "Read confirmed typed knowledge in project, workspace, member, or all scopes (default all). Use for relevant stored definitions or preferences missing from the supplied context; do not reread unchanged knowledge already available.",
+  propose_definition:
+    "Create a proposed signup-definition, activation-definition, or key-outcome-definition using a label, description, and eventKey or eventName. Only for a requested definition proposal. Requires human confirmation in the UI; never confirms or activates it. Do not retry an uncertain write.",
+};
+
+export function toolDescription(toolId: ToolId): string {
+  return TOOL_DESCRIPTIONS[toolId];
+}
+
 /**
  * Estimated input-token weight of sending tool schemas to the provider:
  * identifier plus frozen description plus a per-field allowance. The
@@ -1678,7 +1727,7 @@ export function toolSchemaChars(toolIds: readonly ToolId[]): number {
     (sum, id) =>
       sum +
       id.length +
-      TOOL_REGISTRY[id].description.length +
+      toolDescription(id).length +
       TOOL_INPUT_FIELDS[id] * 24,
     0,
   );

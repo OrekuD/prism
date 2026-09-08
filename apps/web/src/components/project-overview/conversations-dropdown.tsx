@@ -74,17 +74,27 @@ export function ConversationsDropdown({
   selectedSlug,
   onSelect,
   onNewChat,
+  onPrefetch,
 }: {
   items: ConversationListItem[];
   selectedSlug: string | null;
   onSelect: (conversationSlug: string) => void;
   onNewChat: () => void;
+  onPrefetch?: (conversationSlug: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const selected = items.find((item) => item.slug === selectedSlug) ?? null;
 
   return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
+    <DropdownMenu open={open} onOpenChange={(nextOpen) => {
+      setOpen(nextOpen);
+      if (nextOpen) {
+        // Warm only a small recent set, never every transcript in a workspace.
+        for (const item of items.filter((item) => item.slug !== selectedSlug).slice(0, 3)) {
+          onPrefetch?.(item.slug);
+        }
+      }
+    }}>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
@@ -139,6 +149,8 @@ export function ConversationsDropdown({
                 <DropdownMenuItem
                   key={item.id}
                   onClick={() => onSelect(item.slug)}
+                  onPointerEnter={() => onPrefetch?.(item.slug)}
+                  onFocus={() => onPrefetch?.(item.slug)}
                   className={cn(
                     "min-w-0 gap-2",
                     active && "bg-accent-soft text-text",
@@ -146,7 +158,7 @@ export function ConversationsDropdown({
                 >
                   <span className="min-w-0 flex-1 truncate">{item.title}</span>
                   {meta ? (
-                    <span className="ml-auto flex-none font-mono text-[10px] text-text-subtle">
+                    <span className="ml-auto flex-none text-[10px] text-text-subtle">
                       {meta}
                     </span>
                   ) : null}

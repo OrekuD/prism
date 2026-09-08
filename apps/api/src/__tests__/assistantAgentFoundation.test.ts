@@ -590,6 +590,7 @@ describe("grounded-answer validation", () => {
     const fallback = buildFallbackAnswer("x".repeat(500));
     expect(AssistantAnswerSchema.safeParse(fallback).success).toBe(true);
     expect(fallback.observations).toHaveLength(0);
+    expect(fallback.summary).not.toContain("x".repeat(120));
     expect(clampQuestion("ok")).toBe("ok");
     expect(clampQuestion("x".repeat(5000))).toHaveLength(2000);
     expect(clampQuestion(42 as unknown as string)).toBe("");
