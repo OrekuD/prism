@@ -226,7 +226,7 @@ export function CreateAccount() {
           key={index}
           aria-hidden="true"
           className={`h-[3px] w-5 rounded-full transition-colors duration-200 ${
-            index === step ? "bg-text" : index < step ? "bg-border-strong" : "bg-border"
+            index <= step ? "bg-text" : "bg-border"
           }`}
         />
       ))}
@@ -289,9 +289,9 @@ export function CreateAccount() {
 
   return (
     <AuthShell>
-      <div key={step} className={stepAnimation}>
-        {stepIndicator}
-        <div className="mt-3 text-center">
+      {stepIndicator}
+      <div key={step} className={`mt-4 ${stepAnimation}`}>
+        <div className="text-center">
           <h1
             ref={headingRef}
             tabIndex={-1}
