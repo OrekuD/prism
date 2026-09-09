@@ -99,11 +99,11 @@
   --canvas: #0e0e0e;
   --canvas-subtle: #161616;
   --surface: #0e0e0e;
-  --surface-raised: #222225;
-  --surface-hover: #26262b;
-  --surface-active: #212121;
-  --border: #2a2a2e;
-  --border-strong: #3a3a41;
+  --surface-raised: #1a1a1d;
+  --surface-hover: #1e1e22;
+  --surface-active: #191919;
+  --border: #26262a;
+  --border-strong: #333339;
   --text: #ededed;
   --text-muted: #a1a1aa;
   --text-subtle: #6e6e76;
