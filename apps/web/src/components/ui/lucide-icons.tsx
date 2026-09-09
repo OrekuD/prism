@@ -62,6 +62,9 @@ import {
   SparklesIcon,
   SquareIcon,
   Sun03Icon,
+  BarChartIcon as BarChartGlyph,
+  Folder01Icon,
+  Settings01Icon,
   Tick01Icon,
   UserAdd01Icon,
   UserGroupIcon,
@@ -106,6 +109,15 @@ export function ArrowLeft(props: IconProps) {
 }
 export function Ban(props: IconProps) {
   return <Icon icon={BanIcon} {...props} />;
+}
+export function Chart(props: IconProps) {
+  return <Icon icon={BarChartGlyph} {...props} />;
+}
+export function Folder(props: IconProps) {
+  return <Icon icon={Folder01Icon} {...props} />;
+}
+export function Settings(props: IconProps) {
+  return <Icon icon={Settings01Icon} {...props} />;
 }
 export function Check(props: IconProps) {
   return <Icon icon={Tick01Icon} {...props} />;

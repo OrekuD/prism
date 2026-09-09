@@ -29,15 +29,24 @@ import { useSourcesQuery } from "@/network/queries/useSourcesQuery";
 import { getInitials } from "@/utils/getInitials";
 import {
 	Check,
+	Chart,
+	ChevronDown,
+	FileText,
+	Folder,
 	Loader2,
 	LogOut,
 	Monitor,
-	MonitorCloud,
+	Moon,
 	Plus,
+	Settings,
 	ShieldCheck,
 	Smartphone,
 	Sun,
+	TriangleAlert,
 	User,
+	Users,
+	Globe,
+	Zap,
 } from "@/components/ui/lucide-icons";
 import React from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
@@ -45,7 +54,7 @@ import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { DOCS_URL } from "@/lib/docs";
 
 const LINK_BASE =
-	"relative flex h-9 items-center gap-2.5 rounded-[10px] px-3 text-sm text-[#5D5D5D] transition-colors hover:bg-surface-active dark:text-text";
+	"relative flex h-[30px] items-center gap-2.5 rounded-[10px] px-3 text-[13px] text-[#5D5D5D] transition-colors hover:bg-surface-active dark:text-text";
 const LINK_ACTIVE = "bg-surface-active text-[#2A2A2A] dark:text-text";
 
 function Active({
@@ -54,13 +63,28 @@ function Active({
 	icon,
 	className,
 	end,
+	disabled,
 }: {
 	to: string;
 	label: string;
 	icon: React.ReactNode;
 	className?: string;
 	end?: boolean;
+	disabled?: boolean;
 }) {
+	if (disabled) {
+		return (
+			<span
+				role="link"
+				aria-disabled="true"
+				title="Select a project first"
+				className={cn(LINK_BASE, "cursor-default opacity-50", className)}
+			>
+				{icon}
+				{label}
+			</span>
+		);
+	}
 	return (
 		<NavLink
 			to={to}
@@ -81,50 +105,65 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 	const { theme, setTheme } = useTheme();
 	const { data: session } = authClient.useSession();
 	const { data: activeWorkspace } = useActiveWorkspace();
-	const { data: workspaces, isPending: workspacesPending } = useWorkspaces();
+	const {
+		data: workspaces,
+		isPending: workspacesPending,
+		error: workspacesError,
+	} = useWorkspaces();
 	const { workspace: selectedWorkspace } = useSelectedWorkspace();
 	const projectsQuery = useProjectsQuery();
 
 	// F1: trigger + links scope to the URL-selected workspace, not the refetching active org.
-	const effectiveWorkspace =
-		(selectedWorkspace as {
-			slug?: string;
-			name?: string;
-			id?: string;
-		} | null) ??
-		(activeWorkspace as { slug?: string; name?: string; id?: string } | null);
-	const wrkSlug = effectiveWorkspace?.slug ?? "";
 	const pathSegments = pathname.split("/");
+	const urlWorkspaceSlug =
+		pathSegments[1] === "workspace" ? pathSegments[2] : undefined;
+	const effectiveWorkspace = urlWorkspaceSlug
+		? selectedWorkspace?.slug === urlWorkspaceSlug
+			? selectedWorkspace
+			: null
+		: (selectedWorkspace ?? activeWorkspace);
+	const wrkSlug = urlWorkspaceSlug ?? effectiveWorkspace?.slug ?? "";
 	// URL shape: /workspace/:wrkSlug/projects/:projectSlug/...
 	const urlProjectSlug =
 		pathSegments[3] === "projects" ? pathSegments[4] : undefined;
 	// Selected project: the URL wins when we're on a project page, otherwise
 	// fall back to the per-workspace persisted selection.
-	const [persistedSlug, setPersistedSlug] = React.useState<string | null>(null);
+	const [persistedSelection, setPersistedSelection] = React.useState<{
+		workspace: string;
+		slug: string | null;
+	} | null>(null);
 	const [newProjectOpen, setNewProjectOpen] = React.useState(false);
 	React.useEffect(() => {
-		if (wrkSlug) setPersistedSlug(getSelectedProjectSlug(wrkSlug));
+		setPersistedSelection({
+			workspace: wrkSlug,
+			slug: wrkSlug ? getSelectedProjectSlug(wrkSlug) : null,
+		});
 	}, [wrkSlug]);
 	React.useEffect(() => {
 		if (wrkSlug && urlProjectSlug) {
-			setPersistedSlug(urlProjectSlug);
+			setPersistedSelection({ workspace: wrkSlug, slug: urlProjectSlug });
 			setSelectedProjectSlug(wrkSlug, urlProjectSlug);
 		}
 	}, [wrkSlug, urlProjectSlug]);
-	const selectedProjectSlug = urlProjectSlug ?? persistedSlug;
+	const selectedProjectSlug =
+		urlProjectSlug ??
+		(persistedSelection?.workspace === wrkSlug
+			? persistedSelection.slug
+			: null);
 	const project = projectsQuery.data?.find(
 		(entry) => entry.slug === selectedProjectSlug,
 	);
-	const effectiveSlug = project?.slug;
-	const sourcesQuery = useSourcesQuery(effectiveSlug);
-	const workspaceName = effectiveWorkspace?.name;
+	const effectiveSlug =
+		urlProjectSlug ??
+		project?.slug ??
+		(projectsQuery.data === undefined ? selectedProjectSlug : undefined);
+	const sourcesQuery = useSourcesQuery(effectiveSlug ?? undefined);
+	const workspaceName = effectiveWorkspace?.name ?? urlWorkspaceSlug;
 	const allWorkspaces = (workspaces ?? []) as Array<{
 		id: string;
 		name: string;
 		slug: string;
 	}>;
-	const activeWorkspaceId = (activeWorkspace as { id?: string } | null)?.id;
-	const selectedId = selectedWorkspace?.id ?? null;
 	const [newWorkspaceOpen, setNewWorkspaceOpen] = React.useState(false);
 	const [signingOut, setSigningOut] = React.useState(false);
 	const [userMenuOpen, setUserMenuOpen] = React.useState(false);
@@ -132,16 +171,18 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 		name: string;
 		slug: string;
 	}>;
-	const hasWebSource = sourcesQuery.data?.some(
-		(source) => source.platform === "web",
-	);
-	const hasMobileSource = sourcesQuery.data?.some((source) =>
-		["ios", "android", "react-native"].includes(source.platform),
-	);
+	const hasWebSource =
+		sourcesQuery.data === undefined ||
+		sourcesQuery.data.some((source) => source.platform === "web");
+	const hasMobileSource =
+		sourcesQuery.data === undefined ||
+		sourcesQuery.data.some((source) =>
+			["ios", "android", "react-native"].includes(source.platform),
+		);
 
 	const themeOptions = [
 		{ value: "light" as const, label: "Light", Icon: Sun },
-		{ value: "dark" as const, label: "Dark", Icon: I.IconMoon },
+		{ value: "dark" as const, label: "Dark", Icon: Moon },
 		{ value: "system" as const, label: "System", Icon: Monitor },
 	];
 	const themeLabel =
@@ -184,7 +225,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 				</Link>
 			</div>
 
-			<nav className="flex flex-1 flex-col gap-5 overflow-y-auto px-3 pb-4">
+			<nav className="flex flex-1 flex-col gap-3.5 overflow-y-auto px-3 pb-4">
 				<div className="flex flex-col gap-1">
 					<div className="px-3 pb-1 pt-1 text-[13px] font-medium tracking-normal text-text-subtle">
 						Project
@@ -197,9 +238,9 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 								title="Switch project"
 								className="mb-2 flex h-9 w-full items-center gap-2 rounded-[10px] border border-border bg-surface-raised px-2.5 text-sm font-medium transition-colors hover:bg-surface-hover"
 							>
-								<I.IconFolder />
+								<Folder size={16} />
 								<span className="flex-1 truncate text-left">
-									{projectsQuery.isLoading
+									{projectsQuery.isPending
 										? (project?.name ??
 											selectedProjectSlug ?? (
 												<span
@@ -209,7 +250,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 											))
 										: (project?.name ?? "Select a project")}
 								</span>
-								<I.IconChevronDown />
+								<ChevronDown size={16} />
 							</button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent
@@ -221,7 +262,11 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 							<DropdownMenuLabel>Projects</DropdownMenuLabel>
 							{projects.length === 0 ? (
 								<div className="px-2 py-1.5 text-[13px] text-text-subtle">
-									No projects yet.
+									{projectsQuery.isError
+										? "Couldn't load projects."
+										: projectsQuery.isPending
+											? "Loading projects…"
+											: "No projects yet."}
 								</div>
 							) : (
 								projects.map((entry) => (
@@ -232,7 +277,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 										}
 										className="gap-2"
 									>
-										<I.IconFolder />
+										<Folder size={16} />
 										<span className="flex-1 truncate">{entry.name}</span>
 										{entry.slug === effectiveSlug ? (
 											<Check className="size-3.5 text-accent" />
@@ -254,83 +299,84 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 						open={newProjectOpen}
 						onOpenChange={setNewProjectOpen}
 					/>
-					{project ? (
-						<Active
-							to={`/workspace/${wrkSlug}/projects/${project.slug}`}
-							end
-							label="Overview"
-							icon={<I.IconChart />}
-						/>
-					) : null}
+					<Active
+						disabled={!effectiveSlug}
+						to={`/workspace/${wrkSlug}/projects/${effectiveSlug}`}
+						end
+						label="Overview"
+						icon={<Chart size={16} />}
+					/>
 				</div>
 
-				{effectiveSlug ? (
-					<div className="flex flex-col gap-0.5">
-						<div className="px-3 pb-1 pt-1 text-[13px] font-medium tracking-normal text-text-subtle">
-							Data
-						</div>
-						{hasWebSource ? (
-							<Active
-								to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/web-analytics`}
-								label="Web Analytics"
-								icon={<MonitorCloud className="size-4 shrink-0" />}
-							/>
-						) : null}
-						{hasMobileSource ? (
-							<Active
-								to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/mobile-analytics`}
-								label="Mobile Analytics"
-								icon={<Smartphone className="size-4 shrink-0" />}
-							/>
-						) : null}
-						<Active
-							to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/events`}
-							label="Events"
-							icon={<I.IconBolt />}
-						/>
-						<Active
-							to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/people`}
-							label="People"
-							icon={<I.IconPerson />}
-						/>
-						<Active
-							to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/realtime`}
-							label="Live"
-							icon={<I.IconGlobe />}
-						/>
+				<div className="flex flex-col gap-0.5">
+					<div className="px-3 pb-1 pt-1 text-[13px] font-medium tracking-normal text-text-subtle">
+						Data
 					</div>
-				) : null}
+					{hasWebSource ? (
+						<Active
+							disabled={!effectiveSlug}
+							to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/web-analytics`}
+							label="Web Analytics"
+							icon={<Globe className="size-4 shrink-0" />}
+						/>
+					) : null}
+					{hasMobileSource ? (
+						<Active
+							disabled={!effectiveSlug}
+							to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/mobile-analytics`}
+							label="Mobile Analytics"
+							icon={<Smartphone className="size-4 shrink-0" />}
+						/>
+					) : null}
+					<Active
+						disabled={!effectiveSlug}
+						to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/events`}
+						label="Events"
+						icon={<Zap size={16} />}
+					/>
+					<Active
+						disabled={!effectiveSlug}
+						to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/people`}
+						label="People"
+						icon={<User size={16} />}
+					/>
+					<Active
+						disabled={!effectiveSlug}
+						to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/realtime`}
+						label="Live"
+						icon={<Globe size={16} />}
+					/>
+				</div>
 
-				{effectiveSlug ? (
-					<div className="flex flex-col gap-0.5">
-						<div className="px-3 pb-1 pt-1 text-[13px] font-medium tracking-normal text-text-subtle">
-							Diagnose
-						</div>
-						<Active
-							to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/errors`}
-							label="Errors"
-							icon={<I.IconAlert />}
-						/>
+				<div className="flex flex-col gap-0.5">
+					<div className="px-3 pb-1 pt-1 text-[13px] font-medium tracking-normal text-text-subtle">
+						Diagnose
 					</div>
-				) : null}
+					<Active
+						disabled={!effectiveSlug}
+						to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/errors`}
+						label="Errors"
+						icon={<TriangleAlert size={16} />}
+					/>
+				</div>
 
-				{effectiveSlug ? (
-					<div className="flex flex-col gap-0.5">
-						<div className="px-3 pb-1 pt-1 text-[13px] font-medium tracking-normal text-text-subtle">
-							Configure
-						</div>
-						<Active
-							to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/sources`}
-							label="Sources"
-							icon={<I.IconGlobe />}
-						/>
-						<Active
-							to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/settings`}
-							label="Project settings"
-							icon={<I.IconSettings />}
-						/>
+				<div className="flex flex-col gap-0.5">
+					<div className="px-3 pb-1 pt-1 text-[13px] font-medium tracking-normal text-text-subtle">
+						Configure
 					</div>
-				) : null}
+					<Active
+						disabled={!effectiveSlug}
+						to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/sources`}
+						label="Sources"
+						icon={<Globe size={16} />}
+					/>
+					<Active
+						disabled={!effectiveSlug}
+						to={`/workspace/${wrkSlug}/projects/${effectiveSlug}/settings`}
+						label="Project settings"
+						icon={<Settings size={16} />}
+					/>
+				</div>
 
 				<div className="flex flex-col gap-0.5 border-t border-border pt-2.5">
 					<div className="px-3 pb-1 pt-1 text-[13px] font-medium tracking-normal text-text-subtle">
@@ -345,7 +391,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 								className="mb-2 flex h-9 w-full items-center gap-2 rounded-[10px] border border-border bg-surface-raised px-2.5 text-sm font-medium transition-colors hover:bg-surface-hover"
 							>
 								<span className="flex-1 truncate text-left">
-									{workspacesPending ? (
+									{workspacesPending && !workspaceName ? (
 										<span
 											className="inline-block h-[13px] w-28 animate-pulse rounded-md bg-surface-raised"
 											aria-hidden="true"
@@ -354,7 +400,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 										(workspaceName ?? "Select a workspace")
 									)}
 								</span>
-								<I.IconChevronDown />
+								<ChevronDown size={16} />
 							</button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent
@@ -366,7 +412,11 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 							<DropdownMenuLabel>Workspaces</DropdownMenuLabel>
 							{allWorkspaces.length === 0 ? (
 								<div className="px-2 py-1.5 text-[13px] text-text-subtle">
-									No workspaces yet.
+									{workspacesError
+										? "Couldn't load workspaces."
+										: workspacesPending
+											? "Loading workspaces…"
+											: "No workspaces yet."}
 								</div>
 							) : (
 								allWorkspaces.map((ws) => (
@@ -381,11 +431,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 										}}
 									>
 										<span className="flex-1 truncate">{ws.name}</span>
-										{(
-											selectedId
-												? selectedId === ws.id
-												: activeWorkspaceId === ws.id
-										) ? (
+										{ws.slug === wrkSlug ? (
 											<Check className="size-3.5 text-accent" />
 										) : null}
 									</DropdownMenuItem>
@@ -409,17 +455,17 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 						to={`/workspace/${wrkSlug}/projects`}
 						end
 						label="Projects"
-						icon={<I.IconFolder />}
+						icon={<Folder size={16} />}
 					/>
 					<Active
 						to={`/workspace/${wrkSlug}/members`}
 						label="Members"
-						icon={<I.IconUsers />}
+						icon={<Users size={16} />}
 					/>
 					<Active
 						to={`/workspace/${wrkSlug}/settings`}
 						label="Workspace settings"
-						icon={<I.IconSettings />}
+						icon={<Settings size={16} />}
 					/>
 				</div>
 			</nav>
@@ -431,7 +477,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 					target="_blank"
 					rel="noreferrer"
 				>
-					<I.IconDoc />
+					<FileText size={16} />
 					Docs
 				</a>
 				<DropdownMenu>
@@ -441,12 +487,10 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 							aria-haspopup="menu"
 							className={cn(LINK_BASE, "w-full")}
 						>
-							<I.IconMoon />
+							<Moon size={16} />
 							<span className="flex-1 text-left">Theme</span>
-							<span className="text-xs text-text-subtle">
-								{themeLabel}
-							</span>
-							<I.IconChevronDown className="size-3" />
+							<span className="text-xs text-text-subtle">{themeLabel}</span>
+							<ChevronDown size={12} />
 						</button>
 					</DropdownMenuTrigger>
 					<DropdownMenuContent
@@ -502,7 +546,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 										{session?.user?.email ?? ""}
 									</span>
 								</span>
-								<I.IconChevronDown className="size-3.5 shrink-0 text-text-subtle" />
+								<ChevronDown size={14} className="shrink-0 text-text-subtle" />
 							</button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent
