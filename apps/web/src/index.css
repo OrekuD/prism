@@ -96,9 +96,9 @@
   --shadow-dialog: 0 24px 80px rgb(0 0 0 / 0.55);
   --on-accent: #161616;
 
-  --canvas: #161616;
-  --canvas-subtle: #1c1c1c;
-  --surface: #161616;
+  --canvas: #0e0e0e;
+  --canvas-subtle: #161616;
+  --surface: #0e0e0e;
   --surface-raised: #222225;
   --surface-hover: #26262b;
   --surface-active: #212121;
