@@ -1,4 +1,4 @@
-import { Loader2, TriangleAlert } from "lucide-react";
+import { Loader2, TriangleAlert } from "@/components/ui/lucide-icons";
 
 import { authClient } from "@/lib/authClient";
 import { useResendVerificationEmail } from "@/hooks/useResendVerificationEmail";

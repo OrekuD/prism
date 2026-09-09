@@ -1,4 +1,4 @@
-import { Check, Copy } from "lucide-react";
+import { Check, Copy } from "@/components/ui/lucide-icons";
 import React from "react";
 import { cn } from "@/lib/utils";
 import { useCopy } from "@/components/ui/copy-button";

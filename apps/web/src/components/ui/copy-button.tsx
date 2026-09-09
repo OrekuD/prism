@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy } from "@/components/ui/lucide-icons";
 import React from "react";
 import { toast } from "sonner";
 

@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { isValidOrigin } from "@/lib/sources";
 import { cn } from "@/lib/utils";
 import { useUpdateSourceMutation } from "@/network/mutations/useSourceMutations";
-import { TriangleAlert, X } from "lucide-react";
+import { TriangleAlert, X } from "@/components/ui/lucide-icons";
 import React from "react";
 
 export type AllowedOriginsProps = {

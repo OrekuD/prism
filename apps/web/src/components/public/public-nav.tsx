@@ -1,4 +1,4 @@
-import { Menu, X } from "lucide-react";
+import { Menu, X } from "@/components/ui/lucide-icons";
 import React from "react";
 import { Link } from "react-router-dom";
 import { PrismLogo } from "@/components/brand/prism-logo";

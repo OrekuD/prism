@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/select";
 import { useActiveWorkspace, useWorkspaces } from "@/lib/workspace";
 import { useCreateProjectMutation } from "@/network/mutations/useCreateProjectMutation";
-import { Loader2 } from "lucide-react";
+import { Loader2 } from "@/components/ui/lucide-icons";
 import React from "react";
 import { useNavigate } from "react-router-dom";
 

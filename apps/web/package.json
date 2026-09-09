@@ -15,6 +15,8 @@
 	"dependencies": {
 		"@ai-sdk/react": "^4.0.95",
 		"@hookform/resolvers": "^5.7.1",
+		"@hugeicons/core-free-icons": "^4.3.2",
+		"@hugeicons/react": "^1.1.10",
 		"@prism-analytics/react": "*",
 		"@prism-analytics/types": "*",
 		"@radix-ui/react-icons": "latest",
@@ -33,7 +35,6 @@
 		"framer-motion": "^12.43.0",
 		"fuse.js": "^7.0.0",
 		"input-otp": "^1.4.2",
-		"lucide-react": "^1.31.0",
 		"mapbox-gl": "^3.28.1",
 		"radix-ui": "^1.6.7",
 		"react": "^19.2.8",

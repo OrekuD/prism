@@ -1,4 +1,4 @@
-import { Loader2 } from "lucide-react";
+import { Loader2 } from "@/components/ui/lucide-icons";
 import { cn } from "@/lib/utils";
 
 /** Inline GitHub mark: lucide removed brand icons; keep one icon family. */

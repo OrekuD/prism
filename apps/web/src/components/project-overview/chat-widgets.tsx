@@ -6,7 +6,7 @@
  */
 import { Link, useParams } from "react-router-dom";
 import { buildDrilldownUrl } from "@prism-analytics/types";
-import { Check } from "lucide-react";
+import { Check } from "@/components/ui/lucide-icons";
 import type {
   ActivityStep,
   AssistantArtifact,

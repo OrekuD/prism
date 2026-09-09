@@ -1,7 +1,7 @@
 import { authClient } from "@/lib/authClient";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { persistQueryClient } from "@tanstack/react-query-persist-client";
-import { Loader2 } from "lucide-react";
+import { Loader2 } from "@/components/ui/lucide-icons";
 import React from "react";
 import { lazy } from "react";
 import {

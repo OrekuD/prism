@@ -4,7 +4,7 @@ import { authClient } from "@/lib/authClient";
 import { loadRuntimeConfig } from "@/lib/runtimeConfig";
 import { PrismMark } from "@/components/brand/prism-mark";
 import { useTheme } from "@/components/theme-provider";
-import { Monitor, Moon, Sun } from "lucide-react";
+import { Monitor, Moon, Sun } from "@/components/ui/lucide-icons";
 import {
   HomeSkeleton,
   useWorkspaceHome,

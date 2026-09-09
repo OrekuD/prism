@@ -25,7 +25,7 @@ import { PLATFORM_LABELS, formatCount } from "@/lib/sources";
 import { useActiveMember } from "@/lib/workspace";
 import { useDeleteSourceMutation } from "@/network/mutations/useSourceMutations";
 import { useSourceQuery } from "@/network/queries/useSourcesQuery";
-import { Loader2, Trash2, X } from "lucide-react";
+import { Loader2, Trash2, X } from "@/components/ui/lucide-icons";
 import { useNavigate, useParams } from "react-router-dom";
 
 export function SourceDetailDialog() {

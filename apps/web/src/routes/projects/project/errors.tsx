@@ -6,7 +6,7 @@ import {
 	RotateCcw,
 	Search,
 	TriangleAlert,
-} from "lucide-react";
+} from "@/components/ui/lucide-icons";
 import React from "react";
 import {
 	Link,

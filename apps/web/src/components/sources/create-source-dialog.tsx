@@ -22,7 +22,7 @@ import { PLATFORM_LABELS } from "@/lib/sources";
 import { useActiveMember } from "@/lib/workspace";
 import { CREATABLE_PLATFORMS } from "@/lib/workspace";
 import { useCreateSourceMutation } from "@/network/mutations/useSourceMutations";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2, Plus } from "@/components/ui/lucide-icons";
 import React from "react";
 
 export function CreateSourceDialog({

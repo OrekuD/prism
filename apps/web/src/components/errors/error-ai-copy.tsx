@@ -19,7 +19,7 @@ import {
   FileJson,
   FileText,
   Sparkles,
-} from "lucide-react";
+} from "@/components/ui/lucide-icons";
 import React from "react";
 import { toast } from "sonner";
 

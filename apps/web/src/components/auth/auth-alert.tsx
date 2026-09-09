@@ -1,4 +1,4 @@
-import { AlertCircle } from "lucide-react";
+import { AlertCircle } from "@/components/ui/lucide-icons";
 
 /**
  * Inline auth failure state (design-system.md 15.3): persistent,

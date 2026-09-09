@@ -32,7 +32,7 @@ import {
   useRevokeKeyMutation,
 } from "@/network/mutations/useSourceMutations";
 import type { SourceKeyResource } from "@/network/queries/useSourcesQuery";
-import { Eye, EyeOff, Loader2, Plus, RefreshCw } from "lucide-react";
+import { Eye, EyeOff, Loader2, Plus, RefreshCw } from "@/components/ui/lucide-icons";
 import React from "react";
 import { toast } from "sonner";
 

@@ -38,7 +38,7 @@ import {
 	Smartphone,
 	Sun,
 	User,
-} from "lucide-react";
+} from "@/components/ui/lucide-icons";
 import React from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 

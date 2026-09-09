@@ -1,4 +1,4 @@
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import { AlertTriangle, RefreshCw } from "@/components/ui/lucide-icons";
 
 /**
  * Persistent contextual error state for route/API failures

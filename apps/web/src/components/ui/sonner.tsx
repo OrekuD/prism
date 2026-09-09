@@ -6,7 +6,7 @@ import {
 	Loader2Icon,
 	OctagonXIcon,
 	TriangleAlertIcon,
-} from "lucide-react";
+} from "@/components/ui/lucide-icons";
 import { useTheme } from "@/components/theme-provider";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
 

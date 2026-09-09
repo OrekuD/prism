@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { UserPlus, Trash2 } from "lucide-react";
+import { UserPlus, Trash2 } from "@/components/ui/lucide-icons";
 
 const ROLE_LABELS: Record<string, string> = {
   owner: "Owner",

@@ -12,7 +12,7 @@ import {
   useImperativeHandle,
   useRef,
 } from "react";
-import { Square } from "lucide-react";
+import { Square } from "@/components/ui/lucide-icons";
 import type { ProjectCapabilities } from "@prism-analytics/types";
 import { Kbd } from "@/components/project-overview/primitives";
 import { Frame } from "@/components/public/frame";

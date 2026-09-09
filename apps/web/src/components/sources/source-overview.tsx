@@ -9,7 +9,7 @@ import {
   sourceTypeLabel,
   timeAgo,
 } from "@/lib/sources";
-import { KeyRound } from "lucide-react";
+import { KeyRound } from "@/components/ui/lucide-icons";
 import { cn } from "@/lib/utils";
 import type { SourceResource } from "@/network/queries/useSourcesQuery";
 
