@@ -74,12 +74,7 @@ export function ProjectSources() {
 
   return (
     <div className="flex flex-1 flex-col space-y-10">
-      <PageHeader
-        title="Sources"
-        description={`SDK sources for ${
-          projectName ?? "this project"
-        }. Pick a source to get its setup, keys, and settings.`}
-      />
+      <PageHeader />
 
       <div className="mb-3 text-[13px] font-medium tracking-normal text-text-subtle">
         Sources

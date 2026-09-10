@@ -111,10 +111,7 @@ export function MembersPage() {
 
   return (
     <>
-      <PageHeader
-        title="Members"
-        description={`Members of the ${workspaceName ?? "workspace"} workspace and their roles.`}
-      >
+      <PageHeader>
         {canManage ? (
           <button
             type="button"

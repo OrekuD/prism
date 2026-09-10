@@ -16,10 +16,7 @@ export function ProjectSettingsLayout() {
 
   return (
     <div className="space-y-10">
-      <PageHeader
-        title="Settings"
-        description="Manage your project settings."
-      />
+      <PageHeader />
       <div className="flex flex-col lg:flex-row lg:space-y-0 gap-8">
         <aside className="lg:w-1/5">
           <nav className="flex space-x-2 md:sticky md:top-24 lg:flex-col lg:space-x-0 lg:space-y-1">

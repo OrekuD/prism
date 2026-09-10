@@ -22,10 +22,7 @@ export function Projects() {
 
   return (
     <>
-      <PageHeader
-        title="Projects"
-        description={`Tracked applications in the ${workspaceName ?? "workspace"} workspace.`}
-      >
+      <PageHeader>
         <button
           type="button"
           onClick={() => setNewProjectOpen(true)}

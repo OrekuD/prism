@@ -259,10 +259,7 @@ export function ProjectPeople() {
 
 	return (
 		<div className="flex flex-1 flex-col">
-			<PageHeader
-				title="People"
-				description="Identified users and the product activity connected to them."
-			>
+			<PageHeader>
 				<Select
 					value={range}
 					onValueChange={(value) => updateUrl({ range: value as PeopleRange })}

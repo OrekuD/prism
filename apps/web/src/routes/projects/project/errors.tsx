@@ -223,12 +223,7 @@ export function ProjectErrors() {
 
 	return (
 		<div className="flex flex-1 flex-col">
-			<PageHeader
-				title="Errors"
-				description={`Grouped issues for ${
-					projectName ?? "this project"
-				} over the last ${RANGE_LABEL[range] ?? range}.`}
-			/>
+			<PageHeader />
 
 			{isLoading ? (
 				<div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">

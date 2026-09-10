@@ -16,10 +16,7 @@ export function WorkspaceSettingsLayout() {
 
   return (
     <div className="mx-auto w-full max-w-[880px] space-y-6">
-      <PageHeader
-        title="Settings"
-        description="Manage your workspace settings."
-      />
+      <PageHeader />
       <div className="flex flex-col lg:flex-row lg:space-y-0 gap-8">
         {showRail ? (
           <aside className="lg:w-1/5">

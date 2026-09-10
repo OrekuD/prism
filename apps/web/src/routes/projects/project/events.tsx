@@ -301,10 +301,7 @@ export function ProjectEvents() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <PageHeader
-        title="Events"
-        description="Raw event stream for this project."
-      />
+      <PageHeader />
 
       {/* Filters */}
       {snapshotCtx ? (

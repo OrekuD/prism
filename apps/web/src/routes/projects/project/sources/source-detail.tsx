@@ -74,18 +74,7 @@ export function SourceDetail() {
 
   return (
     <div className="flex flex-1 flex-col space-y-6">
-      <PageHeader
-        title={data.name}
-        description={
-          <>
-            {PLATFORM_LABELS[data.platform]} source ·{" "}
-            {formatCount(data.telemetry.events)} events
-            {data.telemetry.lastReceivedAt
-              ? ` · last ${new Date(data.telemetry.lastReceivedAt).toLocaleString()}`
-              : ""}
-          </>
-        }
-      >
+      <PageHeader>
         {canManage && (
           <AlertDialog>
             <AlertDialogTrigger asChild>
