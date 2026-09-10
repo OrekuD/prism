@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { UserPlus, Trash2 } from "@/components/ui/hugeicons";
+import { Trash2, UserPlus, Plus, X } from "@/components/ui/hugeicons";
 
 const ROLE_LABELS: Record<string, string> = {
   owner: "Owner",
@@ -247,12 +247,41 @@ export function MembersPage() {
 function InviteDialog({ open, onOpenChange, onInvited }: { open: boolean; onOpenChange: (open: boolean) => void; onInvited: (email: string, role: string) => void }) {
   const [email, setEmail] = React.useState("");
   const [role, setRole] = React.useState("member");
+  const [pending, setPending] = React.useState<Array<{ email: string; role: string }>>([]);
+  const [listError, setListError] = React.useState<string | null>(null);
 
   const trimmedEmail = email.trim();
   const emailError =
     trimmedEmail !== "" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)
       ? "Enter a valid email address."
       : null;
+
+  const addPending = () => {
+    if (!trimmedEmail || emailError) return;
+    if (pending.some((entry) => entry.email === trimmedEmail)) {
+      setListError(`${trimmedEmail} is already on the list.`);
+      return;
+    }
+    setListError(null);
+    setPending((current) => [...current, { email: trimmedEmail, role }]);
+    setEmail("");
+  };
+
+  const removePending = (target: string) => {
+    setListError(null);
+    setPending((current) => current.filter((entry) => entry.email !== target));
+  };
+
+  const sendAll = () => {
+    if (pending.length === 0) return;
+    for (const entry of pending) {
+      onInvited(entry.email, entry.role);
+    }
+    setPending([]);
+    setListError(null);
+    setEmail("");
+    onOpenChange(false);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -265,10 +294,7 @@ function InviteDialog({ open, onOpenChange, onInvited }: { open: boolean; onOpen
           className="space-y-4"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!trimmedEmail || emailError) return;
-            onInvited(trimmedEmail, role);
-            setEmail("");
-            onOpenChange(false);
+            addPending();
           }}
         >
           <div className="flex items-start gap-3">
@@ -278,7 +304,7 @@ function InviteDialog({ open, onOpenChange, onInvited }: { open: boolean; onOpen
                 id="invite-email"
                 type="email"
                 value={email}
-                aria-invalid={Boolean(emailError)}
+                aria-invalid={Boolean(emailError || listError)}
                 onChange={(event) => setEmail(event.target.value)}
                 placeholder="teammate@example.com"
               />
@@ -293,12 +319,59 @@ function InviteDialog({ open, onOpenChange, onInvited }: { open: boolean; onOpen
                 </SelectContent>
               </Select>
             </div>
+            <button
+              type="submit"
+              disabled={!trimmedEmail || Boolean(emailError)}
+              aria-label="Add to invite list"
+              className="inline-flex size-9 shrink-0 items-center justify-center gap-2 self-start rounded-full bg-accent text-primary-foreground transition-colors hover:bg-accent-hover disabled:opacity-45 sm:mt-[26px]"
+            >
+              <Plus className="size-4" />
+            </button>
           </div>
+          {emailError || listError ? (
+            <p role="alert" className="-mt-2 text-xs text-danger">
+              {emailError ?? listError}
+            </p>
+          ) : null}
+          {pending.length > 0 ? (
+            <div className="divide-y divide-border rounded-[12px] border border-border">
+              {pending.map((entry) => (
+                <div
+                  key={entry.email}
+                  className="flex items-center justify-between gap-3 px-3.5 py-2.5"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm text-text">{entry.email}</p>
+                    <p className="text-xs text-text-subtle">
+                      {entry.role === "admin" ? "Admin" : "Member"}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${entry.email}`}
+                    onClick={() => removePending(entry.email)}
+                    className="grid size-7 shrink-0 place-items-center rounded-full text-text-subtle transition-colors hover:bg-surface-hover hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                  >
+                    <X className="size-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
           <DialogFooter>
             <DialogClose asChild>
               <button type="button" className="inline-flex h-9 items-center gap-2 rounded-full border border-border-strong px-4 text-sm font-medium text-text transition-colors hover:bg-surface-hover">Cancel</button>
             </DialogClose>
-            <button type="submit" disabled={!trimmedEmail || Boolean(emailError)} className="inline-flex h-9 items-center gap-2 rounded-full bg-accent px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-accent-hover">Send invitation</button>
+            <button
+              type="button"
+              onClick={sendAll}
+              disabled={pending.length === 0}
+              className="inline-flex h-9 items-center gap-2 rounded-full bg-accent px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-accent-hover disabled:opacity-45"
+            >
+              {pending.length > 1
+                ? `Send ${pending.length} invitations`
+                : "Send invitation"}
+            </button>
           </DialogFooter>
         </form>
       </DialogContent>
