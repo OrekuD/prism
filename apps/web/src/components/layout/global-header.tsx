@@ -19,6 +19,7 @@ import {
 	Monitor,
 	User,
 } from "@/components/ui/hugeicons";
+import { IconMenu } from "@/components/ui/icons";
 import { authClient } from "@/lib/authClient";
 import { DOCS_URL } from "@/lib/docs";
 import { clearQueryClient, client } from "@/lib/queryClient";
@@ -28,11 +29,12 @@ import React from "react";
 import { Link } from "react-router-dom";
 
 /**
- * Global top bar: Prism mark on the left; Docs, the theme picker, and the
- * account menu on the right. Owns the utilities that used to live at the
- * bottom of the sidebar.
+ * Global top bar: Prism mark on the left (plus the mobile drawer trigger
+ * below 1024px); Docs, the theme picker, and the account menu on the
+ * right. Owns the utilities that used to live at the bottom of the
+ * sidebar.
  */
-export function GlobalHeader() {
+export function GlobalHeader({ onMenu }: { onMenu?: () => void }) {
 	const { theme, setTheme } = useTheme();
 	const { data: session } = authClient.useSession();
 	const [signingOut, setSigningOut] = React.useState(false);
@@ -65,13 +67,25 @@ export function GlobalHeader() {
 
 	return (
 		<header className="sticky top-0 z-70 flex h-14 w-full shrink-0 items-center justify-between gap-4 border-b border-border bg-canvas px-3 max-[1023px]:px-4">
-			<Link
-				to="/overview"
-				aria-label="Prism home"
-				className="grid size-9 place-items-center rounded-[10px] transition-opacity hover:opacity-90"
-			>
-				<PrismMark size={22} />
-			</Link>
+			<div className="flex items-center gap-1.5">
+				{onMenu ? (
+					<button
+						type="button"
+						aria-label="Open navigation"
+						onClick={onMenu}
+						className="hidden size-9 place-items-center rounded-[10px] text-[#5D5D5D] transition-colors hover:bg-surface-hover hover:text-text dark:text-text max-[1023px]:grid"
+					>
+						<IconMenu />
+					</button>
+				) : null}
+				<Link
+					to="/overview"
+					aria-label="Prism home"
+					className="grid size-9 place-items-center rounded-[10px] transition-opacity hover:opacity-90"
+				>
+					<PrismMark size={22} />
+				</Link>
+			</div>
 
 			<div className="flex items-center gap-1.5">
 				<a

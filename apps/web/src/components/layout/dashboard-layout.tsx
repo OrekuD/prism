@@ -4,13 +4,12 @@ import { cn } from "@/lib/utils";
 import { EmailVerificationAlert } from "@/components/auth/email-verification-alert";
 import { GlobalHeader } from "./global-header";
 import { Sidebar } from "./sidebar";
-import { Toolbar } from "./toolbar";
 
 /**
- * v2 dashboard shell: global header on top, 260px sidebar + sticky
- * breadcrumb toolbar + centered content column below. Below 1024px the
- * sidebar becomes an off-canvas drawer opened by the toolbar menu button,
- * with a click-away scrim.
+ * v2 dashboard shell: global header on top, 260px sidebar + centered
+ * content column below (each page renders its own PageHeader
+ * breadcrumbs). Below 1024px the sidebar becomes an off-canvas drawer
+ * opened from the global header, with a click-away scrim.
  */
 export function DashboardLayout() {
 	const [navOpen, setNavOpen] = React.useState(false);
@@ -24,7 +23,7 @@ export function DashboardLayout() {
 
 	return (
 		<div className="flex min-h-dvh flex-col">
-			<GlobalHeader />
+			<GlobalHeader onMenu={() => setNavOpen(true)} />
 			<div className="flex min-h-[calc(100dvh-3.5rem)] flex-1">
 				<Sidebar navOpen={navOpen} />
 				<button
@@ -40,7 +39,6 @@ export function DashboardLayout() {
 					)}
 				/>
 				<div className="flex min-w-0 flex-1 flex-col">
-					<Toolbar onMenu={() => setNavOpen(true)} />
 					<div
 						className={cn(
 							"flex flex-1 flex-col",

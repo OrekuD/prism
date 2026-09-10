@@ -15,7 +15,7 @@ export function WorkspaceSettingsLayout() {
   const showRail = links.length > 1;
 
   return (
-    <div className="mx-auto w-full max-w-[880px] space-y-6">
+    <div className="mx-auto w-full space-y-6">
       <PageHeader />
       <div className="flex flex-col lg:flex-row lg:space-y-0 gap-8">
         {showRail ? (
@@ -31,7 +31,7 @@ export function WorkspaceSettingsLayout() {
                     className={cn(
                       buttonVariants({ variant: "ghost" }),
                       isActive ? "bg-muted hover:bg-muted" : "hover:bg-muted",
-                      "justify-start transition-colors duration-200",
+                      "justify-start transition-colors duration-200"
                     )}
                   >
                     {item.label}
