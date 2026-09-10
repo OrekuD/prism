@@ -27,7 +27,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Trash2, UserPlus, Plus, X } from "@/components/ui/hugeicons";
+import {
+  Trash2,
+  UserPlus,
+  Plus,
+  X,
+  Pencil,
+} from "@/components/ui/hugeicons";
 
 const ROLE_LABELS: Record<string, string> = {
   owner: "Owner",
@@ -272,6 +278,14 @@ function InviteDialog({ open, onOpenChange, onInvited }: { open: boolean; onOpen
     setPending((current) => current.filter((entry) => entry.email !== target));
   };
 
+  const updateRole = (target: string, role: string) => {
+    setPending((current) =>
+      current.map((entry) =>
+        entry.email === target ? { ...entry, role } : entry,
+      ),
+    );
+  };
+
   const sendAll = () => {
     if (pending.length === 0) return;
     for (const entry of pending) {
@@ -297,7 +311,7 @@ function InviteDialog({ open, onOpenChange, onInvited }: { open: boolean; onOpen
             addPending();
           }}
         >
-          <div className="flex items-start gap-3">
+          <div className="flex items-end gap-3">
             <div className="min-w-0 flex-1 space-y-2">
               <Label htmlFor="invite-email">Email</Label>
               <Input
@@ -323,7 +337,7 @@ function InviteDialog({ open, onOpenChange, onInvited }: { open: boolean; onOpen
               type="submit"
               disabled={!trimmedEmail || Boolean(emailError)}
               aria-label="Add to invite list"
-              className="inline-flex size-9 shrink-0 items-center justify-center gap-2 self-start rounded-full bg-accent text-primary-foreground transition-colors hover:bg-accent-hover disabled:opacity-45 sm:mt-[26px]"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent text-primary-foreground transition-colors hover:bg-accent-hover disabled:opacity-45"
             >
               <Plus className="size-4" />
             </button>
@@ -338,14 +352,43 @@ function InviteDialog({ open, onOpenChange, onInvited }: { open: boolean; onOpen
               {pending.map((entry) => (
                 <div
                   key={entry.email}
-                  className="flex items-center justify-between gap-3 px-3.5 py-2.5"
+                  className="flex items-center gap-3 px-3.5 py-2"
                 >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm text-text">{entry.email}</p>
-                    <p className="text-xs text-text-subtle">
-                      {entry.role === "admin" ? "Admin" : "Member"}
-                    </p>
-                  </div>
+                  <p className="min-w-0 flex-1 truncate text-sm text-text">
+                    {entry.email}
+                  </p>
+                  <span aria-hidden="true" className="h-5 w-px bg-border" />
+                  <Select
+                    value={entry.role}
+                    onValueChange={(value) =>
+                      updateRole(entry.email, value)
+                    }
+                  >
+                    <SelectTrigger
+                      data-role-trigger={entry.email}
+                      className="h-8 w-[112px] rounded-full text-xs"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent align="start">
+                      <SelectItem value="member">Member</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <span aria-hidden="true" className="h-5 w-px bg-border" />
+                  <button
+                    type="button"
+                    aria-label={`Edit role for ${entry.email}`}
+                    onClick={() => {
+                      const trigger = document.querySelector(
+                        `[data-role-trigger="${CSS.escape(entry.email)}"]`,
+                      );
+                      if (trigger instanceof HTMLElement) trigger.click();
+                    }}
+                    className="grid size-7 shrink-0 place-items-center rounded-full text-text-subtle transition-colors hover:bg-surface-hover hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                  >
+                    <Pencil className="size-4" />
+                  </button>
                   <button
                     type="button"
                     aria-label={`Remove ${entry.email}`}
