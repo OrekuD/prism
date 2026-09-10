@@ -307,12 +307,11 @@ export function CreateAccount() {
               onSocial={onSocial}
             />
             {providerNotice ? (
-              <p
-                aria-live="polite"
-                className="text-center text-[12px] leading-relaxed text-text-muted"
+              <output
+                className="block text-center text-[12px] leading-relaxed text-text-muted"
               >
                 {providerNotice}
-              </p>
+              </output>
             ) : null}
             <OrEmailDivider />
             <form onSubmit={onSubmitEmail} className="grid gap-4" noValidate>

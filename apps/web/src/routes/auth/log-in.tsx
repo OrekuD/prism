@@ -96,12 +96,9 @@ export function LogIn() {
           }
         />
         {providerNotice ? (
-          <p
-            aria-live="polite"
-            className="text-center text-[12px] leading-relaxed text-text-muted"
-          >
+          <output className="block text-center text-[12px] leading-relaxed text-text-muted">
             {providerNotice}
-          </p>
+          </output>
         ) : null}
         <div className="flex items-center gap-4 py-1">
           <span aria-hidden="true" className="h-px flex-1 bg-border" />

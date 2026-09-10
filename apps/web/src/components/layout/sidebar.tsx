@@ -73,6 +73,8 @@ function Active({
 	disabled?: boolean;
 }) {
 	if (disabled) {
+		// Not a link: with no project selected there is no destination.
+		// aria-disabled + tooltip communicate the placeholder state.
 		return (
 			<span
 				aria-disabled="true"

@@ -83,12 +83,10 @@ it("renders URL-scoped navigation before workspace and project queries resolve",
 
 it("keeps project navigation visible but disabled when no project is selected", () => {
 	mount("/workspace/chosen/projects");
-	expect(screen.getByRole("link", { name: "Events" })).toHaveAttribute(
-		"aria-disabled",
-		"true",
-	);
-	expect(screen.getByRole("link", { name: "Events" })).not.toHaveAttribute(
-		"href",
+	const eventsPlaceholder = screen.getByText("Events");
+	expect(eventsPlaceholder).toHaveAttribute("aria-disabled", "true");
+	expect(eventsPlaceholder.getAttribute("title")).toContain(
+		"Select a project first",
 	);
 	expect(screen.getByRole("link", { name: "Projects" })).toHaveAttribute(
 		"href",
@@ -145,7 +143,7 @@ it("does not carry the previous workspace's selected project into the next works
 	await userEvent
 		.setup()
 		.click(screen.getByRole("link", { name: "Switch destination" }));
-	expect(screen.getByRole("link", { name: "Events" })).toHaveAttribute(
+	expect(screen.getByText("Events")).toHaveAttribute(
 		"aria-disabled",
 		"true",
 	);
