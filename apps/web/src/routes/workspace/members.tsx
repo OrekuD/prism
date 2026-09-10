@@ -355,7 +355,8 @@ function InviteDialog({ open, onOpenChange, onInvited }: { open: boolean; onOpen
             </p>
           ) : null}
           {pending.length > 0 ? (
-            <div className="divide-y divide-border">
+            <div className="[&>*+*]:border-t-[0.5px] [&>*+*]:border-border">
+              {pending.map((entry) => (
               {pending.map((entry) => (
                 <div
                   key={entry.email}
