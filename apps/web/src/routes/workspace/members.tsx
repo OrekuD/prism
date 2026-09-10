@@ -372,7 +372,7 @@ function InviteDialog({ open, onOpenChange, onInvited }: { open: boolean; onOpen
                   >
                     <SelectTrigger
                       data-role-trigger={entry.email}
-                      className="w-auto gap-1.5 rounded-full border-none bg-transparent px-1.5 text-xs shadow-none hover:bg-surface-hover dark:bg-transparent"
+                      className="w-auto gap-1.5 rounded-full border-none bg-transparent px-1.5 text-xs shadow-none hover:bg-transparent dark:bg-transparent"
                     >
                       <SelectValue />
                     </SelectTrigger>
@@ -391,7 +391,7 @@ function InviteDialog({ open, onOpenChange, onInvited }: { open: boolean; onOpen
                       );
                       if (trigger instanceof HTMLElement) trigger.click();
                     }}
-                    className="grid size-7 shrink-0 place-items-center rounded-full text-text-subtle transition-colors hover:bg-surface-hover hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                    className="grid size-7 shrink-0 place-items-center rounded-full text-text transition-colors hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
                   >
                     <PencilLine className="size-4" />
                   </button>
@@ -399,7 +399,7 @@ function InviteDialog({ open, onOpenChange, onInvited }: { open: boolean; onOpen
                     type="button"
                     aria-label={`Remove ${entry.email}`}
                     onClick={() => removePending(entry.email)}
-                    className="grid size-7 shrink-0 place-items-center rounded-full text-text-subtle transition-colors hover:bg-surface-hover hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                    className="grid size-7 shrink-0 place-items-center rounded-full text-text transition-colors hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
                   >
                     <Trash2 className="size-4" />
                   </button>
