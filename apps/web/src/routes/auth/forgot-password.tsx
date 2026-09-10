@@ -1,4 +1,4 @@
-import { Loader2 } from "@/components/ui/lucide-icons";
+import { Loader2 } from "@/components/ui/hugeicons";
 import React from "react";
 import { Link } from "react-router-dom";
 import { authClient } from "@/lib/authClient";

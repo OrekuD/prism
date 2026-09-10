@@ -1,7 +1,7 @@
 "use client";
 
 import type * as React from "react";
-import { CheckIcon, ChevronRightIcon, CircleIcon } from "@/components/ui/lucide-icons";
+import { CheckIcon, ChevronRightIcon, CircleIcon } from "@/components/ui/hugeicons";
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 
 import { cn } from "@/lib/utils";

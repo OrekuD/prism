@@ -48,7 +48,14 @@ export async function waitForSession(timeoutMs = 5000): Promise<boolean> {
     if (state?.data?.session) return true;
     try {
       const response = await authClient.getSession();
-      if (response.data?.session) return true;
+      if (response.data?.session) {
+        // A cookie-only read does not update useSession. SPA navigation is
+        // safe only after the router's atom has observed that session too.
+        const current = sessionAtom();
+        if (!current || current.data?.session) return true;
+        await current.refetch?.();
+        if (sessionAtom()?.data?.session) return true;
+      }
       // 429 means the rate limiter fired — back off instead of hammering.
       if ((response as unknown as { error?: { status?: number } })?.error?.status === 429) {
         await new Promise((resolve) => setTimeout(resolve, 500));

@@ -1,6 +1,6 @@
-import { Loader2 } from "@/components/ui/lucide-icons";
+import { Loader2 } from "@/components/ui/hugeicons";
 import React from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { authClient } from "@/lib/authClient";
 import { AuthShell } from "@/components/auth/auth-shell";
@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export function LogIn() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const oauthError = oauthErrorMessage(searchParams.get("error"));
   // ?email= prefill — used by the signup "account exists" hand-off so the
@@ -50,15 +51,15 @@ export function LogIn() {
       // Wait for the session to be durable before loading organization data.
       // Better Auth's organization endpoints require the cookie session, so
       // starting this lookup earlier creates a guaranteed post-sign-in 401.
-      await waitForSession();
+      if (!(await waitForSession())) {
+        throw new Error("Session confirmation timed out");
+      }
       // Record the successful method so future visits show the "Last used"
       // hint on the right button (and the signup hand-off can reference it).
       setLastAuthMethod(email.trim(), "password");
       const home = await resolveDefaultWorkspacePath();
-      // A full navigation (fresh boot) reads the confirmed session cookie, so
-      // the router never briefly sees a signed-out state and bounces back.
-      window.location.assign(home || "/overview");
-      // Leave isPending true: the page unloads on navigation.
+      navigate(home, { replace: true });
+      // Keep the button busy until the destination replaces this route.
     } catch (err) {
       toast.error(
         isNetworkError(err)
@@ -77,7 +78,7 @@ export function LogIn() {
   };
 
   return (
-    <AuthShell title="Sign in to Prism">
+    <AuthShell title="Sign in to Prism" redirectPaused={isPending}>
       <div className="text-center">
         <h1 className="text-[22px] font-semibold leading-tight tracking-[-0.03em] text-text">
           Sign in to Prism

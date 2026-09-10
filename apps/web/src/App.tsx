@@ -1,7 +1,7 @@
 import { authClient } from "@/lib/authClient";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { persistQueryClient } from "@tanstack/react-query-persist-client";
-import { Loader2 } from "@/components/ui/lucide-icons";
+import { Loader2 } from "@/components/ui/hugeicons";
 import React from "react";
 import { lazy } from "react";
 import {
@@ -348,10 +348,15 @@ function QueryPersistor() {
 
 export function App() {
 	const { data: sessionData, isPending } = authClient.useSession();
+	const [sessionInitialized, setSessionInitialized] = React.useState(!isPending);
+	React.useEffect(() => {
+		if (!isPending) setSessionInitialized(true);
+	}, [isPending]);
 
 	useRefreshUser(Boolean(sessionData?.session));
 
-	if (isPending) {
+	// Refreshes after sign-in must not unmount the router and erase form state.
+	if (isPending && !sessionInitialized) {
 		return (
 			<div className="grid h-screen w-full place-items-center">
 				<Loader2 className="size-4 animate-spin" />

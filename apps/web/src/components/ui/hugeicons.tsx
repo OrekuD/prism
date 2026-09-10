@@ -1,14 +1,15 @@
 /**
- * Lucide-compatible icon API over Hugeicons (free stroke-rounded set).
+ * App icon API over Hugeicons (free stroke-rounded set).
  *
- * The redesign switches iconography to Hugeicons; call sites keep their
- * lucide-style usage (same export names, same `className`/`size`/aria
- * props), so this module is the only place mapping names.
+ * Exports use the historical lucide-style names so the migration kept
+ * call sites untouched, but every glyph is Hugeicons. This is the single
+ * place mapping names — new icon usage should import from here, not the
+ * packages directly.
  *
  * strokeWidth stays at Hugeicons' 1.5 default to match the redesigned
  * stroke aesthetic (lucide's default was 2). Glyph imports are aliased
- * with a `Glyph` suffix where the hugeicons name collides with a
- * lucide-compatible export below.
+ * with a `Glyph` suffix where the hugeicons name collides with an
+ * export below.
  */
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {

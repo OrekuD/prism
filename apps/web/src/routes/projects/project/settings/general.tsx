@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "@/components/ui/lucide-icons";
+import { Loader2 } from "@/components/ui/hugeicons";
 import { Frame, SectionLabel } from "@/components/public/frame";
 import { DeleteProject } from "@/components/projects/delete-project";
 import { Skeleton } from "@/components/ui/skeleton";

@@ -36,7 +36,7 @@ import {
   useRevokeKeyMutation,
 } from "@/network/mutations/useSourceMutations";
 import type { SourceResource } from "@/network/queries/useSourcesQuery";
-import { Ban, ChevronDown, KeyRound, Loader2, Plus } from "@/components/ui/lucide-icons";
+import { Ban, ChevronDown, KeyRound, Loader2, Plus } from "@/components/ui/hugeicons";
 import React from "react";
 import { Link } from "react-router-dom";
 

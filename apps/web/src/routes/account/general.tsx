@@ -23,7 +23,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useUpdateUserInformationMutation } from "@/network/mutations/useUpdateUserInformationMutation";
 import { UpdateUserInformationRequestSchema } from "@prism-analytics/types";
-import { Pencil , Loader2 } from "@/components/ui/lucide-icons";
+import { Pencil , Loader2 } from "@/components/ui/hugeicons";
 import defaultAvatar from "@/assets/images/default_profile.png";
 import { useUpdateProfilePictureMutation } from "@/network/mutations/useUpdateProfilePictureMutation";
 

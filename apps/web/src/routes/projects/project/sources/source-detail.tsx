@@ -23,7 +23,7 @@ import { useDeleteSourceMutation } from "@/network/mutations/useSourceMutations"
 import { useUpdateErrorSettingsMutation } from "@/network/mutations/useErrorSettingsMutation";
 import { useSourceQuery } from "@/network/queries/useSourcesQuery";
 import { useSourceErrorSettingsQuery } from "@/network/queries/useSourceErrorSettingsQuery";
-import { Loader2, Trash2 } from "@/components/ui/lucide-icons";
+import { Loader2, Trash2 } from "@/components/ui/hugeicons";
 import { useNavigate, useParams } from "react-router-dom";
 
 export function SourceDetail() {

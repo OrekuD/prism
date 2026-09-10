@@ -1,6 +1,6 @@
 import type { ColumnDef, Row } from "@tanstack/react-table";
 import { getCoreRowModel, useReactTable } from "@tanstack/react-table";
-import { ChevronLeft, ChevronRight, Search, SearchX, X } from "@/components/ui/lucide-icons";
+import { ChevronLeft, ChevronRight, Search, SearchX, X } from "@/components/ui/hugeicons";
 import React from "react";
 import {
   Outlet,

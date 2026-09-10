@@ -1,4 +1,4 @@
-import { Loader2 } from "@/components/ui/lucide-icons";
+import { Loader2 } from "@/components/ui/hugeicons";
 import { cn } from "@/lib/utils";
 
 /** Inline GitHub mark: lucide removed brand icons; keep one icon family. */

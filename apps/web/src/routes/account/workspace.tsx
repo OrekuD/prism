@@ -44,7 +44,7 @@ import {
 } from "@/components/ui/select";
 import { CreateWorkspaceDialog } from "@/components/workspace/workspace-switcher";
 import { getInitials } from "@/utils/getInitials";
-import { Plus, UserPlus, Trash2, LogOut } from "@/components/ui/lucide-icons";
+import { Plus, UserPlus, Trash2, LogOut } from "@/components/ui/hugeicons";
 
 const ROLE_LABELS: Record<string, string> = {
   owner: "Owner",

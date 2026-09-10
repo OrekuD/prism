@@ -1,6 +1,6 @@
 import type { EventResource, PeopleListResource, PersonDetailResource } from "@prism-analytics/types";
 import { useQueryClient } from "@tanstack/react-query";
-import { Download } from "@/components/ui/lucide-icons";
+import { Download } from "@/components/ui/hugeicons";
 import React, { useSyncExternalStore } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 

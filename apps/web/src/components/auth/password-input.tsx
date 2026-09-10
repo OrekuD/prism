@@ -1,4 +1,4 @@
-import { Eye, EyeOff } from "@/components/ui/lucide-icons";
+import { Eye, EyeOff } from "@/components/ui/hugeicons";
 import React from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

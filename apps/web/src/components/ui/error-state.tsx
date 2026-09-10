@@ -1,4 +1,4 @@
-import { AlertTriangle, RefreshCw } from "@/components/ui/lucide-icons";
+import { AlertTriangle, RefreshCw } from "@/components/ui/hugeicons";
 
 /**
  * Persistent contextual error state for route/API failures

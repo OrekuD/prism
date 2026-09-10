@@ -2,7 +2,7 @@
 
 import type * as React from "react";
 import { Command as CommandPrimitive } from "cmdk";
-import { SearchIcon } from "@/components/ui/lucide-icons";
+import { SearchIcon } from "@/components/ui/hugeicons";
 
 import { cn } from "@/lib/utils";
 import {

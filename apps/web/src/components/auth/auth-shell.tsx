@@ -4,7 +4,7 @@ import { authClient } from "@/lib/authClient";
 import { loadRuntimeConfig } from "@/lib/runtimeConfig";
 import { PrismMark } from "@/components/brand/prism-mark";
 import { useTheme } from "@/components/theme-provider";
-import { Monitor, Moon, Sun } from "@/components/ui/lucide-icons";
+import { Monitor, Moon, Sun } from "@/components/ui/hugeicons";
 import {
   HomeSkeleton,
   useWorkspaceHome,
@@ -38,6 +38,14 @@ function DebugThemeToggle() {
   );
 }
 
+// Do not subscribe to organization queries on the signed-out form. Those
+// requests cannot succeed yet and can leave mounted hooks holding a 401.
+function AuthenticatedDestination() {
+  const { path, isPending } = useWorkspaceHome();
+  if (path) return <Navigate to={`${path}/projects`} replace />;
+  return isPending ? <HomeSkeleton /> : <Navigate to="/overview" replace />;
+}
+
 /**
  * Shared authentication shell: a single centered column under the Prism
  * mark with a shared mount fade-up. No framed container — pages render
@@ -46,14 +54,16 @@ function DebugThemeToggle() {
 export function AuthShell({
   children,
   title,
+  redirectPaused = false,
 }: {
   children: React.ReactNode;
   /** Browser-tab title. Defaults to "<instance> - sign in". */
   title?: string;
+  /** The submitting page owns navigation until its session handoff finishes. */
+  redirectPaused?: boolean;
 }) {
   const { data: sessionData } = authClient.useSession();
   const isAuthenticated = Boolean(sessionData?.session);
-  const { path: homePath, isPending: homePending } = useWorkspaceHome();
 
   React.useEffect(() => {
     if (title) {
@@ -67,9 +77,8 @@ export function AuthShell({
 
   // Already signed in? There's nothing to do here — bounce straight to the
   // dashboard (scoped URL) instead of a vanity path that has to re-resolve.
-  if (isAuthenticated) {
-    if (homePath) return <Navigate to={homePath} replace />;
-    if (homePending) return <HomeSkeleton />;
+  if (isAuthenticated && !redirectPaused) {
+    return <AuthenticatedDestination />;
   }
 
   return (

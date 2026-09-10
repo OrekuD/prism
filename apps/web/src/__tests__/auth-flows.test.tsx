@@ -17,6 +17,7 @@ const requestPasswordReset = vi.fn();
 const listOrganizations = vi.fn();
 const organizationUpdate = vi.fn();
 let sessionVisible = true;
+let workspaceResult: { data: unknown; error: unknown } = { data: null, error: null };
 
 vi.mock("@/lib/authClient", () => ({
   authClient: {
@@ -28,6 +29,10 @@ vi.mock("@/lib/authClient", () => ({
     // resolves immediately in tests.
     $store: {
       atoms: {
+        listOrganizations: { get: () => ({ ...workspaceResult, refetch: async () => {
+          workspaceResult = await listOrganizations(sessionVisible);
+        } }) },
+        activeOrganization: { get: () => ({ refetch: async () => undefined }) },
         session: {
           get: () => ({
             data: sessionVisible ? { session: { id: "test-session" } } : null,
@@ -80,6 +85,7 @@ function renderPage(page: React.ReactNode, initialPath = "/auth/log-in") {
 beforeEach(() => {
   vi.clearAllMocks();
   sessionVisible = true;
+  workspaceResult = { data: null, error: null };
   organizationUpdate.mockResolvedValue({ data: null, error: null });
   listOrganizations.mockImplementation((hasSession: boolean) => ({
     data: hasSession ? [{ id: "workspace-1", slug: "workspace-one" }] : null,

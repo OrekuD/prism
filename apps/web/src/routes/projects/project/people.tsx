@@ -1,5 +1,5 @@
 import type { PeopleRange, PeopleResource } from "@prism-analytics/types";
-import { ChevronLeft, ChevronRight, Search, SearchX, X } from "@/components/ui/lucide-icons";
+import { ChevronLeft, ChevronRight, Search, SearchX, X } from "@/components/ui/hugeicons";
 import React from "react";
 import { Link, Outlet, useParams, useSearchParams } from "react-router-dom";
 

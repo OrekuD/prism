@@ -19,7 +19,7 @@ import {
   FileJson,
   FileText,
   Sparkles,
-} from "@/components/ui/lucide-icons";
+} from "@/components/ui/hugeicons";
 import React from "react";
 import { toast } from "sonner";
 

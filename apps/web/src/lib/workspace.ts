@@ -171,29 +171,28 @@ export function newWorkspaceSlug(): string {
 
 /**
  * The default post-sign-in destination — the active (or first) workspace's
- * root, e.g. `/workspace/wrk_xxxxx`. The workspace landing resolves a valid
- * last-used project, the only project, or the project directory.
- * Falls back to `/overview` (which redirects) if no workspace has
- * provisioned yet. Best-effort: the auth session cookie is already set by
- * the caller (after waitForSession).
+ * project directory, e.g. `/workspace/wrk_xxxxx/projects`, without an
+ * intermediate workspace-landing redirect.
+ * Refresh the same organization atoms consumed by the dropdowns. A plain
+ * organization.list() request does not update useListOrganizations(), which
+ * may still hold the signed-out response from the mounted auth shell.
+ * The caller has already confirmed the session through waitForSession().
  */
 export async function resolveDefaultWorkspacePath(): Promise<string> {
-	try {
-		const [{ data }, sessionData] = await Promise.all([
-			authClient.organization.list(),
-			authClient.getSession(),
-		]);
-		const activeId = (
-			sessionData as unknown as {
-				session?: { activeOrganizationId?: string };
-			} | null
-		)?.session?.activeOrganizationId;
-		const orgs = (data ?? []) as Array<{ id: string; slug: string }>;
-		const target = orgs.find((o) => o.id === activeId) ?? orgs[0];
-		return target?.slug ? `/workspace/${target.slug}` : "/overview";
-	} catch {
-		return "/overview";
-	}
+	const organizations = authClient.$store.atoms.listOrganizations;
+	const [, sessionData] = await Promise.all([
+		organizations.get().refetch(),
+		authClient.getSession(),
+		authClient.$store.atoms.activeOrganization.get().refetch(),
+	]);
+	const { data, error } = organizations.get();
+	if (error || !data) throw new Error("Could not load workspaces");
+	const activeId = sessionData.data?.session.activeOrganizationId;
+	const orgs = data as Array<{ id: string; slug: string }>;
+	const target = orgs.find((org) => org.id === activeId) ?? orgs[0];
+	return target?.slug
+		? `/workspace/${encodeURIComponent(target.slug)}/projects`
+		: "/overview";
 }
 
 export const WORKSPACE_PLATFORMS = [

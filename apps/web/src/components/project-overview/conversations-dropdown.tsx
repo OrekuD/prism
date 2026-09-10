@@ -6,7 +6,7 @@
  * chat` renders only in the chat tab.
  */
 import { useState } from "react";
-import { MessageSquareText, Plus } from "@/components/ui/lucide-icons";
+import { MessageSquareText, Plus } from "@/components/ui/hugeicons";
 import {
   DropdownMenu,
   DropdownMenuContent,

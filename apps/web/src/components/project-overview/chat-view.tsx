@@ -5,7 +5,7 @@
  * the empty state, provider errors, and Back to overview.
  */
 import { useEffect, useRef } from "react";
-import { ArrowLeft, MessageSquareText } from "@/components/ui/lucide-icons";
+import { ArrowLeft, MessageSquareText } from "@/components/ui/hugeicons";
 import type {
   AssistantAnswer,
   AssistantArtifact,

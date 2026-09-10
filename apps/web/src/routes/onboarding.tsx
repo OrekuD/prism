@@ -1,4 +1,4 @@
-import { AlertCircle, Check, Copy, Loader2, PartyPopper } from "@/components/ui/lucide-icons";
+import { AlertCircle, Check, Copy, Loader2, PartyPopper } from "@/components/ui/hugeicons";
 import React from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { Frame, SectionLabel } from "@/components/public/frame";

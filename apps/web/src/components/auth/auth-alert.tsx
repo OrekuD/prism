@@ -1,4 +1,4 @@
-import { AlertCircle } from "@/components/ui/lucide-icons";
+import { AlertCircle } from "@/components/ui/hugeicons";
 
 /**
  * Inline auth failure state (design-system.md 15.3): persistent,

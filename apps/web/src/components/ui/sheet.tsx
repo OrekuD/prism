@@ -2,7 +2,7 @@
 
 import type * as React from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { XIcon } from "@/components/ui/lucide-icons";
+import { XIcon } from "@/components/ui/hugeicons";
 import { Dialog as SheetPrimitive } from "radix-ui";
 
 import { cn } from "@/lib/utils";

@@ -3,6 +3,7 @@ import { authClient } from "@/lib/authClient";
 import { useActiveWorkspace, useWorkspaces, workspaceActions } from "@/lib/workspace";
 import { Navigate, useLocation } from "react-router-dom";
 import { DashboardLayout } from "./dashboard-layout";
+import { HomeSkeleton } from "@/components/workspace/workspace-scope";
 
 /**
  * Auto-selects the user's first workspace once the session and workspace
@@ -36,7 +37,7 @@ function useEnsureActiveWorkspace() {
  * routers, which previously left protected paths on the 404 page).
  */
 export function RootLayout() {
-  const { data: sessionData } = authClient.useSession();
+  const { data: sessionData, isPending } = authClient.useSession();
   const isAuthenticated = Boolean(sessionData?.session);
   const { pathname } = useLocation();
 
@@ -45,6 +46,7 @@ export function RootLayout() {
   useEnsureActiveWorkspace();
 
   if (!isAuthenticated) {
+    if (isPending) return <HomeSkeleton />;
     return <Navigate to="/auth/log-in" replace state={{ from: pathname }} />;
   }
 

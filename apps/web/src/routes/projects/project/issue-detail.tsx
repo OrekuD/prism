@@ -11,7 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import React, { useSyncExternalStore } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
-import { Info } from "@/components/ui/lucide-icons";
+import { Info } from "@/components/ui/hugeicons";
 
 import {
 	DeltaTag,

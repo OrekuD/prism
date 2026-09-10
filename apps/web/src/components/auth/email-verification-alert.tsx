@@ -1,4 +1,4 @@
-import { Loader2, TriangleAlert } from "@/components/ui/lucide-icons";
+import { Loader2, TriangleAlert } from "@/components/ui/hugeicons";
 
 import { authClient } from "@/lib/authClient";
 import { useResendVerificationEmail } from "@/hooks/useResendVerificationEmail";

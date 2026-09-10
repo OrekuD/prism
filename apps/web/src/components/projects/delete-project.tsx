@@ -1,4 +1,4 @@
-import { AlertTriangle, Loader2 } from "@/components/ui/lucide-icons";
+import { AlertTriangle, Loader2 } from "@/components/ui/hugeicons";
 import React from "react";
 import { Button } from "../ui/button";
 import {

@@ -1,4 +1,4 @@
-import { Activity, TriangleAlert, Users, Zap } from "@/components/ui/lucide-icons";
+import { Activity, TriangleAlert, Users, Zap } from "@/components/ui/hugeicons";
 import React from "react";
 import { cn } from "@/lib/utils";
 import { Frame } from "@/components/public/frame";

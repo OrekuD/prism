@@ -47,7 +47,7 @@ import {
 	Users,
 	Globe,
 	Zap,
-} from "@/components/ui/lucide-icons";
+} from "@/components/ui/hugeicons";
 import React from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 
