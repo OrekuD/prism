@@ -74,6 +74,7 @@ import {
   transitionProposal,
   type AssistantArtifact,
   type AssistantConversation,
+  type AssistantEvidenceFact,
   type DrilldownDestination,
   type MetricFact,
 } from "../network/resources";
@@ -193,7 +194,7 @@ describe("metric registry", () => {
           TOOL_REGISTRY.measure_metric.presentation as { label: string }
         ).label = "Mutated"),
     ).toThrow();
-    expect(() => ((METRIC_IDS as string[])[0] = "evil.metric")).toThrow();
+    expect(() => ((METRIC_IDS as unknown as string[])[0] = "evil.metric")).toThrow();
     expect(
       () =>
         ((INSIGHT_THRESHOLDS as { countMinCombined: number }).countMinCombined =
@@ -2548,14 +2549,14 @@ describe("assistant evidence facts (R17-F4)", () => {
       evidenceId,
       evidenceNumbers,
     } = contracts;
-    const count = {
+    const count: AssistantEvidenceFact = {
       kind: "count",
       id: "errors:unresolved",
       label: "Unresolved issues",
       value: 3,
       unit: "issues",
     };
-    const issue = {
+    const issue: AssistantEvidenceFact = {
       kind: "issue",
       id: "issue:iss_1",
       title: "TypeError in checkout",
@@ -2564,7 +2565,7 @@ describe("assistant evidence facts (R17-F4)", () => {
       users: 7,
       delta: "new",
     };
-    const definition = {
+    const definition: AssistantEvidenceFact = {
       kind: "definition",
       id: "mem_1",
       label: "Signup",

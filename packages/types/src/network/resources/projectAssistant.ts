@@ -2120,8 +2120,8 @@ const clampPositiveInt = (value: number, fallback: number, max: number) => {
  */
 export function buildModelSummary(
   items: readonly unknown[],
-  maxFacts = AGENT_LIMITS.maxModelSummaryFacts,
-  maxChars = AGENT_LIMITS.maxModelSummaryChars,
+  maxFacts: number = AGENT_LIMITS.maxModelSummaryFacts,
+  maxChars: number = AGENT_LIMITS.maxModelSummaryChars,
 ): ModelSummary {
   const safeMaxFacts = clampPositiveInt(
     maxFacts,
