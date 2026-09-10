@@ -52,6 +52,7 @@ import {
   Moon02Icon,
   OctagonXIcon as OctagonXGlyph,
   PartyIcon,
+  PencilEdit01Icon,
   PencilIcon,
   Refresh01Icon,
   Rotate01Icon as Rotate01Glyph,
@@ -233,6 +234,10 @@ export function PartyPopper(props: IconProps) {
 }
 export function Pencil(props: IconProps) {
   return <Icon icon={PencilIcon} {...props} />;
+}
+/** Free set has no PencilLineIcon; PencilEdit01 is the closest pencil-line glyph. */
+export function PencilLine(props: IconProps) {
+  return <Icon icon={PencilEdit01Icon} {...props} />;
 }
 export function Plus(props: IconProps) {
   return <Icon icon={Add01Icon} {...props} />;

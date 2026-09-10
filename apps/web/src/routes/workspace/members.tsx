@@ -31,8 +31,7 @@ import {
   Trash2,
   UserPlus,
   Plus,
-  X,
-  Pencil,
+  PencilLine,
 } from "@/components/ui/hugeicons";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -311,12 +310,13 @@ function InviteDialog({ open, onOpenChange, onInvited }: { open: boolean; onOpen
             addPending();
           }}
         >
-          <div className="flex items-end gap-3">
+          <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1 space-y-2">
               <Label htmlFor="invite-email">Email</Label>
               <Input
                 id="invite-email"
                 type="email"
+                className="h-10"
                 value={email}
                 aria-invalid={Boolean(emailError || listError)}
                 onChange={(event) => setEmail(event.target.value)}
@@ -326,21 +326,28 @@ function InviteDialog({ open, onOpenChange, onInvited }: { open: boolean; onOpen
             <div className="shrink-0 space-y-2">
               <Label>Role</Label>
               <Select value={role} onValueChange={setRole}>
-                <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-10 w-[140px]"><SelectValue /></SelectTrigger>
                 <SelectContent align="start">
                   <SelectItem value="member">Member</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <button
-              type="submit"
-              disabled={!trimmedEmail || Boolean(emailError)}
-              aria-label="Add to invite list"
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent text-primary-foreground transition-colors hover:bg-accent-hover disabled:opacity-45"
-            >
-              <Plus className="size-4" />
-            </button>
+            {/* Invisible label spacer keeps the + control on the same
+                baseline as the other two labeled columns. */}
+            <div className="shrink-0 space-y-2">
+              <Label aria-hidden="true" className="select-none opacity-0">
+                Add
+              </Label>
+              <button
+                type="submit"
+                disabled={!trimmedEmail || Boolean(emailError)}
+                aria-label="Add to invite list"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-accent text-primary-foreground transition-colors hover:bg-accent-hover disabled:opacity-45"
+              >
+                <Plus className="size-4" />
+              </button>
+            </div>
           </div>
           {emailError || listError ? (
             <p role="alert" className="-mt-2 text-xs text-danger">
@@ -348,16 +355,15 @@ function InviteDialog({ open, onOpenChange, onInvited }: { open: boolean; onOpen
             </p>
           ) : null}
           {pending.length > 0 ? (
-            <div className="divide-y divide-border rounded-[12px] border border-border">
+            <div className="divide-y divide-border">
               {pending.map((entry) => (
                 <div
                   key={entry.email}
-                  className="flex items-center gap-3 px-3.5 py-2"
+                  className="flex items-center gap-3 px-1 py-2"
                 >
                   <p className="min-w-0 flex-1 truncate text-sm text-text">
                     {entry.email}
                   </p>
-                  <span aria-hidden="true" className="h-5 w-px bg-border" />
                   <Select
                     value={entry.role}
                     onValueChange={(value) =>
@@ -366,7 +372,7 @@ function InviteDialog({ open, onOpenChange, onInvited }: { open: boolean; onOpen
                   >
                     <SelectTrigger
                       data-role-trigger={entry.email}
-                      className="h-8 w-[112px] rounded-full text-xs"
+                      className="w-auto gap-1.5 rounded-full border-none bg-transparent px-1.5 text-xs shadow-none hover:bg-surface-hover dark:bg-transparent"
                     >
                       <SelectValue />
                     </SelectTrigger>
@@ -387,7 +393,7 @@ function InviteDialog({ open, onOpenChange, onInvited }: { open: boolean; onOpen
                     }}
                     className="grid size-7 shrink-0 place-items-center rounded-full text-text-subtle transition-colors hover:bg-surface-hover hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
                   >
-                    <Pencil className="size-4" />
+                    <PencilLine className="size-4" />
                   </button>
                   <button
                     type="button"
@@ -395,7 +401,7 @@ function InviteDialog({ open, onOpenChange, onInvited }: { open: boolean; onOpen
                     onClick={() => removePending(entry.email)}
                     className="grid size-7 shrink-0 place-items-center rounded-full text-text-subtle transition-colors hover:bg-surface-hover hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
                   >
-                    <X className="size-4" />
+                    <Trash2 className="size-4" />
                   </button>
                 </div>
               ))}
