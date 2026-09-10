@@ -357,7 +357,6 @@ function InviteDialog({ open, onOpenChange, onInvited }: { open: boolean; onOpen
           {pending.length > 0 ? (
             <div className="[&>*+*]:border-t-[0.5px] [&>*+*]:border-border">
               {pending.map((entry) => (
-              {pending.map((entry) => (
                 <div
                   key={entry.email}
                   className="flex items-center gap-3 px-1 py-2"
