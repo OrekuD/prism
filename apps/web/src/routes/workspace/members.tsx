@@ -32,6 +32,7 @@ import {
   UserPlus,
   Plus,
   PencilLine,
+  Loader2,
 } from "@/components/ui/hugeicons";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -237,11 +238,15 @@ export function MembersPage() {
       <InviteDialog
         open={inviteOpen}
         onOpenChange={setInviteOpen}
-        onInvited={(email, role) => {
-          if (!organizationId) return;
-          void run(
-            () => workspaceActions.inviteMember({ organizationId, email, role: role as "owner" | "admin" | "member" }),
-            `Invitation sent to ${email}`,
+        onInviteBatch={async (invitations) => {
+          if (!organizationId) return { results: [] };
+          const response = await workspaceActions.inviteMembers({
+            organizationId,
+            invitations,
+          });
+          return (
+            (response as { data?: { results: Array<{ email: string; status: "sent" | "error"; error?: string }> } })
+              ?.data ?? { results: [] }
           );
         }}
       />
@@ -249,7 +254,7 @@ export function MembersPage() {
   );
 }
 
-function InviteDialog({ open, onOpenChange, onInvited }: { open: boolean; onOpenChange: (open: boolean) => void; onInvited: (email: string, role: string) => void }) {
+function InviteDialog({ open, onOpenChange, onInviteBatch }: { open: boolean; onOpenChange: (open: boolean) => void; onInviteBatch: (invitations: Array<{ email: string; role: string }>) => Promise<{ results: Array<{ email: string; status: "sent" | "error"; error?: string }> }> }) {
   const [email, setEmail] = React.useState("");
   const [role, setRole] = React.useState("member");
   const [pending, setPending] = React.useState<Array<{ email: string; role: string }>>([]);
@@ -285,15 +290,46 @@ function InviteDialog({ open, onOpenChange, onInvited }: { open: boolean; onOpen
     );
   };
 
-  const sendAll = () => {
-    if (pending.length === 0) return;
-    for (const entry of pending) {
-      onInvited(entry.email, entry.role);
+  const [sending, setSending] = React.useState(false);
+
+  const sendAll = async () => {
+    if (pending.length === 0 || sending) return;
+    setSending(true);
+    try {
+      const response = await onInviteBatch(pending);
+      const failed = response.results.filter(
+        (entry) => entry.status === "error",
+      );
+      const sent = response.results.length - failed.length;
+      if (sent > 0) {
+        toast.success(
+          sent === 1 ? "Invitation sent" : `${sent} invitations sent`,
+        );
+      }
+      if (failed.length === 0) {
+        setPending([]);
+        setListError(null);
+        setEmail("");
+        onOpenChange(false);
+      } else {
+        // Keep only the failed rows so they can be retried after fixing
+        // (e.g. removing an already-invited address).
+        setPending((current) =>
+          current.filter((entry) =>
+            failed.some((failure) => failure.email === entry.email),
+          ),
+        );
+        setListError(
+          `${failed.length} of ${response.results.length} failed: ${failed
+            .map((failure) => failure.email)
+            .join(", ")}`,
+        );
+      }
+    } catch {
+      setListError("Could not send invitations. Try again.");
+    } finally {
+      setSending(false);
     }
-    setPending([]);
-    setListError(null);
-    setEmail("");
-    onOpenChange(false);
   };
 
   return (
@@ -384,19 +420,6 @@ function InviteDialog({ open, onOpenChange, onInvited }: { open: boolean; onOpen
                   <span aria-hidden="true" className="h-5 w-px bg-border" />
                   <button
                     type="button"
-                    aria-label={`Edit role for ${entry.email}`}
-                    onClick={() => {
-                      const trigger = document.querySelector(
-                        `[data-role-trigger="${CSS.escape(entry.email)}"]`,
-                      );
-                      if (trigger instanceof HTMLElement) trigger.click();
-                    }}
-                    className="grid size-7 shrink-0 place-items-center rounded-full text-text transition-colors hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-                  >
-                    <PencilLine className="size-4" />
-                  </button>
-                  <button
-                    type="button"
                     aria-label={`Remove ${entry.email}`}
                     onClick={() => removePending(entry.email)}
                     className="grid size-7 shrink-0 place-items-center rounded-full text-text transition-colors hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
@@ -413,10 +436,13 @@ function InviteDialog({ open, onOpenChange, onInvited }: { open: boolean; onOpen
             </DialogClose>
             <button
               type="button"
-              onClick={sendAll}
-              disabled={pending.length === 0}
+              onClick={() => void sendAll()}
+              disabled={pending.length === 0 || sending}
               className="inline-flex h-9 items-center gap-2 rounded-full bg-accent px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-accent-hover disabled:opacity-45"
             >
+              {sending ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              ) : null}
               {pending.length > 1
                 ? `Send ${pending.length} invitations`
                 : "Send invitation"}

@@ -3,6 +3,8 @@ import { resolvePrismConfig } from "../config";
 import { isMailConfigured } from "../auth/mail";
 import { AuthController } from "../controllers/AuthController";
 import { SetupController } from "../controllers/SetupController";
+import { WorkspaceController } from "../controllers/WorkspaceController";
+import { AuthenticationMiddleware } from "../middlewares/AuthenticationMiddleware";
 import { DatabaseManager } from "../managers/DatabaseManager";
 import type { Bindings, HonoConfig } from "../types/types";
 import { router as UserRouter } from "./UserRouter";
@@ -52,6 +54,13 @@ router.post("/setup/owner", SetupController.createOwner);
 
 /** Public signup duplicate check (rate-limited per IP). */
 router.get("/auth/email-available", AuthController.emailAvailable);
+
+/** Batch member invitations (session + per-IP rate limited). */
+router.post(
+  "/workspace/invitations",
+  AuthenticationMiddleware,
+  WorkspaceController.inviteMembers,
+);
 
 router.route("/user", UserRouter);
 router.route("/projects", ProjectsRouter);

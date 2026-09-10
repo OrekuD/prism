@@ -65,6 +65,23 @@ export const workspaceActions = {
 			organizationId: data.organizationId,
 			data: { name: data.name },
 		}),
+	/** Batch invitations through the product API: one request, per-entry
+	 * results. Better Auth still enforces owner/admin per invitation
+	 * server-side via the caller's session headers. */
+	inviteMembers: (data: {
+		organizationId: string;
+		invitations: Array<{ email: string; role: string }>;
+	}) =>
+		authClient.$fetch<{
+			results: Array<{
+				email: string;
+				status: "sent" | "error";
+				error?: string;
+			}>;
+		}>("/api/v1/workspace/invitations", {
+			method: "POST",
+			body: data,
+		}),
 	delete: (organizationId: string) =>
 		authClient.organization.delete({ organizationId }),
 	leave: (organizationId: string) =>
