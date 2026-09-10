@@ -10,6 +10,7 @@
  * method on `authClient.organization.*` and is wrapped here.
  */
 import { authClient } from "./authClient";
+import { API_BASE_URL } from "./api";
 import { useParams } from "react-router-dom";
 
 export type Workspace = {
@@ -72,13 +73,15 @@ export const workspaceActions = {
 		organizationId: string;
 		invitations: Array<{ email: string; role: string }>;
 	}) =>
+		// Absolute URL: the client's $fetch is rooted at /api/auth and would
+		// double the path (/api/auth/api/v1/...) for a relative one.
 		authClient.$fetch<{
 			results: Array<{
 				email: string;
 				status: "sent" | "error";
 				error?: string;
 			}>;
-		}>("/api/v1/workspace/invitations", {
+		}>(`${API_BASE_URL}/api/v1/workspace/invitations`, {
 			method: "POST",
 			body: data,
 		}),

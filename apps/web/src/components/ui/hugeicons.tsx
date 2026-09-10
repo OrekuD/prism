@@ -30,6 +30,7 @@ import {
   CircleIcon as CircleGlyph,
   Comment01Icon,
   ComputerIcon,
+  CircleSlashIcon,
   Copy01Icon,
   Delete02Icon,
   Download04Icon,
@@ -160,6 +161,9 @@ export function CircleCheckIcon(props: IconProps) {
 }
 export function CircleIcon(props: IconProps) {
   return <Icon icon={CircleGlyph} {...props} />;
+}
+export function CircleSlash(props: IconProps) {
+  return <Icon icon={CircleSlashIcon} {...props} />;
 }
 export function Computer(props: IconProps) {
   return <Icon icon={ComputerIcon} {...props} />;

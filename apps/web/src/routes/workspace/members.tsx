@@ -8,6 +8,7 @@ import {
   type WorkspaceInvitation,
   type WorkspaceMember,
 } from "@/lib/workspace";
+import { authClient } from "@/lib/authClient";
 import { getInitials } from "@/utils/getInitials";
 import {
   Select,
@@ -32,6 +33,7 @@ import {
   UserPlus,
   Plus,
   PencilLine,
+  CircleSlash,
   Loader2,
 } from "@/components/ui/hugeicons";
 
@@ -45,12 +47,22 @@ type MemberRow = WorkspaceMember & { user?: { name?: string; email?: string } };
 
 const TH = "whitespace-nowrap border-b border-border bg-transparent px-4 py-2.5 text-left text-[13px] font-medium tracking-normal text-text-subtle";
 const TD = "border-t border-border px-4 py-[11px] align-middle leading-[1.4]";
+/* Shared column widths so the members + invitations tables align
+   column-for-column despite different headers. */
+const TH_ROLE = `${TH} w-[180px]`;
+const TH_STATUS = `${TH} w-[120px]`;
+const TH_TIME = `${TH} w-[110px]`;
+const TH_ACTIONS = `${TH} w-[96px]`;
 
 export function MembersPage() {
   const { data: activeWorkspace } = useActiveWorkspace();
   const { data: activeMember } = useActiveMember();
+  const { data: sessionData } = authClient.useSession();
   const organizationId = (activeWorkspace as { id?: string } | null)?.id;
   const workspaceName = (activeWorkspace as { name?: string } | null)?.name;
+  const ownEmail = (
+    sessionData?.user as { email?: string } | null | undefined
+  )?.email;
   const myRole = (activeMember as { role?: string } | null)?.role;
   const canManage = myRole === "owner" || myRole === "admin";
 
@@ -116,9 +128,9 @@ export function MembersPage() {
 
       <div className="mb-3 mt-10 text-[13px] font-medium tracking-normal text-text-subtle">Members</div>
       <div className="overflow-auto rounded-[16px] border border-border">
-        <table className="w-full border-collapse text-sm">
+        <table className="w-full table-fixed border-collapse text-sm">
           <thead>
-            <tr><th className={TH}>Member</th><th className={TH}>Role</th><th className={TH}>Status</th><th className={TH}>Last active</th><th className={`${TH} text-right`}>Actions</th></tr>
+            <tr><th className={TH}>Member</th><th className={TH_ROLE}>Role</th><th className={TH_STATUS}>Status</th><th className={TH_TIME}>Last active</th><th className={TH_ACTIONS + " text-right"}>Actions</th></tr>
           </thead>
           <tbody>
             {members === null ? (
@@ -203,8 +215,8 @@ export function MembersPage() {
             <p className="text-[13px] text-text-muted">No pending invitations.</p>
           ) : (
             <div className="overflow-auto rounded-[16px] border border-border">
-              <table className="w-full border-collapse text-sm">
-                <thead><tr><th className={TH}>Email</th><th className={TH}>Role</th><th className={TH}>Status</th><th className={TH}>Expires</th><th className={`${TH} text-right`}>Actions</th></tr></thead>
+              <table className="w-full table-fixed border-collapse text-sm">
+                <thead><tr><th className={TH}>Email</th><th className={TH_ROLE}>Role</th><th className={TH_STATUS}>Status</th><th className={TH_TIME}>Expires</th><th className={TH_ACTIONS + " text-right"}>Actions</th></tr></thead>
                 <tbody>
                   {(invitations ?? [])
                     .filter((invite) => invite.status === "pending")
@@ -215,14 +227,15 @@ export function MembersPage() {
                         <td className={TD}><span className="inline-flex h-[22px] items-center gap-1.5 rounded-full border border-warning/40 px-2 text-[11px] whitespace-nowrap text-warning">Pending</span></td>
                         <td className={`${TD} text-[12px] text-text-muted`}>{new Date(invite.expiresAt).toLocaleDateString()}</td>
                         <td className={TD}>
-                          <span className="flex items-center justify-end opacity-0 transition-opacity group-hover:opacity-100">
+                          <span className="flex items-center justify-end">
                             <button
                               type="button"
                               disabled={busy}
+                              aria-label={`Cancel invitation for ${invite.email}`}
                               onClick={() => void run(() => workspaceActions.cancelInvitation(invite.id), "Invitation cancelled")}
-                              className="inline-flex h-[30px] items-center gap-2 rounded-full px-3 text-[13px] text-text-muted transition-colors hover:bg-surface-hover hover:text-text"
+                              className="inline-flex size-7 items-center justify-center rounded-full text-text transition-colors hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-45"
                             >
-                              Cancel
+                              <CircleSlash className="size-4" />
                             </button>
                           </span>
                         </td>
@@ -238,41 +251,98 @@ export function MembersPage() {
       <InviteDialog
         open={inviteOpen}
         onOpenChange={setInviteOpen}
+        ownEmail={ownEmail}
         onInviteBatch={async (invitations) => {
           if (!organizationId) return { results: [] };
           const response = await workspaceActions.inviteMembers({
             organizationId,
             invitations,
           });
-          return (
-            (response as { data?: { results: Array<{ email: string; status: "sent" | "error"; error?: string }> } })
-              ?.data ?? { results: [] }
-          );
+          // $fetch resolves { data, error } — never throws on 4xx. Surface
+          // request-level failures so the dialog shows them instead of
+          // silently closing.
+          if (!response.data) {
+            const raw = response.error as
+              | { message?: unknown; errors?: unknown }
+              | undefined;
+            const first =
+              typeof raw?.message === "string"
+                ? raw.message
+                : Array.isArray(raw?.errors) && typeof raw.errors[0] === "string"
+                  ? raw.errors[0]
+                  : null;
+            throw new Error(first ?? "invite_failed");
+          }
+          // Optimistic: append the sent invitations immediately so the
+          // pending list reflects them without waiting for a reload.
+          setInvitations((current) => [
+            ...(current ?? []),
+            ...response.data.results
+              .filter((entry) => entry.status === "sent")
+              .map((entry, index) => ({
+                id: `optimistic-${entry.email}-${index}`,
+                organizationId,
+                email: entry.email,
+                role: (invitations.find(
+                  (invitation) =>
+                    invitation.email === entry.email,
+                )?.role ?? "member") as WorkspaceInvitation["role"],
+                status: "pending" as const,
+                expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 48),
+                inviterId: "",
+              })),
+          ]);
+          // Reconcile with the server in the background (real ids/expiries).
+          void load();
+          return response.data;
         }}
       />
     </>
   );
 }
 
-function InviteDialog({ open, onOpenChange, onInviteBatch }: { open: boolean; onOpenChange: (open: boolean) => void; onInviteBatch: (invitations: Array<{ email: string; role: string }>) => Promise<{ results: Array<{ email: string; status: "sent" | "error"; error?: string }> }> }) {
+function InviteDialog({ open, onOpenChange, ownEmail, onInviteBatch }: { open: boolean; onOpenChange: (open: boolean) => void; ownEmail?: string; onInviteBatch: (invitations: Array<{ email: string; role: string }>) => Promise<{ results: Array<{ email: string; status: "sent" | "error"; error?: string }> }> }) {
   const [email, setEmail] = React.useState("");
   const [role, setRole] = React.useState("member");
   const [pending, setPending] = React.useState<Array<{ email: string; role: string }>>([]);
   const [listError, setListError] = React.useState<string | null>(null);
+  // Format validation fires only on an add attempt, not while typing.
+  const [emailTried, setEmailTried] = React.useState(false);
 
   const trimmedEmail = email.trim();
   const emailError =
-    trimmedEmail !== "" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)
+    emailTried && trimmedEmail !== "" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)
       ? "Enter a valid email address."
       : null;
 
+  /** Friendly per-entry labels for the duplicate/error family. */
+  const describeInviteError = (raw?: string) => {
+    if (!raw) return "Failed.";
+    if (/already a member/i.test(raw)) return "Already a member.";
+    if (/already invited/i.test(raw)) return "Already invited.";
+    if (/invalid/i.test(raw)) return "Invalid email.";
+    if (/rate.?limit/i.test(raw)) return "Too many attempts — try again shortly.";
+    if (/unauthorized/i.test(raw)) return "Session expired — try again.";
+    if (/invite_failed/i.test(raw)) return "Couldn't send. Try again.";
+    return raw;
+  };
+
   const addPending = () => {
-    if (!trimmedEmail || emailError) return;
+    if (!trimmedEmail) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setEmailTried(true);
+      return;
+    }
+    if (ownEmail && trimmedEmail.toLowerCase() === ownEmail.toLowerCase()) {
+      setListError("Already a member.");
+      return;
+    }
     if (pending.some((entry) => entry.email === trimmedEmail)) {
       setListError(`${trimmedEmail} is already on the list.`);
       return;
     }
     setListError(null);
+    setEmailTried(false);
     setPending((current) => [...current, { email: trimmedEmail, role }]);
     setEmail("");
   };
@@ -313,20 +383,37 @@ function InviteDialog({ open, onOpenChange, onInviteBatch }: { open: boolean; on
         onOpenChange(false);
       } else {
         // Keep only the failed rows so they can be retried after fixing
-        // (e.g. removing an already-invited address).
+        // (e.g. removing an already-invited address). Response errors are
+        // toast feedback, not inline state — the rows stay visible.
         setPending((current) =>
           current.filter((entry) =>
             failed.some((failure) => failure.email === entry.email),
           ),
         );
-        setListError(
-          `${failed.length} of ${response.results.length} failed: ${failed
-            .map((failure) => failure.email)
-            .join(", ")}`,
-        );
+        if (failed.length === 1) {
+          toast.error(describeInviteError(failed[0].error));
+        } else {
+          toast.error(
+            `${failed.length} of ${response.results.length} invitations failed`,
+            {
+              description: failed
+                .map(
+                  (failure) =>
+                    `${failure.email} — ${describeInviteError(failure.error)}`,
+                )
+                .join(", "),
+            },
+          );
+        }
       }
-    } catch {
-      setListError("Could not send invitations. Try again.");
+    } catch (error) {
+      toast.error(
+        describeInviteError(
+          error instanceof Error && error.message
+            ? error.message
+            : "Could not send invitations. Try again.",
+        ),
+      );
     } finally {
       setSending(false);
     }
@@ -341,6 +428,7 @@ function InviteDialog({ open, onOpenChange, onInviteBatch }: { open: boolean; on
         </DialogHeader>
         <form
           className="space-y-4"
+          noValidate
           onSubmit={(event) => {
             event.preventDefault();
             addPending();
@@ -355,7 +443,10 @@ function InviteDialog({ open, onOpenChange, onInviteBatch }: { open: boolean; on
                 className="h-10"
                 value={email}
                 aria-invalid={Boolean(emailError || listError)}
-                onChange={(event) => setEmail(event.target.value)}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  if (emailTried) setEmailTried(false);
+                }}
                 placeholder="teammate@example.com"
               />
             </div>
@@ -377,7 +468,7 @@ function InviteDialog({ open, onOpenChange, onInviteBatch }: { open: boolean; on
               </Label>
               <button
                 type="submit"
-                disabled={!trimmedEmail || Boolean(emailError)}
+                disabled={!trimmedEmail}
                 aria-label="Add to invite list"
                 className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-accent text-primary-foreground transition-colors hover:bg-accent-hover disabled:opacity-45"
               >
