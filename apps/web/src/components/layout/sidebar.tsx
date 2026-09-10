@@ -75,7 +75,6 @@ function Active({
 	if (disabled) {
 		return (
 			<span
-				role="link"
 				aria-disabled="true"
 				title="Select a project first"
 				className={cn(LINK_BASE, "cursor-default opacity-50", className)}

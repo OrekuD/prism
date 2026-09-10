@@ -97,7 +97,7 @@ export function LogIn() {
         />
         {providerNotice ? (
           <p
-            role="status"
+            aria-live="polite"
             className="text-center text-[12px] leading-relaxed text-text-muted"
           >
             {providerNotice}

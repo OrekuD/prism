@@ -178,7 +178,7 @@ function PeopleMetrics({
 		{
 			label: "Anonymous-only",
 			value: data?.anonymousPeople,
-			caption: `active without identify()`,
+			caption: 'active without identify()',
 		},
 	];
 
@@ -221,9 +221,13 @@ export function ProjectPeople() {
 	React.useEffect(() => {
 		setSearch(query);
 	}, [query]);
-	React.useEffect(() => {
+	// Reset to first page when filters or page size change.
+	const filtersKey = JSON.stringify([query, range, limit]);
+	const [prevFiltersKey, setPrevFiltersKey] = React.useState(filtersKey);
+	if (prevFiltersKey !== filtersKey) {
+		setPrevFiltersKey(filtersKey);
 		setCursorStack([null]);
-	}, [query, range, limit]);
+	}
 
 	const { data, isLoading, isError, refetch, isFetching } = usePeopleQuery(
 		slug,
@@ -342,8 +346,8 @@ export function ProjectPeople() {
 							<Skeleton className="h-3 w-24" />
 						</div>
 						<div className="divide-y divide-border">
-							{Array.from({ length: 5 }).map((_, index) => (
-								<div key={`person-skeleton-${index}`} className="flex h-[58px] items-center gap-3 px-3.5">
+							{["r1", "r2", "r3", "r4", "r5"].map((row) => (
+								<div key={row} className="flex h-[58px] items-center gap-3 px-3.5">
 									<Skeleton className="size-8 rounded-md" />
 									<Skeleton className="h-3 w-36" />
 									<Skeleton className="ml-auto h-3 w-20" />

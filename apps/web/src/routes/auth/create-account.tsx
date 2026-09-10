@@ -56,6 +56,12 @@ export function CreateAccount() {
   const [emailError, setEmailError] = React.useState<string | null>(null);
   const [emailTaken, setEmailTaken] = React.useState(false);
   const [checking, setChecking] = React.useState(false);
+
+  // Focus moves to the new heading whenever it mounts (each step change
+  // remounts the keyed wrapper, firing this callback ref).
+  const headingFocus = React.useCallback((node: HTMLHeadingElement | null) => {
+    node?.focus({ preventScroll: true });
+  }, []);
   const [password, setPassword] = React.useState("");
   const [name, setName] = React.useState("");
   const [workspaceName, setWorkspaceName] = React.useState("");
@@ -65,16 +71,11 @@ export function CreateAccount() {
     null,
   );
   const [config, setConfig] = React.useState<RuntimeConfig | null>(null);
-  const headingRef = React.useRef<HTMLHeadingElement>(null);
 
+  // Module-level loaders; run once on mount.
   React.useEffect(() => {
     loadRuntimeConfig().then(setConfig);
   }, []);
-
-  // Move focus to the new step's heading after each transition.
-  React.useEffect(() => {
-    headingRef.current?.focus({ preventScroll: true });
-  }, [step, emailTaken]);
 
   const goTo = (next: Step) => {
     setDirection(next > step ? 1 : -1);
@@ -228,7 +229,7 @@ export function CreateAccount() {
       <AuthShell>
         <div className="text-center">
           <h1
-            ref={headingRef}
+            ref={headingFocus}
             tabIndex={-1}
             className="outline-none text-[22px] font-semibold leading-tight tracking-[-0.03em] text-text"
           >
@@ -279,7 +280,7 @@ export function CreateAccount() {
       <div key={step} className={`mt-4 ${stepAnimation}`}>
         <div className="text-center">
           <h1
-            ref={headingRef}
+            ref={headingFocus}
             tabIndex={-1}
             className="outline-none text-[22px] font-semibold leading-tight tracking-[-0.03em] text-text"
           >
@@ -307,7 +308,7 @@ export function CreateAccount() {
             />
             {providerNotice ? (
               <p
-                role="status"
+                aria-live="polite"
                 className="text-center text-[12px] leading-relaxed text-text-muted"
               >
                 {providerNotice}

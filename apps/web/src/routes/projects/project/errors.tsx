@@ -154,9 +154,20 @@ export function ProjectErrors() {
 	const currentCursor = cursorStack[cursorStack.length - 1] ?? undefined;
 	const pageIndex = cursorStack.length - 1;
 
-	React.useEffect(() => {
+	// Reset to first page when filters or page size change.
+	const filtersKey = JSON.stringify([
+		range,
+		status,
+		level,
+		platform,
+		query,
+		limit,
+	]);
+	const [prevFiltersKey, setPrevFiltersKey] = React.useState(filtersKey);
+	if (prevFiltersKey !== filtersKey) {
+		setPrevFiltersKey(filtersKey);
 		setCursorStack([null]);
-	}, [range, status, level, platform, query, limit]);
+	}
 
 	const queryParams: IssueListQuery = {
 		range,
@@ -399,9 +410,12 @@ export function ProjectErrors() {
 								</thead>
 								<tbody>
 									{isFetching
-										? Array.from({ length: limit }).map((_, i) => (
+										? Array.from(
+												{ length: limit },
+												(_, i) => `skeleton-row-${i}`,
+											).map((row) => (
 												<tr
-													key={`skeleton-${i}`}
+													key={row}
 													className="border-t border-border"
 												>
 													<td className="px-3.5 py-2.5">
@@ -437,6 +451,14 @@ export function ProjectErrors() {
 										: issues.map((issue) => (
 												<tr
 													key={issue.id}
+													tabIndex={0}
+													onKeyDown={(event) => {
+														if (event.key === "Enter") {
+															navigate(
+																`/workspace/${wrkSlug ?? ""}/projects/${slug ?? ""}/errors/${issue.id}`,
+															);
+														}
+													}}
 													onClick={() =>
 														navigate(
 															`/workspace/${wrkSlug ?? ""}/projects/${slug ?? ""}/errors/${issue.id}`,

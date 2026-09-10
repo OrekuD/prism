@@ -163,7 +163,7 @@ export default function MobileAnalyticsPage() {
 
 				{snapshotCtx ? (
 					<div
-						role="status"
+						aria-live="polite"
 						className="border-fd-border mb-4 flex flex-wrap items-center justify-between gap-2 rounded-[16px] border p-3"
 					>
 						<span className="text-fd-muted-foreground text-sm">

@@ -256,7 +256,7 @@ export function ProjectWebAnalytics() {
         </div>
         {snapshotCtx ? (
           <div
-            role="status"
+            aria-live="polite"
             className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-[12px] border border-border bg-canvas px-3 py-2"
           >
             <span className="text-[13px] text-text-muted">
@@ -416,7 +416,7 @@ export function ProjectWebAnalytics() {
       {/* metrics — only marks on this strip */}
       {snapshotCtx ? (
         <div
-          role="status"
+          aria-live="polite"
           className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-[12px] border border-border bg-canvas px-3 py-2"
         >
           <span className="text-[13px] text-text-muted">

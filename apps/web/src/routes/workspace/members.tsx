@@ -130,7 +130,7 @@ export function MembersPage() {
       <div className="overflow-auto rounded-[16px] border border-border">
         <table className="w-full table-fixed border-collapse text-sm">
           <thead>
-            <tr><th className={TH}>Member</th><th className={TH_ROLE}>Role</th><th className={TH_STATUS}>Status</th><th className={TH_TIME}>Last active</th><th className={TH_ACTIONS + " text-right"}>Actions</th></tr>
+            <tr><th className={TH}>Member</th><th className={TH_ROLE}>Role</th><th className={TH_STATUS}>Status</th><th className={TH_TIME}>Last active</th><th className={`${TH_ACTIONS} text-right`}>Actions</th></tr>
           </thead>
           <tbody>
             {members === null ? (
@@ -216,7 +216,7 @@ export function MembersPage() {
           ) : (
             <div className="overflow-auto rounded-[16px] border border-border">
               <table className="w-full table-fixed border-collapse text-sm">
-                <thead><tr><th className={TH}>Email</th><th className={TH_ROLE}>Role</th><th className={TH_STATUS}>Status</th><th className={TH_TIME}>Expires</th><th className={TH_ACTIONS + " text-right"}>Actions</th></tr></thead>
+                <thead><tr><th className={TH}>Email</th><th className={TH_ROLE}>Role</th><th className={TH_STATUS}>Status</th><th className={TH_TIME}>Expires</th><th className={`${TH_ACTIONS} text-right`}>Actions</th></tr></thead>
                 <tbody>
                   {(invitations ?? [])
                     .filter((invite) => invite.status === "pending")

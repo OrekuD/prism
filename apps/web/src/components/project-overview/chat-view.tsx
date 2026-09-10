@@ -130,7 +130,7 @@ export function ChatView({
     >
       <div className="po-chat-scroll flex flex-1 flex-col gap-[18px] overflow-auto pb-3 pt-7">
         {loading && !detail && !showStream && !pendingMessage ? (
-          <div role="status" aria-label="Loading conversation" className="flex flex-col gap-5 py-2" aria-busy="true">
+          <div aria-live="polite" aria-label="Loading conversation" className="flex flex-col gap-5 py-2" aria-busy="true">
             <span className="sr-only">Loading conversation…</span>
             <div aria-hidden="true" className="h-12 w-2/5 self-end rounded-md bg-surface-raised" />
             <div aria-hidden="true" className="h-24 w-3/5 rounded-md bg-surface-raised" />

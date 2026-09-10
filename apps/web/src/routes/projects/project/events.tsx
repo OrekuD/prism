@@ -129,9 +129,12 @@ export function ProjectEvents() {
   const pageIndex = cursorStack.length - 1;
 
   // Reset to first page when filters, snapshot, or page size change.
-  React.useEffect(() => {
+  const filtersKey = JSON.stringify([q, type, sourceId, snapshotCtx, limit]);
+  const [prevFiltersKey, setPrevFiltersKey] = React.useState(filtersKey);
+  if (prevFiltersKey !== filtersKey) {
+    setPrevFiltersKey(filtersKey);
     setCursorStack([null]);
-  }, [q, type, sourceId, snapshotCtx, limit]);
+  }
 
   const platformFamilyParam = type === "all" ? undefined : type;
   const sourceIdParam = sourceId === "all" ? undefined : sourceId;
@@ -306,7 +309,7 @@ export function ProjectEvents() {
       {/* Filters */}
       {snapshotCtx ? (
         <div
-          role="status"
+          aria-live="polite"
           className="mt-6 flex flex-wrap items-center justify-between gap-2 rounded-[12px] border border-border bg-surface px-3 py-2"
         >
           <span className="text-[13px] text-text-muted">
@@ -417,9 +420,9 @@ export function ProjectEvents() {
               <Skeleton className="h-3 w-24" />
             </div>
             <div className="divide-y divide-border">
-              {Array.from({ length: 5 }).map((_, i) => (
+              {["r1", "r2", "r3", "r4", "r5"].map((row) => (
                 <div
-                  key={i}
+                  key={row}
                   className="flex items-center gap-3 px-3.5 py-[14px]"
                 >
                   <Skeleton className="h-3 w-[160px]" />
@@ -476,8 +479,8 @@ export function ProjectEvents() {
                 </TableHeader>
                 <TableBody>
                   {isFetching
-                    ? Array.from({ length: limit }).map((_, i) => (
-                        <TableRow key={`skeleton-${i}`} className="h-[44px] border-border">
+                    ?Array.from({ length: limit }, (_, i) => `skeleton-row-${i}`).map((row) => (
+                        <TableRow key={row} className="h-[44px] border-border">
                           <TableCell style={{ width: 280 }} className="h-[44px] py-0 align-middle">
                             <Skeleton className="h-3 w-[140px]" />
                           </TableCell>
