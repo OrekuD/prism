@@ -13,7 +13,7 @@ export function Toolbar({ onMenu }: { onMenu?: () => void }) {
   const trail = useBreadcrumbs();
 
   return (
-    <div className="sticky top-0 z-40 mx-auto flex h-14 w-full max-w-[1800px] items-center justify-between gap-4 border-b border-border bg-canvas px-7">
+    <div className="sticky top-14 z-40 mx-auto flex h-14 w-full max-w-[1800px] items-center justify-between gap-4 border-b border-border bg-canvas px-7">
       <div className="flex min-w-0 items-center gap-3">
         <button
           type="button"

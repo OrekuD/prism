@@ -1,6 +1,5 @@
 import { PrismLogo } from "@/components/brand/prism-logo";
 import { CreateProjectDialog } from "@/components/projects/create-project-dialog";
-import { useTheme } from "@/components/theme-provider";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -12,7 +11,6 @@ import {
 import * as I from "@/components/ui/icons";
 import { CreateWorkspaceDialog } from "@/components/workspace/workspace-switcher";
 import { authClient } from "@/lib/authClient";
-import { clearQueryClient, client } from "@/lib/queryClient";
 import {
 	getSelectedProjectSlug,
 	setSelectedProjectSlug,
@@ -26,22 +24,14 @@ import {
 } from "@/lib/workspace";
 import { useProjectsQuery } from "@/network/queries/useProjectsQuery";
 import { useSourcesQuery } from "@/network/queries/useSourcesQuery";
-import { getInitials } from "@/utils/getInitials";
 import {
 	Check,
 	Chart,
 	ChevronDown,
-	FileText,
 	Folder,
-	Loader2,
-	LogOut,
-	Monitor,
-	Moon,
 	Plus,
 	Settings,
-	ShieldCheck,
 	Smartphone,
-	Sun,
 	TriangleAlert,
 	User,
 	Users,
@@ -103,8 +93,6 @@ function Active({
 export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 	const { pathname } = useLocation();
 	const navigate = useNavigate();
-	const { theme, setTheme } = useTheme();
-	const { data: session } = authClient.useSession();
 	const { data: activeWorkspace } = useActiveWorkspace();
 	const {
 		data: workspaces,
@@ -166,8 +154,6 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 		slug: string;
 	}>;
 	const [newWorkspaceOpen, setNewWorkspaceOpen] = React.useState(false);
-	const [signingOut, setSigningOut] = React.useState(false);
-	const [userMenuOpen, setUserMenuOpen] = React.useState(false);
 	const projects = (projectsQuery.data ?? []) as Array<{
 		name: string;
 		slug: string;
@@ -181,51 +167,18 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 			["ios", "android", "react-native"].includes(source.platform),
 		);
 
-	const themeOptions = [
-		{ value: "light" as const, label: "Light", Icon: Sun },
-		{ value: "dark" as const, label: "Dark", Icon: Moon },
-		{ value: "system" as const, label: "System", Icon: Monitor },
-	];
-	const themeLabel =
-		theme === "dark" ? "Dark" : theme === "light" ? "Light" : "System";
-
-	async function onSignOut() {
-		if (signingOut) return;
-		setSigningOut(true);
-		try {
-			await authClient.signOut();
-			// F7: clear both in-memory and persisted cache before navigating to sign-in.
-			clearQueryClient(client);
-			window.location.href = "/auth/log-in";
-		} catch {
-			clearQueryClient(client);
-			window.location.href = "/auth/log-in";
-		} finally {
-			setSigningOut(false);
-		}
-	}
 
 	return (
 		<aside
 			id="sidebar"
 			aria-label="Workspace navigation"
 			className={cn(
-				"sticky top-0 z-60 flex h-dvh w-[260px] shrink-0 flex-col border-r border-border bg-surface",
-				"max-[1023px]:fixed max-[1023px]:bottom-0 max-[1023px]:left-0 max-[1023px]:top-0 max-[1023px]:z-60 max-[1023px]:-translate-x-full max-[1023px]:transition-transform max-[1023px]:duration-200 max-[1023px]:ease-out",
+				"sticky top-14 z-60 flex h-[calc(100dvh-3.5rem)] w-[260px] shrink-0 flex-col border-r border-border bg-surface",
+				"max-[1023px]:fixed max-[1023px]:bottom-0 max-[1023px]:left-0 max-[1023px]:top-14 max-[1023px]:z-60 max-[1023px]:h-[calc(100dvh-3.5rem)] max-[1023px]:-translate-x-full max-[1023px]:transition-transform max-[1023px]:duration-200 max-[1023px]:ease-out",
 				navOpen &&
 					"max-[1023px]:translate-x-0 max-[1023px]:shadow-[16px_0_48px_rgb(0_0_0/0.45)]",
 			)}
 		>
-			<div className="flex items-center px-3 pb-2.5 pt-3.5">
-				<Link
-					to={`/workspace/${wrkSlug}`}
-					aria-label="Prism home"
-					className="inline-flex items-center gap-2.5 rounded-[10px] transition-opacity hover:opacity-90"
-				>
-					<PrismLogo size={22} variant="monochrome" className="text-text" />
-				</Link>
-			</div>
-
 			<nav className="flex flex-1 flex-col gap-3.5 overflow-y-auto px-3 pb-4">
 				<div className="flex flex-col gap-1">
 					<div className="px-3 pb-1 pt-1 text-[13px] font-medium tracking-normal text-text-subtle">
@@ -471,127 +424,6 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 				</div>
 			</nav>
 
-			<div className="flex flex-col gap-0.5 border-t border-border px-3 pb-3.5 pt-2.5">
-				<a
-					className={LINK_BASE}
-					href={DOCS_URL}
-					target="_blank"
-					rel="noreferrer"
-				>
-					<FileText size={16} />
-					Docs
-				</a>
-				<DropdownMenu>
-					<DropdownMenuTrigger asChild>
-						<button
-							type="button"
-							aria-haspopup="menu"
-							className={cn(LINK_BASE, "w-full")}
-						>
-							<Moon size={16} />
-							<span className="flex-1 text-left">Theme</span>
-							<span className="text-xs text-text-subtle">{themeLabel}</span>
-							<ChevronDown size={12} />
-						</button>
-					</DropdownMenuTrigger>
-					<DropdownMenuContent
-						align="start"
-						side="bottom"
-						sideOffset={8}
-						className="w-(--radix-dropdown-menu-trigger-width)"
-					>
-						<DropdownMenuLabel>Theme</DropdownMenuLabel>
-						{themeOptions.map((option) => {
-							const Icon = option.Icon;
-							return (
-								<DropdownMenuItem
-									key={option.value}
-									onClick={() => setTheme(option.value)}
-									className="gap-2"
-								>
-									<Icon className="size-4" />
-									<span className="flex-1">{option.label}</span>
-									{theme === option.value ? (
-										<Check className="size-3.5 text-accent" />
-									) : null}
-								</DropdownMenuItem>
-							);
-						})}
-					</DropdownMenuContent>
-				</DropdownMenu>
-				<div className="mt-2 border-t border-border px-1 pt-2">
-					<DropdownMenu
-						open={userMenuOpen}
-						onOpenChange={(open) => {
-							// Keep the menu from closing mid sign-out.
-							if (!signingOut) setUserMenuOpen(open);
-						}}
-					>
-						<DropdownMenuTrigger asChild>
-							<button
-								type="button"
-								aria-haspopup="menu"
-								className="flex w-full items-center gap-2.5 rounded-[10px] px-1 py-1 text-left transition-colors hover:bg-surface-hover"
-							>
-								<span
-									className="grid size-[26px] shrink-0 place-items-center rounded-full border border-border-strong bg-surface-raised text-[11px] font-semibold text-text"
-									aria-hidden="true"
-								>
-									{getInitials(session?.user?.name ?? "Prism")}
-								</span>
-								<span className="min-w-0 flex-1">
-									<span className="block truncate text-[13px] font-medium leading-[1.2]">
-										{session?.user?.name ?? "Account"}
-									</span>
-									<span className="block truncate text-[11px] leading-[1.3] text-text-subtle">
-										{session?.user?.email ?? ""}
-									</span>
-								</span>
-								<ChevronDown size={14} className="shrink-0 text-text-subtle" />
-							</button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent
-							align="start"
-							side="bottom"
-							sideOffset={8}
-							className="w-(--radix-dropdown-menu-trigger-width)"
-						>
-							<DropdownMenuLabel className="font-normal">
-								Account
-							</DropdownMenuLabel>
-							<Link to="/account/general">
-								<DropdownMenuItem className="gap-2">
-									<User className="size-4" />
-									<span className="flex-1">Account</span>
-								</DropdownMenuItem>
-							</Link>
-							<Link to="/account/security">
-								<DropdownMenuItem className="gap-2">
-									<ShieldCheck className="size-4" />
-									<span className="flex-1">Security</span>
-								</DropdownMenuItem>
-							</Link>
-							<DropdownMenuSeparator />
-							<DropdownMenuItem
-								variant="destructive"
-								className="gap-2"
-								disabled={signingOut}
-								onSelect={(event) => event.preventDefault()}
-								onClick={() => void onSignOut()}
-							>
-								<LogOut className="size-4 text-destructive" />
-								<span className="flex-1">Sign out</span>
-								{signingOut ? (
-									<Loader2
-										className="size-4 animate-spin text-destructive"
-										aria-hidden="true"
-									/>
-								) : null}
-							</DropdownMenuItem>
-						</DropdownMenuContent>
-					</DropdownMenu>
-				</div>
-			</div>
 		</aside>
 	);
 }
