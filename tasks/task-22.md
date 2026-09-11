@@ -233,3 +233,67 @@ Node/RN release scenarios (document the narrower set), paid live evaluations.
    with deploy approval and record raw outputs here.
 3. Close the two decision items: the ZDR-enforced model run and the `useChat`
    deviation sign-off.
+
+### 2026-09-11 — Slice 2: telemetry truth (local real-store pass)
+
+**Environment:** isolated local libSQL (`/Users/david/.turso/sqld`,
+`127.0.0.1:8082`, temp database path — NOT the dev store on :5001); analytics
+migrations applied 13/13; core SDK built from this commit
+(`yarn workspace @prism-analytics/core build`) so the journey exercises the
+repo's current SDK code. Label: **local real-store** (not mocked, not hosted).
+
+**New evidence:** `apps/analytics-api/src/__tests__/integration/telemetryTruth.flows.test.ts`
+(opt-in via `PRISM_RUN_INTEGRATION=1`) drives eight journeys through the real
+core SDK queue/identity/consent logic and the real `IngestController` /
+`ErrorIngestController` into the real store. Result: **8/8 passed**.
+
+1. anonymous → identify → Standard Event (`$prism_sign_up`) → custom event →
+   reset → second user; asserts `events` rows (`user_id`, `anonymous_id`,
+   `source_id`, `platform`), `external_identities` / `anonymous_identities`
+   person links, reset rotation, and person separation.
+2. duplicate delivery: the same batch delivered twice → one row per event.
+3. offline window: failed flush stores nothing; reconnect delivers both events
+   with occurrence order preserved.
+4. consent withdrawal: queued events are cleared, post-denial track drops,
+   re-grant starts a fresh anonymous id and delivers cleanly.
+5. retry: first delivery answered `429` + `Retry-After: 0`; the retry delivers
+   exactly one row (no loss, no duplicate).
+6. error lane: `createPrismErrorReporter` → one grouped `error_issues` row
+   (`occurrence_count` 1) + one `error_occurrences` row.
+7. out-of-order receipt: the later-occurring batch is received first; the store
+   preserves both and canonical `ORDER BY occurred_at` returns occurrence order.
+8. page view via the internal seam → `web_page_views` projection row with
+   host/path/referrer.
+
+Validation boundaries observed: ingestion rejects events outside
+`[now - 30d, now + 5m]` (`packages/core/src/limits.ts:46,48`); an out-of-window
+fixture clock produced zero rows before the test was corrected.
+
+**Pre-existing failure found (not caused by this pass):**
+`apps/analytics-api/src/__tests__/integration/errors.flows.test.ts` fails alone
+and in the full opt-in suite (196 passed | 1 failed of 197 with integration
+enabled). Its step 4 queries `error_issues WHERE title = "TypeError: boom 789"`,
+but `ErrorIngestRepository.ts:126-127,139-141` fixes the title to the first
+occurrence and only reopens status. Reopen behavior itself is implemented; the
+assertion is stale. Owner: Task 15. Required reproduction: assert the
+first-occurrence title instead (or restore title-update semantics if that was
+the intent), then re-run the opt-in file.
+
+**Not yet covered (owners unchanged):**
+
+- Archived sources and revoked keys: Task 16 slice 2 is absent, so the journey
+  cannot exercise them yet.
+- Stored rows → dashboard resources → tool facts → rendered widgets: next step
+  is an `apps/api` readback test (webAnalyticsLoader / projectMetrics against
+  the same store) plus a widget check. Note `apps/analytics-api/.../testEnv.ts`
+  unconditionally overwrites `TURSO_DATABASE_URL` with the local `:8082` URL;
+  hosted integration runs need it to default only when unset.
+- Live reconnect/expiry over a real socket: unit coverage exists
+  (`WebSocketManager.test.ts`); a local end-to-end reconnect run is still to be
+  built.
+- Timezone / bot-filter / comparison-denominator matrix: belongs to the readback
+  step above.
+
+**Store hygiene:** the journey deletes all rows it creates in `afterAll`
+(events, sessions_v2, identity tables, people, error tables, web_page_views);
+the sqld instance is local, isolated, and disposable.
