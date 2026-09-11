@@ -1,4 +1,5 @@
 import { Frame } from "@/components/public/frame";
+import { PageHeader } from "@/components/public/page-header";
 import {
   Dialog,
   DialogContent,
@@ -234,11 +235,14 @@ export function ProjectWebAnalytics() {
 
   if (!loading && webSources.length === 0) {
     return (
-      <EmptyState
-        title="No Web sources in this project."
-        description="Web analytics aggregates page-view telemetry from sources with the Web platform."
-        className="border border-border"
-      />
+      <div className="w-full">
+        <PageHeader className="mb-6" />
+        <EmptyState
+          title="No Web sources in this project."
+          description="Web analytics aggregates page-view telemetry from sources with the Web platform."
+          className="border border-border"
+        />
+      </div>
     );
   }
 
@@ -249,11 +253,7 @@ export function ProjectWebAnalytics() {
   if (query.isError && !loading) {
     return (
       <div className="w-full">
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-          <h1 className="text-[26px] font-semibold leading-[1.18] tracking-[-0.025em]">
-            Web Analytics
-          </h1>
-        </div>
+        <PageHeader className="mb-6" />
         {snapshotCtx ? (
           <div
             aria-live="polite"
@@ -290,12 +290,10 @@ export function ProjectWebAnalytics() {
 
   return (
     <div className="w-full">
-      {/* head + filters — single row, no description */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-[26px] font-semibold leading-[1.18] tracking-[-0.025em]">
-          Web Analytics
-        </h1>
-        <div className="flex flex-wrap items-center gap-2">
+      {/* breadcrumb + filter row */}
+      <div className="mb-6">
+        <PageHeader />
+        <div className="mt-6 flex flex-wrap items-center gap-2">
           {filtersOn ? (
             <button
               type="button"
@@ -413,7 +411,7 @@ export function ProjectWebAnalytics() {
         </div>
       </div>
 
-      {/* metrics — only marks on this strip */}
+      {/* metrics */}
       {snapshotCtx ? (
         <div
           aria-live="polite"

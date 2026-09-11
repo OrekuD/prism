@@ -2,6 +2,7 @@ import React from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 import MapGL, { Marker } from "react-map-gl/mapbox";
 import type { MapRef } from "react-map-gl/mapbox";
+import { PageHeader } from "@/components/public/page-header";
 import { useIsDarkTheme } from "@/hooks/useIsDarkTheme";
 import { WebSocketManager } from "@/managers/WebSocketManager";
 import { useProjectQuery } from "@/network/queries/useProjectQuery";
@@ -182,21 +183,24 @@ export function ProjectRealtime() {
 
   if (!mapboxToken) {
     return (
-      <div className="flex flex-1 min-h-0 w-full items-center justify-center rounded-[16px] border border-border bg-surface">
-        <div className="max-w-[420px] p-6 text-center">
-          <p className="font-sans text-[14px] font-medium text-text">
-            Map unavailable
-          </p>
-          <p className="mt-1.5 text-[12px] leading-[1.5] text-text-muted">
-            Set{" "}
-            <span className="font-medium text-text">
-              VITE_MAPBOX_ACCESS_TOKEN
-            </span>{" "}
-            in
-            <span className="tabular-nums"> apps/web/.env.local</span> to see the
-            live globe. Live dots are city-level derived from
-            <span className="tabular-nums"> country_code</span>.
-          </p>
+      <div className="flex w-full flex-1 min-h-0 flex-col gap-6">
+        <PageHeader />
+        <div className="flex flex-1 min-h-0 w-full items-center justify-center rounded-[16px] border border-border bg-surface">
+          <div className="max-w-[420px] p-6 text-center">
+            <p className="font-sans text-[14px] font-medium text-text">
+              Map unavailable
+            </p>
+            <p className="mt-1.5 text-[12px] leading-[1.5] text-text-muted">
+              Set{" "}
+              <span className="font-medium text-text">
+                VITE_MAPBOX_ACCESS_TOKEN
+              </span>{" "}
+              in
+              <span className="tabular-nums"> apps/web/.env.local</span> to see
+              the live globe. Live dots are city-level derived from
+              <span className="tabular-nums"> country_code</span>.
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -204,134 +208,137 @@ export function ProjectRealtime() {
 
   return (
     <WebSocketManager projectId={projectQuery.data?.id}>
-      <div className="relative flex flex-1 min-h-0 w-full flex-col overflow-hidden rounded-[16px] border border-border bg-[#0a0a0a]">
-        <MapGL
-          ref={mapRef}
-          mapboxAccessToken={mapboxToken}
-          initialViewState={{ longitude: 0, latitude: 20, zoom: 1.4 }}
-          style={{ width: "100%", height: "100%" }}
-          mapStyle={
-            isDarkTheme
-              ? "mapbox://styles/mapbox/dark-v10"
-              : "mapbox://styles/mapbox/light-v10"
-          }
-          attributionControl={false}
-          onMove={(e) => {
-            setZoom(e.viewState.zoom);
-            const b = e.target.getBounds();
-            if (b)
-              setBounds([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]);
-          }}
-          onLoad={(e) => {
-            const b = e.target.getBounds();
-            if (b)
-              setBounds([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]);
-          }}
-        >
-          {clusters.map(
-            (
-              feature:
-                | Supercluster.ClusterFeature<ClusterProps>
-                | Supercluster.PointFeature<LivePointProps>
-            ) => {
-              const [lng, lat] = (feature.geometry as GeoJSON.Point)
-                .coordinates as [number, number];
-              const props = feature.properties as PointProps &
-                Partial<ClusterProps>;
-              const isCluster = Boolean((props as ClusterProps).cluster);
-              if (isCluster) {
-                const count = (props as ClusterProps).point_count;
-                const size = count < 10 ? 28 : count < 30 ? 36 : 44;
+      <div className="flex w-full flex-1 min-h-0 flex-col gap-6">
+        <PageHeader />
+        <div className="relative flex flex-1 min-h-0 w-full flex-col overflow-hidden rounded-[16px] border border-border bg-[#0a0a0a]">
+          <MapGL
+            ref={mapRef}
+            mapboxAccessToken={mapboxToken}
+            initialViewState={{ longitude: 0, latitude: 20, zoom: 1.4 }}
+            style={{ width: "100%", height: "100%" }}
+            mapStyle={
+              isDarkTheme
+                ? "mapbox://styles/mapbox/dark-v10"
+                : "mapbox://styles/mapbox/light-v10"
+            }
+            attributionControl={false}
+            onMove={(e) => {
+              setZoom(e.viewState.zoom);
+              const b = e.target.getBounds();
+              if (b)
+                setBounds([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]);
+            }}
+            onLoad={(e) => {
+              const b = e.target.getBounds();
+              if (b)
+                setBounds([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]);
+            }}
+          >
+            {clusters.map(
+              (
+                feature:
+                  | Supercluster.ClusterFeature<ClusterProps>
+                  | Supercluster.PointFeature<LivePointProps>
+              ) => {
+                const [lng, lat] = (feature.geometry as GeoJSON.Point)
+                  .coordinates as [number, number];
+                const props = feature.properties as PointProps &
+                  Partial<ClusterProps>;
+                const isCluster = Boolean((props as ClusterProps).cluster);
+                if (isCluster) {
+                  const count = (props as ClusterProps).point_count;
+                  const size = count < 10 ? 28 : count < 30 ? 36 : 44;
+                  return (
+                    <Marker
+                      key={`cluster-${feature.id}`}
+                      longitude={lng}
+                      latitude={lat}
+                      anchor="center"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const expansionZoom = Math.min(
+                            supercluster.getClusterExpansionZoom(
+                              feature.id as number
+                            ),
+                            16
+                          );
+                          mapRef.current?.easeTo({
+                            center: [lng, lat],
+                            zoom: expansionZoom,
+                            duration: 500,
+                          });
+                        }}
+                        className="grid place-items-center rounded-full border border-white/15 bg-accent text-[11px] font-medium text-primary-foreground shadow-[0_2px_10px_rgba(0,0,0,0.35)] transition-transform hover:scale-105"
+                        style={{ width: size, height: size }}
+                        aria-label={`Cluster of ${count} users`}
+                      >
+                        {count}
+                      </button>
+                    </Marker>
+                  );
+                }
+                // Single point — size grows with zoom.
+                const dotSize = zoom < 3 ? 6 : zoom < 5 ? 8 : 10;
+                const isLive = Boolean((props as { live?: boolean }).live);
                 return (
                   <Marker
-                    key={`cluster-${feature.id}`}
+                    key={`pt-${feature.id}`}
                     longitude={lng}
                     latitude={lat}
                     anchor="center"
                   >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const expansionZoom = Math.min(
-                          supercluster.getClusterExpansionZoom(
-                            feature.id as number
-                          ),
-                          16
-                        );
-                        mapRef.current?.easeTo({
-                          center: [lng, lat],
-                          zoom: expansionZoom,
-                          duration: 500,
-                        });
+                    <span
+                      className="block rounded-full border border-white/20 shadow-[0_1px_6px_rgba(0,0,0,0.4)]"
+                      style={{
+                        width: dotSize,
+                        height: dotSize,
+                        background: isLive
+                          ? "#22c55e"
+                          : isDarkTheme
+                            ? "#e5e7eb"
+                            : "#111827",
+                        boxShadow: isLive
+                          ? "0 0 0 4px rgba(34,197,94,0.18)"
+                          : undefined,
                       }}
-                      className="grid place-items-center rounded-full border border-white/15 bg-accent text-[11px] font-medium text-primary-foreground shadow-[0_2px_10px_rgba(0,0,0,0.35)] transition-transform hover:scale-105"
-                      style={{ width: size, height: size }}
-                      aria-label={`Cluster of ${count} users`}
-                    >
-                      {count}
-                    </button>
+                      title={props.city}
+                      aria-hidden="true"
+                    />
                   </Marker>
                 );
               }
-              // Single point — size grows with zoom.
-              const dotSize = zoom < 3 ? 6 : zoom < 5 ? 8 : 10;
-              const isLive = Boolean((props as { live?: boolean }).live);
-              return (
-                <Marker
-                  key={`pt-${feature.id}`}
-                  longitude={lng}
-                  latitude={lat}
-                  anchor="center"
-                >
-                  <span
-                    className="block rounded-full border border-white/20 shadow-[0_1px_6px_rgba(0,0,0,0.4)]"
-                    style={{
-                      width: dotSize,
-                      height: dotSize,
-                      background: isLive
-                        ? "#22c55e"
-                        : isDarkTheme
-                          ? "#e5e7eb"
-                          : "#111827",
-                      boxShadow: isLive
-                        ? "0 0 0 4px rgba(34,197,94,0.18)"
-                        : undefined,
-                    }}
-                    title={props.city}
-                    aria-hidden="true"
-                  />
-                </Marker>
-              );
-            }
-          )}
-        </MapGL>
+            )}
+          </MapGL>
 
-        {/* Subtle top bar — live count, not a card grid */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center justify-between gap-2 bg-gradient-to-b from-black/40 to-transparent p-3">
-          <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/35 px-3 py-1.5 backdrop-blur">
-            <span
-              className="size-2 animate-pulse rounded-full bg-emerald-400"
-              aria-hidden="true"
-            />
-            <span className="text-[11px] font-medium tracking-[0.06em] text-white">
-              LIVE ·{" "}
-              {livePoints.length > 0
-                ? `${livePoints.length} now`
-                : `${points.length} sampled`}{" "}
-              · city-level
-            </span>
+          {/* Subtle top bar — live count, not a card grid */}
+          <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center justify-between gap-2 bg-gradient-to-b from-black/40 to-transparent p-3">
+            <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/35 px-3 py-1.5 backdrop-blur">
+              <span
+                className="size-2 animate-pulse rounded-full bg-emerald-400"
+                aria-hidden="true"
+              />
+              <span className="text-[11px] font-medium tracking-[0.06em] text-white">
+                LIVE ·{" "}
+                {livePoints.length > 0
+                  ? `${livePoints.length} now`
+                  : `${points.length} sampled`}{" "}
+                · city-level
+              </span>
+            </div>
+            <div className="pointer-events-auto hidden items-center gap-1.5 rounded-full border border-white/15 bg-black/35 px-2.5 py-1 backdrop-blur sm:flex">
+              <span className="size-1.5 rounded-full bg-white/80" />
+              <span className="text-[11px] text-white/80">
+                {Math.round(zoom * 10) / 10}× zoom
+              </span>
+            </div>
           </div>
-          <div className="pointer-events-auto hidden items-center gap-1.5 rounded-full border border-white/15 bg-black/35 px-2.5 py-1 backdrop-blur sm:flex">
-            <span className="size-1.5 rounded-full bg-white/80" />
-            <span className="text-[11px] text-white/80">
-              {Math.round(zoom * 10) / 10}× zoom
-            </span>
-          </div>
-        </div>
 
-        {/* Zoom hint */}
-        <div className="pointer-events-none absolute bottom-2 right-2 rounded-md border border-white/10 bg-black/35 px-2 py-1 text-[11px] leading-none text-white/70 backdrop-blur">
-          Scroll to zoom · clusters expand
+          {/* Zoom hint */}
+          <div className="pointer-events-none absolute bottom-2 right-2 rounded-md border border-white/10 bg-black/35 px-2 py-1 text-[11px] leading-none text-white/70 backdrop-blur">
+            Scroll to zoom · clusters expand
+          </div>
         </div>
       </div>
     </WebSocketManager>

@@ -1,5 +1,9 @@
 import { Frame } from "@/components/public/frame";
+import { PageHeader } from "@/components/public/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
 import { useMobileAnalyticsQuery } from "@/network/queries/useMobileAnalyticsQuery";
+import { cn } from "@/lib/utils";
 import type {
 	MobileAnalyticsComparisonValue,
 	MobileAnalyticsResource,
@@ -51,13 +55,19 @@ function MetricCell({
 	sub?: string;
 }) {
 	return (
-		<div className="border-fd-border rounded-[16px] border p-4">
-			<div className="text-fd-muted-foreground text-xs">{label}</div>
-			<div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
+		<Frame className="flex min-h-[96px] flex-col p-4">
+			<span className="text-[10px] font-medium uppercase leading-[1.2] tracking-[0.04em] text-text-muted">
+				{label}
+			</span>
+			<span className="mt-2 text-xl font-semibold leading-none tracking-[-0.05em] tabular-nums text-text">
+				{value}
+			</span>
 			{sub !== undefined ? (
-				<div className="text-fd-muted-foreground mt-1 text-xs">{sub}</div>
+				<span className="mt-1.5 text-[10px] leading-[1.3] text-text-subtle">
+					{sub}
+				</span>
 			) : null}
-		</div>
+		</Frame>
 	);
 }
 
@@ -66,15 +76,23 @@ function LoadingState() {
 		<div className="grid grid-cols-2 gap-3 md:grid-cols-5">
 			{["App opens", "Visitors", "App sessions", "Screens/session", "Installations"].map(
 				(label) => (
-					<div key={label} className="border-fd-border animate-pulse rounded-[16px] border p-4">
-						<div className="bg-fd-muted h-3 w-20 rounded" />
-						<div className="bg-fd-muted mt-2 h-6 w-16 rounded" />
-					</div>
+					<Frame key={label} className="min-h-[96px] p-4">
+						<div className="h-3 w-20 animate-pulse rounded-md bg-surface-raised" />
+						<div className="mt-3 h-5 w-16 animate-pulse rounded-md bg-surface-raised" />
+					</Frame>
 				),
 			)}
 		</div>
 	);
 }
+
+const pillClass = (active: boolean) =>
+	cn(
+		"inline-flex h-8 items-center justify-center rounded-full border px-3 text-[13px] font-medium leading-none transition-colors duration-150",
+		active
+			? "border-accent bg-accent text-primary-foreground"
+			: "border-border bg-canvas text-text-muted hover:bg-surface-hover hover:text-text",
+	);
 
 export default function MobileAnalyticsPage() {
 	const { slug = "" } = useParams();
@@ -120,126 +138,116 @@ export default function MobileAnalyticsPage() {
 	}
 
 	return (
-		<Frame>
-			<div className="p-6">
-				<div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-					<h1 className="text-lg font-semibold">Mobile analytics</h1>
-					<div className="flex flex-wrap items-center gap-2">
-						{(Object.keys(RANGE_MS) as RangeKey[]).map((key) => (
-							<button
-								key={key}
-								type="button"
-								onClick={() => setParam("range", key)}
-								className={`border-fd-border rounded-full border px-2 py-1 text-xs ${
-									key === rangeKey ? "bg-fd-primary text-fd-primary-foreground" : ""
-								}`}
-							>
-								{key}
-							</button>
-						))}
-						<button
-							type="button"
-							onClick={() => setParam("compare", compare ? null : "1")}
-							className={`border-fd-border rounded-full border px-2 py-1 text-xs ${
-								compare ? "bg-fd-primary text-fd-primary-foreground" : ""
-							}`}
-						>
-							Compare
-						</button>
-						{(["ios", "android"] as const).map((os) => (
-							<button
-								key={os}
-								type="button"
-								onClick={() => setParam("os", osFilter === os ? null : os)}
-								className={`border-fd-border rounded-full border px-2 py-1 text-xs capitalize ${
-									osFilter === os ? "bg-fd-primary text-fd-primary-foreground" : ""
-								}`}
-							>
-								{os}
-							</button>
-						))}
-					</div>
-				</div>
+		<div className="flex w-full flex-col">
+			<PageHeader />
 
-				{snapshotCtx ? (
-					<div
-						aria-live="polite"
-						className="border-fd-border mb-4 flex flex-wrap items-center justify-between gap-2 rounded-[16px] border p-3"
+			<div className="mb-6 mt-6 flex flex-wrap items-center gap-2">
+				{(Object.keys(RANGE_MS) as RangeKey[]).map((key) => (
+					<button
+						key={key}
+						type="button"
+						onClick={() => setParam("range", key)}
+						className={pillClass(key === rangeKey)}
 					>
-						<span className="text-fd-muted-foreground text-sm">
-							Viewing a shared snapshot — range and sources are fixed by the
-							link.
-						</span>
-						<button
-							type="button"
-							onClick={exitSnapshot}
-							className="border-fd-border rounded-full border px-3 py-1 text-xs"
-						>
-							Exit snapshot
-						</button>
-					</div>
-				) : null}
+						{key}
+					</button>
+				))}
+				<button
+					type="button"
+					aria-pressed={compare}
+					onClick={() => setParam("compare", compare ? null : "1")}
+					className={pillClass(compare)}
+				>
+					Compare
+				</button>
+				{(["ios", "android"] as const).map((os) => (
+					<button
+						key={os}
+						type="button"
+						aria-pressed={osFilter === os}
+						onClick={() => setParam("os", osFilter === os ? null : os)}
+						className={cn(pillClass(osFilter === os), "capitalize")}
+					>
+						{os}
+					</button>
+				))}
+			</div>
 
-				{query.isPending ? <LoadingState /> : null}
+			{snapshotCtx ? (
+				<div
+					aria-live="polite"
+					className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-[12px] border border-border bg-canvas px-3 py-2"
+				>
+					<span className="text-[13px] text-text-muted">
+						Viewing a shared snapshot — range and sources are fixed by the
+						link.
+					</span>
+					<button
+						type="button"
+						onClick={exitSnapshot}
+						className="inline-flex h-8 items-center rounded-full border border-border bg-canvas px-3 text-[13px] font-medium hover:bg-surface-hover"
+					>
+						Exit snapshot
+					</button>
+				</div>
+			) : null}
 
-				{query.isError ? (
-					<div className="border-fd-border rounded-[16px] border p-6">
-						<p className="text-sm">Failed to load mobile analytics.</p>
-						<button
-							type="button"
-							onClick={() => query.refetch()}
-							className="border-fd-border mt-3 rounded-full border px-3 py-1 text-xs"
-						>
-							Retry
-						</button>
-					</div>
-				) : null}
+			{query.isPending ? <LoadingState /> : null}
 
-				{data && totals ? (
-					totals.appOpens === 0 && totals.visitors === 0 ? (
-						<div className="border-fd-border rounded-[16px] border p-6">
-							<h2 className="text-sm font-semibold">No mobile data yet</h2>
-							<p className="text-fd-muted-foreground mt-1 text-sm">
-								Install @prism-analytics/react-native, grant consent in the app,
-								and navigate a screen. New screen views appear here within a
-								minute.
-							</p>
+			{query.isError ? (
+				<ErrorState
+					title="Failed to load mobile analytics."
+					description="The report is temporarily unavailable. Retry or check your connection."
+					onRetry={() => query.refetch()}
+				/>
+			) : null}
+
+			{data && totals ? (
+				totals.appOpens === 0 && totals.visitors === 0 ? (
+					<EmptyState
+						title="No mobile data yet"
+						description="Install @prism-analytics/react-native, grant consent in the app, and navigate a screen. New screen views appear here within a minute."
+					/>
+				) : (
+					<>
+						<div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+							<MetricCell label="App opens" value={numFmt(totals.appOpens)} sub={compare ? comparisonLabel(data.comparison.appOpens) : undefined} />
+							<MetricCell label="Visitors" value={numFmt(totals.visitors)} sub={compare ? comparisonLabel(data.comparison.visitors) : undefined} />
+							<MetricCell label="App sessions" value={numFmt(totals.appSessions)} sub={compare ? comparisonLabel(data.comparison.appSessions) : undefined} />
+							<MetricCell
+								label="Avg screens / session"
+								value={totals.avgScreensPerSession.toFixed(2)}
+							/>
+							<MetricCell
+								label="Observed installations"
+								value={numFmt(totals.observedInstallations)}
+								sub={
+									totals.avgSessionDurationMs === null
+										? undefined
+										: `${Math.round(totals.avgSessionDurationMs / 1000)}s avg session`
+								}
+							/>
 						</div>
-					) : (
-						<>
-							<div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-								<MetricCell label="App opens" value={numFmt(totals.appOpens)} sub={compare ? comparisonLabel(data.comparison.appOpens) : undefined} />
-								<MetricCell label="Visitors" value={numFmt(totals.visitors)} sub={compare ? comparisonLabel(data.comparison.visitors) : undefined} />
-								<MetricCell label="App sessions" value={numFmt(totals.appSessions)} sub={compare ? comparisonLabel(data.comparison.appSessions) : undefined} />
-								<MetricCell
-									label="Avg screens / session"
-									value={totals.avgScreensPerSession.toFixed(2)}
-								/>
-								<MetricCell
-									label="Observed installations"
-									value={numFmt(totals.observedInstallations)}
-									sub={
-										totals.avgSessionDurationMs === null
-											? undefined
-											: `${Math.round(totals.avgSessionDurationMs / 1000)}s avg session`
-									}
-								/>
-							</div>
 
-							<h2 className="mt-8 text-sm font-semibold">Top screens</h2>
-							{data.screens.length === 0 ? (
-								<p className="text-fd-muted-foreground mt-2 text-sm">
-									No screen views in this period.
-								</p>
-							) : (
-								<ul className="border-fd-border mt-2 divide-y rounded-[16px] border">
+						<h2 className="mb-3 mt-8 text-[13px] font-medium tracking-normal text-text-subtle">
+							Top screens
+						</h2>
+						{data.screens.length === 0 ? (
+							<p className="text-[13px] text-text-muted">
+								No screen views in this period.
+							</p>
+						) : (
+							<Frame className="overflow-hidden">
+								<ul className="divide-y divide-border">
 									{data.screens.map((screen) => (
 										<li
 											key={`${screen.name}:${screen.routePattern ?? ""}`}
-											className="flex items-center justify-between px-4 py-2 text-sm"
+											className="flex items-center justify-between gap-3 px-4 py-[11px] text-[13px]"
 										>
-											<span className="font-medium">{screen.name}</span>
-											<span className="text-fd-muted-foreground tabular-nums">
+											<span className="truncate font-medium">
+												{screen.name}
+											</span>
+											<span className="whitespace-nowrap text-text-muted tabular-nums">
 												{numFmt(screen.screenViews)} views ·{" "}
 												{numFmt(screen.visitors)} visitors ·{" "}
 												{screen.sharePercent}%
@@ -247,33 +255,41 @@ export default function MobileAnalyticsPage() {
 										</li>
 									))}
 								</ul>
-							)}
+							</Frame>
+						)}
 
-							<h2 className="mt-8 text-sm font-semibold">Releases</h2>
-							{data.releases.length === 0 ? (
-								<p className="text-fd-muted-foreground mt-2 text-sm">
-									No release metadata reported yet.
-								</p>
-							) : (
-								<ul className="border-fd-border mt-2 divide-y rounded-[16px] border">
+						<h2 className="mb-3 mt-8 text-[13px] font-medium tracking-normal text-text-subtle">
+							Releases
+						</h2>
+						{data.releases.length === 0 ? (
+							<p className="text-[13px] text-text-muted">
+								No release metadata reported yet.
+							</p>
+						) : (
+							<Frame className="overflow-hidden">
+								<ul className="divide-y divide-border">
 									{data.releases.map((release) => (
-										<li key={release.version} className="flex items-center justify-between px-4 py-2 text-sm">
-											<span className="font-medium">
+										<li
+											key={release.version}
+											className="flex items-center justify-between gap-3 px-4 py-[11px] text-[13px]"
+										>
+											<span className="truncate font-medium">
 												{release.version}
 												{release.build ? ` (${release.build})` : ""}
 											</span>
-											<span className="text-fd-muted-foreground tabular-nums">
-												{numFmt(release.screenViews)} views · {release.sharePercent}%
+											<span className="whitespace-nowrap text-text-muted tabular-nums">
+												{numFmt(release.screenViews)} views ·{" "}
+												{release.sharePercent}%
 											</span>
 										</li>
 									))}
 								</ul>
-							)}
-						</>
-					)
-				) : null}
-			</div>
-		</Frame>
+							</Frame>
+						)}
+					</>
+				)
+			) : null}
+		</div>
 	);
 }
 
