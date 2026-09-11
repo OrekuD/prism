@@ -1,6 +1,6 @@
 import React from "react";
 import { useBreadcrumbs } from "@/lib/breadcrumbs";
-import { IconMenu } from "@/components/ui/icons";
+import { Menu } from "@/components/ui/hugeicons";
 import {
   Breadcrumb as ShadcnBreadcrumb,
   BreadcrumbItem,
@@ -21,7 +21,7 @@ export function Toolbar({ onMenu }: { onMenu?: () => void }) {
           aria-label="Open navigation"
           onClick={onMenu}
         >
-          <IconMenu />
+          <Menu size={16} />
         </button>
         <div className="flex min-w-0 items-center whitespace-nowrap">
           <ShadcnBreadcrumb className="text-[13px]">

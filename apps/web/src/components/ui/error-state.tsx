@@ -16,7 +16,7 @@ export function ErrorState({
   return (
     <div
       role="alert"
-      className="grid place-items-center gap-3 border border-danger/40 bg-danger/10 px-6 py-12 text-center"
+      className="grid place-items-center gap-3 rounded-[16px] border border-danger/40 bg-danger/10 px-6 py-12 text-center"
     >
       <AlertTriangle className="size-5 text-danger" aria-hidden="true" />
       <p className="text-[15px] font-semibold text-text">{title}</p>

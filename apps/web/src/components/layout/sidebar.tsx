@@ -8,7 +8,6 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import * as I from "@/components/ui/icons";
 import { CreateWorkspaceDialog } from "@/components/workspace/workspace-switcher";
 import { authClient } from "@/lib/authClient";
 import {

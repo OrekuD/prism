@@ -5,7 +5,7 @@ import { useActiveWorkspace } from "@/lib/workspace";
 import { Frame } from "@/components/public/frame";
 import { CreateProjectDialog } from "@/components/projects/create-project-dialog";
 import { PageHeader } from "@/components/public/page-header";
-import { IconFolder } from "@/components/ui/icons";
+import { Folder } from "@/components/ui/hugeicons";
 
 const PROJECT_SKELETON_KEYS = [
   "project-skeleton-one",
@@ -78,7 +78,7 @@ export function Projects() {
                   className="flex h-full flex-col gap-3.5"
                 >
                   <span className="grid size-9 place-items-center rounded-[10px] border border-border bg-surface-raised">
-                    <IconFolder />
+                    <Folder size={16} />
                   </span>
                   <h3 className="text-[15px] font-semibold tracking-[-0.01em]">
                     {project.name}

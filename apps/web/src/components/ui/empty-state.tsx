@@ -24,7 +24,7 @@ export function EmptyState({
   className?: string;
 }) {
   return (
-    <Frame className={cn("p-8 text-center", className)} marks={false}>
+    <Frame className={cn("p-8 text-center", className)}>
       <div className="mx-auto flex max-w-[420px] flex-col items-center">
         {icon ? (
           <span className="grid size-9 place-items-center rounded-[10px] border border-border bg-surface text-text-subtle">

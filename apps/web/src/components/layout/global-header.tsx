@@ -13,13 +13,13 @@ import {
 	FileText,
 	Loader2,
 	LogOut,
+	Menu,
 	Moon,
 	ShieldCheck,
 	Sun,
 	Monitor,
 	User,
 } from "@/components/ui/hugeicons";
-import { IconMenu } from "@/components/ui/icons";
 import { authClient } from "@/lib/authClient";
 import { DOCS_URL } from "@/lib/docs";
 import { clearQueryClient, client } from "@/lib/queryClient";
@@ -75,7 +75,7 @@ export function GlobalHeader({ onMenu }: { onMenu?: () => void }) {
 						onClick={onMenu}
 						className="hidden size-9 place-items-center rounded-[10px] text-[#5D5D5D] transition-colors hover:bg-surface-hover hover:text-text dark:text-text max-[1023px]:grid"
 					>
-						<IconMenu />
+						<Menu size={16} />
 					</button>
 				) : null}
 				<Link

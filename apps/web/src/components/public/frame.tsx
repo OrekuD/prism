@@ -10,14 +10,11 @@ export function Frame({
   className,
   children,
   label,
-  marks,
   inset = false,
   destructive = false,
   ...props
 }: React.HTMLAttributes<HTMLDivElement> & {
   label?: string;
-  /** Accepted for backwards compat, no longer rendered. */
-  marks?: boolean;
   /** Apply the raised surface background. */
   inset?: boolean;
   /** Destructive variant: muted danger border. */
