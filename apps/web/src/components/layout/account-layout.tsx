@@ -1,30 +1,25 @@
-import React from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
-import { Separator } from "../ui/separator";
 import { buttonVariants } from "../ui/button";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "@/components/public/page-header";
 
+// Account settings lives at /account/* — links on the left, mirroring the
+// workspace and project settings layouts. Unlinked routes (authentication,
+// workspace) keep their legacy pages until they are retired or migrated.
 const links = [
   { label: "General", url: "general" },
   { label: "Security", url: "security" },
-  // { label: "Authentication", url: "authentication" },
-  // { label: "Workspaces", url: "workspace" },
 ];
 
 export function AccountLayout() {
   const { pathname } = useLocation();
-
-  const path = pathname.slice(9) || "";
+  const path = pathname.split("/").filter(Boolean).pop() ?? "";
 
   return (
-    <div className="space-y-6 pt-8">
-      <div className="space-y-0.5">
-        <h2 className="text-3xl font-semibold tracking-tight">Settings</h2>
-        <p className="text-muted-foreground">Manage your account settings.</p>
-      </div>
-      <Separator className="my-6" />
-      <div className="flex flex-col lg:flex-row lg:space-y-0 gap-8">
-        <aside className="lg:-ml-4 lg:w-1/5">
+    <div className="mx-auto w-full space-y-6">
+      <PageHeader />
+      <div className="flex flex-col gap-8 lg:flex-row lg:space-y-0">
+        <aside className="lg:w-1/5">
           <nav className="flex space-x-2 md:sticky md:top-24 lg:flex-col lg:space-x-0 lg:space-y-1">
             {links.map((item) => {
               const isActive = item.url === path;
@@ -45,7 +40,7 @@ export function AccountLayout() {
             })}
           </nav>
         </aside>
-        <div className="flex-1">
+        <div className="min-w-0 flex-1">
           <Outlet />
         </div>
       </div>
