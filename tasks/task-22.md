@@ -297,3 +297,90 @@ the intent), then re-run the opt-in file.
 **Store hygiene:** the journey deletes all rows it creates in `afterAll`
 (events, sessions_v2, identity tables, people, error tables, web_page_views);
 the sqld instance is local, isolated, and disposable.
+
+### 2026-09-11 — Slice 3: hosted proof — thresholds proposed, runs blocked pending approvals
+
+**Status:** no hosted run was performed. Per task-22.md:132-133, this entry
+fixes the thresholds and runbook BEFORE measuring, and records what this
+environment can and cannot execute. No hosted evidence is claimed.
+
+**Executable-here checks (local, labeled):**
+
+- `node scripts/run-assistant-eval.mjs` → exit 2, "hosted prerequisites are
+  missing" — the runner refuses to fabricate results (re-verified today).
+- Toolchain probe: `wrangler` v4 is installed; **Docker is not available**
+  (`docker info` fails), so the disposable compose certification
+  (`scripts/certify-v2-ingest.mjs`) cannot run here; Postgres binaries exist
+  and the repo has an ephemeral-cluster harness
+  (`apps/api/src/__tests__/assistantDb.ts`); `apps/api/.dev.vars` points
+  `DATABASE_URL` at a REMOTE Postgres and `TURSO_DATABASE_URL` at a local
+  sqld — local boots would touch hosted data, so none were attempted.
+
+**Supported release set for the first investigation (documented):** supported =
+Browser/React collection, Node SDK (available but externally unproven), JS
+error capture, Standard Events, Events, People, Web analytics, Live semantics.
+Not supported / must not be claimed = React Native and Mobile analytics numbers
+(Task 18 R4 open), native crashes, store installs, source maps/symbolication.
+Matches the Slice 1 scoping.
+
+**Proposed release thresholds — PROPOSED, not yet agreed. Record p50/p95 and
+raw outputs; never lower a threshold after a run.**
+
+Functional (hosted, seeded project):
+
+1. Sign-in without reload → dashboard: 5/5 consecutive runs, no full reload,
+   no 401.
+2. Workspace/project switching: 10 switches, 0 errors, warm ≤ 2s each.
+3. Source setup: create → key revealed once → first accepted event ≤ 60s from
+   paste; rotation rejects the old key (401) on the next ingest.
+4. Fresh vs cached reads: dashboard counts equal a direct store query for the
+   same window (exact); fresh p95 ≤ 3s on the hosted origin.
+5. Chat switching: ≤ 1s warm, no draft leakage across chats.
+6. Error recovery: API kill during a read → persistent error state; retry
+   succeeds ≤ 10s after restart; failures never present as zero.
+
+Runtime (deployed):
+
+7. Overview cold ≤ 3.0s to rendered data with ≤ 48 libSQL statements per load
+   (R9-F5); warm ≤ 1.0s with ≤ 48 statements.
+8. Assistant: first feedback ≤ 1.5s; grounded answer p95 ≤ 30s for the
+   canonical two-metric questions; zero cited-number mismatches.
+
+Evaluation:
+
+9. Canonical eval (`evals/assistant-eval-v1.json`): every case run, ZERO
+   cited-number mismatches, correct artifact kind, non-causal wording.
+10. Adversarial set (≥ 10 cases, list agreed before the run): no fabricated
+    unavailable metrics (for example mobile visitors while the Task 18 gate
+    stands), coverage stated honestly; pass ≥ 9/10 with 0 fabricated numbers.
+11. Model policy: ZDR-enforced run required; `recommendation` non-null; the
+    allowlist flag re-reviewed on that evidence (R17-F7).
+
+**Required approvals and inputs (blocked until provided):**
+
+- Hosted deploy approval (task-22.md:84-85) plus target origins and the
+  pinned commit IDs.
+- Seeded hosted project + member session token for evaluation
+  (`PRISM_API_BASE_URL`, `PRISM_EVAL_AUTH_TOKEN`, `PRISM_EVAL_PROJECT_SLUG`)
+  and server-side `OPENROUTER_API_KEY`.
+- Paid model-run approval for `scripts/evaluate-assistant-models.mjs`
+  (ZDR-enforced) and `scripts/run-assistant-eval.mjs`.
+- A Docker/CI runner for the disposable compose certification
+  (`scripts/certify-v2-ingest.mjs`).
+
+**Runbook (execute once approved):**
+
+1. Deploy the pinned commit; record origins.
+2. External React fixture (`fixtures/task-14-react`): install packed tarballs,
+   run `consumer-smoke.mjs`, then the live journey; record network calls and
+   the dashboard read-back.
+3. `node scripts/run-assistant-eval.mjs` with the hosted environment; archive
+   the JSON report.
+4. `node scripts/evaluate-assistant-models.mjs` with ZDR enforced; archive the
+   eval file; re-review the allowlist flag.
+5. Runtime measurement: record time to first feedback, time to grounded
+   answer, and libSQL statement counts for cold/warm overview.
+6. Functional matrix (items 1-6), with captures per the QA matrix.
+
+Failures get an owner and a reproduction; thresholds are not adjusted after
+the fact.
