@@ -2,6 +2,10 @@ import { createMiddleware } from "hono/factory";
 import type { Context } from "hono";
 import { ErrorResponse } from "../network/responses/ErrorResponse.js";
 import NeonDatabaseManager from "../managers/NeonDatabaseManager.js";
+import {
+	checkStoredKeyCompatibility,
+	familyForPlatform,
+} from "@prism-analytics/core";
 
 /**
  * Analytics key authentication (Task 13): an ingestion key belongs to ONE
@@ -66,9 +70,28 @@ export const AnalyticsMiddleware = createMiddleware(
         return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
       }
 
+      // Task 29: the stored source must map to a canonical family and the
+      // presented credential must be a current-format key of that family.
+      // Prefix tampering cannot reclassify a source; an inconsistency is a
+      // configuration fault, not a credential alternative.
+      const family = familyForPlatform(key.platform);
+      if (!family) {
+        return ctx.json(
+          new ErrorResponse("unsupported_source_platform").toJSON(),
+          409,
+        );
+      }
+      const storedKey = checkStoredKeyCompatibility({
+        key: apiKey,
+        storedFamily: family,
+      });
+      if (!storedKey.ok) {
+        return ctx.json(new ErrorResponse(storedKey.code).toJSON(), 409);
+      }
+
       // Origin policy for publishable web keys (F23-adjacent: the
       // browser can never be coerced into trusting a cross-origin page).
-      if (key.key_type === "publishable" && key.platform === "web") {
+      if (key.key_type === "publishable" && family === "web") {
         const origin = ctx.req.header("Origin") ?? ctx.req.header("Referer");
         const allowed = new Set(
           (key.allowed_origins
@@ -87,6 +110,7 @@ export const AnalyticsMiddleware = createMiddleware(
       ctx.set("projectId", key.project_id);
       ctx.set("sourceId", key.source_id);
       ctx.set("platform", key.platform);
+      ctx.set("sourceFamily", family);
       ctx.set("keyType", key.key_type);
 
       // last_used_at is best-effort bookkeeping; it must never fail a

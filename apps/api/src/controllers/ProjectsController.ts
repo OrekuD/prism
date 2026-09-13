@@ -383,7 +383,7 @@ export class ProjectsController {
     if (mobileCtx !== null && mobileCtx.sourceScope === "selected") {
       const rows = (await db`
         SELECT id FROM project_sources
-        WHERE project_id = ${String(projectRow.id)} AND platform = 'react-native'`) as Array<{
+        WHERE project_id = ${String(projectRow.id)} AND platform IN ('mobile','ios','android','react-native')`) as Array<{
         id: string;
       }>;
       const allowedMobileSources = new Set(rows.map((r) => String(r.id)));
@@ -413,7 +413,7 @@ export class ProjectsController {
       if (requestedSourceIds.length > 0) {
         const rows = (await db`
           SELECT id FROM project_sources
-          WHERE project_id = ${String(projectRow.id)} AND platform = 'react-native'`) as Array<{
+          WHERE project_id = ${String(projectRow.id)} AND platform IN ('mobile','ios','android','react-native')`) as Array<{
           id: string;
         }>;
         const allowedMobileSources = new Set(rows.map((r) => String(r.id)));
@@ -1009,6 +1009,7 @@ public static async getWebAnalytics(ctx: Context<HonoConfig>) {
     if (platform !== undefined) {
       if (
         platform !== "web" &&
+        platform !== "mobile" &&
         platform !== "ios" &&
         platform !== "android" &&
         platform !== "react-native" &&

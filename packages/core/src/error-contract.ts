@@ -215,6 +215,18 @@ export interface ErrorReporterOptions {
 	};
 	/** Diagnostic subscription made BEFORE the reporter starts. */
 	onDiagnostic?: (diagnostic: PrismDiagnostic) => void;
+	/**
+	 * Task 29: adapter/integration declaration sent as the error batch `sdk`
+	 * descriptor. Adapters set this internally; generic Core reporters must
+	 * declare it explicitly (family included) or the ingestion service
+	 * rejects the batches. When `family` is provided the key is checked
+	 * locally before the reporter starts.
+	 */
+	readonly integration?: {
+		readonly name: string;
+		readonly version: string;
+		readonly family?: import("./source-family").SourceFamily;
+	};
 }
 
 /**

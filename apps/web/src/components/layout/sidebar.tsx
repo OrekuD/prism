@@ -163,7 +163,7 @@ export function Sidebar({ navOpen }: { navOpen?: boolean }) {
 	const hasMobileSource =
 		sourcesQuery.data === undefined ||
 		sourcesQuery.data.some((source) =>
-			["ios", "android", "react-native"].includes(source.platform),
+			["mobile", "ios", "android", "react-native"].includes(source.platform),
 		);
 
 

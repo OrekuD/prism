@@ -11,7 +11,7 @@ import { type BrowserPrismClient, createBrowserClient } from "../index";
  */
 
 const ENDPOINT = "https://ingest.example.com";
-const SOURCE_KEY = "psk_test_web";
+const SOURCE_KEY = "psk_web_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
 const liveClients: Array<BrowserPrismClient> = [];
 

@@ -135,8 +135,16 @@ const validItem = (id = "evt_1") => ({
 	context: { extras: { password: "hunter2" } },
 });
 
-const envelope = (errors: unknown[]) =>
-	JSON.stringify({ schemaVersion: 1, sentAt: Date.now(), errors });
+const envelope = (
+	errors: unknown[],
+	sdkName = "@prism-analytics/browser",
+) =>
+	JSON.stringify({
+		schemaVersion: 1,
+		sentAt: Date.now(),
+		sdk: { name: sdkName, version: "0.0.1", language: "javascript" },
+		errors,
+	});
 
 beforeEach(() => {
 	vi.clearAllMocks();
@@ -208,6 +216,16 @@ describe("ErrorIngestController.ingest", () => {
 		expect(response.__json.results[0]?.duplicate).toBe(true);
 		// duplicate delivery never touches the issue row
 		expect(statementContaining("INSERT INTO error_issues")).toBeUndefined();
+	});
+
+	it("rejects a batch whose adapter mismatches the source family", async () => {
+		const response = (await ErrorIngestController.ingest(
+			makeCtx(envelope([validItem()], "@prism-analytics/node")),
+		)) as unknown as { status?: number; __json: { error: { code: string } } };
+
+		expect(response.status).toBe(403);
+		expect(response.__json.error.code).toBe("incompatible-source");
+		expect(statementContaining("INSERT INTO error_occurrences")).toBeUndefined();
 	});
 
 	it("rejects a server source authenticated with a publishable key (401)", async () => {

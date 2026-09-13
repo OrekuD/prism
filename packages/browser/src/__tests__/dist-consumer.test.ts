@@ -89,7 +89,7 @@ describe("packaged consumption", () => {
 			);
 			return installed
 				.createBrowserClient({
-					sourceKey: "psk_0123456789abcdef0123456789abcdef",
+					sourceKey: "psk_web_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 					endpoint: "https://self-hosted.prism.example",
 					collection: { initialState: "granted" },
 				})

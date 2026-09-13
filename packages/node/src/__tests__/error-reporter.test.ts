@@ -42,7 +42,7 @@ async function makeReporter(
 	extra?: Partial<Parameters<typeof createNodeErrorReporter>[0]>,
 ): Promise<NodeErrorReporter> {
 	return createNodeErrorReporter({
-		sourceKey: "pr_0123456789abcdef0123456789abcdef",
+		sourceKey: "ssk_CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
 		endpoint: "https://errors.self-hosted.example",
 		share: { consent: () => consent },
 		signals: [], // tests never want real signal/exit coupling

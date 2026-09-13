@@ -85,6 +85,7 @@ export const OVERVIEW_RANGE_MS: Record<OverviewRange, number> = deepFreeze({
  */
 export const SOURCE_PLATFORMS = deepFreeze([
   "web",
+  "mobile",
   "ios",
   "android",
   "react-native",

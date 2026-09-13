@@ -46,6 +46,7 @@ export const LEVEL_LABELS: Record<ErrorIssueLevel, string> = {
 
 export const ERROR_PLATFORM_LABELS: Record<ErrorIssuePlatform, string> = {
 	web: "Web",
+	mobile: "Mobile",
 	ios: "iOS",
 	android: "Android",
 	"react-native": "React Native",

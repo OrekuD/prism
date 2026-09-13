@@ -19,6 +19,12 @@ import {
 	type ErrorPersistItem,
 } from "../repositories/ErrorIngestRepository.js";
 import { RateLimiter } from "../utils/RateLimiter.js";
+import { recordCompatRejection } from "../utils/compatMetrics.js";
+import {
+	type SourceFamily,
+	checkAdapterCompatibility,
+	familyForPlatform,
+} from "@prism-analytics/core";
 import {
 	FINGERPRINT_VERSION,
 	fingerprintV1,
@@ -154,6 +160,34 @@ export class ErrorIngestController {
 		// Non-disclosing: same code as any other auth failure.
 		if (platform === "server" && keyType !== "secret") {
 			return ctx.json(new ErrorResponse("unauthorized").toJSON(), 401);
+		}
+
+		// Task 29: the error lane carries the same adapter declaration
+		// requirement as analytics batches; incompatible or missing
+		// declarations are rejected before any validation or write.
+		const sourceFamily =
+			((ctx.get("sourceFamily") as SourceFamily | undefined) || undefined) ??
+			familyForPlatform(platform) ??
+			null;
+		if (!sourceFamily) {
+			return ctx.json(
+				ingestError(
+					"unsupported-source-platform",
+					"source platform is not configured",
+				),
+				409,
+			);
+		}
+		const adapterCompatibility = checkAdapterCompatibility(
+			parsed.sdk?.name,
+			sourceFamily,
+		);
+		if (!adapterCompatibility.ok) {
+			recordCompatRejection(adapterCompatibility.code);
+			return ctx.json(
+				ingestError(adapterCompatibility.code, adapterCompatibility.message),
+				adapterCompatibility.code === "incompatible-source" ? 403 : 400,
+			);
 		}
 
 		// Per-project item quota before validation work (abuse protection).

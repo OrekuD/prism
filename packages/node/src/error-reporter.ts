@@ -9,7 +9,7 @@ import type {
 	PrismErrorReporter,
 } from "@prism-analytics/core";
 import { createPrismErrorReporter, framesFromStack } from "@prism-analytics/core";
-import { createNodeRuntime } from "./node-runtime";
+import { createNodeRuntime, NODE_ADAPTER_VERSION } from "./node-runtime";
 
 /**
  * Node/server error adapter (task-15 Phase 4) — `createNodeErrorReporter`.
@@ -216,6 +216,12 @@ export async function createNodeErrorReporter(
 		sourceKey: options.sourceKey,
 		endpoint: options.endpoint,
 		runtime,
+		// Task 29: server adapter identity + local secret-key check.
+		integration: {
+			name: "@prism-analytics/node",
+			version: NODE_ADAPTER_VERSION,
+			family: "server",
+		},
 		share: options.share,
 		beforeSend: options.beforeSend,
 		queue: options.queue,

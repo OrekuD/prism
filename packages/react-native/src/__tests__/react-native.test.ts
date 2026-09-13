@@ -49,7 +49,7 @@ vi.mock("react-native", () => {
 const AppState = (await import("react-native")).AppState as any;
 
 const ENDPOINT = "https://ingest.example.com";
-const SOURCE_KEY = "psk_test_mobile";
+const SOURCE_KEY = "psk_mobile_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
 const STORAGE_KEY = "prism:installation";
 
 interface CapturedRequest {

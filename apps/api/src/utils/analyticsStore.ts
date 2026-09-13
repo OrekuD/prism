@@ -224,7 +224,7 @@ export async function paginatedProjectEvents(
     } else if (params.platformFamily === "server") {
       clauses.push("platform = 'server'");
     } else if (params.platformFamily === "mobile") {
-      clauses.push("platform IN ('ios','android','react-native')");
+      clauses.push("platform IN ('mobile','ios','android','react-native')");
     }
   }
   if (params.from !== undefined) {

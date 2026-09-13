@@ -23,7 +23,7 @@ import {
   type PublicQueryContext,
   type SourceScope,
 } from "@prism-analytics/types";
-import { standardEventDefinitionForKey } from "@prism-analytics/core";
+import { familyForPlatform, standardEventDefinitionForKey } from "@prism-analytics/core";
 import { loadMobileAnalytics } from "./mobileAnalyticsLoader";
 import type { MobileAnalyticsQueryParams } from "./mobileAnalyticsStore";
 import { loadWebAnalytics } from "./webAnalyticsLoader";
@@ -107,7 +107,7 @@ export type MetricFilters = {
   release?: string;
   host?: string;
   path?: string;
-  platform?: "web" | "ios" | "android" | "react-native" | "server";
+  platform?: "web" | "mobile" | "ios" | "android" | "react-native" | "server";
   environment?: string;
   currency?: string;
 };
@@ -288,7 +288,7 @@ const MetricFiltersSchema = z.strictObject({
   host: z.string().min(1).max(253).optional(),
   path: z.string().min(1).max(2048).optional(),
   platform: z
-    .enum(["web", "ios", "android", "react-native", "server"])
+    .enum(["web", "mobile", "ios", "android", "react-native", "server"])
     .optional(),
   environment: z.string().min(1).max(64).optional(),
   currency: z
@@ -479,12 +479,7 @@ export function resolveProjectCapabilities(input: {
   let lastReceivedAt: number | null = null;
   for (const source of input.sources) {
     if (source.platform === "web") web = true;
-    else if (
-      source.platform === "react-native" ||
-      source.platform === "ios" ||
-      source.platform === "android"
-    )
-      mobile = true;
+    else if (familyForPlatform(source.platform) === "mobile") mobile = true;
     else if (source.platform === "server") server = true;
     if (source.active) active += 1;
     if (

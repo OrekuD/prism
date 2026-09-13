@@ -111,6 +111,36 @@ export type {
 	ReservedEventResult,
 } from "./internal-seam";
 
+// Task 29: source families, key prefixes, and adapter compatibility — ONE
+// policy shared by every SDK and the ingestion service.
+export {
+	SOURCE_FAMILIES,
+	SOURCE_KEY_PREFIX,
+	SOURCE_KEY_CLASS,
+	SOURCE_KEY_SUFFIX_LENGTH,
+	MOBILE_RUNTIME_PLATFORMS,
+	LEGACY_SOURCE_PLATFORMS,
+	SUPPORTED_ADAPTERS,
+	parseSourceKey,
+	isSourceKeyFormat,
+	familyForPlatform,
+	familyLabel,
+	adapterFamily,
+	isAdapterSupportedForFamily,
+	checkClientKeyCompatibility,
+	checkStoredKeyCompatibility,
+	checkAdapterCompatibility,
+	resolveIntegrationDescriptor,
+} from "./source-family";
+export type {
+	SourceFamily,
+	SourceKeyClass,
+	ParsedSourceKey,
+	SourceCompatibility,
+	SourceCompatibilityFailure,
+	IntegrationDeclaration,
+} from "./source-family";
+
 // Task 18: reserved mobile screen-view + app-lifecycle contracts
 export {
   APP_LIFECYCLE_EVENT_NAME,

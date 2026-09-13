@@ -52,7 +52,7 @@ async function makeRealBrowserReporter(
 	extra?: Partial<Parameters<typeof createBrowserErrorReporter>[0]>,
 ): Promise<BrowserErrorReporter> {
 	return createBrowserErrorReporter({
-		sourceKey: "pr_0123456789abcdef0123456789abcdef",
+		sourceKey: "psk_web_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 		endpoint: "https://errors.self-hosted.example",
 		share: { consent: () => consent },
 		...extra,

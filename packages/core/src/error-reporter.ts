@@ -21,6 +21,7 @@ import {
 	toWireErrorItem,
 } from "./error-validation";
 import { SDK_NAME, SDK_VERSION } from "./limits";
+import { resolveIntegrationDescriptor } from "./source-family";
 import { utf8Length } from "./queue";
 import { assertEndpoint, assertSourceKey } from "./validation";
 
@@ -132,6 +133,7 @@ class ErrorReporterImpl implements PrismErrorReporter {
 	private readonly share: ErrorReporterOptions["share"];
 	private readonly beforeSend: ErrorReporterOptions["beforeSend"];
 	private readonly queue: Required<NonNullable<ErrorReporterOptions["queue"]>>;
+	private readonly sdkDescriptor: { readonly name: string; readonly version: string };
 	private readonly diagnostics = new Set<(d: PrismDiagnostic) => void>();
 	private readonly items: QueuedReport[] = [];
 	private closed = false;
@@ -165,6 +167,14 @@ class ErrorReporterImpl implements PrismErrorReporter {
 		}
 		this.sourceKey = options.sourceKey;
 		this.endpoint = options.endpoint.replace(/\/$/, "");
+		// Task 29: resolve the adapter/integration descriptor (and run the
+		// local key-family check when the declaration carries a family).
+		this.sdkDescriptor = resolveIntegrationDescriptor({
+			integration: options.integration,
+			sourceKey: options.sourceKey,
+			fallbackName: SDK_NAME,
+			fallbackVersion: SDK_VERSION,
+		});
 		this.runtime = runtime;
 		this.share = options.share;
 		this.beforeSend = options.beforeSend;
@@ -483,7 +493,7 @@ class ErrorReporterImpl implements PrismErrorReporter {
 		const body: WireErrorBatch = {
 			schemaVersion: 1,
 			sentAt: this.runtime.now(),
-			sdk: { name: SDK_NAME, version: SDK_VERSION, language: "javascript" },
+			sdk: { ...this.sdkDescriptor, language: "javascript" },
 			errors: batch.map(
 				(entry) => JSON.parse(entry.serialized) as WireErrorItem,
 			),

@@ -34,6 +34,7 @@ import {
 	type WireContext,
 	type WireEnvelope,
 } from "./limits";
+import { resolveIntegrationDescriptor } from "./source-family";
 import {
 	PAGE_VIEW_EVENT_NAME,
 	RESERVED_EVENT_PREFIX,
@@ -253,6 +254,7 @@ class PrismClientImpl implements PrismClient {
 	private identityStateKey: string;
 	private identityGeneration = 0;
 	private readonly wireContext: WireContext;
+	private readonly sdkDescriptor: { readonly name: string; readonly version: string };
 	private persistChain: Promise<void> = Promise.resolve();
 	readonly events: PrismStandardEvents;
 
@@ -297,6 +299,14 @@ class PrismClientImpl implements PrismClient {
 
 		this.sourceKey = options.sourceKey;
 		this.endpoint = options.endpoint.replace(/\/$/, "");
+		// Task 29: resolve the adapter/integration descriptor (and run the
+		// local key-family check when the declaration carries a family).
+		this.sdkDescriptor = resolveIntegrationDescriptor({
+			integration: options.integration,
+			sourceKey: options.sourceKey,
+			fallbackName: SDK_NAME,
+			fallbackVersion: SDK_VERSION,
+		});
 		// The wire context is an ALLOWLISTED, validated, sanitized, frozen
 		// snapshot built once at initialization (F16) — runtime context values
 		// never cross the network unvalidated, and a later adapter mutation
@@ -1545,7 +1555,7 @@ class PrismClientImpl implements PrismClient {
 			body: JSON.stringify({
 				schemaVersion: WIRE_SCHEMA_VERSION,
 				sentAt: this.runtime.now(),
-				sdk: { name: SDK_NAME, version: SDK_VERSION },
+				sdk: this.sdkDescriptor,
 				...(this.queue.pendingOps().length > 0
 					? {
 							identity: this.queue

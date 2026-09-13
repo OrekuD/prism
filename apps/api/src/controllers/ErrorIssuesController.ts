@@ -39,6 +39,7 @@ const STATUS_VALUES: ReadonlySet<string> = new Set<ErrorIssueStatus>([
 const LEVEL_VALUES: ReadonlySet<string> = new Set(["error", "warning"]);
 const PLATFORM_VALUES: ReadonlySet<string> = new Set([
 	"web",
+	"mobile",
 	"ios",
 	"android",
 	"react-native",

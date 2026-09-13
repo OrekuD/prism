@@ -99,6 +99,9 @@ export const PrismContext = createContext<PrismClient | null>(null);
 export const PrismErrorBoundaryContext =
 	createContext<PrismErrorReporter | null>(null);
 
+/** Keep in sync with packages/reactjs/package.json version. */
+const REACT_ADAPTER_VERSION = "0.0.4";
+
 export interface PrismProviderProps {
 	/** An already-created, ready client (createPrismClient/createBrowserClient). */
 	client: PrismClient;
@@ -177,6 +180,11 @@ export function PrismAnalytics(props: PrismAnalyticsProps): ReactNode {
 					endpoint,
 					collection: props.collection ?? { initialState: "granted" },
 					pageViews: props.pageViews ?? { mode: "history" },
+					// Task 29: identify as the React adapter while staying Web-compatible.
+					integration: {
+						name: "@prism-analytics/react",
+						version: REACT_ADAPTER_VERSION,
+					},
 				})) as unknown as BrowserPrismClient;
 				if (!cancelled) setClient(c);
 				browserClient = c;

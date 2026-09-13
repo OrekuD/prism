@@ -215,22 +215,17 @@ export async function resolveDefaultWorkspacePath(): Promise<string> {
 		: "/overview";
 }
 
-export const WORKSPACE_PLATFORMS = [
-	// all known; create dialog filters to CREATABLE
-	"web",
-	"ios",
-	"android",
-	"react-native",
-	"server",
-] as const;
+/**
+ * Task 29: canonical source families are the only creatable platforms.
+ * Legacy values (ios/android/react-native) remain readable on existing
+ * records and map to `mobile` in lib/sources.ts. Keep in parity with
+ * apps/api/src/controllers/SourcesController.ts CREATABLE_PLATFORMS.
+ */
+export const WORKSPACE_PLATFORMS = ["web", "mobile", "server"] as const;
 
-/** Task 18 (R1-F9/R2-F9): platforms a user may actually CREATE. iOS and
- * Android remain readable reserved values until native SDKs ship; the API
- * rejects them with the same set. Keep in parity with
- * apps/api/src/controllers/SourcesController.ts CREATABLE_PLATFORMS. */
 export const CREATABLE_PLATFORMS = [
 	"web",
-	"react-native",
+	"mobile",
 	"server",
 ] as const satisfies readonly WorkspacePlatform[];
 

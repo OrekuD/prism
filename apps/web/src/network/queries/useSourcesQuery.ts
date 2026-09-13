@@ -21,7 +21,7 @@ export type SourceResource = {
   id: string;
   projectId: string;
   name: string;
-  platform: "web" | "ios" | "android" | "react-native" | "server";
+  platform: "web" | "mobile" | "ios" | "android" | "react-native" | "server";
   allowedOrigins: string[];
   keys: SourceKeyResource[];
   telemetry: { events: number; lastReceivedAt: number | null };

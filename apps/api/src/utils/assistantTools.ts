@@ -120,7 +120,7 @@ export type AssistantToolDeps = {
   proposerId: string;
   listIssues: (filter: {
     status?: "unresolved" | "resolved" | "ignored";
-    platform?: "web" | "ios" | "android" | "react-native" | "server";
+    platform?: "web" | "mobile" | "ios" | "android" | "react-native" | "server";
     release?: string;
   }) => Promise<
     Array<{
@@ -175,7 +175,7 @@ const ToolFiltersSchema = z.strictObject({
   host: z.string().min(1).max(253).optional(),
   path: z.string().min(1).max(2048).optional(),
   platform: z
-    .enum(["web", "ios", "android", "react-native", "server"])
+    .enum(["web", "mobile", "ios", "android", "react-native", "server"])
     .optional(),
   environment: z.string().min(1).max(64).optional(),
   currency: z
@@ -932,7 +932,7 @@ const BREAKDOWN_DIMENSIONS = {
   os: { filter: "os", values: ["ios", "android"] },
   platform: {
     filter: "platform",
-    values: ["web", "ios", "android", "react-native", "server"],
+    values: ["web", "mobile", "ios", "android", "react-native", "server"],
   },
 } as const;
 
@@ -1163,14 +1163,14 @@ const rankEntities: ToolDefinitionEntry<{
 
 const reviewErrorHealth: ToolDefinitionEntry<{
   view: "aggregates" | "issues";
-  platform?: "web" | "ios" | "android" | "react-native" | "server";
+  platform?: "web" | "mobile" | "ios" | "android" | "react-native" | "server";
   release?: string;
 }> = {
   id: "review_error_health",
   inputSchema: z.strictObject({
     view: z.enum(["aggregates", "issues"]),
     platform: z
-      .enum(["web", "ios", "android", "react-native", "server"])
+      .enum(["web", "mobile", "ios", "android", "react-native", "server"])
       .optional(),
     release: z.string().min(1).max(128).optional(),
   }),

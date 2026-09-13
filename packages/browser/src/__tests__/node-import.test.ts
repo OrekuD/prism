@@ -16,7 +16,7 @@ describe("node without DOM", () => {
 	it("fails loudly outside a browser", async () => {
 		await expect(
 			createBrowserClient({
-				sourceKey: "pr_0123456789abcdef0123456789abcdef",
+				sourceKey: "psk_web_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 				endpoint: "https://example.com",
 				collection: { initialState: "granted" },
 			}),

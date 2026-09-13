@@ -96,7 +96,13 @@ export type EventResource = {
 // ---------------------------------------------------------------------------
 
 /** Trusted source platform — exact persisted value. UI groups into Web/Mobile/Server. */
-export type SourcePlatform = "web" | "ios" | "android" | "react-native" | "server";
+export type SourcePlatform =
+	| "web"
+	| "mobile"
+	| "ios"
+	| "android"
+	| "react-native"
+	| "server";
 
 export type SourceStatus = "active" | "archived";
 
@@ -319,6 +325,7 @@ export type ErrorIssueDelta = "new" | "regressing" | "declining" | null;
 
 export type ErrorIssuePlatform =
 	| "web"
+	| "mobile"
 	| "ios"
 	| "android"
 	| "react-native"

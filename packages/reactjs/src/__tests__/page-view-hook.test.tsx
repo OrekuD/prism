@@ -59,7 +59,7 @@ describe("usePrismPageView", () => {
 		// REAL browser client: the Strict-Mode dedupe boundary lives in the
 		// tracker (client-level), not in this hook — prove it end to end.
 		const client = await createBrowserClient({
-			sourceKey: "psk_react_test",
+			sourceKey: "psk_web_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 			endpoint: "https://ingest.example.com",
 			collection: { initialState: "granted", anonymousPersistence: "none" },
 			pageViews: { mode: "manual" },

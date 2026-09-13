@@ -5,6 +5,9 @@ import {
 	type IngestResponseBody,
 	type IngestResult,
 	type JsonObject,
+	type SourceFamily,
+	checkAdapterCompatibility,
+	familyForPlatform,
 	sanitizeProperties,
 } from "@prism-analytics/core";
 import {
@@ -32,6 +35,7 @@ import TursoDatabaseManager from "../managers/TursoDatabaseManager.js";
 import WebSocketManager from "../managers/WebSocketManager.js";
 import { IngestRepository } from "../repositories/IngestRepository.js";
 import { RateLimiter } from "../utils/RateLimiter.js";
+import { recordCompatRejection } from "../utils/compatMetrics.js";
 import {
 	personIdForUser,
 	resolveEventPerson,
@@ -148,6 +152,35 @@ export class IngestController {
 		// The project id is derived from the API key, never from the body.
 		const projectId = ctx.get("projectId") ?? "";
 
+		// Task 29: the batch must declare a supported adapter compatible with
+		// the authenticated source family. Rejected BEFORE quota, validation,
+		// or any write — no analytics/identity/session/projection rows, no
+		// Live broadcasts, and no quota consumed.
+		const sourceFamily =
+			((ctx.get("sourceFamily") as SourceFamily | undefined) || undefined) ??
+			familyForPlatform(ctx.get("platform")) ??
+			null;
+		if (!sourceFamily) {
+			return ctx.json(
+				ingestError(
+					"unsupported-source-platform",
+					"source platform is not configured",
+				),
+				409,
+			);
+		}
+		const adapterCompatibility = checkAdapterCompatibility(
+			parsed.batch.sdk?.name,
+			sourceFamily,
+		);
+		if (!adapterCompatibility.ok) {
+			recordCompatRejection(adapterCompatibility.code);
+			return ctx.json(
+				ingestError(adapterCompatibility.code, adapterCompatibility.message),
+				adapterCompatibility.code === "incompatible-source" ? 403 : 400,
+			);
+		}
+
 		// Event-weighted quota first — a big batch must not dodge the limit.
 		// Identity-only envelopes weight by their operation count (F2): a
 		// request with no events still carries a positive cost.
@@ -228,7 +261,7 @@ export class IngestController {
 		for (const entry of validEvents) {
 			if (entry.event.name !== PAGE_VIEW_EVENT_NAME) continue;
 			const index = entry.index;
-			if (platform !== "web") {
+			if (sourceFamily !== "web") {
 				results[index] = {
 					index,
 					id: entry.event.eventId,
@@ -277,7 +310,7 @@ export class IngestController {
 		// Task 13: the key-derived source identity - never client-supplied.
 		const trustedSourceId = ctx.get("sourceId") ?? "";
 		const MOBILE_ID_MAX = 64;
-		const mobilePlatform = platform === "react-native";
+		const mobilePlatform = sourceFamily === "mobile";
 		// R3-F3: the digest secret is REQUIRED - a missing server secret is a
 		// deployment fault, so reserved mobile ingestion fails closed rather
 		// than silently dropping installation attribution.
@@ -324,7 +357,7 @@ export class IngestController {
 				reservedRejectedEvents.add(entry.event);
 			};
 			if (!mobilePlatform) {
-				reject("mobile-record-requires-react-native-source");
+				reject("mobile-record-requires-mobile-source");
 				continue;
 			}
 			if (!entry.event.sessionId) {
@@ -425,7 +458,8 @@ export class IngestController {
 		// protected `$prism_*` name. Accepted events persist as normal
 		// canonical events (no second table); rejected ones are partitioned
 		// out of persistence exactly like page/mobile rejections.
-		const STANDARD_ALLOWED_PLATFORMS = new Set(["web", "react-native", "server"]);
+		// Task 29: family compatibility (including which families may send
+		// Standard Events) is decided ONCE at the batch boundary above.
 		for (const entry of validEvents) {
 			// Already rejected as page/mobile — never re-evaluate.
 			if (reservedRejectedEvents.has(entry.event)) continue;
@@ -446,16 +480,6 @@ export class IngestController {
 					id: entry.event.eventId,
 					status: "rejected",
 					reason: "unknown-reserved-event",
-				};
-				reservedRejectedEvents.add(entry.event);
-				continue;
-			}
-			if (!STANDARD_ALLOWED_PLATFORMS.has(platform)) {
-				results[index] = {
-					index,
-					id: entry.event.eventId,
-					status: "rejected",
-					reason: "invalid-standard-event",
 				};
 				reservedRejectedEvents.add(entry.event);
 				continue;

@@ -18,6 +18,7 @@ import { OkResponse } from "../network/responses/OkResponse";
 import { generateApiKey } from "../utils/generateApiKey";
 import { getProjectRole, isAdminRole } from "../utils/workspaceAuth";
 import { validateData } from "../utils/validateData";
+import { SOURCE_KEY_CLASS, familyForPlatform } from "@prism-analytics/core";
 
 /**
  * Task 13: source and source-key management behind project organization
@@ -37,20 +38,20 @@ import { validateData } from "../utils/validateData";
  *   404s.
  */
 
-const PLATFORMS = ["web", "ios", "android", "react-native", "server"] as const;
-const CREATABLE_PLATFORMS = ["web", "react-native", "server"] as const; // iOS/Android reserved, not advertised
-type Platform = (typeof PLATFORMS)[number];
-
-const PUBLISHABLE_PLATFORMS: ReadonlySet<string> = new Set([
-  "web",
-  "ios",
-  "android",
-  "react-native",
-]);
+/**
+ * Task 29: source platforms are the canonical families (web | mobile |
+ * server). Legacy platform values (ios/android/react-native) remain
+ * readable on existing rows and map to `mobile` through the shared policy;
+ * the platform is never editable after creation. Key visibility derives
+ * from the family: web/mobile get a PUBLISHABLE key; server gets a SECRET
+ * key.
+ */
+const CREATABLE_PLATFORMS = ["web", "mobile", "server"] as const;
+type Platform = (typeof CREATABLE_PLATFORMS)[number];
 
 const CreateSourceSchema = z.strictObject({
   name: z.string().min(1).max(80),
-  platform: z.enum(CREATABLE_PLATFORMS as unknown as typeof PLATFORMS),
+  platform: z.enum(CREATABLE_PLATFORMS),
   // JSON array of allowed origins; only meaningful (and only accepted) for
   // web sources.
   allowedOrigins: z.array(z.string().url()).max(20).optional(),
@@ -262,7 +263,7 @@ export class SourcesController {
     }
 
     // Allowed origins are a WEB-only policy.
-    if (data.platform !== "web" && (data.allowedOrigins?.length ?? 0) > 0) {
+    if (familyForPlatform(data.platform) !== "web" && (data.allowedOrigins?.length ?? 0) > 0) {
       return ctx.json(
         new ErrorResponse("allowed_origins_web_only").toJSON(),
         400,
@@ -279,12 +280,17 @@ export class SourcesController {
       return ctx.json(new ErrorResponse("db_error").toJSON(), 500);
     }
 
-    // The initial key: key type derived from the platform, returned raw
-    // EXACTLY once here.
-    const keyType = PUBLISHABLE_PLATFORMS.has(data.platform)
-      ? "publishable"
-      : "secret";
-    const key = generateApiKey(keyType);
+    // The initial key: family-prefixed, class derived from the family,
+    // returned raw EXACTLY once here.
+    const family = familyForPlatform(data.platform);
+    if (!family) {
+      return ctx.json(
+        new ErrorResponse("unsupported-source-platform").toJSON(),
+        400,
+      );
+    }
+    const key = generateApiKey(family);
+    const keyType = SOURCE_KEY_CLASS[family];
     await db`INSERT INTO project_api_keys (source_id, name, key, key_type)
              VALUES (${source[0]?.id}, ${"Initial key"}, ${key}, ${keyType})`;
 
@@ -334,7 +340,7 @@ export class SourcesController {
       return ctx.json(new ErrorResponse(data).toJSON(), 400);
     }
 
-    if (source.platform !== "web" && (data.allowedOrigins?.length ?? 0) > 0) {
+    if (familyForPlatform(source.platform) !== "web" && (data.allowedOrigins?.length ?? 0) > 0) {
       return ctx.json(
         new ErrorResponse("allowed_origins_web_only").toJSON(),
         400,
@@ -435,10 +441,15 @@ export class SourcesController {
       return ctx.json(new ErrorResponse(data).toJSON(), 400);
     }
 
-    const keyType = PUBLISHABLE_PLATFORMS.has(source.platform)
-      ? "publishable"
-      : "secret";
-    const key = generateApiKey(keyType);
+    const family = familyForPlatform(source.platform);
+    if (!family) {
+      return ctx.json(
+        new ErrorResponse("unsupported-source-platform").toJSON(),
+        400,
+      );
+    }
+    const key = generateApiKey(family);
+    const keyType = SOURCE_KEY_CLASS[family];
     const [inserted] = (await DatabaseManager.getInstance(ctx)`
       INSERT INTO project_api_keys (source_id, name, key, key_type)
       VALUES (${source.id}, ${data.name}, ${key}, ${keyType})

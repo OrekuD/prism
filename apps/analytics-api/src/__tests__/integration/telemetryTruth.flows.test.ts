@@ -37,7 +37,7 @@ const run = enabled ? describe : describe.skip;
 const PROJECT_ID = "itest-truth-project-0000-0000-0000-000000000001";
 const OTHER_PROJECT_ID = "itest-truth-other-0000-0000-0000-000000000002";
 const SOURCE_ID = "itest-truth-source-0000-0000-0000-000000000001";
-const SOURCE_KEY = "pr_0123456789abcdef0123456789abcdef";
+const SOURCE_KEY = `psk_web_${"A".repeat(43)}`;
 const ENDPOINT = "http://ingest.itest";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -164,6 +164,12 @@ async function makeClient(options: {
 		sourceKey: SOURCE_KEY,
 		endpoint: ENDPOINT,
 		runtime: makeRuntime(options),
+		// Task 29: Web adapter declaration + local family check.
+		integration: {
+			name: "@prism-analytics/browser",
+			version: "0.0.4",
+			family: "web",
+		},
 		collection: { initialState: "granted", anonymousPersistence: "session" },
 		queue: { flushIntervalMs: 60_000, requestTimeoutMs: 2_000 },
 	});
@@ -177,6 +183,12 @@ function makeReporter(
 		sourceKey: SOURCE_KEY,
 		endpoint: ENDPOINT,
 		runtime: makeRuntime({ transport }),
+		// Task 29: Web adapter declaration + local family check.
+		integration: {
+			name: "@prism-analytics/browser",
+			version: "0.0.4",
+			family: "web",
+		},
 		share: {
 			consent: () => client.collectionState,
 			anonymousId: () => client.identity.anonymousId,
