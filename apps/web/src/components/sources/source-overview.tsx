@@ -68,19 +68,19 @@ export function SourceOverview({
           {configured ? (
             <ConfiguredTag />
           ) : (
-            <span className="font-mono text-[14px] text-text">
+            <span className="text-[14px] leading-none text-text">
               Not configured
             </span>
           )}
         </MetricCard>
 
         <MetricCard label="Events" caption="All time">
-          <span className="font-mono text-[23px] tracking-[-0.06em] text-text">
+          <span className="text-[23px] leading-none tracking-[-0.06em] tabular-nums text-text">
             {formatCount(events)}
           </span>
         </MetricCard>
         <MetricCard label="Last event" caption="Reported by the source SDK">
-          <span className="font-mono text-[20px] tracking-[-0.06em] text-text">
+          <span className="text-[20px] leading-none tracking-[-0.06em] text-text">
             {timeAgo(lastAt)}
           </span>
         </MetricCard>
@@ -123,7 +123,7 @@ export function SourceOverview({
       {sources.length === 0 ? (
         <div className="mt-3 flex flex-col items-center justify-center gap-2.5 rounded-[16px] p-6 text-center">
           <KeyRound className="size-[22px] text-text-subtle" aria-hidden="true" />
-          <p className="font-mono text-[13px] text-text-muted">
+          <p className="text-[13px] text-text-muted">
             No {label} source in this project yet.
           </p>
           <span className="text-[12px] text-text-subtle">

@@ -110,7 +110,7 @@ export function DeleteWorkspace(props: {
         <DialogFooter className="shrink-0 bg-surface px-6 py-4">
           <Button
             variant="outline"
-            className="h-10 flex-1 sm:flex-none"
+            className="h-10 flex-1 rounded-full sm:flex-none"
             disabled={deleting}
             onClick={() => {
               setOpen(false);

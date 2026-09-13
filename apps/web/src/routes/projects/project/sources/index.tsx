@@ -119,7 +119,7 @@ export function ProjectSources() {
                 className={cn(
                   "flex flex-col items-start gap-2 rounded-[16px] border p-[14px_14px_12px] text-left transition-colors",
                   active
-                    ? "border-accent/45 bg-accent-soft"
+                    ? "border-border-strong bg-accent-soft"
                     : "border-border bg-surface hover:border-border-strong hover:bg-surface-hover"
                 )}
                 role="tab"
@@ -129,7 +129,7 @@ export function ProjectSources() {
                   className={cn(
                     "grid size-[30px] place-items-center rounded-[10px] border bg-surface-raised",
                     active
-                      ? "border-accent/40 text-accent"
+                      ? "border-border-strong text-text"
                       : "border-border text-text-muted"
                   )}
                 >
@@ -138,7 +138,7 @@ export function ProjectSources() {
                 <b className="text-[13px] font-[550] text-text">
                   {entry.label}
                 </b>
-                <span className="font-mono text-[11px] leading-[1.3] text-text-subtle">
+                <span className="text-[11px] leading-[1.3] text-text-subtle">
                   {statusText}
                 </span>
               </button>

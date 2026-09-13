@@ -8,6 +8,7 @@ import type {
 	MobileAnalyticsComparisonValue,
 	MobileAnalyticsResource,
 } from "@prism-analytics/types";
+import { useMemo } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 
 /**
@@ -104,8 +105,14 @@ export default function MobileAnalyticsPage() {
 	})();
 	const compare = searchParams.get("compare") === "1";
 	const osFilter = searchParams.get("os");
-	const to = Date.now();
-	const from = to - RANGE_MS[rangeKey];
+
+	// Stable window — Date.now() must not run on every render: the raw
+	// timestamps are part of the query key, so recomputing them per render
+	// creates a new pending query each time (infinite refetch loop).
+	const { from, to } = useMemo(() => {
+		const toMs = Date.now();
+		return { from: toMs - RANGE_MS[rangeKey], to: toMs };
+	}, [rangeKey]);
 
 	// Snapshot drill-down mode (R6-F1): the `ctx` token is authoritative
 	// server-side for range + sources. Any filter change clears it so a
