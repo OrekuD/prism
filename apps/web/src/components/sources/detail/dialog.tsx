@@ -63,7 +63,7 @@ export function SourceDetailDialog() {
     >
       <DialogContent
         showCloseButton={false}
-        className="min-w-[800px] max-w-[1000px] gap-0 p-0 sm:max-w-[1000px] max-h-[90vh] overflow-auto"
+        className="w-[calc(100%-2rem)] min-w-0 max-w-[1000px] gap-0 p-0 sm:max-w-[1000px] max-h-[90dvh] overflow-auto"
       >
         {/* Hidden title for a11y when loading/error – real title renders when data is ready */}
         {isLoading ? (

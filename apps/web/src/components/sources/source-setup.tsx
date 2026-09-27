@@ -3,11 +3,9 @@ import { INSTALL_CMDS } from "@/components/sources/constants";
 import {
   sdkSnippet,
   sourceSnippetPlatform,
-  sourceTypeLabel,
 } from "@/lib/sources";
 import { cn } from "@/lib/utils";
 import React from "react";
-import { useNavigate } from "react-router-dom";
 
 function StepRow({
   num,
@@ -37,15 +35,9 @@ function StepRow({
 
 export function SourceSetup({
   type,
-  wrkSlug,
-  slug,
 }: {
   type: string;
-  wrkSlug: string;
-  slug: string;
 }) {
-  const navigate = useNavigate();
-  const label = sourceTypeLabel(type);
   const repPlatform = sourceSnippetPlatform(type);
   const endpoint = `${window.location.origin}/api/v2/ingest`;
   const isServer = repPlatform === "server";
@@ -127,21 +119,6 @@ track("page_viewed", { url: window.location.href });`
         <StepRow num="01" label="Install" code={installCmd} />
         <StepRow num="02" label="Initialize" code={initCode} language={framework === "react" ? "tsx" : "typescript"} />
       </div>
-      <p className="mt-[18px] flex flex-wrap items-center gap-1.5 text-[12px] text-text-muted">
-        Use a key from the{" "}
-        <button
-          type="button"
-          onClick={() =>
-            navigate(
-              `/workspace/${wrkSlug}/projects/${slug}/sources/${type}/keys`
-            )
-          }
-          className="font-medium text-link transition-colors hover:underline"
-        >
-          {label} · Keys tab
-        </button>{" "}
-        when you initialize.
-      </p>
     </div>
   );
 }

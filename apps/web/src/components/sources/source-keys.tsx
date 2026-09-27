@@ -23,11 +23,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CreateSourceDialog } from "@/components/sources/create-source-dialog";
 import {
   maskKey,
-  PLATFORM_LABELS,
-  sourceSnippetPlatform,
   sourceTypeLabel,
   timeAgo,
 } from "@/lib/sources";
@@ -218,17 +215,9 @@ export function SourceKeys({
           </p>
           <span className="text-[12px] text-text-subtle">
             {canManage
-              ? `Create a ${label} source to generate its first key.`
+              ? `Use New source above to create a ${label} source and generate its first key.`
               : "An owner or admin can create a source."}
           </span>
-          {canManage ? (
-            <div className="mt-1">
-              <CreateSourceDialog
-                slug={slug}
-                initialPlatform={sourceSnippetPlatform(type)}
-              />
-            </div>
-          ) : null}
         </div>
       ) : (
         <div className="overflow-x-auto rounded-[16px] border border-border">
