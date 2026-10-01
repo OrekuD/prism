@@ -67,9 +67,8 @@ export function CreateAccount() {
   const [workspaceName, setWorkspaceName] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [isPending, setIsPending] = React.useState(false);
-  const [providerNotice, setProviderNotice] = React.useState<string | null>(
-    null,
-  );
+  const [providerPending, setProviderPending] = React.useState(false);
+  const [providerError, setProviderError] = React.useState<string | null>(null);
   const [config, setConfig] = React.useState<RuntimeConfig | null>(null);
 
   // Module-level loaders; run once on mount.
@@ -162,10 +161,22 @@ export function CreateAccount() {
   };
 
   const onSocial = async (provider: "github" | "google") => {
-    // Presentation-only until the provider integrations land (same as log-in).
-    setProviderNotice(
-      `${provider === "github" ? "GitHub" : "Google"} sign-up isn't available yet. Please use email.`,
-    );
+    if (provider !== "github" || providerPending) return;
+    setProviderPending(true);
+    setProviderError(null);
+    try {
+      const response = await authClient.signIn.social({
+        provider: "github",
+        callbackURL: `${window.location.origin}/overview`,
+        newUserCallbackURL: `${window.location.origin}/onboarding`,
+        errorCallbackURL: `${window.location.origin}/auth/create-account`,
+      });
+      if (!response.error) return; // Better Auth redirects to GitHub.
+    } catch {
+      // The same retry message covers provider and network failures.
+    }
+    setProviderError("Could not start GitHub sign-up. Try again.");
+    setProviderPending(false);
   };
 
   if (registrationClosed && config) {
@@ -302,18 +313,13 @@ export function CreateAccount() {
         {step === 1 ? (
           <div className="mt-8 grid gap-5">
             {oauthError ? <AuthAlert>{oauthError}</AuthAlert> : null}
+            {providerError ? <AuthAlert>{providerError}</AuthAlert> : null}
             <SocialAuthButtons
-              providers={{ github: true, google: true }}
+              providers={{ github: Boolean(config?.providers.github), google: false }}
               onSocial={onSocial}
+              pendingProvider={providerPending ? "github" : null}
             />
-            {providerNotice ? (
-              <output
-                className="block text-center text-[12px] leading-relaxed text-text-muted"
-              >
-                {providerNotice}
-              </output>
-            ) : null}
-            <OrEmailDivider />
+            {config?.providers.github ? <OrEmailDivider /> : null}
             <form onSubmit={onSubmitEmail} className="grid gap-4" noValidate>
               <div className="grid gap-2">
                 <Label htmlFor="email">Email</Label>

@@ -15,7 +15,7 @@ const implementationCode = `import { createBrowserClient } from "@prism-analytic
 
 const prism = await createBrowserClient({
   sourceKey: "psk_web_your_key",
-  endpoint: "https://prism-analytics-api-gsmo.onrender.com",
+  endpoint: "https://prism-analytics-api.orekud.workers.dev",
   collection: { initialState: "granted" },
 });
 
@@ -85,7 +85,7 @@ function CodeExample({ code, label, copy = false, bare = false }: { code: string
 
 function Hero() {
   return (
-    <section className="mx-auto max-w-[1320px] px-5 pb-24 pt-24 sm:px-8 sm:pt-28 lg:pb-36 lg:pt-36">
+    <section className="mx-auto max-w-[1320px] px-5 pb-24 pt-24 sm:px-8 lg:pb-32 lg:pt-32">
       <div className="max-w-[1100px]">
         <Reveal>
           <h1 className="max-w-[1100px] text-[clamp(2.65rem,4.7vw,4rem)] font-semibold leading-[1.07] tracking-[-0.05em] text-text">
@@ -93,28 +93,28 @@ function Hero() {
           </h1>
         </Reveal>
         <Reveal delay={60}>
-          <p className="mt-7 max-w-[58ch] text-[15px] leading-[1.7] text-text-muted sm:text-[16px]">
+          <p className="mt-7 max-w-[52ch] text-[15px] leading-[1.7] text-text-muted sm:text-[16px]">
             Product analytics, events, and errors in one place. Ask Prism about the signals behind them.
           </p>
         </Reveal>
         <Reveal delay={120}>
           <div className="mt-9 flex flex-wrap items-center gap-3">
             <Link to="/auth/create-account"
-              className="landing-cta inline-flex h-11 items-center justify-center whitespace-nowrap rounded-[2px] bg-text px-5 text-[13px] font-semibold text-canvas focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus">
+              className="landing-cta inline-flex h-11 items-center justify-center whitespace-nowrap rounded-full bg-text px-5 text-[13px] font-semibold text-canvas focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus">
               Start hosted <ArrowRight size={16} aria-hidden="true" className="ml-3" />
             </Link>
             <a href={selfHostHref} target="_blank" rel="noreferrer"
-              className="landing-cta inline-flex h-11 items-center justify-center whitespace-nowrap rounded-[2px] bg-surface-hover px-5 text-[13px] font-medium text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus">
+              className="landing-cta inline-flex h-11 items-center justify-center whitespace-nowrap rounded-full bg-surface-hover px-5 text-[13px] font-medium text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus">
               Self-host Prism <ExternalLink size={16} aria-hidden="true" className="ml-3 text-text-subtle" />
             </a>
           </div>
         </Reveal>
       </div>
       <Reveal delay={160} className="mt-20 sm:mt-24">
-        <figure className="overflow-hidden bg-surface-raised">
-          <img src="/web-analytics-current.webp"
+        <figure className="overflow-hidden border border-border bg-surface-raised">
+          <img src="/landing-hero.png"
             alt="Current Prism Web Analytics showing page views, visitors, sessions, a trend chart, and top pages"
-            width={1400} height={850} fetchPriority="high" className="-mt-8 block h-auto w-full brightness-[1.15]" />
+            width={1179} height={804} fetchPriority="high" className="block h-auto w-full" />
         </figure>
       </Reveal>
     </section>
@@ -123,93 +123,47 @@ function Hero() {
 
 function FeatureGrid() {
   return (
-    <section id="product" className="mx-auto max-w-[1320px] scroll-mt-24 px-5 pb-28 sm:px-8 lg:pb-40">
+    <section id="product" className="mx-auto max-w-[1320px] scroll-mt-24 px-5 py-24 sm:px-8 lg:py-32">
       <Reveal>
         <h2 className="max-w-[980px] text-[clamp(2.15rem,3.6vw,3.35rem)] font-medium leading-[1.14] tracking-[-0.045em] text-text">
           A connected view of your product.
         </h2>
-        <p className="mt-5 max-w-[56ch] text-[15px] leading-[1.7] text-text-muted">
-          Follow the path from a traffic change to the events and errors behind it.
-        </p>
       </Reveal>
       <div className="landing-bento mt-14 grid gap-3 lg:grid-cols-12">
         <Reveal className="landing-bento-tile landing-bento-feature min-w-0 bg-surface-raised p-7 sm:p-9 lg:col-span-7">
-          <p className="landing-feature-index">Web analytics</p>
-          <h3 className="mt-5 text-[23px] font-medium tracking-[-0.035em] text-text sm:text-[27px]">See where traffic goes.</h3>
+          <h3 className="text-[23px] font-medium tracking-[-0.035em] text-text sm:text-[27px]">See where traffic goes.</h3>
           <p className="mt-3 max-w-[48ch] text-[14px] leading-[1.65] text-text-muted">
-            Pages, referrers, locations, and visitor trends stay connected to the same project.
+            Pages, referrers, and locations tied to the same project.
           </p>
-          <ul className="landing-feature-list mt-auto grid grid-cols-2 gap-y-3 pt-12 text-[13px] text-text-muted sm:grid-cols-3">
+          <ul className="mt-auto grid grid-cols-2 gap-y-3 pt-12 text-[13px] text-text-muted sm:grid-cols-3">
             <li>Top pages</li><li>Referrers</li><li>Locations</li>
           </ul>
         </Reveal>
-        <Reveal delay={55} className="landing-bento-tile landing-bento-feature min-w-0 bg-canvas-subtle p-7 sm:p-9 lg:col-span-5">
-          <p className="landing-feature-index">Events</p>
-          <h3 className="mt-5 text-[23px] font-medium tracking-[-0.035em] text-text sm:text-[27px]">Trace each action.</h3>
+        <Reveal className="landing-bento-tile landing-bento-feature min-w-0 bg-canvas-subtle p-7 sm:p-9 lg:col-span-5">
+          <h3 className="text-[23px] font-medium tracking-[-0.035em] text-text sm:text-[27px]">Trace each action.</h3>
           <p className="mt-3 max-w-[39ch] text-[14px] leading-[1.65] text-text-muted">
             Read standard and custom events across web, mobile, and server sources.
           </p>
           <div className="mt-auto min-w-0 pt-10"><CodeExample code={eventCode} label="TypeScript event capture example" bare /></div>
         </Reveal>
-        <Reveal delay={45} className="landing-bento-tile landing-bento-feature min-w-0 bg-canvas-subtle p-7 sm:p-9 lg:col-span-5">
-          <p className="landing-feature-index">Error tracking</p>
-          <h3 className="mt-5 text-[23px] font-medium tracking-[-0.035em] text-text sm:text-[27px]">Investigate errors in context.</h3>
+        <Reveal className="landing-bento-tile landing-bento-feature min-w-0 bg-canvas-subtle p-7 sm:p-9 lg:col-span-5">
+          <h3 className="text-[23px] font-medium tracking-[-0.035em] text-text sm:text-[27px]">Investigate errors in context.</h3>
           <p className="mt-3 max-w-[40ch] text-[14px] leading-[1.65] text-text-muted">
             Move from an issue to its occurrences, affected people, and release context.
           </p>
           <p className="mt-auto pt-12 font-mono text-[12px] text-text-subtle">Issue <span aria-hidden="true">→</span> occurrence <span aria-hidden="true">→</span> affected person</p>
         </Reveal>
-        <Reveal delay={95} className="landing-bento-tile landing-bento-feature min-w-0 bg-surface-raised p-7 sm:p-9 lg:col-span-7">
-          <p className="landing-feature-index">Project intelligence</p>
-          <h3 className="mt-5 text-[23px] font-medium tracking-[-0.035em] text-text sm:text-[27px]">Ask Prism what changed.</h3>
+        <Reveal className="landing-bento-tile landing-bento-feature min-w-0 bg-surface-raised p-7 sm:p-9 lg:col-span-7">
+          <h3 className="text-[23px] font-medium tracking-[-0.035em] text-text sm:text-[27px]">Ask Prism what changed.</h3>
           <p className="mt-3 max-w-[48ch] text-[14px] leading-[1.65] text-text-muted">
-            Project conversations connect answers to measured facts and the underlying activity.
+            Answers linked to measured facts and the activity behind them.
           </p>
-          <blockquote className="landing-feature-question mt-auto max-w-[35ch] pt-12 text-[19px] leading-snug tracking-[-0.02em] text-text sm:text-[21px]">
-            “What changed after the latest release?”
-          </blockquote>
-        </Reveal>
-      </div>
-    </section>
-  );
-}
-
-function EventsSection() {
-  return (
-    <section className="mx-auto grid max-w-[1320px] gap-12 px-5 pb-28 sm:px-8 lg:grid-cols-[0.7fr_1.3fr] lg:items-center lg:gap-20 lg:pb-40">
-      <Reveal>
-        <h2 className="max-w-[13ch] text-[clamp(2.15rem,3.5vw,3.25rem)] font-medium leading-[1.12] tracking-[-0.045em] text-text">
-          Follow the event, not just the chart.
-        </h2>
-        <p className="mt-6 max-w-[40ch] text-[15px] leading-[1.7] text-text-muted">
-          Search the event stream, inspect its source, and move from a change in a metric to the activity behind it.
-        </p>
-      </Reveal>
-      <Reveal delay={90}>
-        <figure className="min-w-0 overflow-hidden bg-surface-raised">
-          <img src="/events-current.webp"
-            alt="Current Prism Events view with standard and custom mobile events, sources, sessions, and timestamps"
-            width={1400} height={850} loading="lazy" className="-mt-8 block h-auto w-full brightness-[1.15]" />
-        </figure>
-      </Reveal>
-    </section>
-  );
-}
-
-function IntelligenceSection() {
-  return (
-    <section className="relative isolate overflow-hidden bg-canvas-subtle py-28 lg:py-36">
-      <img src="/prism-signal.webp" alt="" aria-hidden="true" width={1672} height={941} loading="lazy"
-        className="pointer-events-none absolute inset-0 -z-10 h-full w-full object-cover opacity-15 dark:opacity-90"
-        style={{ maskImage: "linear-gradient(to right, transparent 12%, black 78%)" }} />
-      <div className="mx-auto max-w-[1320px] px-5 sm:px-8">
-        <Reveal>
-          <h2 className="max-w-[14ch] text-[clamp(2.15rem,3.65vw,3.35rem)] font-medium leading-[1.12] tracking-[-0.045em] text-text">
-            Ask about your data. See the evidence.
-          </h2>
-          <p className="mt-7 max-w-[50ch] text-[15px] leading-[1.75] text-text-muted">
-            Project conversations connect questions to measured facts, so an answer can lead back to the underlying activity.
-          </p>
+          <div className="mt-auto max-w-[38ch] pt-10 text-[14px] leading-relaxed">
+            <p className="text-text">“What changed after the latest release?”</p>
+            <p className="mt-2 text-text-muted">
+              Signups up 12% week-over-week, driven by <span className="text-text">onboarding_completed</span>.
+            </p>
+          </div>
         </Reveal>
       </div>
     </section>
@@ -249,15 +203,12 @@ function ImplementStep() {
 function SetupSection() {
   return (
     <section className="setup-scroll">
-      <div className="setup-inner mx-auto grid max-w-[1320px] gap-12 px-5 py-28 sm:px-8 lg:grid-cols-[0.8fr_1.2fr] lg:gap-24">
+      <div className="setup-inner mx-auto grid max-w-[1320px] gap-12 px-5 py-24 sm:px-8 lg:grid-cols-[0.8fr_1.2fr] lg:gap-24 lg:py-32">
         <div className="setup-intro">
           <Reveal>
             <h2 className="max-w-[12ch] text-[clamp(2.15rem,3.5vw,3.3rem)] font-medium leading-[1.12] tracking-[-0.045em] text-text">
               From install to first signal.
             </h2>
-            <p className="mt-6 max-w-[44ch] text-[15px] leading-[1.7] text-text-muted">
-              Add a source to your project, install its SDK, and verify the first event in Prism.
-            </p>
             <a href={quickstartHref} target="_blank" rel="noreferrer"
               className="mt-8 inline-flex items-center gap-1.5 text-[13px] font-medium text-text underline decoration-border-strong underline-offset-4 hover:decoration-text focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus">
               Read the quickstart <ExternalLink size={14} aria-hidden="true" />
@@ -279,17 +230,25 @@ function SetupSection() {
 
 function DeploymentSection() {
   return (
-    <section id="self-host" className="scroll-mt-20 border-t border-border py-28 lg:py-36">
+    <section id="self-host" className="scroll-mt-20 border-t border-border py-24 lg:py-32">
       <div className="mx-auto max-w-[1320px] px-5 sm:px-8">
         <Reveal><h2 className="max-w-[15ch] text-[clamp(2.15rem,3.5vw,3.35rem)] font-medium leading-[1.12] tracking-[-0.045em] text-text">Run Prism your way.</h2></Reveal>
         <div className="mt-16 grid gap-16 md:grid-cols-2 lg:gap-28">
-          <Reveal delay={40}>
+          <Reveal>
             <h3 className="text-[20px] font-medium tracking-[-0.025em] text-text">Hosted Prism</h3>
-            <p className="mt-4 max-w-[42ch] text-[15px] leading-[1.7] text-text-muted">We operate the API and storage so your team can connect a source and start reading product activity.</p>
+            <p className="mt-4 max-w-[42ch] text-[15px] leading-[1.7] text-text-muted">We operate the API and storage.</p>
+            <Link to="/auth/create-account"
+              className="mt-4 inline-block text-[13px] font-medium text-text underline decoration-border-strong underline-offset-4 hover:decoration-text focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus">
+              Start hosted
+            </Link>
           </Reveal>
-          <Reveal delay={100}>
+          <Reveal>
             <h3 className="text-[20px] font-medium tracking-[-0.025em] text-text">Self-host Prism</h3>
-            <p className="mt-4 max-w-[42ch] text-[15px] leading-[1.7] text-text-muted">Run Prism on your own infrastructure, with no Prism cloud account required.</p>
+            <p className="mt-4 max-w-[42ch] text-[15px] leading-[1.7] text-text-muted">Run Prism on your own infrastructure.</p>
+            <a href={selfHostHref} target="_blank" rel="noreferrer"
+              className="mt-4 inline-flex items-center gap-1.5 text-[13px] font-medium text-text underline decoration-border-strong underline-offset-4 hover:decoration-text focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus">
+              Read the self-hosting guide <ExternalLink size={14} aria-hidden="true" />
+            </a>
           </Reveal>
         </div>
       </div>
@@ -302,8 +261,6 @@ export function Index() {
     <div className="landing-page bg-canvas text-text">
       <Hero />
       <FeatureGrid />
-      <EventsSection />
-      <IntelligenceSection />
       <SetupSection />
       <DeploymentSection />
     </div>

@@ -19,7 +19,7 @@ describe("public landing", () => {
     ).toBeVisible();
     expect(
       screen.getByRole("img", { name: /current prism web analytics/i }),
-    ).toHaveAttribute("src", "/web-analytics-current.webp");
+    ).toHaveAttribute("src", "/landing-hero.png");
     expect(screen.queryByAltText(/onboarding dashboard/i)).not.toBeInTheDocument();
   });
 
@@ -30,10 +30,10 @@ describe("public landing", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole("link", { name: "Start hosted" })).toHaveAttribute(
-      "href",
-      "/auth/create-account",
-    );
+    const startHosted = screen.getAllByRole("link", { name: "Start hosted" });
+    expect(startHosted).toHaveLength(2);
+    expect(startHosted[0]).toHaveAttribute("href", "/auth/create-account");
+    expect(startHosted[1]).toHaveAttribute("href", "/auth/create-account");
     expect(screen.getByRole("link", { name: "Self-host Prism" })).toHaveAttribute(
       "href",
       expect.stringContaining("/docs/self-hosting/self-host-prism"),
@@ -56,8 +56,12 @@ describe("public landing", () => {
     expect(screen.getByRole("heading", { name: "Trace each action." })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Investigate errors in context." })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Ask Prism what changed." })).toBeVisible();
-    expect(screen.getByText("Web analytics")).toBeVisible();
-    expect(screen.getByText("Error tracking")).toBeVisible();
+    expect(screen.getByText("Top pages")).toBeVisible();
+    expect(
+      screen.getByText(/What changed after the latest release/),
+    ).toBeVisible();
+    expect(screen.queryByText("Web analytics")).not.toBeInTheDocument();
+    expect(screen.queryByText("Error tracking")).not.toBeInTheDocument();
     expect(screen.queryByText(/01 \/ Web analytics/)).not.toBeInTheDocument();
     expect(screen.queryByText("Measured facts ↗")).not.toBeInTheDocument();
     expect(document.querySelector(".landing-route-visual")).toBeNull();

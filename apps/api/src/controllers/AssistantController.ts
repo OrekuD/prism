@@ -627,9 +627,27 @@ async function executeStreamedRun(input: {
       return greeting;
     }
 
-  // Resolve window + capabilities sequentially (Workers-safe).
+  // Product-store history/knowledge reads are independent of capability
+  // discovery. Overlap them with the analytics reads while preserving the
+  // analytics client's sequential query policy.
+  const historyPromise = input.history !== undefined
+    ? Promise.resolve(input.history)
+    : getConversation(db, { projectId: scope.projectId, userId, conversationId }).then((detail) => detail?.messages ?? []);
+  const knowledgePromise = testAgentRunner
+    ? Promise.resolve({ project: [], workspace: [], member: [] })
+    : readConfirmedKnowledge(db, {
+        organizationId: scope.organizationId,
+        projectId: scope.projectId,
+        subjectUserId: userId,
+      });
+
+  // The libSQL reads inside capability discovery remain sequential.
   trace("run.window", "metric window resolved", { ...metricWindow });
-  const { capabilities, sourceIds } = await loadRunCapabilities(ctx, scope.projectId, metricWindow.asOf);
+  const [{ capabilities, sourceIds }, priorMessages, knowledge] = await Promise.all([
+    loadRunCapabilities(ctx, scope.projectId, metricWindow.asOf),
+    historyPromise,
+    knowledgePromise,
+  ]);
   trace("run.capabilities", "capabilities resolved", {
     web: capabilities.web,
     mobile: capabilities.mobile,
@@ -667,15 +685,6 @@ async function executeStreamedRun(input: {
   });
   void authorized;
 
-    // Product-store reads are independent; analytics reads above remain
-    // sequential. New conversations already have known-empty history.
-    const historyPromise = input.history !== undefined
-      ? Promise.resolve(input.history)
-      : getConversation(db, { projectId: scope.projectId, userId, conversationId }).then((detail) => detail?.messages ?? []);
-    const [priorMessages, knowledge] = await Promise.all([
-      historyPromise,
-      testAgentRunner ? Promise.resolve({ project: [], workspace: [], member: [] }) : deps.readKnowledge(),
-    ]);
     const eligibleHistory = priorMessages
       .filter((message) => message.id !== userMessageId && message.status === "complete")
       .map((message) => ({ seq: message.seq, role: message.role as "user" | "assistant",

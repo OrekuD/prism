@@ -17,6 +17,7 @@ const requestPasswordReset = vi.fn();
 const listOrganizations = vi.fn();
 const organizationUpdate = vi.fn();
 let sessionVisible = true;
+let githubConfigured = true;
 let workspaceResult: { data: unknown; error: unknown } = { data: null, error: null };
 
 vi.mock("@/lib/authClient", () => ({
@@ -68,7 +69,7 @@ vi.mock("@/lib/runtimeConfig", () => ({
     signupPolicy: "open",
     baseUrl: "http://localhost:8787",
     setupRequired: false,
-    providers: { github: false, google: false },
+    providers: { github: githubConfigured, google: false },
     mailConfigured: false,
   }),
 }));
@@ -85,6 +86,7 @@ function renderPage(page: React.ReactNode, initialPath = "/auth/log-in") {
 beforeEach(() => {
   vi.clearAllMocks();
   sessionVisible = true;
+  githubConfigured = true;
   workspaceResult = { data: null, error: null };
   organizationUpdate.mockResolvedValue({ data: null, error: null });
   listOrganizations.mockImplementation((hasSession: boolean) => ({
@@ -94,7 +96,8 @@ beforeEach(() => {
 });
 
 describe("auth failure states", () => {
-  it("keeps login focused and provider buttons presentation-only", async () => {
+  it("starts GitHub sign-in and keeps Google hidden", async () => {
+    signInSocial.mockResolvedValue({ data: { url: "https://github.com/login/oauth/authorize" }, error: null });
     renderPage(<PublicLayout><LogIn /></PublicLayout>);
     expect(screen.getByRole("heading", { name: "Sign in to Prism" })).toBeVisible();
     expect(screen.queryByText("Instance")).toBeNull();
@@ -103,12 +106,33 @@ describe("auth failure states", () => {
     expect(screen.getByRole("link", { name: "Forgot password?" })).toHaveAttribute("href", "/auth/forgot-password");
     const submit = screen.getByRole("button", { name: "Sign in" });
     expect(submit).toHaveClass("rounded-full", "bg-accent", "h-10");
-    await userEvent.click(screen.getByRole("button", { name: "Continue with Google" }));
-    expect(screen.getByRole("status")).toHaveTextContent("Google sign-in isn't available yet");
-    await userEvent.click(screen.getByRole("button", { name: "Continue with GitHub" }));
-    expect(screen.getByRole("status")).toHaveTextContent("GitHub sign-in isn't available yet");
-    expect(signInSocial).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: /Google/ })).not.toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: "Continue with GitHub" }));
+    expect(signInSocial).toHaveBeenCalledWith({
+      provider: "github", callbackURL: `${window.location.origin}/overview`,
+      newUserCallbackURL: `${window.location.origin}/onboarding`,
+      errorCallbackURL: `${window.location.origin}/auth/log-in`,
+    });
     expect(signInEmail).not.toHaveBeenCalled();
+  });
+
+  it("starts GitHub sign-up from the first account step", async () => {
+    signInSocial.mockResolvedValue({ data: { url: "https://github.com/login/oauth/authorize" }, error: null });
+    renderPage(<CreateAccount />, "/auth/create-account");
+    await userEvent.click(await screen.findByRole("button", { name: "Continue with GitHub" }));
+    expect(signInSocial).toHaveBeenCalledWith({
+      provider: "github", callbackURL: `${window.location.origin}/overview`,
+      newUserCallbackURL: `${window.location.origin}/onboarding`,
+      errorCallbackURL: `${window.location.origin}/auth/create-account`,
+    });
+    expect(screen.queryByRole("button", { name: /Google/ })).not.toBeInTheDocument();
+  });
+
+  it("shows only email when GitHub is not configured", async () => {
+    githubConfigured = false;
+    renderPage(<PublicLayout><LogIn /></PublicLayout>);
+    expect(screen.queryByRole("button", { name: /GitHub|Google/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("or continue with email")).not.toBeInTheDocument();
   });
 
   it("shows the OAuth denied state from ?error=access_denied", async () => {
@@ -246,7 +270,7 @@ describe("auth failure states", () => {
     first.unmount();
 
     // Social method: floating pill on the matching provider button.
-    localStorage.setItem("prism.lastAuth:oauth@example.com", "google");
+    localStorage.setItem("prism.lastAuth:oauth@example.com", "github");
     renderPage(<LogIn />, "/auth/log-in?email=oauth@example.com");
     expect(await screen.findByText("Last used")).toBeInTheDocument();
   });

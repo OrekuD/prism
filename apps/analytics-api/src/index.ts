@@ -1,9 +1,7 @@
+import "dotenv/config";
 import { serve } from "@hono/node-server";
-import dotenv from "dotenv";
 import { app, injectWebSocket } from "./app.js";
 import { logger } from "./utils/logger.js";
-
-dotenv.config();
 
 const port = process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 8080;
 

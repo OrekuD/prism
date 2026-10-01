@@ -43,7 +43,7 @@ export const AnalyticsMiddleware = createMiddleware(
 
       const apiKey = match[1] ?? "";
 
-      const rows = (await NeonDatabaseManager.instance`
+      const rows = (await NeonDatabaseManager.forRequest(ctx)`
         SELECT
           k.source_id,
           k.key_type,
@@ -116,7 +116,7 @@ export const AnalyticsMiddleware = createMiddleware(
       // last_used_at is best-effort bookkeeping; it must never fail a
       // request or reveal key existence.
       try {
-        await NeonDatabaseManager.instance`
+        await NeonDatabaseManager.forRequest(ctx)`
           UPDATE project_api_keys SET last_used_at = NOW() WHERE id = (
             SELECT id FROM project_api_keys WHERE key = ${apiKey} LIMIT 1
           )`;

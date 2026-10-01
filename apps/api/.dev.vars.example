@@ -9,9 +9,9 @@ DATABASE_URL=
 # private key. Generate one with: openssl rand -hex 32
 JWT_SECRET_KEY=
 
-# Deployment URL of this API. Used as the Better Auth base URL, cookie
-# scope, and issuer for service JWTs. Local development:
-BASE_URL=http://localhost:8787
+# Browser-visible API URL. The Portless dashboard proxies /api to the local
+# Worker; OAuth must return to this same origin so its state cookie survives.
+BASE_URL=https://prism.localhost
 
 # development | production (secure cookies only in production)
 ENVIRONMENT=development
@@ -22,7 +22,7 @@ ENVIRONMENT=development
 # Web dashboard origin, used for links in emails and CORS.
 # NOTE: wrangler does NOT hot-reload .dev.vars — restart the API
 # (yarn workspace prism-api dev) after changing this file.
-CLIENT_URL=http://localhost:3001
+CLIENT_URL=https://prism.localhost
 
 # Optional: extra comma-separated dashboard origins allowed by CORS
 # CORS_ALLOWED_ORIGINS=https://app.prism.example.com

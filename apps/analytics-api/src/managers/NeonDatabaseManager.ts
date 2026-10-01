@@ -1,7 +1,6 @@
+import { neon } from "@neondatabase/serverless";
 import postgres from "postgres";
-import dotenv from "dotenv";
-
-dotenv.config();
+import type { Context } from "hono";
 
 class DatabaseManager {
   private _instance: postgres.Sql<Record<string, never>> | null = null;
@@ -42,6 +41,11 @@ class DatabaseManager {
     }
 
     return this._instance;
+  }
+
+  public forRequest(ctx: Context) {
+    const workerUrl = ctx.env?.LIVE_PROJECT ? ctx.env?.DATABASE_URL : undefined;
+    return workerUrl ? neon(workerUrl) : this.instance;
   }
 }
 

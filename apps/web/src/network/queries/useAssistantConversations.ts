@@ -22,7 +22,7 @@ import {
   type AssistantStreamPart,
   type MetricFact,
 } from "@prism-analytics/types";
-import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { axiosInstance } from "@/utils/axiosInstance";
 
 export type ConversationListItem = {
@@ -65,17 +65,22 @@ export function conversationDetailKey(slug: string, conversationSlug: string) {
 }
 
 export function useAssistantConversationsQuery(slug: string | undefined) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: conversationListKey(slug ?? ""),
-    queryFn: async (): Promise<{
+    queryFn: async ({ pageParam, signal }): Promise<{
       items: ConversationListItem[];
       nextCursor: string | null;
     }> => {
+      const query = new URLSearchParams({ limit: "50" });
+      if (pageParam) query.set("cursor", pageParam);
       const response = await axiosInstance.get(
-        `/projects/${slug}/assistant/conversations`,
+        `/projects/${slug}/assistant/conversations?${query}`,
+        { signal },
       );
       return response.data;
     },
+    initialPageParam: "",
+    getNextPageParam: (page) => page.nextCursor ?? undefined,
     enabled: Boolean(slug),
     staleTime: 10_000,
     refetchOnWindowFocus: false,

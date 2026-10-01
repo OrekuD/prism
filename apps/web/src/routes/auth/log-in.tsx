@@ -15,6 +15,7 @@ import { PasswordInput } from "@/components/auth/password-input";
 import { SocialAuthButtons } from "@/components/auth/social-auth-buttons";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { loadRuntimeConfig } from "@/lib/runtimeConfig";
 
 export function LogIn() {
   const navigate = useNavigate();
@@ -28,13 +29,16 @@ export function LogIn() {
   const lastUsed = email.trim() ? getLastAuthMethod(email.trim()) : null;
   const [password, setPassword] = React.useState("");
   const [isPending, setIsPending] = React.useState(false);
+  const [githubEnabled, setGithubEnabled] = React.useState(false);
+  const [providerPending, setProviderPending] = React.useState(false);
+
+  React.useEffect(() => {
+    void loadRuntimeConfig().then((config) => setGithubEnabled(config.providers.github));
+  }, []);
 
   React.useEffect(() => {
     if (oauthError) toast.error(oauthError);
   }, [oauthError]);
-  const [providerNotice, setProviderNotice] = React.useState<string | null>(
-    null
-  );
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -70,11 +74,22 @@ export function LogIn() {
     }
   };
 
-  const onSocial = (provider: "github" | "google") => {
-    // Presentation only until provider sign-in is enabled in a separate task.
-    setProviderNotice(
-      `${provider === "github" ? "GitHub" : "Google"} sign-in isn't available yet. Please use email and password.`
-    );
+  const onSocial = async (provider: "github" | "google") => {
+    if (provider !== "github" || providerPending) return;
+    setProviderPending(true);
+    try {
+      const response = await authClient.signIn.social({
+        provider: "github",
+        callbackURL: `${window.location.origin}/overview`,
+        newUserCallbackURL: `${window.location.origin}/onboarding`,
+        errorCallbackURL: `${window.location.origin}/auth/log-in`,
+      });
+      if (!response.error) return; // Better Auth redirects to GitHub.
+      toast.error("Could not start GitHub sign-in. Try again.");
+    } catch {
+      toast.error("Could not start GitHub sign-in. Try again.");
+    }
+    setProviderPending(false);
   };
 
   return (
@@ -89,24 +104,22 @@ export function LogIn() {
       </div>
       <div className="mt-8 grid gap-5">
         <SocialAuthButtons
-          providers={{ github: true, google: true }}
+          providers={{ github: githubEnabled, google: false }}
           onSocial={onSocial}
+          pendingProvider={providerPending ? "github" : null}
           lastUsed={
-            lastUsed === "github" || lastUsed === "google" ? lastUsed : null
+            lastUsed === "github" ? lastUsed : null
           }
         />
-        {providerNotice ? (
-          <output className="block text-center text-[12px] leading-relaxed text-text-muted">
-            {providerNotice}
-          </output>
+        {githubEnabled ? (
+          <div className="flex items-center gap-4 py-1">
+            <span aria-hidden="true" className="h-px flex-1 bg-border" />
+            <span className="text-[12px] text-text-muted">
+              or continue with email
+            </span>
+            <span aria-hidden="true" className="h-px flex-1 bg-border" />
+          </div>
         ) : null}
-        <div className="flex items-center gap-4 py-1">
-          <span aria-hidden="true" className="h-px flex-1 bg-border" />
-          <span className="text-[12px] text-text-muted">
-            or continue with email
-          </span>
-          <span aria-hidden="true" className="h-px flex-1 bg-border" />
-        </div>
         <form onSubmit={onSubmit} className="grid gap-4">
           <div className="grid gap-2">
             <div className="flex items-center justify-between gap-2">

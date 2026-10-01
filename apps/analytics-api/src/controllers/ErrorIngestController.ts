@@ -11,8 +11,8 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { config } from "dotenv";
 import type { Context } from "hono";
+import TursoDatabaseManager from "../managers/TursoDatabaseManager.js";
 import { ErrorResponse } from "../network/responses/ErrorResponse.js";
 import {
 	ErrorIngestRepository,
@@ -39,8 +39,6 @@ import {
 import { sanitizeErrorPayload } from "../utils/errorSanitize.js";
 import { utf8Length } from "../utils/ingestValidation.js";
 import { readBoundedBody } from "../utils/readBoundedBody.js";
-
-config();
 
 /**
  * Per-project error quota (events-weighted sibling of the analytics
@@ -259,7 +257,9 @@ export class ErrorIngestController {
 		// Storage/abuse caps BEFORE persistence: new issues beyond the
 		// per-project cap and occurrences beyond the per-source cap are
 		// rejected (order preserved; outcomes stay promise-safe).
-		const repository = new ErrorIngestRepository();
+		const repository = new ErrorIngestRepository(
+			TursoDatabaseManager.getInstance(ctx),
+		);
 		let toPersist = items;
 		if (items.length > 0) {
 			const uniqueIssueIds = [...new Set(items.map((item) => item.issueId))];

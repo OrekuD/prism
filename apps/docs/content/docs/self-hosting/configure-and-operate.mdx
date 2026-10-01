@@ -28,7 +28,7 @@ missing or weak values and logs the exact variable at fault.
 **Core**
 
 - `DATABASE_URL` — PostgreSQL connection for the product API.
-- `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` — the analytics (libSQL) store. Hosted default is the Render service URL (`https://prism-analytics-api-gsmo.onrender.com`); self-host Compose uses `http://sqld:5001`.
+- `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` — the analytics (libSQL) store. Self-host Compose uses `http://sqld:5001`; hosted ingestion runs at `https://prism-analytics-api.orekud.workers.dev`.
 - `PUBLIC_URL`, `CLIENT_URL` — the instance's public origin; drives links, cookies, and trusted CORS origins. `AUTH_BASE_URL` must point at the product API (`https://prism-api.orekud.workers.dev` for hosted) so the analytics API can verify service JWTs.
 - `SETUP_TOKEN` — first-owner claim token; remove it after setup.
 - `INSTANCE_NAME` — shown in emails and UI.

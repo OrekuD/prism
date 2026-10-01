@@ -22,7 +22,6 @@ import {
 	validateStandardEventProperties,
 } from "@prism-analytics/core";
 import type { SessionResource } from "@prism-analytics/types";
-import { config } from "dotenv";
 import type { Context } from "hono";
 import {
 	UA_PARSER_VERSION,
@@ -32,7 +31,6 @@ import {
 	resolveClientIp,
 } from "../enrichment/webPageView.js";
 import TursoDatabaseManager from "../managers/TursoDatabaseManager.js";
-import WebSocketManager from "../managers/WebSocketManager.js";
 import { IngestRepository } from "../repositories/IngestRepository.js";
 import { RateLimiter } from "../utils/RateLimiter.js";
 import { recordCompatRejection } from "../utils/compatMetrics.js";
@@ -54,8 +52,6 @@ import {
 } from "../utils/ingestValidation.js";
 import { logger } from "../utils/logger.js";
 import { readBoundedBody } from "../utils/readBoundedBody.js";
-
-config();
 
 /**
  * Event-weighted abuse protection (task-9 §8): the per-IP request limiter
@@ -81,11 +77,10 @@ export class IngestController {
 	 * is atomic per request (one Turso write batch — review F6).
 	 */
 	/**
-	 * Project-scoped realtime broadcast for an accepted session_started
-	 * event. A failing socket never disrupts delivery to healthy clients
-	 * (the WebSocketManager's safeSend handles that).
+	 * Project-scoped realtime broadcast after an accepted session_started event.
 	 */
 	private static emitSessionStarted(
+		ctx: Context,
 		projectId: string,
 		event: ValidatedEvent,
 		receivedAt: number,
@@ -96,7 +91,10 @@ export class IngestController {
 				session: buildSessionResource(event, projectId, receivedAt),
 			},
 		});
-		WebSocketManager.emitToClient(projectId, message);
+		const broadcast = ctx.get("broadcastSessionStarted") as
+			| ((projectId: string, message: string) => void)
+			| undefined;
+		broadcast?.(projectId, message);
 	}
 
 	public static async ingest(ctx: Context) {
@@ -314,7 +312,9 @@ export class IngestController {
 		// R3-F3: the digest secret is REQUIRED - a missing server secret is a
 		// deployment fault, so reserved mobile ingestion fails closed rather
 		// than silently dropping installation attribution.
-		const installationSalt = process.env.ANALYTICS_INSTALLATION_SALT ?? "";
+		const installationSalt =
+			(ctx.env as Record<string, string | undefined> | undefined)?.ANALYTICS_INSTALLATION_SALT ??
+			process.env.ANALYTICS_INSTALLATION_SALT ?? "";
 		interface MobileScreenRow {
 			eventId: string;
 			sourceId: string;
@@ -717,15 +717,15 @@ export class IngestController {
 			const opUserIds = [...batchUserIds];
 			const opAnonIds = [...batchAnonIds];
 			const [links, anonLinks, deleted] = await Promise.all([
-				TursoDatabaseManager.instance.execute({
+				TursoDatabaseManager.getInstance(ctx).execute({
 					sql: `SELECT user_id, person_id FROM external_identities WHERE project_id = ? AND user_id IN (${opUserIds.map(() => "?").join(",")})`,
 					args: [projectId, ...opUserIds],
 				}),
-				TursoDatabaseManager.instance.execute({
+				TursoDatabaseManager.getInstance(ctx).execute({
 					sql: `SELECT anonymous_id, person_id FROM anonymous_identities WHERE project_id = ? AND anonymous_id IN (${opAnonIds.map(() => "?").join(",")})`,
 					args: [projectId, ...opAnonIds],
 				}),
-				TursoDatabaseManager.instance.execute({
+				TursoDatabaseManager.getInstance(ctx).execute({
 					sql: `SELECT person_id FROM deleted_people WHERE project_id = ? AND person_id IN (${opUserIds.map(() => "?").join(",")})`,
 					args: [
 						projectId,
@@ -795,7 +795,9 @@ export class IngestController {
 				const persistedPageProjections = remap(pageProjections);
 				const persistedMobileScreens = remap(mobileScreenProjections);
 				const persistedMobileLifecycles = remap(mobileLifecycleProjections);
-				const persisted = await new IngestRepository().persistBatch(
+				const persisted = await new IngestRepository(
+					TursoDatabaseManager.getInstance(ctx),
+				).persistBatch(
 					projectId,
 					persistableEntries.map((entry) => entry.event),
 					now,
@@ -868,7 +870,7 @@ export class IngestController {
 					entry.event.name === "session_started" &&
 					entry.event.sessionId
 				) {
-					IngestController.emitSessionStarted(projectId, entry.event, now);
+					IngestController.emitSessionStarted(ctx, projectId, entry.event, now);
 				}
 			}
 		}

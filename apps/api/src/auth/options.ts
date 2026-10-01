@@ -12,7 +12,6 @@
 import type { BetterAuthOptions, GenericEndpointContext } from "better-auth";
 import { jwt, organization } from "better-auth/plugins";
 import { logger } from "../utils/logger";
-import { github, google } from "better-auth/social-providers";
 import { provisionUserResources } from "./provision.js";
 import { scheduleEmail } from "./mail.js";
 import { resolveEnvironment, resolveSignupPolicy } from "../config";
@@ -64,6 +63,7 @@ export function buildAuthOptions(
   const googleEnabled = Boolean(
     env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET,
   );
+  const signupClosed = resolveSignupPolicy(env) !== "open";
 
   return {
     appName: "Prism",
@@ -126,7 +126,7 @@ export function buildAuthOptions(
       // Registration policy: open | invite-only | disabled (SIGNUP_POLICY,
       // with legacy ALLOW_PUBLIC_SIGNUP mapping). invite-only and disabled
       // close public signup; invites and the first-owner bootstrap remain.
-      disableSignUp: resolveSignupPolicy(env) !== "open",
+      disableSignUp: signupClosed,
       minPasswordLength: 8,
       sendResetPassword: async ({ user, url }) => {
         scheduleEmail(env, {
@@ -154,18 +154,20 @@ export function buildAuthOptions(
     socialProviders: {
       ...(githubEnabled
         ? {
-            github: github({
+            github: {
               clientId: env.GITHUB_CLIENT_ID ?? "",
               clientSecret: env.GITHUB_CLIENT_SECRET ?? "",
-            }),
+              disableSignUp: signupClosed,
+            },
           }
         : {}),
       ...(googleEnabled
         ? {
-            google: google({
+            google: {
               clientId: env.GOOGLE_CLIENT_ID ?? "",
               clientSecret: env.GOOGLE_CLIENT_SECRET ?? "",
-            }),
+              disableSignUp: signupClosed,
+            },
           }
         : {}),
     } as BetterAuthOptions["socialProviders"],

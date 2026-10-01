@@ -11,6 +11,7 @@ vi.mock("../managers/NeonDatabaseManager.js", () => ({
 }));
 vi.mock("../managers/TursoDatabaseManager.js", () => ({
 	default: {
+		getInstance() { return this.instance; },
 		instance: {
 			execute: vi.fn(async (statement: { sql?: string }) => {
 				const sql = String(statement?.sql ?? "");

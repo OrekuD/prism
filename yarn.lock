@@ -3508,6 +3508,51 @@
   resolved "https://registry.yarnpkg.com/@turbo/windows-arm64/-/windows-arm64-2.10.9.tgz#e19bfebe62ec106ea919a9068c4813d8efbbad0d"
   integrity sha512-W2Ub165Qv0iMFljbYKxxbZN+2dVSngnzEjQNEFXtnz5oJVx9XSypmNmUvMtuYMeZ3kdVC1zI7yd/rtuX+SDnbg==
 
+"@twinkleplop/core@0.2.2":
+  version "0.2.2"
+  resolved "https://registry.yarnpkg.com/@twinkleplop/core/-/core-0.2.2.tgz#3b69cd63966c6deb6ca9eda985d70414c2a15a7f"
+  integrity sha512-xJpsL0QdgZ0gKDkTW+S1FAzVzyTns+jKPXER52vc/69qCe6gXCpsoclhTjERnFUbkZgTBEA/iVJxaufhY8Oqrw==
+
+"@twinkleplop/css@0.1.5":
+  version "0.1.5"
+  resolved "https://registry.yarnpkg.com/@twinkleplop/css/-/css-0.1.5.tgz#9e25f87bb3ce014d7c4aa3d9177db4c25f1beeb1"
+  integrity sha512-dL3uPkpsqujMYepE2uzv7jsluvhYiJrV8fhYZsEl0fMm8F0ZimO2uY4r1FsppfmzrUUsYIztQVRfe+qBh9gFPg==
+  dependencies:
+    "@twinkleplop/core" "0.2.2"
+
+"@twinkleplop/html@0.1.5":
+  version "0.1.5"
+  resolved "https://registry.yarnpkg.com/@twinkleplop/html/-/html-0.1.5.tgz#532c6ddfa18f3a317e6250ac3ff9cecb048ee096"
+  integrity sha512-Yqg0G4N5cLwD+FS7DJlB1g+z5qGdb+ww3sxxo5ihzeg0LV065guDckans8YPXGxUT3juj/lEhv5m5ts1ljfNHw==
+  dependencies:
+    "@twinkleplop/core" "0.2.2"
+    "@twinkleplop/css" "0.1.5"
+    "@twinkleplop/javascript" "0.1.5"
+
+"@twinkleplop/javascript@0.1.5":
+  version "0.1.5"
+  resolved "https://registry.yarnpkg.com/@twinkleplop/javascript/-/javascript-0.1.5.tgz#f42f50b084610e660153825988b5e18917cfac5a"
+  integrity sha512-0gynjT75JRAuR9EkD/ljRCSJ+qdWjTNXLYUptmwncsfiyHEulfHbSr0k7uo5GmxkvyOx08bqTxZdFlrBzmJN0w==
+  dependencies:
+    "@twinkleplop/core" "0.2.2"
+    "@twinkleplop/css" "0.1.5"
+    "@twinkleplop/html" "0.1.5"
+
+"@twinkleplop/theme-github@0.2.2":
+  version "0.2.2"
+  resolved "https://registry.yarnpkg.com/@twinkleplop/theme-github/-/theme-github-0.2.2.tgz#b05bd37f42b0ba6e9f553fc80cab875db66e15d9"
+  integrity sha512-dQdR+BdV2WjjoGjZNDg0pq5+DKhuEp0QbOKgvK/q25Qw0/14XIOHi7sHBiIGwqvYiWWgGTODc2lS4pIoP7Q7NQ==
+  dependencies:
+    "@twinkleplop/core" "0.2.2"
+
+"@twinkleplop/typescript@0.1.5":
+  version "0.1.5"
+  resolved "https://registry.yarnpkg.com/@twinkleplop/typescript/-/typescript-0.1.5.tgz#ad585b7edf712e09529fcb93b03f039a2756daa2"
+  integrity sha512-OFrw5unMFNQOOy/TvXU7X2kMmzWn/Nn3F9HdB+kkfFyYgmMaYoyXbRIBZQjVebQqp0hy0Jzfv4DtJi3FrBefDg==
+  dependencies:
+    "@twinkleplop/core" "0.2.2"
+    "@twinkleplop/javascript" "0.1.5"
+
 "@tybys/wasm-util@^0.10.2", "@tybys/wasm-util@^0.10.3":
   version "0.10.3"
   resolved "https://registry.yarnpkg.com/@tybys/wasm-util/-/wasm-util-0.10.3.tgz#015cba9e9dd47ce14d03d2a8c5d547bfb169665d"

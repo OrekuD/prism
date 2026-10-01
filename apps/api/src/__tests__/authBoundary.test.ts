@@ -172,6 +172,40 @@ describe("Better Auth boundary (email/password + sessions)", () => {
     expect(githubAttempt.status).toBe(404);
   });
 
+  it("keeps GitHub sign-in available but blocks new OAuth accounts when signup is closed", () => {
+    for (const policy of ["open", "invite-only", "disabled"] as const) {
+      const options = buildAuthOptions({
+        JWT_SECRET_KEY: "test-secret-key-that-is-long-enough-for-hs256",
+        CLIENT_URL: "http://localhost:5173",
+        ENVIRONMENT: "development",
+        SIGNUP_POLICY: policy,
+        GITHUB_CLIENT_ID: "github-id",
+        GITHUB_CLIENT_SECRET: "github-secret",
+      }, {} as never);
+      const provider = options.socialProviders?.github as
+        | { clientId?: string; disableSignUp?: boolean }
+        | undefined;
+      expect(provider).toBeDefined();
+      expect(provider?.clientId).toBe("github-id");
+      expect(provider?.disableSignUp).toBe(policy !== "open");
+    }
+  });
+
+  it("puts the configured GitHub client ID in the authorization URL", async () => {
+    const auth = createTestAuth({
+      GITHUB_CLIENT_ID: "github-test-client-id",
+      GITHUB_CLIENT_SECRET: "github-test-client-secret",
+    });
+    const response = await auth.api.signInSocial({
+      body: { provider: "github", callbackURL: "http://localhost:5173/overview" },
+    });
+    if (!response.url) throw new Error("GitHub authorization URL was not returned");
+    const url = new URL(response.url);
+    expect(url.host).toBe("github.com");
+    expect(url.searchParams.get("client_id")).toBe("github-test-client-id");
+    expect(url.searchParams.get("redirect_uri")).toBe("http://localhost:8787/api/auth/callback/github");
+  });
+
   it("issues a short-lived service JWT and exposes a JWKS for it", async () => {
     const auth = createTestAuth();
     const cookies = await signUpAndGetCookies(auth, "jwt@example.com");

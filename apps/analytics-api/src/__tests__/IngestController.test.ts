@@ -8,7 +8,10 @@ vi.mock("../managers/NeonDatabaseManager.js", () => ({
   default: { instance: vi.fn() },
 }));
 vi.mock("../managers/TursoDatabaseManager.js", () => ({
-  default: { instance: { execute: vi.fn(), batch: vi.fn(), transaction: vi.fn() } },
+  default: {
+    instance: { execute: vi.fn(), batch: vi.fn(), transaction: vi.fn() },
+    getInstance() { return this.instance; },
+  },
 }));
 vi.mock("../managers/WebSocketManager.js", () => ({
   default: { emitToClient: vi.fn(() => true) },
@@ -94,7 +97,7 @@ interface TestCtx {
   };
   header: ReturnType<typeof vi.fn>;
   json: ReturnType<typeof vi.fn>;
-  get: (key: string) => string | undefined;
+  get: (key: string) => unknown;
 }
 
 function streamOf(body: string): ReadableStream<Uint8Array> {
@@ -131,6 +134,8 @@ function makeContext(body: string, overrides: Record<string, unknown> = {}): Tes
           return (overrides.platform as string) ?? "web";
         case "keyType":
           return (overrides.keyType as string) ?? "publishable";
+        case "broadcastSessionStarted":
+          return WebSocketManager.emitToClient;
         default:
           return undefined;
       }

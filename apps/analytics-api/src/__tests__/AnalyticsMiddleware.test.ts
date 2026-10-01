@@ -4,7 +4,7 @@ import type { Context } from "hono";
 import { AnalyticsMiddleware } from "../middlewares/AnalyticsMiddleware.js";
 
 vi.mock("../managers/NeonDatabaseManager.js", () => ({
-  default: { instance: vi.fn() },
+  default: { instance: vi.fn(), forRequest() { return this.instance; } },
 }));
 
 import NeonDatabaseManager from "../managers/NeonDatabaseManager.js";

@@ -123,15 +123,13 @@ export function MetricCard({
 export function MetricGrid({
   facts,
   sparkFor,
-  rangeLabel,
 }: {
   facts: readonly MetricFact[];
   sparkFor: (fact: MetricFact) => { points: readonly number[]; tone: "text" | "danger" | "success" } | undefined;
-  rangeLabel: string;
 }) {
   return (
     <>
-      <SectionLabel right={rangeLabel}>Project health</SectionLabel>
+      <SectionLabel>Project health</SectionLabel>
       <div className="grid grid-cols-3 gap-2.5 max-[760px]:grid-cols-2 max-[520px]:grid-cols-1">
         {facts.map((fact) => (
           <MetricCard key={fact.id} fact={fact} spark={sparkFor(fact)} />

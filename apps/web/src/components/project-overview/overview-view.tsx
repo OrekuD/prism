@@ -13,12 +13,6 @@ import { InsightsGrid } from "@/components/project-overview/insights";
 import { MetricGrid } from "@/components/project-overview/metrics";
 import type { MetricFact } from "@prism-analytics/types";
 
-function rangeLabel(from: number, to: number): string {
-  const start = new Date(from).toISOString().slice(0, 10);
-  const end = new Date(to).toISOString().slice(0, 10);
-  return `${start} – ${end}`;
-}
-
 export function OverviewView({
   resource,
   isLoading,
@@ -88,32 +82,20 @@ export function OverviewView({
 
   return (
     <div className="flex flex-1 flex-col pb-2">
-      <div className="flex flex-1 flex-col pb-2">
-        <InsightsGrid
-          insights={resource.insights}
-          warnings={resource.dataQuality.warnings}
-          definitionMissing={resource.dataQuality.definitionState === "missing"}
-          definitionLabel={resource.dataQuality.definitionLabel}
-          rangeLabel={rangeLabel(
-            resource.queryContext.from,
-            resource.queryContext.to,
-          )}
-          onInvestigate={onInvestigate}
-        />
-        <MetricGrid
-          facts={resource.pulse}
-          sparkFor={sparkFor}
-          rangeLabel={rangeLabel(
-            resource.queryContext.from,
-            resource.queryContext.to,
-          )}
-        />
-        <ActivitySection
-          activity={resource.activity}
-          secondary={resource.secondary}
-          supportingFact={supportingAccepted}
-        />
-      </div>
+      <InsightsGrid
+        insights={resource.insights}
+        warnings={resource.dataQuality.warnings}
+        hasAcceptedData={resource.dataQuality.hasAcceptedData}
+        definitionMissing={resource.dataQuality.definitionState === "missing"}
+        definitionLabel={resource.dataQuality.definitionLabel}
+        onInvestigate={onInvestigate}
+      />
+      <MetricGrid facts={resource.pulse} sparkFor={sparkFor} />
+      <ActivitySection
+        activity={resource.activity}
+        secondary={resource.secondary}
+        supportingFact={supportingAccepted}
+      />
     </div>
   );
 }

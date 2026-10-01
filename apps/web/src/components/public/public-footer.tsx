@@ -35,7 +35,7 @@ export function PublicFooter() {
             <PrismLogo size={18} />
           </p>
           <p className="mt-3 max-w-[28ch] text-[13px] leading-relaxed text-text-muted">
-            Product analytics, events, and errors on infrastructure you choose.
+            Open-source analytics you can run anywhere.
           </p>
         </div>
         {columns.map((column) => (
