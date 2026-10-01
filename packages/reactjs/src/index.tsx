@@ -100,7 +100,7 @@ export const PrismErrorBoundaryContext =
 	createContext<PrismErrorReporter | null>(null);
 
 /** Keep in sync with packages/reactjs/package.json version. */
-const REACT_ADAPTER_VERSION = "0.0.4";
+const REACT_ADAPTER_VERSION = "0.0.5";
 
 export interface PrismProviderProps {
 	/** An already-created, ready client (createPrismClient/createBrowserClient). */

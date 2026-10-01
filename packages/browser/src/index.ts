@@ -72,7 +72,7 @@ export interface BrowserClientOptions {
 }
 
 /** Keep in sync with packages/browser/package.json version. */
-const BROWSER_ADAPTER_VERSION = "0.0.4";
+const BROWSER_ADAPTER_VERSION = "0.0.5";
 
 /**
  * The Browser client surface: everything PrismClient promises plus a
