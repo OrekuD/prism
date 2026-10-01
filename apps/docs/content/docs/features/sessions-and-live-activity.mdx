@@ -3,7 +3,7 @@ title: Sessions and live activity
 description: Client-owned sessions and the live dashboard view.
 audience: Developer
 scope: Both
-lastReviewed: "2026-08-24"
+lastReviewed: "2026-10-01"
 ---
 
 Sessions are client-owned: the SDK generates the session ID locally and
@@ -35,16 +35,15 @@ inactivity window — see
 
 ## The Live page
 
-The project's **Live** page shows the sessions active right now. It
-subscribes to the project's live stream over an authenticated,
-project-scoped WebSocket and renders session rows with start time, last
-seen, and anonymous ID as they start. The SDK and dashboard own the
+The project's **Live** page is a world map of sessions active right
+now. It subscribes to the project's live stream over an authenticated,
+project-scoped WebSocket; the top bar shows the live session count and
+whether the sample is complete or sampled. The SDK and dashboard own the
 connection protocol entirely — no setup steps involve it.
 
-- The connection state is visible in the page: connecting, live, and
-  reconnecting after interruptions.
-- An optional map view plots sessions by coarse location. The map is a
-  rendering on top of the session list: when map tiles or location
-  enrichment are unavailable, the list keeps working with no data loss.
-- Location enrichment is coarse and best-effort; sessions carry no exact
+- Live sessions are hashed onto their coarse city coordinates, with a
+  small jitter so overlapping sessions stay distinguishable. Location
+  enrichment is coarse and best-effort; sessions carry no exact
   coordinates.
+- The map needs a Mapbox token (`VITE_MAPBOX_ACCESS_TOKEN`); without
+  one the page shows a "Map unavailable" state instead of session data.

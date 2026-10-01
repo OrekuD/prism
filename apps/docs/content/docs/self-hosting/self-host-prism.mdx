@@ -3,7 +3,7 @@ title: Self-host Prism
 description: What self-hosting Prism means today, and whether it fits you.
 audience: Operator
 scope: Self-hosted
-lastReviewed: "2026-08-24"
+lastReviewed: "2026-10-01"
 ---
 
 Prism ships as a Docker Compose stack you can run on a single host. This
@@ -41,8 +41,9 @@ The Compose stack runs every Prism service:
   deployments; analytics storage grows with traffic).
 - A domain with TLS in front of the `web` service, unless you run
   locally.
-- Generated secrets for PostgreSQL, the analytics store, and session
-  signing.
+- Generated secrets for PostgreSQL, session signing, and first-owner
+  setup. The analytics store token can stay empty for the bundled
+  local `sqld`.
 - Optional integrations: SMTP or Resend for email, GitHub and Google
   OAuth for social sign-in, S3-compatible storage for uploads, and an
   IP-info token for coarse geo enrichment.

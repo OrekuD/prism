@@ -3,7 +3,7 @@ title: Delivery and diagnostics
 description: Queueing, batching, retries, flush, shutdown, and troubleshooting.
 audience: Developer
 scope: Both
-lastReviewed: "2026-08-24"
+lastReviewed: "2026-10-01"
 ---
 
 Delivery is never part of your call stack. `track()` validates and
@@ -38,7 +38,8 @@ Each event carries a client-generated ID. Replays — a retry after an
 ambiguous network failure, for example — are idempotent: the server
 reports them as `duplicate` and never double-counts. Failed batches
 retry with backoff while the client runs; the queue is bounded, and
-overflow drops oldest-first with a diagnostic.
+when it is full the newest event is dropped with a `queue-full`
+diagnostic — nothing evicts already-queued events.
 
 ## Shutdown
 

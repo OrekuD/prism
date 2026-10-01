@@ -3,7 +3,7 @@ title: Projects, sources, and keys
 description: Workspaces, projects, sources, and the key model.
 audience: User
 scope: Both
-lastReviewed: "2026-08-24"
+lastReviewed: "2026-10-01"
 ---
 
 Prism has a small product model: a **workspace** holds members and
@@ -28,26 +28,36 @@ permanently removes its sources, keys, and all captured data.
 ## Sources
 
 A source is one instrumented application, and its platform declares what
-kind of app it is: `web`, `server`, or a mobile platform. The platform
-gates behavior — for example, only Web sources can ingest page views
-for [Page analytics](/docs/features/page-analytics), and only Web
-sources have allowed origins.
+kind of app it is: `web`, `mobile`, or `server`. (Older `ios`,
+`android`, and `react-native` values still appear on existing records
+and roll up under `mobile`.) The platform gates behavior — for
+example, only Web sources can ingest page views for
+[Page analytics](/docs/features/page-analytics), only mobile sources
+accept screen and lifecycle records, and only Web sources have allowed
+origins.
 
-- **Allowed origins** (Web sources): only browsers on these origins may
-  ingest with the source's keys. Requests from other origins are
-  rejected.
-- **Deleting a source** removes its captured data.
+- **Allowed origins** (Web sources, edited in the per-source dialog by
+  owners and admins): only browsers on these origins may ingest with
+  the source's keys. Requests from other origins — or with no origin
+  at all — are rejected, and an empty list denies everything.
+- **Deleting a source** revokes its keys and stops telemetry. The
+  dialog warns the action can't be undone — treat it as permanent.
 
 ## Keys
 
-Every source starts with an **initial key**:
+Every source starts with an **initial key**. The prefix names the
+family: publishable keys are `psk_web_...` (Web) and `psk_mobile_...`
+(mobile); secret keys are `ssk_...` (server):
 
-- **Publishable keys** (`psk_...`) are public by design — they embed in
-  client binaries and can only write analytics data. The project and
-  source are derived from the key on every request; client ownership
-  fields are ignored.
-- **Secret keys** are for server sources. The dashboard masks them
-  until you explicitly reveal one.
+- **Publishable keys** are public by design — they embed in client
+  binaries and can only write analytics data. The project and source
+  are derived from the key on every request; client ownership fields
+  are ignored. A key only works with a compatible SDK adapter — a Web
+  key with a server adapter is rejected at ingestion.
+- **Secret keys** are for server sources and must never ship in client
+  bundles. Keys are masked in the dashboard: the per-source dialog can
+  reveal a secret key (copying it to your clipboard), while the Keys
+  tab shows masked values with one-click copy.
 
 You can create additional keys per source and revoke keys that should
 no longer work. There is no in-place rotation: create a new key, migrate
@@ -56,6 +66,8 @@ your app, then revoke the old one.
 ## Authentication
 
 You sign in with email and password (with verification) or a configured
-social provider. The dashboard session is an HTTP-only, `SameSite=Lax`
-cookie, `Secure` in production. Trusted origins are locked to the
+social provider. The dashboard session is an HTTP-only cookie, `Secure`
+in production, signed with `JWT_SECRET_KEY`. `SameSite` is `lax` unless
+production serves the API and the dashboard from different origins, in
+which case it is `none`. Trusted origins are locked to the
 deployment's configured client URL plus explicit CORS allowlist entries.

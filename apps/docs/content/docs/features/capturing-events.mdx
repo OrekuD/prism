@@ -3,7 +3,7 @@ title: Capturing events
 description: Track named events, validate properties, and find them in the dashboard.
 audience: Developer
 scope: Both
-lastReviewed: "2026-09-02"
+lastReviewed: "2026-10-01"
 ---
 
 An event is one explicit `track()` call. Events are immutable: the
@@ -59,7 +59,7 @@ Attach properties once and include them with every following event:
 ```ts
 await prism.setGlobalProperty("app_version", "2.1.0");
 await prism.unsetGlobalProperty("app_version");
-await prism.clearGlobalProperties("all");
+await prism.clearGlobalProperties();
 ```
 
 Scopes control lifetime: `memory` (default) clears on page unload,
@@ -89,9 +89,9 @@ through `track()` — including the Standard Event names, which only
 ## Where events appear
 
 Accepted events appear on the project's **Events** page, newest first.
-The list is bounded, with filtering by event name, source, and time, and
-a detail view per event showing properties, attribution, and the
-complete payload as received. Events also feed the
+The list is bounded, with filtering by event name, source, and
+source type, and a detail view per event showing properties,
+attribution, and the complete payload as received. Events also feed the
 [Web analytics](/docs/features/page-analytics) reports when they are
 page views, and person histories on the
 [People](/docs/features/identifying-users) pages.

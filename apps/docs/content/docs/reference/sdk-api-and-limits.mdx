@@ -3,7 +3,7 @@ title: SDK API and limits
 description: Packages, exact ceilings, and the runtime adapter contract.
 audience: Developer
 scope: Both
-lastReviewed: "2026-09-02"
+lastReviewed: "2026-10-01"
 ---
 
 One reference entry point for Prism's public packages and every numeric
@@ -20,7 +20,10 @@ but kept out of the primary sidebar.
   page views, and the browser error reporter.
 - `@prism-analytics/react` — provider and hooks over a ready Browser
   client, plus the error boundary.
-- `@prism-analytics/node` — Node error reporting for server processes.
+- `@prism-analytics/node` — server-side event capture
+  (`createNodeClient`) and the Node error reporter.
+- `@prism-analytics/react-native` — Expo and bare React Native client:
+  screen views, app sessions, installations, and error reporting.
 
 Symbol references:
 [Core](/docs/reference/sdk/core) ·
@@ -81,8 +84,9 @@ already enforces.
 
 ## Time and delivery
 
-- `occurredAt` may not exceed 24 hours of future skew; unreasonably old
-  timestamps are rejected with `invalid-timestamp`.
+- `occurredAt` may be at most 5 minutes in the future and at most 30
+  days in the past; anything else is rejected with
+  `invalid-timestamp`.
 - SDK defaults: request timeout 10 s, flush interval 10 s, 5 retries
   with exponential backoff and jitter.
 - Page-view Web sessions expire after 30 minutes of inactivity; page
@@ -91,7 +95,8 @@ already enforces.
 
 ## Queries and rate limits
 
-- People page size: default 50, max 100.
+- People API page size: default 50, max 100. (The dashboard People
+  table shows 10 rows by default with 10/25/50 options.)
 - Activity: default 200 events. Filtered events: default 200, max 500.
 - Breakdowns: at most 100 keys. Person export: bounded to 500 events.
 - Ingestion: 120 requests per minute per IP plus an event-weighted

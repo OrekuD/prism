@@ -3,7 +3,7 @@ title: Quickstart
 description: From signup to a verified event in about five minutes.
 audience: Developer
 scope: Hosted
-lastReviewed: "2026-09-02"
+lastReviewed: "2026-10-01"
 ---
 
 This guide takes you from a fresh Prism account to a verified event on
@@ -30,13 +30,13 @@ source's key.
 
 ## 3. Copy the setup snippet
 
-Open the source's **Setup** tab. It shows a ready-made snippet containing
-your publishable source key (`psk_...`) and the ingestion **origin**
-(bare origin like `https://prism-analytics-api.orekud.workers.dev` — the
-SDK appends `/api/v2/ingest` automatically). Copy the origin, not the
-full ingest URL. Publishable keys are safe to embed in client code —
-they can only write analytics data, and the project is derived from the
-key on every request.
+Open the source's **SDK setup** tab. It shows a ready-made snippet
+containing your publishable source key (`psk_web_...`) and the full
+ingestion endpoint (bare origin like
+`https://prism-analytics-api.orekud.workers.dev` plus
+`/api/v2/ingest` — paste it as-is). Publishable keys are safe to embed
+in client code — they can only write analytics data, and the project is
+derived from the key on every request.
 
 ## 4. Install the SDK
 
@@ -52,7 +52,7 @@ instance, use your `PUBLIC_URL`.
 import { createBrowserClient } from "@prism-analytics/browser";
 
 export const prism = await createBrowserClient({
-  sourceKey: "psk_your_key",
+  sourceKey: "psk_web_your_key",
   endpoint: "https://prism-analytics-api.orekud.workers.dev",
   collection: { initialState: "granted" },
 });
