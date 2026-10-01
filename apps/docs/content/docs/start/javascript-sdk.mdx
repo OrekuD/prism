@@ -3,7 +3,7 @@ title: JavaScript SDK
 description: The complete browser setup with @prism-analytics/browser.
 audience: Developer
 scope: Both
-lastReviewed: "2026-09-02"
+lastReviewed: "2026-10-01"
 ---
 
 `@prism-analytics/browser` is the browser SDK for Prism. It wraps the
@@ -30,7 +30,7 @@ instance, use your `PUBLIC_URL`.
 import { createBrowserClient } from "@prism-analytics/browser";
 
 const prism = await createBrowserClient({
-  sourceKey: "psk_your_key",
+  sourceKey: "psk_web_your_key",
   endpoint: "https://prism-analytics-api.orekud.workers.dev",
   collection: { initialState: "granted" },
   pageViews: { mode: "history" },
@@ -54,10 +54,11 @@ Before the page unloads, call:
 await prism.shutdown();
 ```
 
-`shutdown()` flushes queued events and detaches listeners. It resolves
-after delivery settles; a final delivery failure rejects the promise.
-Use `await prism.flush()` when you need queued events delivered without
-tearing the client down.
+`shutdown()` flushes queued events and detaches listeners. A final
+delivery failure is swallowed to a warn diagnostic — `shutdown()` never
+rejects. Use `await prism.flush()` when you need queued events delivered
+without tearing the client down (`flush()` does reject on delivery
+failure).
 
 ## What the client exposes
 
@@ -65,7 +66,8 @@ tearing the client down.
 - `prism.events.signUp({ method: "email" })` — capture a Standard
   Event (see [Standard Events](/docs/features/standard-events) for the
   25 helpers).
-- `startSession(properties?)` — start a client-owned session.
+- `startSession(options?)` — start a client-owned session
+  (`{ properties }`).
 - `pageViews` — the page-view controller, or `null` when no `pageViews`
   config was passed.
 - `setCollectionState(state)` — move the consent state machine.

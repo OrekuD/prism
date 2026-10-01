@@ -3,7 +3,7 @@ title: Consent and privacy
 description: The consent state machine, what Prism collects, retention, and deletion.
 audience: Developer
 scope: Both
-lastReviewed: "2026-08-24"
+lastReviewed: "2026-10-01"
 ---
 
 Prism is build-around-consent by design: the SDK captures nothing until
@@ -47,10 +47,11 @@ and endpoint — there is no cross-site identity.
 
 ## Anonymous identity persistence
 
-The anonymous ID persists across reloads by default so returning
-visitors stay the same person. You can choose a stricter persistence
-mode through `collection.anonymousPersistence` — for example, clearing
-on session end for privacy-sensitive applications.
+The anonymous ID persists in `sessionStorage` by default, so it
+survives reloads of the same tab but not a new tab or window
+(`session` mode). Choose `persistent` (`localStorage`, same browser
+profile) or `none` through `collection.anonymousPersistence` — for
+example, clearing on session end for privacy-sensitive applications.
 
 ## Retention and deletion
 

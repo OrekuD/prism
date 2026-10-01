@@ -1,12 +1,12 @@
 ---
 title: Node SDK
-description: Server-side setup with @prism-analytics/node for error reporting and @prism-analytics/core for events.
+description: Server-side events and error reporting with @prism-analytics/node.
 audience: Developer
 scope: Both
-lastReviewed: "2026-09-02"
+lastReviewed: "2026-10-01"
 ---
 
-`@prism-analytics/node` is the server SDK for Prism. It reports errors from Node processes into the Errors dashboard, and the runtime-neutral `@prism-analytics/core` engine handles event capture when you need it. This page covers server setup and lifecycle ownership.
+`@prism-analytics/node` is the server SDK for Prism: server-side event capture via `createNodeClient` plus error reporting into the Errors dashboard. This page covers server setup and lifecycle ownership.
 
 ## Installation
 
@@ -22,7 +22,7 @@ Requires Node 18+ (`globalThis.fetch` and `crypto.randomUUID`).
 import { createNodeErrorReporter } from "@prism-analytics/node";
 
 const errors = await createNodeErrorReporter({
-  sourceKey: "psk_your_key",
+  sourceKey: "ssk_your_key",
   endpoint: "https://prism-analytics-api.orekud.workers.dev",
   share: { client: prism },
   release: "api@2.1.0",
@@ -58,10 +58,8 @@ app.onError((err, c) => {
 The reporter does **not** install `uncaughtException` or `unhandledRejection` handlers by default — the application owns crash and restart policy. Opt in explicitly when you want Prism to observe unhandled failures:
 
 ```ts
-import { captureProcessErrors } from "@prism-analytics/node";
-
-const handle = captureProcessErrors(errors);
-// later: handle.uninstall();
+const uninstall = errors.captureProcessErrors();
+// later: uninstall();
 ```
 
 Flush-on-shutdown is best-effort via `beforeExit` / `SIGINT` / `SIGTERM`. The reporter's own `shutdown()` remains the deterministic close, with a bounded final flush. Call it where you tear down the process:

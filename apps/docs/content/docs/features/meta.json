@@ -6,6 +6,7 @@
     "page-analytics",
     "identifying-users",
     "sessions-and-live-activity",
-    "error-tracking"
+    "error-tracking",
+    "project-assistant"
   ]
 }

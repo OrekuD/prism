@@ -3,7 +3,7 @@ title: Error tracking
 description: Capture browser, React, and Node errors into the Errors dashboard.
 audience: Developer
 scope: Both
-lastReviewed: "2026-08-24"
+lastReviewed: "2026-10-01"
 ---
 
 Prism's error tracker groups captured errors into issues and shows them
@@ -18,7 +18,7 @@ Create an error reporter alongside your analytics client:
 import { createBrowserErrorReporter } from "@prism-analytics/browser";
 
 const errors = await createBrowserErrorReporter({
-  sourceKey: "psk_your_key",
+  sourceKey: "psk_web_your_key",
   endpoint: "https://prism-analytics-api.orekud.workers.dev",
   share: { client: prism },
   captureGlobalErrors: true,
@@ -66,13 +66,14 @@ imperative reporting inside the provider tree.
 `@prism-analytics/node` reports errors from server processes:
 
 ```ts
-import { createNodeErrorReporter, captureProcessErrors } from "@prism-analytics/node";
+import { createNodeErrorReporter, reportError } from "@prism-analytics/node";
 
 const errors = await createNodeErrorReporter({
-  sourceKey: "psk_server_key",
+  sourceKey: "ssk_your_key",
   endpoint: "https://prism-analytics-api.orekud.workers.dev",
 });
-captureProcessErrors(errors);
+const uninstall = errors.captureProcessErrors();
+// later: uninstall();
 
 // or report directly:
 reportError(errors, err, { handled: false, context: { tags: { route } } });
@@ -81,7 +82,8 @@ reportError(errors, err, { handled: false, context: { tags: { route } } });
 ## The Errors dashboard
 
 The **Errors** page lists issues — groups of same-fingerprint reports —
-with counts, first and last seen, release, and platform filters. Open an
+with counts, first and last seen, and status, level, and platform
+filters. Release is shown per occurrence in issue detail. Open an
 issue to see:
 
 - the sanitized stack with frames;

@@ -3,7 +3,7 @@ title: React Native SDK
 description: Add Prism analytics to Expo and bare React Native apps.
 audience: Developer
 scope: Both
-lastReviewed: "2026-09-02"
+lastReviewed: "2026-10-01"
 ---
 
 Add Prism to your React Native app with Metro-safe transport, durable
@@ -38,7 +38,7 @@ import { createReactNativeClient } from "@prism-analytics/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export const prism = await createReactNativeClient({
-  sourceKey: "psk_your_key",
+  sourceKey: "psk_mobile_your_key",
   endpoint: "https://prism-analytics-api.orekud.workers.dev",
   storage: AsyncStorage,
   collection: { initialState: "granted" },
@@ -68,13 +68,13 @@ resumes the session. Change consent with
 ## Track screen views
 
 Screen views power the Mobile analytics dashboard, including top
-screens, releases, and OS breakdowns. Each view is a reserved
+screens and releases, with iOS/Android filters. Each view is a reserved
 `$prism_screen_view` record.
 
 Track a screen manually:
 
 ```ts
-prism.screen("Home", {
+prism.screenViews.track("Home", {
   routePattern: "/home",
   previousScreen: "Login",
 });
@@ -88,8 +88,9 @@ You can also use the navigation adapters. They wrap this call for you:
 * React Navigation 7
 * Expo Router
 
-Screen counts and foreground time aggregate by app session. Prism groups
-views by screen name and route pattern for the dashboard.
+Screen counts aggregate by app session (see the average session length
+on Observed installations). Prism groups views by screen name and route
+pattern for the dashboard.
 
 ## Understand app sessions and installations
 

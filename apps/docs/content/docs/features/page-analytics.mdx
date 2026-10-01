@@ -3,7 +3,7 @@ title: Page analytics
 description: Automatic page views and the Web analytics dashboard.
 audience: Developer
 scope: Both
-lastReviewed: "2026-08-24"
+lastReviewed: "2026-10-01"
 ---
 
 Web analytics shows page-view traffic for the Web sources in a project:
@@ -17,7 +17,7 @@ Enable page views on the Browser client:
 
 ```ts
 const prism = await createBrowserClient({
-  sourceKey: "psk_your_key",
+  sourceKey: "psk_web_your_key",
   endpoint: "https://prism-analytics-api.orekud.workers.dev",
   collection: { initialState: "granted" },
   pageViews: { mode: "history" },
@@ -40,7 +40,7 @@ usePrismPageView({ path: location.pathname });
 
 It captures exactly once per path, including under React Strict Mode.
 Manual captures for the same hostname+path within 500ms are deduplicated
-(`dropped("duplicate-manual-capture")`) — this collapses Strict Mode's
+(`{ status: "dropped", reason: "duplicate-manual-capture" }`) — this collapses Strict Mode's
 double-invoke and rapid re-renders without dropping intentional navigations.
 See [React SDK](/docs/start/react-sdk).
 
@@ -80,13 +80,12 @@ Open **Web analytics** in the sidebar. The page has five sections.
 - **Referrers, Campaigns, Locations** — sessions by external referrer
   host (with an explicit Direct row), by UTM source, medium, or
   campaign, and by country, region, or city.
-- **Technology** — browsers, operating systems, devices, viewport
-  buckets, and primary languages.
+- **Technology** — browsers, operating systems, and devices.
 
 ## Ranges, comparison, and filters
 
-Pick a range from 24 hours to 12 months, or choose **Custom** for exact
-dates (up to 366 days). **Compare** overlays the previous equal-length
+Pick a range from the six presets — 24 hours, 7, 14, 30, or 90 days,
+or 12 months. **Compare** overlays the previous equal-length
 period on the trend and shows the change on each metric; when no prior
 data exists, the dashboard says so instead of showing a misleading
 percentage. Filters narrow every panel: a specific Web source, an

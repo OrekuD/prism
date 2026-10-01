@@ -3,7 +3,7 @@ title: React SDK
 description: Add Prism to a React app with a drop-in component or a custom provider setup.
 audience: Developer
 scope: Both
-lastReviewed: "2026-09-02"
+lastReviewed: "2026-10-01"
 ---
 
 `@prism-analytics/react` connects your React app to Prism through the
@@ -55,7 +55,7 @@ environment:
 
 ```tsx
 <PrismAnalytics
-  sourceKey="psk_your_key"
+  sourceKey="psk_web_your_key"
   endpoint="https://prism-analytics-api.orekud.workers.dev"
   collection={{ initialState: "granted" }}
 />
@@ -78,7 +78,7 @@ ready client to the provider.
 import { createBrowserClient } from "@prism-analytics/browser";
 
 export const prism = await createBrowserClient({
-  sourceKey: "psk_your_key",
+  sourceKey: "psk_web_your_key",
   endpoint: "https://prism-analytics-api.orekud.workers.dev",
   collection: { initialState: "granted" },
   pageViews: { mode: "history" },
@@ -213,7 +213,7 @@ import {
 import { createBrowserErrorReporter } from "@prism-analytics/browser";
 
 const reporter = await createBrowserErrorReporter({
-  sourceKey: "psk_your_key",
+  sourceKey: "psk_web_your_key",
   endpoint: "https://prism-analytics-api.orekud.workers.dev",
   share: { client: prism },
 });

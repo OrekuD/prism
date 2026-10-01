@@ -3,7 +3,7 @@ title: Configure and operate
 description: Environment reference, stores, TLS, mail, backups, upgrades, retention, and troubleshooting.
 audience: Operator
 scope: Self-hosted
-lastReviewed: "2026-08-24"
+lastReviewed: "2026-10-01"
 ---
 
 One operating reference for a self-hosted Prism instance. Sections are
@@ -27,37 +27,58 @@ missing or weak values and logs the exact variable at fault.
 
 **Core**
 
-- `DATABASE_URL` — PostgreSQL connection for the product API.
-- `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` — the analytics (libSQL) store. Self-host Compose uses `http://sqld:5001`; hosted ingestion runs at `https://prism-analytics-api.orekud.workers.dev`.
-- `PUBLIC_URL`, `CLIENT_URL` — the instance's public origin; drives links, cookies, and trusted CORS origins. `AUTH_BASE_URL` must point at the product API (`https://prism-api.orekud.workers.dev` for hosted) so the analytics API can verify service JWTs.
+- `DATABASE_URL` — PostgreSQL connection for the product API. On
+  Compose this is built from `POSTGRES_USER`/`POSTGRES_PASSWORD`/
+  `POSTGRES_DB`; set `DATABASE_URL` directly only on Render/Worker
+  deployments.
+- `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` — the analytics (libSQL)
+  store. Self-host Compose uses the bundled `sqld` (`TURSO_AUTH_TOKEN`
+  may stay empty for local `sqld`). These are store coordinates, not
+  API origins — the ingestion origin is a different value.
+- `PUBLIC_URL` — the instance's public origin; drives links, cookies,
+  and trusted CORS origins. Compose derives `CLIENT_URL`, `BASE_URL`,
+  and the same-origin `AUTH_BASE_URL` from it, so don't set those
+  yourself. Split deployments (Render/Worker) point `AUTH_BASE_URL` at
+  the product API (`https://prism-api.orekud.workers.dev` for hosted)
+  so the analytics API can verify service JWTs.
 - `SETUP_TOKEN` — first-owner claim token; remove it after setup.
 - `INSTANCE_NAME` — shown in emails and UI.
-- `JWT_SECRET_KEY` (`BETTER_AUTH_SECRET` alias) — session signing secret (≥32 chars, `openssl rand -hex 32`).
+- `JWT_SECRET_KEY` — session signing secret (≥32 chars,
+  `openssl rand -hex 32`).
+- `ANALYTICS_INSTALLATION_SALT` — server secret for mobile
+  installation digests. Required wherever mobile screen/lifecycle
+  ingestion runs (Worker secrets included); without it mobile
+  ingestion fails closed.
 
 **Deployment mode**
 
-- `PRISM_DEPLOYMENT_MODE` / `DEPLOY_MODE` — `self-hosted` (Compose) or `hosted`; selects defaults for service addresses.
+- `PRISM_DEPLOYMENT_MODE` — `self-hosted` (Compose) or `hosted`; selects defaults for service addresses.
 
 **Mail** — either SMTP (`MAIL_SMTP_HOST`, `MAIL_SMTP_PORT`,
 `MAIL_SMTP_SECURE`, `MAIL_SMTP_USER`, `MAIL_SMTP_PASS`, `MAIL_FROM`)
 or Resend (`RESEND_API_KEY`, `MAIL_FROM`). Without either, the
-development adapter prints verification links to the API log.
+development adapter prints verification links to the API log —
+production without a provider sends nothing, so configure one before
+inviting real users.
 
 **Social providers** — `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` and
 `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`; optional.
 
-**Analytics retention** — `ANALYTICS_RETENTION_DAYS` (events, sessions)
-and `ERROR_RETENTION_DAYS` (error data). Unset or `0` disables deletion
-so data is never lost by accident.
+**Analytics retention** — `ANALYTICS_RETENTION_DAYS` (events, sessions).
+Unset or `0` disables deletion so data is never lost by accident.
+(`ERROR_RETENTION_DAYS` exists in code but is not forwarded by the
+Compose file — setting it in `compose.env` currently has no effect.)
 
-**Object storage** — `STORAGE_DRIVER` (`local` or `s3`) plus
-`STORAGE_S3_*` settings, or ImageKit credentials; `STORAGE_PUBLIC_URL`
-serves uploads.
+**Object storage** — `STORAGE_DRIVER` (`local`, `s3`, or `imagekit`)
+plus `STORAGE_S3_*` settings, or ImageKit credentials;
+`STORAGE_PUBLIC_URL` serves uploads.
 
 **Networking and integrations** — `CORS_ALLOWED_ORIGINS` (extra
-trusted origins), `IP_INFO_API_TOKEN` (optional coarse geo
-enrichment), `TRUST_PROXY` (`true` only behind a trusted proxy that
-sets client-IP headers).
+trusted origins), `IP_INFO_API_TOKEN` plus `IPINFO_GEO_ENABLED=1`
+(optional coarse geo enrichment — the token alone does nothing).
+Compose proxies through nginx with `ANALYTICS_TRUSTED_PROXY=nginx`
+already set; only set `TRUST_PROXY=true` if you run your own proxy
+that sets client-IP headers.
 
 ## Data stores
 
@@ -66,7 +87,7 @@ Two stores keep concerns separate:
 - **PostgreSQL** (`db` service) — accounts, workspaces, projects,
   sources, keys, and setup state.
 - **libSQL** (`sqld` service) — analytics events, sessions, people, page
-  views, and error data, in a named volume (`prism_sqlddata`).
+  views, and error data, in a named volume (`sqlddata`).
 
 Both are included in the Compose stack. Resetting a disposable
 development store is a `down -v` away; never do this against a host with
@@ -74,7 +95,7 @@ data you want.
 
 ## File storage
 
-Uploads default to a local named volume (`prism_uploads`). For
+Uploads default to a local named volume (`uploads`). For
 multi-host or object-backed setups set `STORAGE_DRIVER=s3` with endpoint,
 region, bucket, and keys, or configure ImageKit. `STORAGE_PUBLIC_URL`
 must point at wherever uploads are reachable.
@@ -85,16 +106,16 @@ Put TLS termination in front of the `web` service (Caddy is the
 low-configuration choice; nginx + certbot and Traefik both work).
 Requirements:
 
-- Proxy `/` to the `web` service (port 3000).
+- Proxy `/` to the `web` service (host `${PUBLIC_PORT:-3000}` →
+  container `:80`).
 - Pass WebSocket upgrades — the Live page needs them
   (`Upgrade`/`Connection` headers).
-- Keep origin consistent: `PUBLIC_URL`/`CLIENT_URL` must match the
+- Keep origin consistent: `PUBLIC_URL` must match the
   scheme and host users actually visit, or cookies and CORS break.
 
 Common mistakes: serving the dashboard on one origin and calling APIs on
 another without a proxy (the deployment is single-origin by design);
-forgetting WebSocket pass-through; setting `TRUST_PROXY=true` behind an
-untrusted proxy.
+forgetting WebSocket pass-through.
 
 ## Email and authentication providers
 
@@ -104,13 +125,13 @@ development, links print to the API log.
 
 Social sign-in is optional per provider; create OAuth credentials with
 the instance's callback origin and set the client ID/secret pairs.
-Sessions are HTTP-only cookies signed with `BETTER_AUTH_SECRET` — rotate
+Sessions are HTTP-only cookies signed with `JWT_SECRET_KEY` — rotate
 that secret with a maintenance window (it invalidates sessions).
 
 ## Health and logging
 
 - `/health/live` — process liveness.
-- `/health/ready` — product database and analytics store checks; use it
+- `/health/ready` — product database check; use it
   for container readiness and load-balancer checks.
 
 Services log structured JSON to stdout; read them with
@@ -128,9 +149,9 @@ docker compose --env-file deploy/compose.env -f deploy/compose.yml exec db \
 
 # Analytics store + uploads (stop sqld for a consistent snapshot)
 docker compose --env-file deploy/compose.env -f deploy/compose.yml stop sqld
-docker run --rm -v prism_sqlddata:/data -v "$PWD/backups":/out \
+docker run --rm -v sqlddata:/data -v "$PWD/backups":/out \
   alpine tar czf /out/sqlddata-$(date +%F).tar.gz -C /data .
-docker run --rm -v prism_uploads:/data -v "$PWD/backups":/out \
+docker run --rm -v uploads:/data -v "$PWD/backups":/out \
   alpine tar czf /out/uploads-$(date +%F).tar.gz -C /data .
 docker compose --env-file deploy/compose.env -f deploy/compose.yml start sqld
 ```
@@ -143,9 +164,9 @@ regularly — a backup that has never been restored is an assumption.
 
 1. Back up first (above).
 2. Read the release notes for breaking changes.
-3. Pull or rebuild images, then `up -d`. The `migrate` service applies
-   forward-only migrations before the API starts; migrations never drop
-   data.
+3. Pull or rebuild images, then `up -d --build`. The `migrate` service applies
+   forward-only migrations automatically before the API starts;
+   migrations never drop data.
 4. Verify `/health/live`, `/health/ready`, and a signed-in dashboard
    pass.
 
@@ -156,11 +177,11 @@ migration step.
 
 ## Retention
 
-Analytics data expires according to `ANALYTICS_RETENTION_DAYS` and
-`ERROR_RETENTION_DAYS`. Retention is opt-in: unset or `0` disables
-deletion, so an operator never loses data by accident. Choose windows
-that match your analytics commitments, and keep backups for longer than
-the live retention if you need history.
+Analytics data expires according to `ANALYTICS_RETENTION_DAYS`.
+Retention is opt-in: unset or `0` disables deletion, so an operator
+never loses data by accident. Choose windows that match your analytics
+commitments, and keep backups for longer than the live retention if you
+need history.
 
 ## Troubleshooting
 

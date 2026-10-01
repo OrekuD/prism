@@ -3,7 +3,7 @@ title: Install Prism
 description: Requirements, Docker Compose setup, migrations, health checks, and first owner.
 audience: Operator
 scope: Self-hosted
-lastReviewed: "2026-08-24"
+lastReviewed: "2026-10-01"
 ---
 
 This page installs Prism either as a single-host Docker Compose stack or as a split deployment with the analytics ingestion API on Render (free tier) via `render.yaml` at the repo root. Both create the first owner account the same way.
@@ -11,33 +11,33 @@ This page installs Prism either as a single-host Docker Compose stack or as a sp
 ## Prerequisites
 
 - Docker and Docker Compose on a Linux host.
-- Generated secrets for PostgreSQL, the analytics store token, and
-  session signing (a secrets generator such as `openssl rand` is fine).
+- Generated secrets for PostgreSQL, session signing, and first-owner
+  setup (a secrets generator such as `openssl rand` is fine). The
+  analytics store token can stay empty for the bundled local `sqld`.
 - A domain pointing at the host with TLS termination in front of the
   `web` service for anything beyond localhost.
 
 ## 1. Get the deployment files
 
-The deployment files live in the repository: `deploy/compose.yml` + `deploy/compose.env` for the full single-host stack, and `render.yaml` (repo root) for the analytics API alone on Render. For Compose, copy both `deploy/` files to your host and fill in `compose.env`; for Render, create a Blueprint from `render.yaml` and fill the three prompted secrets (`TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `DATABASE_URL`). `AUTH_BASE_URL` is pre-set to the hosted product API.
+The deployment files live in the repository: `deploy/compose.yml` + `deploy/compose.env.example` for the full single-host stack, and `render.yaml` (repo root) for the analytics API alone on Render. For Compose, copy `deploy/compose.env.example` to `deploy/compose.env` on your host and fill it in; for Render, create a Blueprint from `render.yaml` and fill the three prompted secrets (`TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `DATABASE_URL`). `AUTH_BASE_URL` is pre-set to the hosted product API.
 
 ## 2. Configure the environment
 
-At minimum set:
+At minimum set (the Compose file builds `DATABASE_URL`,
+`CLIENT_URL`, and the same-origin `AUTH_BASE_URL` from these — setting
+those derived values yourself has no effect):
 
 ```sh
-# Product database (PostgreSQL)
-DATABASE_URL=postgresql://prism:CHANGE_ME@db:5432/prism
+# PostgreSQL (Compose builds DATABASE_URL from these)
+POSTGRES_USER=prism
 POSTGRES_PASSWORD=CHANGE_ME
+POSTGRES_DB=prism
 
-# Analytics store (libSQL)
-TURSO_DATABASE_URL=http://sqld:5001
-TURSO_AUTH_TOKEN=CHANGE_ME
+# Session signing (minimum 32 characters)
+JWT_SECRET_KEY=CHANGE_ME_GENERATED
 
-# Analytics ingestion — hosted Render vs self-host Compose
-# Hosted: analytics derives JWKS from the product API origin
-AUTH_BASE_URL=https://prism-api.orekud.workers.dev
+# This deployment's public origin
 PUBLIC_URL=https://prism.example.com
-CLIENT_URL=https://prism.example.com
 
 # First-owner setup token (minimum 16 characters)
 SETUP_TOKEN=CHANGE_ME_GENERATED
@@ -52,12 +52,13 @@ retention — are listed in
 ## 3. Start and migrate
 
 ```sh
-docker compose --env-file deploy/compose.env -f deploy/compose.yml up -d
-docker compose --env-file deploy/compose.env -f deploy/compose.yml up migrate
+docker compose --env-file deploy/compose.env -f deploy/compose.yml up -d --build
 ```
 
-The `migrate` service applies forward-only schema migrations. It is
-idempotent — applied migrations are skipped. Re-run it after upgrades.
+The `migrate` service applies forward-only schema migrations before
+the API starts (it runs automatically via `depends_on`). Migrations
+are idempotent — applied ones are skipped. Re-run `migrate` after
+upgrades.
 
 ## 4. Verify health
 
@@ -66,8 +67,10 @@ curl http://localhost:3000/health/live
 curl http://localhost:3000/health/ready
 ```
 
-`live` proves the process is up; `ready` checks the product database and
-the analytics store. Both must pass before you continue.
+`live` proves the process is up; `ready` checks the product database.
+Both must pass before you continue. (The analytics-store check lives
+on the analytics service's own `/health/ready` and is not reachable
+through the public origin.)
 
 ## 5. Create the first owner
 
