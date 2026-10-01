@@ -33,3 +33,8 @@ GATES.md
 
 # Local analytics file DB (sqld without Docker) — persists across reboots
 apps/analytics-api/data/
+# One-off local repro/debug scripts (never committed)
+apps/api/repro-overview.mts
+
+# Local Cloudflare emulator state (miniflare cache, DO sqlite)
+apps/analytics-api/.wrangler/
