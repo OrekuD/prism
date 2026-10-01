@@ -17,12 +17,11 @@ import {
 } from "@/components/ui/select";
 import { useActiveWorkspace, useWorkspaces } from "@/lib/workspace";
 import { useCreateProjectMutation } from "@/network/mutations/useCreateProjectMutation";
-import { Loader2 } from "lucide-react";
+import { Loader2 } from "@/components/ui/hugeicons";
 import React from "react";
 import { useNavigate } from "react-router-dom";
 
-const SECTION =
-	"font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted";
+const SECTION = "text-[13px] font-medium tracking-normal text-text-subtle";
 
 function slugify(value: string): string {
 	return value
@@ -127,7 +126,7 @@ function CreateProjectForm({
 						aria-label="Project name"
 						autoFocus
 					/>
-					<p className="font-mono text-[12px] text-text-subtle">
+					<p className="text-xs tabular-nums text-text-subtle">
 						{slug || "project-name"} — used in URLs & SDK config.
 					</p>
 				</div>
@@ -138,9 +137,9 @@ function CreateProjectForm({
 						<SelectTrigger aria-label="Team" className="w-full">
 							<SelectValue placeholder="Select a team" />
 						</SelectTrigger>
-						<SelectContent>
+						<SelectContent align="start">
 							{list.length === 0 ? (
-								<p className="px-2 py-1.5 text-[13px] text-text-subtle">
+								<p className="px-2 py-1.5 text-sm text-text-subtle">
 									No workspaces yet.
 								</p>
 							) : (
@@ -161,10 +160,11 @@ function CreateProjectForm({
 					variant="outline"
 					onClick={() => onOpenChange(false)}
 					disabled={isPending}
+					className="rounded-full"
 				>
 					Cancel
 				</Button>
-				<Button type="submit" disabled={!canSubmit}>
+				<Button type="submit" disabled={!canSubmit} className="rounded-full">
 					{isPending ? (
 						<Loader2 className="size-4 animate-spin" aria-hidden="true" />
 					) : null}

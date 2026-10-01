@@ -39,7 +39,7 @@ function installFetchMock(
 }
 
 const BASE = {
-	sourceKey: "pr_0123456789abcdef0123456789abcdef",
+	sourceKey: "psk_web_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 	endpoint: "https://errors.self-hosted.example",
 	share: { consent: () => "granted" as const },
 };

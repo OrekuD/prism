@@ -13,7 +13,10 @@ import type { EventResource } from "@prism-analytics/types";
 export type PlatformFamily = "web" | "mobile" | "server";
 
 export const isMobilePlatform = (platform: string): boolean =>
-	platform === "ios" || platform === "android" || platform === "react-native";
+	platform === "mobile" ||
+	platform === "ios" ||
+	platform === "android" ||
+	platform === "react-native";
 
 export function platformFamily(platform: string): PlatformFamily {
 	if (platform === "web") return "web";
@@ -26,6 +29,8 @@ export function platformLabel(platform: string): string {
 	switch (platform) {
 		case "web":
 			return "Web";
+		case "mobile":
+			return "Mobile";
 		case "ios":
 			return "iOS";
 		case "android":
@@ -61,6 +66,8 @@ export function platformDotClass(platform: string): string {
 		case "android":
 			return "bg-warning";
 		case "react-native":
+			return "bg-success";
+		case "mobile":
 			return "bg-success";
 		case "server":
 			return "bg-text-subtle";

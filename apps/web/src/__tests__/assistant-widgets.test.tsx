@@ -217,12 +217,13 @@ describe("chat widgets render server values unchanged", () => {
 });
 
 describe("trace block", () => {
-  it("replays saved observations, assumptions, follow-ups and activity", () => {
+  it("replays saved observations, assumptions, follow-ups and activity", async () => {
     const answer = { summary: "Saved answer", observations: [{ text: "Measured observation", factIds: ["f1"] }], primaryArtifactId: null, supportingArtifactIds: [], assumptions: ["Known limitation"], followUps: [{ title: "Inspect release", description: "Inspect the release for this change." }] };
     render(<MemoryRouter><ChatView detail={{ conversation: { id: "c", slug: "chat_c", title: "Saved", seed: null, createdAt: 1, updatedAt: 1, lastMessageAt: 1 }, messages: [{ id: "m", seq: 2, role: "assistant", status: "complete", failureCode: null, parts: [{ type: "text", text: answer.summary }, { type: "answer", answer }, { type: "trace", steps: [{ stepId: "s", sequence: 0, toolId: "measure_metric", state: "complete", label: "Measured signups" }] }] }], activeRun: null }} stream={null} streaming={false} sendError={null} onAsk={vi.fn()} onBack={vi.fn()} /></MemoryRouter>);
     expect(screen.getAllByText("Saved answer")).toHaveLength(1);
     expect(screen.getByText("Measured observation")).toBeVisible();
     expect(screen.getByText("Known limitation")).toBeVisible();
+    await userEvent.setup().click(screen.getByText("How I answered"));
     expect(screen.getByText("Measured signups")).toBeVisible();
     expect(screen.getByRole("button", { name: "Inspect release" })).toBeVisible();
   });
@@ -432,11 +433,13 @@ describe("ProjectSummary v2 scaffold", () => {
     expect(
       screen.getByPlaceholderText("Ask a question about this project…"),
     ).toBeInTheDocument();
-    // View toggle tabs.
-    expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    expect(screen.getByRole("heading", { name: "Overview" })).toBeVisible();
+    expect(screen.getByText("Last 7 days")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Conversations" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "New chat" })).toBeNull();
+    const composer = screen.getByRole("textbox", { name: "Ask Prism a question" });
+    const insights = screen.getByText("Insights");
+    expect(insights.compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("shows the submitted message and working state before response headers arrive", async () => {
@@ -447,7 +450,7 @@ describe("ProjectSummary v2 scaffold", () => {
     await user.type(screen.getByRole("textbox", { name: "Ask Prism a question" }), "How many signups?");
     await user.click(screen.getByRole("button", { name: "Send question" }));
     expect(await screen.findByText("How many signups?")).toBeVisible();
-    expect(screen.getByRole("status")).toHaveTextContent("Working");
+    expect(screen.getByText("Preparing answer")).toBeVisible();
     expect(screen.getByRole("button", { name: "Stop the running answer" })).toBeVisible();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     fetchMock.mockRestore();
@@ -469,7 +472,7 @@ describe("ProjectSummary v2 scaffold", () => {
     await user.click(screen.getByRole("button", { name: "Send question" }));
     await screen.findByText("New question");
     await user.click(screen.getByRole("button", { name: "Conversations" }));
-    await user.click(await screen.findByRole("menuitem", { name: /Checkout errors deep-dive/ }));
+    await user.click(await screen.findByRole("button", { name: /Checkout errors deep-dive/ }));
     await act(async () => {
       writer.enqueue(new TextEncoder().encode('data: {"kind":"data-run-start","runId":"run_test","conversationId":"conv_new"}\n\n'));
     });
@@ -505,7 +508,7 @@ describe("ProjectSummary v2 scaffold", () => {
       await user.type(screen.getByRole("textbox", { name: "Ask Prism a question" }), question);
       await user.click(screen.getByRole("button", { name: "Send question" }));
       await waitFor(() => expect(queryClient.getQueryData(["assistant-conversation", "alpha", conversationSlug])).toBeDefined());
-      expect(screen.getAllByText(question)).toHaveLength(1);
+      expect(within(screen.getByRole("region", { name: "Conversation" })).getAllByText(question)).toHaveLength(1);
       completed = true;
       await act(async () => {
         writer.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(outcome === "success"
@@ -523,9 +526,9 @@ describe("ProjectSummary v2 scaffold", () => {
       }
       await act(async () => { writer.close(); });
       await screen.findByText(outcome === "success" ? answer.summary : "This answer reached its token limit.");
-      expect(screen.getAllByText(question)).toHaveLength(1);
+      expect(within(screen.getByRole("region", { name: "Conversation" })).getAllByText(question)).toHaveLength(1);
       const result = screen.getByText(outcome === "success" ? answer.summary : "This answer reached its token limit.");
-      expect(screen.getByText(question).compareDocumentPosition(result) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(within(screen.getByRole("region", { name: "Conversation" })).getByText(question).compareDocumentPosition(result) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       expect(fetchMock).toHaveBeenCalledTimes(1);
     } finally {
       fetchMock.mockRestore();
@@ -535,8 +538,45 @@ describe("ProjectSummary v2 scaffold", () => {
   it("shows the calm empty-insights state, not generic advice", async () => {
     renderRoute("/workspace/wrk/projects/alpha");
     await waitFor(() =>
-      expect(screen.getByText(/No significant changes detected/)).toBeInTheDocument(),
+      expect(screen.getByText("No notable changes in the last 7 days.")).toBeInTheDocument(),
     );
+  });
+
+  it("prefetches recent transcripts before selection and switches from cache", async () => {
+    const chats = Array.from({ length: 5 }, (_, i) => ({ id: `conv_${i}`, slug: `chat_${i}`, title: `Saved chat ${i}`, lastMessageAt: Date.now(), messageCount: 1, hasActiveRun: false }));
+    const originalGet = getMock.getMockImplementation();
+    getMock.mockImplementation(async (url: string) => {
+      if (url.includes("/assistant/conversations?")) return { data: { items: chats, nextCursor: null } };
+      const chat = chats.find((item) => url.endsWith(`/conversations/${item.slug}`));
+      if (chat) return { data: { conversation: chat, messages: [{ id: `msg_${chat.slug}`, seq: 0, role: "user", status: "complete", parts: [{ type: "text", text: `Transcript ${chat.slug}` }] }], activeRun: null } };
+      return originalGet?.(url);
+    });
+    const user = userEvent.setup();
+    renderRoute("/workspace/wrk/projects/alpha/agent");
+    await waitFor(() => expect(queryClient.getQueryData(["assistant-conversations", "alpha"])).toBeDefined());
+    await user.click(screen.getByRole("button", { name: "Conversations" }));
+    await waitFor(() => expect(queryClient.getQueryData(["assistant-conversation", "alpha", "chat_2"])).toBeDefined());
+    expect(queryClient.getQueryData(["assistant-conversation", "alpha", "chat_3"])).toBeUndefined();
+    await user.hover(screen.getByRole("button", { name: /Saved chat 4/ }));
+    await waitFor(() => expect(queryClient.getQueryData(["assistant-conversation", "alpha", "chat_4"])).toBeDefined());
+    await user.click(screen.getByRole("button", { name: /Saved chat 0/ }));
+    expect(screen.getByText("Transcript chat_0")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Conversations" }));
+    await user.click(screen.getByRole("button", { name: /Saved chat 4/ }));
+    expect(screen.getByText("Transcript chat_4")).toBeVisible();
+    expect(screen.queryByText("Transcript chat_0")).toBeNull();
+    for (const chatSlug of ["chat_0", "chat_4"]) {
+      expect(getMock.mock.calls.filter(([url]) => String(url).endsWith(`/conversations/${chatSlug}`))).toHaveLength(1);
+    }
+  });
+
+  it("shows loading rather than a new-chat prompt while an uncached transcript loads", async () => {
+    const originalGet = getMock.getMockImplementation();
+    getMock.mockImplementation((url: string) => url.includes("/conversations/") ? new Promise(() => {}) : originalGet?.(url));
+    renderRoute("/workspace/wrk/projects/alpha/agent/chat_cold");
+    expect(await screen.findByRole("status", { name: "Loading conversation" })).toBeVisible();
+    expect(screen.queryByText("Ask about this project")).toBeNull();
+    expect(screen.queryByText("Working…")).toBeNull();
   });
 
   it("opens the conversations dropdown with real chats", async () => {
@@ -546,33 +586,100 @@ describe("ProjectSummary v2 scaffold", () => {
       expect(screen.getByRole("button", { name: "Conversations" })).toBeInTheDocument(),
     );
     await user.click(screen.getByRole("button", { name: "Conversations" }));
-    const menu = screen.getByRole("menu", { name: "Conversations" });
+    const menu = screen.getByRole("dialog");
     expect(
-      within(menu).getByRole("menuitem", { name: /Checkout errors deep-dive/ }),
+      within(menu).getByRole("button", { name: /Checkout errors deep-dive/ }),
     ).toBeInTheDocument();
-    // Day grouping with relative intraday time, no menu title.
+    expect(within(menu).getByRole("searchbox", { name: "Search conversations" })).toBeVisible();
     expect(within(menu).getByText("Today")).toBeInTheDocument();
     expect(within(menu).getByText("now")).toBeInTheDocument();
-    expect(within(menu).queryByText("Conversations")).toBeNull();
   });
 
-  it("keeps the conversations menu in the chat tab only", async () => {
+  it("loads older conversations into searchable history", async () => {
+    const firstPage = { id: "conv_recent", slug: "chat_recent", title: "Recent chat", lastMessageAt: Date.now(), messageCount: 1, hasActiveRun: false };
+    const olderPage = { id: "conv_older", slug: "chat_older", title: "Older checkout analysis", lastMessageAt: Date.now() - 40 * 86_400_000, messageCount: 2, hasActiveRun: false };
+    const originalGet = getMock.getMockImplementation();
+    getMock.mockImplementation(async (url: string) => {
+      if (url.includes("/assistant/conversations?")) {
+        return url.includes("cursor=older")
+          ? { data: { items: [olderPage], nextCursor: null } }
+          : { data: { items: [firstPage], nextCursor: "older" } };
+      }
+      if (url.endsWith("/conversations/chat_older")) return { data: { conversation: olderPage, messages: [], activeRun: null } };
+      return originalGet?.(url);
+    });
     const user = userEvent.setup();
-    // Overview mode: no conversations menu at all.
+    renderRoute("/workspace/wrk/projects/alpha");
+    await user.click(screen.getByRole("button", { name: "Conversations" }));
+    const menu = screen.getByRole("dialog");
+    await user.click(within(menu).getByRole("button", { name: "Load older conversations" }));
+    await user.type(within(menu).getByRole("searchbox", { name: "Search conversations" }), "checkout");
+    expect(within(menu).queryByRole("button", { name: /Recent chat/ })).toBeNull();
+    await user.click(await within(menu).findByRole("button", { name: /Older checkout analysis/ }));
+    expect(screen.getByRole("button", { name: "Conversations" })).toHaveTextContent("Older checkout analysis");
+    expect(getMock.mock.calls.some(([url]) => String(url).includes("cursor=older"))).toBe(true);
+  });
+
+  it("keeps conversation history accessible from overview and chat", async () => {
+    const user = userEvent.setup();
+    const originalGet = getMock.getMockImplementation();
+    getMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/conversations/chat_abc123def456")) return { data: {
+        conversation: { id: "conv_1", slug: "chat_abc123def456", title: "Checkout errors deep-dive" },
+        messages: [], activeRun: null,
+      } };
+      return originalGet?.(url);
+    });
     renderRoute("/workspace/wrk/projects/alpha");
     await waitFor(() =>
       expect(screen.getByText("Project health")).toBeInTheDocument(),
     );
-    expect(
-      screen.queryByRole("button", { name: "Conversations" }),
-    ).toBeNull();
-    // Chat tab: the menu lists chats plus New chat.
-    renderRoute("/workspace/wrk/projects/alpha/agent");
     await user.click(screen.getByRole("button", { name: "Conversations" }));
-    const menu = screen.getByRole("menu", { name: "Conversations" });
+    const menu = screen.getByRole("dialog");
     expect(
-      within(menu).getByRole("menuitem", { name: /New chat/ }),
+      within(menu).getByRole("button", { name: /New chat/ }),
     ).toBeInTheDocument();
+    await user.click(within(menu).getByRole("button", { name: /Checkout errors deep-dive/ }));
+    expect(await screen.findByRole("button", { name: "Back to overview" })).toBeVisible();
+  });
+
+  it.each(["server", "network"])("offers retry for a %s load failure without claiming the chat was deleted", async (failure) => {
+    const user = userEvent.setup();
+    const originalGet = getMock.getMockImplementation();
+    let attempts = 0;
+    getMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/conversations/chat_retry")) {
+        attempts += 1;
+        if (attempts === 1) throw failure === "server" ? { response: { status: 500 } } : new Error("Network Error");
+        return { data: { conversation: { id: "conv_retry", slug: "chat_retry", title: "Retry chat" }, messages: [{ id: "msg_retry", seq: 0, role: "user", status: "complete", parts: [{ type: "text", text: "Recovered transcript" }] }], activeRun: null } };
+      }
+      return originalGet?.(url);
+    });
+    renderRoute("/workspace/wrk/projects/alpha/agent/chat_retry");
+    expect(await screen.findByText("Couldn't load this chat")).toBeVisible();
+    expect(screen.queryByText("That chat isn't available")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("Recovered transcript")).toBeVisible();
+    expect(screen.queryByText("Couldn't load this chat")).not.toBeInTheDocument();
+    expect(attempts).toBe(2);
+  });
+
+  it("keeps cached messages visible when a background refresh fails", async () => {
+    queryClient.setQueryData(["assistant-conversation", "alpha", "chat_cached"], {
+      conversation: { id: "conv_cached", slug: "chat_cached", title: "Cached chat" },
+      messages: [{ id: "msg_cached", seq: 0, role: "user", status: "complete", parts: [{ type: "text", text: "Cached transcript" }] }],
+      activeRun: null,
+    }, { updatedAt: Date.now() - 60_000 });
+    const originalGet = getMock.getMockImplementation();
+    getMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/conversations/chat_cached")) throw { response: { status: 500 } };
+      return originalGet?.(url);
+    });
+    renderRoute("/workspace/wrk/projects/alpha/agent/chat_cached");
+    expect(screen.getByText("Cached transcript")).toBeVisible();
+    expect(await screen.findByText("Couldn't refresh this chat. Showing saved messages.")).toBeVisible();
+    expect(screen.getByText("Cached transcript")).toBeVisible();
+    expect(screen.queryByText("That chat isn't available")).not.toBeInTheDocument();
   });
 
   it("offers a safe return for a missing chat", async () => {
@@ -589,6 +696,6 @@ describe("ProjectSummary v2 scaffold", () => {
     await waitFor(() =>
       expect(screen.getByText("That chat isn't available")).toBeInTheDocument(),
     );
-    expect(screen.getByRole("button", { name: "Back to overview" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Back to overview" }).length).toBeGreaterThan(0);
   });
 });

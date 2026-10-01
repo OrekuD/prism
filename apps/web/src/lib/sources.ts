@@ -26,7 +26,7 @@ export const SOURCE_TYPE_PLATFORMS: Record<
 	ReadonlyArray<string>
 > = {
 	web: ["web"],
-	mobile: ["react-native", "ios", "android"],
+	mobile: ["mobile", "react-native", "ios", "android"],
 	server: ["server"],
 };
 
@@ -40,6 +40,7 @@ export const SOURCE_TABS: ReadonlyArray<{ tab: string; label: string }> = [
 
 export const PLATFORM_LABELS: Record<string, string> = {
 	web: "Web",
+	mobile: "Mobile",
 	ios: "iOS",
 	android: "Android",
 	"react-native": "React Native",
@@ -73,8 +74,18 @@ export function sourceSnippetPlatform(
 	return "web";
 }
 
-/** Keys are shown once at creation — list rows render a masked preview. */
+/** Keys are shown once at creation — list rows render a masked preview that
+ * keeps the family prefix readable (task 29). Mirror of the shared policy in
+ * packages/core/src/source-family.ts. */
+const KEY_FAMILY_PREFIXES = ["psk_web_", "psk_mobile_", "ssk_"] as const;
+
 export function maskKey(value: string): string {
+	const prefix = KEY_FAMILY_PREFIXES.find((candidate) =>
+		value.startsWith(candidate),
+	);
+	if (prefix) {
+		return `${prefix}${String.fromCharCode(0x2022).repeat(8)}${value.slice(-4)}`;
+	}
 	if (value.length <= 10) return value;
 	return `${value.slice(0, 4)}${String.fromCharCode(0x2022).repeat(8)}${value.slice(-4)}`;
 }
@@ -110,35 +121,42 @@ export function isValidOrigin(origin: string): boolean {
 }
 
 /** SDK snippets carry ONLY the source's key — never a project or
- * organization id. */
+ * organization id. The family selects the supported adapter (task 29) and
+ * the key string already shows its family prefix. */
 export function sdkSnippet(
 	platform: string,
 	key: string,
 	endpoint: string,
 ): string {
-	if (platform === "server") {
-		return `import { PrismClient } from "@prism-analytics/core";
+	const family = typeOfPlatform(platform);
+	if (family === "server") {
+		return `import { createNodeClient } from "@prism-analytics/node";
 
-const prism = new PrismClient({
+const prism = await createNodeClient({
   sourceKey: "${key}", // secret server key — keep it out of client bundles
   endpoint: "${endpoint}",
+  collection: { initialState: "granted" },
 });
 
-await prism.track("order_completed", { value: 129.0 });`;
+await prism.track("order_completed", { value: 129 });`;
 	}
-	const packageName =
-		platform === "web"
-			? "@prism-analytics/browser"
-			: platform === "react-native"
-				? "@prism-analytics/react-native"
-				: platform === "ios"
-					? "@prism-analytics/ios"
-					: "@prism-analytics/android";
-	return `import { createBrowserClient } from "${packageName}";
+	if (family === "mobile") {
+		return `import { createReactNativeClient } from "@prism-analytics/react-native";
+
+const prism = await createReactNativeClient({
+  sourceKey: "${key}", // publishable key — safe to embed in the app
+  endpoint: "${endpoint}",
+  collection: { initialState: "granted" },
+});
+
+await prism.track("order_completed", { value: 129 });`;
+	}
+	return `import { createBrowserClient } from "@prism-analytics/browser";
 
 const prism = await createBrowserClient({
   sourceKey: "${key}", // publishable key — safe to embed in the client
   endpoint: "${endpoint}",
+  collection: { initialState: "granted" },
 });
 
 await prism.track("page_viewed", { url: window.location.href });`;

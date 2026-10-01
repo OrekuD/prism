@@ -94,6 +94,20 @@ describe("geo provider chain", () => {
 		expect(resolveClientIp(ctx, {})).toBeNull();
 		expect(resolveClientIp(ctx, { TRUST_PROXY: "true" })).toBe("203.0.113.9");
 	});
+
+	it("trusts only Cloudflare's IP header in Worker mode", () => {
+		const ctx = {
+			env: {},
+			req: {
+				header: (name: string) => ({
+					"cf-connecting-ip": "203.0.113.9",
+					"x-real-ip": "198.51.100.1",
+					"x-forwarded-for": "198.51.100.2",
+				})[name],
+			},
+		} as never as Parameters<typeof resolveClientIp>[0];
+		expect(resolveClientIp(ctx, { ANALYTICS_TRUSTED_PROXY: "cloudflare", TRUST_PROXY: "true" })).toBe("203.0.113.9");
+	});
 });
 
 it("counters are safe labeled numbers only", () => {

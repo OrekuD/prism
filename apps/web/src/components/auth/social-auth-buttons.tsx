@@ -1,4 +1,4 @@
-import { Loader2 } from "lucide-react";
+import { Loader2 } from "@/components/ui/hugeicons";
 import { cn } from "@/lib/utils";
 
 /** Inline GitHub mark: lucide removed brand icons; keep one icon family. */
@@ -10,7 +10,43 @@ function GitHubMark(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
+/** Inline Google "G" mark — official four-color logo, matches GitHub mark scale. */
+function GoogleMark(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 18 18" aria-hidden="true" {...props}>
+      <path
+        fill="#4285F4"
+        d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92a8.78 8.78 0 0 0 2.68-6.62Z"
+      />
+      <path
+        fill="#34A853"
+        d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.91-2.26c-.81.54-1.84.86-3.05.86-2.34 0-4.33-1.58-5.04-3.71H.96v2.33A9 9 0 0 0 9 18Z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M3.96 10.71a5.41 5.41 0 0 1 0-3.42V4.96H.96a9 9 0 0 0 0 8.08l3-2.33Z"
+      />
+      <path
+        fill="#EA4335"
+        d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58A9 9 0 0 0 .96 4.96l3 2.33C4.67 5.16 6.66 3.58 9 3.58Z"
+      />
+    </svg>
+  );
+}
+
 export type EnabledProviders = { github: boolean; google: boolean };
+
+/** Tiny floating pill marking the last-used provider (top-right corner). */
+function LastUsedBadge() {
+  return (
+    <span
+      aria-hidden="true"
+      className="absolute -top-1.5 right-3 rounded-full bg-accent px-1.5 py-px text-[9px] font-medium leading-[1.4] tracking-normal text-primary-foreground"
+    >
+      Last used
+    </span>
+  );
+}
 
 /**
  * Provider sign-in buttons (design-system.md 11.3): 42px secondary
@@ -22,6 +58,7 @@ export function SocialAuthButtons({
   onSocial,
   actionLabel = "Continue with",
   pendingProvider = null,
+  lastUsed = null,
   className,
 }: {
   providers: EnabledProviders;
@@ -29,13 +66,15 @@ export function SocialAuthButtons({
   actionLabel?: string;
   /** Provider currently redirecting; both buttons disable while set. */
   pendingProvider?: "github" | "google" | null;
+  /** Provider the stored "last used" hint points at; badge that button. */
+  lastUsed?: "github" | "google" | null;
   className?: string;
 }) {
   const enabled = providers.github || providers.google;
   if (!enabled) return null;
 
   const buttonClass =
-    "flex h-[42px] items-center justify-center gap-2.5 rounded-[2px] border border-border-strong bg-canvas text-[13px] font-medium text-text transition-colors duration-150 hover:border-text-subtle hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-45";
+    "flex h-[42px] items-center justify-center gap-2.5 rounded-full border border-border-strong bg-canvas text-[13px] font-medium text-text transition-colors duration-150 hover:border-border-strong hover:bg-surface-hover dark:hover:border-border-strong dark:hover:bg-black/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-45";
 
   return (
     <div className={cn("grid gap-2.5", className)}>
@@ -45,8 +84,9 @@ export function SocialAuthButtons({
           onClick={() => onSocial("github")}
           disabled={pendingProvider !== null}
           aria-busy={pendingProvider === "github"}
-          className={buttonClass}
+          className={cn(buttonClass, "relative")}
         >
+          {lastUsed === "github" ? <LastUsedBadge /> : null}
           {pendingProvider === "github" ? (
             <Loader2 className="size-4 animate-spin" aria-hidden="true" />
           ) : (
@@ -61,17 +101,13 @@ export function SocialAuthButtons({
           onClick={() => onSocial("google")}
           disabled={pendingProvider !== null}
           aria-busy={pendingProvider === "google"}
-          className={buttonClass}
+          className={cn(buttonClass, "relative")}
         >
+          {lastUsed === "google" ? <LastUsedBadge /> : null}
           {pendingProvider === "google" ? (
             <Loader2 className="size-4 animate-spin" aria-hidden="true" />
           ) : (
-            <span
-              aria-hidden="true"
-              className="grid size-4 place-items-center rounded-full border border-border-strong font-mono text-[10px] font-bold"
-            >
-              G
-            </span>
+            <GoogleMark className="size-4" />
           )}
           {actionLabel} Google
         </button>

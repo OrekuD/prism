@@ -111,7 +111,7 @@ function InsightActions({
       ) : (
         <Link
           to={insight.drilldown.destination}
-          className="inline-flex h-[30px] items-center justify-center gap-2 whitespace-nowrap rounded-sm border border-border-strong px-3 text-xs font-medium text-text transition-colors duration-100 hover:border-text-subtle hover:bg-surface-hover"
+          className="inline-flex h-[30px] items-center justify-center gap-2 whitespace-nowrap rounded-full border border-border-strong px-3 text-xs font-medium text-text transition-colors duration-100 hover:border-text-subtle hover:bg-surface-hover"
         >
           {insight.drilldown.label}
         </Link>
@@ -119,7 +119,7 @@ function InsightActions({
       {primary ? (
         <Link
           to={insight.drilldown.destination}
-          className="inline-flex h-[30px] items-center justify-center gap-2 whitespace-nowrap rounded-sm border border-border-strong px-3 text-xs font-medium text-text transition-colors duration-100 hover:border-text-subtle hover:bg-surface-hover"
+          className="inline-flex h-[30px] items-center justify-center gap-2 whitespace-nowrap rounded-full border border-border-strong px-3 text-xs font-medium text-text transition-colors duration-100 hover:border-text-subtle hover:bg-surface-hover"
         >
           {insight.drilldown.label}
         </Link>
@@ -195,7 +195,7 @@ export function DataQualityStrip({
   const title = warnings[0] ?? "Check data coverage.";
   const detail = definitionMissing
     ? `No key outcome is defined yet${definitionLabel ? ` (${definitionLabel})` : ""}. Define one so Prism can answer outcome questions precisely.`
-    : (warnings[1] ?? "Coverage below covers the current snapshot.");
+    : (warnings[1] ?? null);
   return (
     <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-[18px] gap-y-2 border-t border-border bg-canvas-subtle p-[13px_14px] max-[520px]:grid-cols-1">
       <div className="flex min-w-0 items-start gap-2.5">
@@ -205,12 +205,12 @@ export function DataQualityStrip({
         />
         <div className="min-w-0">
           <h3 className="text-[12.5px] font-semibold">{title}</h3>
-          <p className="mt-0.5 text-xs text-text-muted">{detail}</p>
+          {detail ? <p className="mt-0.5 text-xs text-text-muted">{detail}</p> : null}
         </div>
       </div>
       <Link
         to="sources"
-        className="inline-flex h-[30px] items-center justify-center gap-2 whitespace-nowrap rounded-sm border border-border-strong px-3 text-xs font-medium text-text transition-colors duration-100 hover:border-text-subtle hover:bg-surface-hover"
+        className="inline-flex h-[30px] items-center justify-center gap-2 whitespace-nowrap rounded-full border border-border-strong px-3 text-xs font-medium text-text transition-colors duration-100 hover:border-text-subtle hover:bg-surface-hover"
       >
         Check source
       </Link>
@@ -221,27 +221,35 @@ export function DataQualityStrip({
 export function InsightsGrid({
   insights,
   warnings,
+  hasAcceptedData,
   definitionMissing,
   definitionLabel,
-  rangeLabel,
   onInvestigate,
 }: {
   insights: readonly InsightCandidate[];
   warnings: readonly string[];
+  hasAcceptedData: boolean;
   definitionMissing: boolean;
   definitionLabel: string | null;
-  rangeLabel: string;
   onInvestigate: (insight: InsightCandidate) => void;
 }) {
   const [featured, ...rest] = insights;
   return (
     <>
-      <SectionLabel right={rangeLabel}>Insights</SectionLabel>
-      {insights.length === 0 && warnings.length === 0 && !definitionMissing ? (
-        <p className="rounded-sm border border-border p-4 text-sm text-text-muted">
-          No significant changes detected in this range. Coverage and pulse
-          below reflect the current snapshot.
-        </p>
+      <SectionLabel>Insights</SectionLabel>
+      {insights.length === 0 ? (
+        <div>
+          <p className="py-4 text-sm text-text-muted">
+            {hasAcceptedData ? "No notable changes in the last 7 days." : "No activity in the last 7 days."}
+          </p>
+          {warnings.length > 0 || definitionMissing ? (
+            <DataQualityStrip
+              warnings={warnings}
+              definitionMissing={definitionMissing}
+              definitionLabel={definitionLabel}
+            />
+          ) : null}
+        </div>
       ) : (
         <Frame className="grid grid-cols-[1.25fr_1fr] overflow-visible bg-surface max-[1100px]:grid-cols-1">
           {featured ? (
@@ -256,11 +264,6 @@ export function InsightsGrid({
                 <SideInsight insight={insight} onInvestigate={onInvestigate} />
               </div>
             ))}
-            {rest.length === 0 && !featured ? (
-              <p className="p-[18px_14px_16px] text-sm text-text-muted">
-                No significant changes detected in this range.
-              </p>
-            ) : null}
           </div>
           {warnings.length > 0 || definitionMissing ? (
             <div className="col-span-full">

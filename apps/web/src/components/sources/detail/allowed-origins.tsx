@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { isValidOrigin } from "@/lib/sources";
 import { cn } from "@/lib/utils";
 import { useUpdateSourceMutation } from "@/network/mutations/useSourceMutations";
-import { TriangleAlert, X } from "lucide-react";
+import { TriangleAlert, X } from "@/components/ui/hugeicons";
 import React from "react";
 
 export type AllowedOriginsProps = {
@@ -100,7 +100,7 @@ export function AllowedOrigins({
             origins.map((origin) => (
               <li
                 key={origin}
-                className="flex items-center justify-between gap-2 rounded-[2px] border border-border bg-surface px-3 py-2"
+                className="flex items-center justify-between gap-2 rounded-[12px] border border-border bg-surface px-3 py-2"
               >
                 <code className="truncate font-mono text-[12px] text-text">
                   {origin}

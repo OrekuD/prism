@@ -5,6 +5,9 @@ import type {
 	PrismRuntimeContext,
 } from "@prism-analytics/core";
 
+/** Keep in sync with packages/node/package.json version. */
+export const NODE_ADAPTER_VERSION = "0.0.3";
+
 /**
  * Node/server runtime internals for @prism-analytics/node (task-15, Phase 4).
  *

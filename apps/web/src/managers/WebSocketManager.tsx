@@ -19,51 +19,92 @@ export function WebSocketManager(props: React.PropsWithChildren<Props>) {
 
     let ws: WebSocket | null = null;
     let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let renewTimer: ReturnType<typeof setTimeout> | null = null;
+    let retryCount = 0;
 
     // Request a short-lived service JWT for the analytics WebSocket. The
     // cookie session stays the primary credential; the JWT is only for the
     // analytics service (issuer/audience-bound, ~15m expiry).
-    getServiceToken()
-      .then((token) => {
-        if (cancelled || !token) return;
+    const retry = () => {
+      if (cancelled) return;
+      retryTimer = setTimeout(
+        connect,
+        Math.min(1_000 * 2 ** retryCount++, 30_000),
+      );
+    };
 
-        ws = new WebSocket(`${WS_BASE_URL}/ws`);
+    const connect = async () => {
+      let token: string | null;
+      try {
+        token = await getServiceToken();
+      } catch {
+        retry();
+        return;
+      }
+      if (cancelled) return;
+      if (!token) {
+        retry();
+        return;
+      }
 
-        ws.onopen = () => {
-          const message: SocketConnectProject = {
-            type: "connect-project",
-            data: {
-              projectId,
-              token,
-            },
-          };
-          ws?.send(JSON.stringify(message));
+      const socket = new WebSocket(
+        `${WS_BASE_URL}/ws?projectId=${encodeURIComponent(projectId)}`,
+        ["prism", `prism.jwt.${token}`],
+      );
+      ws = socket;
+      socket.onopen = () => {
+        retryCount = 0;
+        if (cancelled) {
+          socket.close();
+          return;
+        }
+        // Service JWTs last about 15 minutes; renew before the DO stops delivery.
+        renewTimer = setTimeout(() => socket.close(), 12 * 60_000);
+        const message: SocketConnectProject = {
+          type: "connect-project",
+          data: {
+            projectId,
+            token,
+          },
         };
+        socket.send(JSON.stringify(message));
+      };
 
-        ws.onerror = () => {
-          console.log("Could not establish a WebSocket connection");
-        };
+      socket.onerror = () => {
+        console.log("Could not establish a WebSocket connection");
+      };
 
-        ws.onmessage = (event) => {
-          const message: SocketMessageTypes = JSON.parse(event.data);
+      socket.onmessage = (event) => {
+        let message: SocketMessageTypes;
+        try {
+          message = JSON.parse(event.data);
+        } catch {
+          return;
+        }
 
-          switch (message.type) {
-            case "session-started":
-              addSession(projectId, message.data.session);
-              break;
-          }
-        };
+        switch (message.type) {
+          case "session-started":
+            addSession(projectId, message.data.session);
+            break;
+        }
+      };
 
-        ws.onclose = () => {
-          console.log("WebSocket connection closed");
-        };
-      })
-      .catch(() => {
-        console.log("Could not obtain a service token");
-      });
+      socket.onclose = (event) => {
+        if (renewTimer) clearTimeout(renewTimer);
+        if (ws === socket) ws = null;
+        if (event.code === 1008 && event.reason !== "Subscription expired")
+          return;
+        retry();
+      };
+    };
+
+    void connect();
 
     return () => {
       cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      if (renewTimer) clearTimeout(renewTimer);
       ws?.close();
       // the project's live list is cleared when the subscription ends —
       // navigating away never leaves the previous project's sessions

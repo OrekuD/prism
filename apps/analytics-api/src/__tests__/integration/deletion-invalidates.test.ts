@@ -45,7 +45,10 @@ run("task-13 boundary: deletion invalidates keys and subscriptions", () => {
     const orgId = crypto.randomUUID();
     const projectId = crypto.randomUUID();
     const sourceId = crypto.randomUUID();
-    const key = `psk_test_${stamp}`;
+    // Task 29: current-format key — obsolete formats are configuration faults.
+    const key = `psk_web_${Buffer.from(
+      crypto.getRandomValues(new Uint8Array(32)),
+    ).toString("base64url")}`;
     const memberUserId = crypto.randomUUID();
 
     try {

@@ -1,4 +1,4 @@
-import { Loader2, TriangleAlert } from "lucide-react";
+import { Loader2, TriangleAlert } from "@/components/ui/hugeicons";
 
 import { authClient } from "@/lib/authClient";
 import { useResendVerificationEmail } from "@/hooks/useResendVerificationEmail";
@@ -10,7 +10,7 @@ export function EmailVerificationAlert() {
 	if (sessionData?.user?.emailVerified) return null;
 
 	return (
-		<div className="mb-4 flex items-center gap-2.5 rounded-[2px] border border-warning/30 bg-warning/10 px-3 py-2.5">
+		<div className="mb-4 flex items-center gap-2.5 rounded-[12px] border border-warning/30 bg-warning/10 px-3 py-2.5">
 			<TriangleAlert
 				className="size-3.5 shrink-0 text-warning"
 				aria-hidden="true"

@@ -29,7 +29,7 @@ function toPlottable(artifact: AssistantArtifact): Plottable[] | null {
 
 function Label({ fact }: { fact: MetricFact }) {
   return (
-    <span className="font-mono text-[11px] uppercase tracking-[0.09em] text-text-muted">
+    <span className="text-[11px] uppercase tracking-[0.09em] text-text-muted">
       {fact.label}
     </span>
   );
@@ -80,7 +80,7 @@ export function ActivityChart({
     return (
       <Frame inset className="p-[12px_14px]">
         <div className="flex items-center gap-3 px-0 pb-2">
-          <h3 className="font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
+          <h3 className="text-[13px] font-medium tracking-normal text-text-subtle">
             Activity trend
           </h3>
         </div>
@@ -105,7 +105,7 @@ export function ActivityChart({
   return (
     <Frame inset>
       <div className="flex flex-wrap items-center gap-3 px-3.5 pt-3">
-        <h3 className="font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
+        <h3 className="text-[13px] font-medium tracking-normal text-text-subtle">
           Activity trend
         </h3>
         <div className="ml-auto flex items-center gap-2">
@@ -113,7 +113,7 @@ export function ActivityChart({
             {geometry.paths.map((entry) => (
               <span
                 key={entry.name}
-                className="inline-flex items-center gap-1.5 font-mono text-[11px] font-medium tracking-[0.04em] text-text-muted"
+                className="inline-flex items-center gap-1.5 text-[11px] font-medium tracking-[0.04em] text-text-muted"
               >
                 <span
                   className="inline-block h-2 w-2 rounded-[1px]"
@@ -185,7 +185,7 @@ export function ActivityChart({
         </svg>
         {hover !== null && hovered.length > 0 ? (
           <output
-            className="pointer-events-none absolute z-40 whitespace-nowrap rounded-sm border border-border-strong bg-surface-raised px-2 py-1.5 font-mono text-[10.5px] font-medium leading-[1.5] tracking-[0.02em] text-text shadow-[0_24px_80px_rgb(0_0_0/0.45)]"
+            className="pointer-events-none absolute z-40 whitespace-nowrap rounded-md border border-border-strong bg-surface-raised px-2 py-1.5 text-[10.5px] font-medium leading-[1.5] tracking-[0.02em] text-text shadow-[0_24px_80px_rgb(0_0_0/0.45)]"
             style={{
               left: Math.max(
                 8,
@@ -241,11 +241,11 @@ function ReleaseRows({
           key={row.key}
           className="grid grid-cols-[auto_1fr_auto] gap-x-2.5 gap-y-[3px] border-t border-border px-3.5 py-2.5 first:border-t-0"
         >
-          <span className="font-mono text-xs font-medium leading-[1.3] text-text">
+          <span className="text-xs font-medium leading-[1.3] text-text">
             {row.label}
           </span>
-          <span className="font-mono text-[11px] leading-[1.7] text-text-muted" />
-          <span className="text-right font-mono text-[11px] leading-[1.7] text-text-muted tabular-nums">
+          <span className="text-[11px] leading-[1.7] text-text-muted" />
+          <span className="text-right text-[11px] leading-[1.7] text-text-muted tabular-nums">
             {row.value.toLocaleString()}
             {row.sharePercent !== null ? ` · ${row.sharePercent}%` : ""}
           </span>
@@ -273,7 +273,7 @@ function IssueRows({
           <span className="truncate text-[11.5px] leading-[1.45] text-text-muted">
             <b className="font-semibold text-text">{issue.title}</b>
           </span>
-          <span className="text-right font-mono text-[11px] leading-[1.7] text-text-muted tabular-nums">
+          <span className="text-right text-[11px] leading-[1.7] text-text-muted tabular-nums">
             {issue.count} × {issue.users} users
           </span>
         </div>
@@ -290,13 +290,13 @@ export function SecondaryPanel({ artifact }: { artifact: AssistantArtifact }) {
   return (
     <Frame inset>
       <div className="flex flex-wrap items-center gap-3 px-3.5 pt-3">
-        <h3 className="font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
+        <h3 className="text-[13px] font-medium tracking-normal text-text-subtle">
           {title}
         </h3>
         <div className="ml-auto flex items-center gap-2">
           <Link
             to={artifact.drilldown.destination}
-            className="inline-flex h-[30px] items-center justify-center gap-2 whitespace-nowrap rounded-sm px-3 text-xs font-medium text-text-muted transition-colors duration-100 hover:bg-surface-hover hover:text-text"
+            className="inline-flex h-[30px] items-center justify-center gap-2 whitespace-nowrap rounded-full px-3 text-xs font-medium text-text-muted transition-colors duration-100 hover:bg-surface-hover hover:text-text"
           >
             {artifact.drilldown.label}
           </Link>

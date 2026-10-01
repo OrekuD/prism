@@ -78,8 +78,8 @@ export function redact(value: unknown, key?: string): unknown {
 type Transport = (level: LogLevel, line: string) => void;
 
 const defaultTransport: Transport = (level, line) => {
-  if (level === 'error') process.stderr.write(`${line}\n`);
-  else process.stdout.write(`${line}\n`);
+  if (level === 'error') console.error(line);
+  else console.log(line);
 };
 
 let transport: Transport = defaultTransport;

@@ -5,7 +5,7 @@ import {
 	ChevronDownIcon,
 	ChevronLeftIcon,
 	ChevronRightIcon,
-} from "lucide-react";
+} from "@/components/ui/hugeicons";
 import {
 	DayPicker,
 	getDefaultClassNames,

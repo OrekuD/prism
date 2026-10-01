@@ -28,6 +28,7 @@
  */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
+import { normalizeStoredMessageParts } from "./assistantMessageCompatibility";
 import {
   AGENT_LIMITS,
   ANSWER_LIMITS,
@@ -289,7 +290,7 @@ function mapMessage(row: Record<string, unknown>): AssistantMessage {
     seq: asNumber(row.seq),
     role: asString(row.role),
     status: asString(row.status),
-    parts: (row.parts ?? []) as unknown,
+    parts: normalizeStoredMessageParts(row.parts ?? []),
     failureCode: asNullableString(row.failure_code),
     clientRequestId: asNullableString(row.client_request_id),
     createdAt: asNumber(row.created_at),

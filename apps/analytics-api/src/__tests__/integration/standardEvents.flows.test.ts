@@ -105,11 +105,11 @@ function stdEvent(
   };
 }
 
-function batch(events: unknown[]): string {
+function batch(events: unknown[], sdkName = "@prism-analytics/browser"): string {
   return JSON.stringify({
     schemaVersion: 3,
     sentAt: Date.now(),
-    sdk: { name: "@prism-analytics/core", version: "0.0.3" },
+    sdk: { name: sdkName, version: "0.0.3" },
     events,
   });
 }
@@ -159,7 +159,7 @@ run("Standard Events real-store integration (task-19 R1-F5)", () => {
       const body = JSON.stringify({
         schemaVersion: 3,
         sentAt: Date.now(),
-        sdk: { name: "@prism-analytics/core", version: "0.0.3" },
+        sdk: { name: "@prism-analytics/browser", version: "0.0.3" },
         identity: [
           {
             opId: `itest-std-op-${Date.now()}`,
@@ -294,7 +294,7 @@ run("Standard Events real-store integration (task-19 R1-F5)", () => {
     try {
       const searchId = `itest-std-rn-search-${Date.now()}`;
       const search = await ingest(
-        batch([stdEvent("search", { category: "documentation", resultCount: 8 }, { eventId: searchId })]),
+        batch([stdEvent("search", { category: "documentation", resultCount: 8 }, { eventId: searchId })], "@prism-analytics/react-native"),
         RN_SRC,
         "react-native",
       );
@@ -346,7 +346,7 @@ run("Standard Events real-store integration (task-19 R1-F5)", () => {
               $installation: rawInstallation,
             },
           },
-        ]),
+        ], "@prism-analytics/react-native"),
         RN_SRC,
         "react-native",
       );
@@ -409,7 +409,7 @@ run("Standard Events real-store integration (task-19 R1-F5)", () => {
             },
             { eventId, userId },
           ),
-        ]),
+        ], "@prism-analytics/node"),
         SRV_SRC,
         "server",
       );

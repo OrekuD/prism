@@ -15,7 +15,7 @@
  *
  *   # custom endpoint (defaults to http://localhost:8080, or PUBLIC_URL via nginx):
  *   PRISM_ANALYTICS_URL=http://localhost:8080 node scripts/seed-kiwi-french-toast.mjs
- *   PRISM_ANALYTICS_URL=https://prism-analytics-api-gsmo.onrender.com node scripts/seed-kiwi-french-toast.mjs
+ *   PRISM_ANALYTICS_URL=https://prism-analytics-api.orekud.workers.dev node scripts/seed-kiwi-french-toast.mjs
  */
 
 import postgres from "postgres";

@@ -48,6 +48,9 @@ export interface ReactNativePrismOptions {
  * available, getRandomValues otherwise - and a LOUD failure when neither
  * exists. Math.random() is never an acceptable identity source.
  */
+/** Keep in sync with packages/react-native/package.json version. */
+const RN_ADAPTER_VERSION = "0.0.3";
+
 function rnCreateId(): string {
 	const g = globalThis as { crypto?: Crypto };
 	if (g.crypto?.randomUUID) return g.crypto.randomUUID();
@@ -148,6 +151,12 @@ export async function createReactNativeClient(
 			sourceKey: opts.sourceKey,
 			endpoint: opts.endpoint,
 			collection: opts.collection,
+			// Task 29: React Native adapter identity + local mobile-key check.
+			integration: {
+				name: "@prism-analytics/react-native",
+				version: RN_ADAPTER_VERSION,
+				family: "mobile",
+			},
 			...(opts.anonymousPersistence
 				? { anonymousPersistence: opts.anonymousPersistence }
 				: {}),

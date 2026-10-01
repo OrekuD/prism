@@ -10,6 +10,7 @@
  * method on `authClient.organization.*` and is wrapped here.
  */
 import { authClient } from "./authClient";
+import { API_BASE_URL } from "./api";
 import { useParams } from "react-router-dom";
 
 export type Workspace = {
@@ -64,6 +65,25 @@ export const workspaceActions = {
 		authClient.organization.update({
 			organizationId: data.organizationId,
 			data: { name: data.name },
+		}),
+	/** Batch invitations through the product API: one request, per-entry
+	 * results. Better Auth still enforces owner/admin per invitation
+	 * server-side via the caller's session headers. */
+	inviteMembers: (data: {
+		organizationId: string;
+		invitations: Array<{ email: string; role: string }>;
+	}) =>
+		// Absolute URL: the client's $fetch is rooted at /api/auth and would
+		// double the path (/api/auth/api/v1/...) for a relative one.
+		authClient.$fetch<{
+			results: Array<{
+				email: string;
+				status: "sent" | "error";
+				error?: string;
+			}>;
+		}>(`${API_BASE_URL}/api/v1/workspace/invitations`, {
+			method: "POST",
+			body: data,
 		}),
 	delete: (organizationId: string) =>
 		authClient.organization.delete({ organizationId }),
@@ -171,47 +191,41 @@ export function newWorkspaceSlug(): string {
 
 /**
  * The default post-sign-in destination — the active (or first) workspace's
- * root, e.g. `/workspace/wrk_xxxxx`. The workspace landing resolves a valid
- * last-used project, the only project, or the project directory.
- * Falls back to `/overview` (which redirects) if no workspace has
- * provisioned yet. Best-effort: the auth session cookie is already set by
- * the caller (after waitForSession).
+ * project directory, e.g. `/workspace/wrk_xxxxx/projects`, without an
+ * intermediate workspace-landing redirect.
+ * Refresh the same organization atoms consumed by the dropdowns. A plain
+ * organization.list() request does not update useListOrganizations(), which
+ * may still hold the signed-out response from the mounted auth shell.
+ * The caller has already confirmed the session through waitForSession().
  */
 export async function resolveDefaultWorkspacePath(): Promise<string> {
-	try {
-		const [{ data }, sessionData] = await Promise.all([
-			authClient.organization.list(),
-			authClient.getSession(),
-		]);
-		const activeId = (
-			sessionData as unknown as {
-				session?: { activeOrganizationId?: string };
-			} | null
-		)?.session?.activeOrganizationId;
-		const orgs = (data ?? []) as Array<{ id: string; slug: string }>;
-		const target = orgs.find((o) => o.id === activeId) ?? orgs[0];
-		return target?.slug ? `/workspace/${target.slug}` : "/overview";
-	} catch {
-		return "/overview";
-	}
+	const organizations = authClient.$store.atoms.listOrganizations;
+	const [, sessionData] = await Promise.all([
+		organizations.get().refetch(),
+		authClient.getSession(),
+		authClient.$store.atoms.activeOrganization.get().refetch(),
+	]);
+	const { data, error } = organizations.get();
+	if (error || !data) throw new Error("Could not load workspaces");
+	const activeId = sessionData.data?.session.activeOrganizationId;
+	const orgs = data as Array<{ id: string; slug: string }>;
+	const target = orgs.find((org) => org.id === activeId) ?? orgs[0];
+	return target?.slug
+		? `/workspace/${encodeURIComponent(target.slug)}/projects`
+		: "/overview";
 }
 
-export const WORKSPACE_PLATFORMS = [
-	// all known; create dialog filters to CREATABLE
-	"web",
-	"ios",
-	"android",
-	"react-native",
-	"server",
-] as const;
+/**
+ * Task 29: canonical source families are the only creatable platforms.
+ * Legacy values (ios/android/react-native) remain readable on existing
+ * records and map to `mobile` in lib/sources.ts. Keep in parity with
+ * apps/api/src/controllers/SourcesController.ts CREATABLE_PLATFORMS.
+ */
+export const WORKSPACE_PLATFORMS = ["web", "mobile", "server"] as const;
 
-/** Task 18 (R1-F9/R2-F9): platforms a user may actually CREATE. iOS and
- * Android remain readable reserved values until native SDKs ship; the API
- * rejects them with the same set. Keep in parity with
- * apps/api/src/controllers/SourcesController.ts CREATABLE_PLATFORMS. */
 export const CREATABLE_PLATFORMS = [
 	"web",
-	"react-native",
+	"mobile",
 	"server",
 ] as const satisfies readonly WorkspacePlatform[];
 

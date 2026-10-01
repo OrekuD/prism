@@ -16,14 +16,14 @@ describe("createNodeClient (task-19 slice 3)", () => {
       createNodeClient({ sourceKey: "", endpoint: "https://api.example.com", collection: { initialState: "granted" } } as never),
     ).rejects.toThrow(/sourceKey/);
     await expect(
-      createNodeClient({ sourceKey: "pr_123", endpoint: "", collection: { initialState: "granted" } } as never),
+      createNodeClient({ sourceKey: "ssk_CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC", endpoint: "", collection: { initialState: "granted" } } as never),
     ).rejects.toThrow(/endpoint/);
     await expect(
-      createNodeClient({ sourceKey: "pr_123", endpoint: "https://api.example.com", collection: { initialState: "granted" as const } }),
+      createNodeClient({ sourceKey: "ssk_CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC", endpoint: "https://api.example.com", collection: { initialState: "granted" as const } }),
     ).resolves.toBeDefined();
     // missing initialState
     await expect(
-      createNodeClient({ sourceKey: "pr_123", endpoint: "https://api.example.com", collection: {} as never }),
+      createNodeClient({ sourceKey: "ssk_CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC", endpoint: "https://api.example.com", collection: {} as never }),
     ).rejects.toThrow(/initialState/);
   });
 
@@ -32,7 +32,7 @@ describe("createNodeClient (task-19 slice 3)", () => {
     // @ts-ignore mock
     globalThis.fetch = fakeFetch() as unknown as typeof fetch;
     const prism = await createNodeClient({
-      sourceKey: "pr_node_test_123",
+      sourceKey: "ssk_CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
       endpoint: "https://analytics.example.com",
       collection: { initialState: "granted" },
     });
@@ -50,7 +50,7 @@ describe("createNodeClient (task-19 slice 3)", () => {
       return { status: 200, headers: new Headers(), text: async () => "" } as unknown as Response;
     }) as unknown as typeof fetch;
     const prism2 = await createNodeClient({
-      sourceKey: "pr_node_test_456",
+      sourceKey: "ssk_CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
       endpoint: "https://analytics.example.com",
       collection: { initialState: "granted" },
     });
@@ -89,7 +89,7 @@ describe("createNodeClient (task-19 slice 3)", () => {
     // @ts-ignore
     globalThis.fetch = fakeFetch() as unknown as typeof fetch;
     const prism = await createNodeClient({
-      sourceKey: "pr_node_test_789",
+      sourceKey: "ssk_CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
       endpoint: "https://analytics.example.com",
       collection: { initialState: "granted" },
     });

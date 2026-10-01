@@ -34,6 +34,20 @@ const mockedAnalytics = vi.hoisted(() => ({
 vi.mock("@/network/queries/useSourcesQuery", () => ({
 	useSourcesQuery: () => ({ data: mockedSources.data, isLoading: false }),
 }));
+// PageHeader renders the breadcrumb trail from workspace + query data. Keep
+// those sources inert so this presentation test needs no provider stack and
+// the header adds no render churn.
+vi.mock("@/network/queries/useProjectsQuery", () => ({
+	useProjectsQuery: () => ({ data: undefined }),
+}));
+vi.mock("@/lib/workspace", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@/lib/workspace")>();
+	return {
+		...actual,
+		useSelectedWorkspace: () => ({ workspace: null, isPending: false }),
+		useActiveWorkspace: () => ({ data: null }),
+	};
+});
 vi.mock("@/network/queries/useWebAnalyticsQuery", () => ({
 	useWebAnalyticsQuery: (params: {
 		slug: string;
@@ -218,9 +232,9 @@ describe("web analytics page", () => {
 		mockedAnalytics.data = makeResource();
 		const { container } = renderPage();
 
-		// Head + metric strip labels (one-to-one with the design).
+		// Metric strip labels (one-to-one with the design). The page title
+		// moved to the shell breadcrumb header when headers were unified.
 		for (const label of [
-			"Web Analytics",
 			"Page views",
 			"Unique visitors",
 			"Sessions",

@@ -29,7 +29,7 @@ export type IngestRejectReason =
   | "invalid-page-view"
   | "page-view-host-mismatch"
   // Task 18: reserved mobile boundary rejections.
-  | "mobile-record-requires-react-native-source"
+  | "mobile-record-requires-mobile-source"
   | "mobile-record-requires-session"
   | "invalid-mobile-screen"
   | "invalid-mobile-lifecycle"

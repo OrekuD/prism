@@ -205,9 +205,10 @@ export function validateGroundedAnswer(
 }
 
 /** Safe fallback: valid by construction, zero cited claims. */
-export function buildFallbackAnswer(reason: string): AssistantAnswer {
+export function buildFallbackAnswer(_reason: string): AssistantAnswer {
+  // Validation details belong in server traces, not the conversational reply.
   const summary =
-    `I could not verify an answer from the measured data (${reason.slice(0, 120)}). Try a narrower question about one metric, or check data coverage.`;
+    "I couldn't verify a reliable answer from this project's data. Try asking about one metric and a specific time period, or check data coverage.";
   const candidate = {
     summary: summary.slice(0, ANSWER_LIMITS.maxSummaryChars),
     observations: [],

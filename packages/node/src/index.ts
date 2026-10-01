@@ -10,6 +10,7 @@ import {
   type CollectionState,
 } from "@prism-analytics/core";
 import { createNodeRuntime } from "./node-runtime";
+import { NODE_ADAPTER_VERSION } from "./node-runtime";
 export type {
 	NodeErrorReporter,
 	NodeErrorReporterOptions,
@@ -97,6 +98,12 @@ export async function createNodeClient(
     sourceKey: options.sourceKey,
     endpoint: options.endpoint,
     runtime,
+    // Task 29: server adapter identity + local secret-key check.
+    integration: {
+      name: "@prism-analytics/node",
+      version: NODE_ADAPTER_VERSION,
+      family: "server",
+    },
     collection: options.collection,
     ...(options.queue ? { queue: options.queue } : {}),
     ...(options.sanitize ? { sanitize: options.sanitize } : {}),

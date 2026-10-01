@@ -29,19 +29,18 @@ const columns = [
 export function PublicFooter() {
   return (
     <footer className="border-t border-border">
-      <div className="grid gap-10 px-6 py-12 sm:grid-cols-2 lg:grid-cols-4 lg:px-10">
+      <div className="mx-auto grid max-w-[1320px] gap-10 px-5 py-16 sm:grid-cols-2 sm:px-8 lg:grid-cols-4">
         <div>
           <p className="flex items-center text-text">
             <PrismLogo size={18} />
           </p>
           <p className="mt-3 max-w-[28ch] text-[13px] leading-relaxed text-text-muted">
-            Realtime product analytics you can run with us or on your own
-            infrastructure.
+            Open-source analytics you can run anywhere.
           </p>
         </div>
         {columns.map((column) => (
           <div key={column.title}>
-            <p className="font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-subtle">
+            <p className="text-[13px] font-medium tracking-normal text-text-subtle">
               {column.title}
             </p>
             <ul className="mt-4 grid gap-2.5">
@@ -64,7 +63,7 @@ export function PublicFooter() {
           </div>
         ))}
       </div>
-      <div className="border-t border-border px-6 py-4 lg:px-10">
+      <div className="mx-auto max-w-[1320px] px-5 pb-8 sm:px-8">
         <p className="text-[12px] text-text-subtle">
           © {new Date().getFullYear()} Prism
         </p>

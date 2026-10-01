@@ -39,6 +39,18 @@ export function useBreadcrumbs(): Crumb[] {
 	);
 	const crumbs: Crumb[] = [];
 	const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+	// Display labels for known project sub-routes; keeps breadcrumb casing in
+	// step with the sidebar (Web Analytics, Mobile Analytics, Live).
+	const SUB_LABELS: Record<string, string> = {
+		"web-analytics": "Web Analytics",
+		"mobile-analytics": "Mobile Analytics",
+		realtime: "Live",
+		events: "Events",
+		people: "People",
+		errors: "Errors",
+		sources: "Sources",
+		settings: "Settings",
+	};
 
 	if (parts[0] === "account") {
 		crumbs.push({ label: workspace, href: `/workspace/${wrkSlug}/projects` });
@@ -87,9 +99,11 @@ export function useBreadcrumbs(): Crumb[] {
 				}
 			} else if (sub) {
 				crumbs.push({
-					label: sub
-						.replace(/-/g, " ")
-						.replace(/\b\w/g, (c) => c.toUpperCase()),
+					label:
+						SUB_LABELS[sub] ??
+						sub
+							.replace(/-/g, " ")
+							.replace(/\b\w/g, (c) => c.toUpperCase()),
 				});
 			}
 		}

@@ -19,7 +19,7 @@ export function Seg<T extends string>({
 	size?: "sm" | "md";
 }) {
 	return (
-		<fieldset className="inline-flex overflow-hidden rounded-[2px] border border-border">
+		<fieldset className="inline-flex overflow-hidden rounded-full border border-border">
 			<legend className="sr-only">{label}</legend>
 			{options.map((o, i) => (
 				<button
@@ -30,7 +30,7 @@ export function Seg<T extends string>({
 					className={cn(
 						"transition-colors",
 						size === "sm"
-							? "h-[30px] px-3 font-mono text-xs font-medium"
+							? "h-[30px] px-3 text-xs font-medium"
 							: "h-8 px-3.5 text-[13px] font-medium",
 						i > 0 && "border-l border-border",
 						value === o.key
@@ -95,7 +95,7 @@ export function DeltaBadge({
 		return (
 			<span
 				title="No prior data to compare"
-				className="font-mono text-[11px] text-text-subtle"
+				className="text-[11px] text-text-subtle"
 			>
 				—
 			</span>
@@ -103,7 +103,7 @@ export function DeltaBadge({
 	}
 	if (value.kind === "new") {
 		return (
-			<span className="font-mono text-[11px] font-medium text-success">New</span>
+			<span className="text-[11px] font-medium text-success">New</span>
 		);
 	}
 	const up = value.direction === "up";
@@ -111,7 +111,7 @@ export function DeltaBadge({
 	const good = flat || (invert ? !up : up);
 	if (flat) {
 		return (
-			<span className="inline-flex items-center gap-1 font-mono text-[11px] text-text-muted">
+			<span className="inline-flex items-center gap-1 text-[11px] text-text-muted">
 				0.0%
 			</span>
 		);
@@ -119,7 +119,7 @@ export function DeltaBadge({
 	return (
 		<span
 			className={cn(
-				"inline-flex items-center gap-1 font-mono text-[11px]",
+				"inline-flex items-center gap-1 text-[11px]",
 				good ? "text-success" : "text-danger",
 			)}
 		>
@@ -171,7 +171,7 @@ export function Card({
 }) {
 	return (
 		<div
-			className={cn("rounded-[2px] border border-border bg-canvas p-5", className)}
+			className={cn("rounded-[16px] border border-border bg-canvas p-5", className)}
 		>
 			{children}
 		</div>
@@ -186,7 +186,7 @@ export function RankHead({
 	cols: [string, string, string];
 }) {
 	return (
-		<div className="grid grid-cols-[1fr_72px_72px_96px] items-center gap-3 pb-2 font-mono text-[10px] font-medium uppercase tracking-[0.09em] text-text-subtle">
+		<div className="grid grid-cols-[1fr_72px_72px_96px] items-center gap-3 pb-2 text-[13px] font-medium tracking-normal text-text-subtle">
 			<span className="min-w-0 truncate">{name}</span>
 			<span className="text-right">{cols[0]}</span>
 			<span className="text-right">{cols[1]}</span>
@@ -210,20 +210,20 @@ export function RankRow({
 		<div className="grid grid-cols-[1fr_72px_72px_96px] items-center gap-3 border-t border-border py-[9px] first:border-t-0">
 			<span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
 				{chip ? (
-					<span className="inline-flex h-[18px] min-w-[26px] flex-none items-center justify-center rounded-[2px] border border-border px-1 font-mono text-[9.5px] font-medium tracking-[0.06em] text-text-muted">
+					<span className="inline-flex h-[18px] min-w-[26px] flex-none items-center justify-center rounded-full border border-border px-1 text-[9.5px] font-medium tracking-[0.06em] text-text-muted">
 						{chip}
 					</span>
 				) : null}
 				<span className="truncate text-[13px]">{name}</span>
 			</span>
-			<span className="text-right font-mono text-xs font-medium text-text-muted tabular-nums">
+			<span className="text-right text-xs font-medium text-text-muted tabular-nums">
 				{numFmt.format(cols[0])}
 			</span>
-			<span className="text-right font-mono text-xs font-medium text-text-muted tabular-nums">
+			<span className="text-right text-xs font-medium text-text-muted tabular-nums">
 				{numFmt.format(cols[1])}
 			</span>
 			<span>
-				<span className="block h-1 overflow-hidden rounded-[2px] bg-surface-raised">
+				<span className="block h-1 overflow-hidden rounded-full bg-surface-raised">
 					<i
 						className="block h-full bg-accent"
 						style={{

@@ -7,10 +7,10 @@ process.env.ANALYTICS_TRUSTED_PROXY = "nginx";
 import { app, ingestionLimiter } from "../app.js";
 
 vi.mock("../managers/NeonDatabaseManager.js", () => ({
-	default: { instance: vi.fn() },
+	default: { instance: vi.fn(), forRequest() { return this.instance; } },
 }));
 vi.mock("../managers/TursoDatabaseManager.js", () => ({
-	default: { instance: { execute: vi.fn() } },
+	default: { instance: { execute: vi.fn() }, getInstance() { return this.instance; } },
 }));
 vi.mock("../managers/WebSocketManager.js", () => ({
 	default: { emitToClient: vi.fn(() => true) },

@@ -75,6 +75,7 @@ import {
 } from "../utils/assistantTrace";
 import { createAuthorizationCache } from "../utils/assistantAuthCache";
 import {
+  AssistantModelError,
   resolveAssistantModelConfig,
   createAssistantModel,
   type AssistantModelConfig,
@@ -90,6 +91,7 @@ import {
   resolveProjectCapabilities,
 } from "../utils/projectMetrics";
 import { verifyDrilldownToken } from "../utils/queryContextToken";
+import { conversationalResult } from "../utils/assistantConversation";
 import {
   assistantQuotas,
   type QuotaDecision,
@@ -440,6 +442,8 @@ async function executeStreamedRun(input: {
   conversationSlug: string;
   userMessageId: string;
   question: string;
+  /** Already authorized history from the request handler; avoids rereading it. */
+  history?: NonNullable<Awaited<ReturnType<typeof getConversation>>>["messages"];
   queryContextToken?: string;
   now: number;
 }): Promise<Response> {
@@ -552,9 +556,18 @@ async function executeStreamedRun(input: {
       maxInputTokens: modelConfig.maxInputTokens,
       maxOutputTokens: modelConfig.maxOutputTokens,
     });
-  } catch {
+  } catch (error) {
     configError = "disabled";
-    trace("run.config", "model configuration failed; run will stream disabled", {});
+    // Name the actual gate: "disabled" is the user-facing collapse, but
+    // the operator needs to know which check threw. These messages carry
+    // config names and model IDs only — never secret values.
+    trace("run.config", "model configuration failed; run will stream disabled", {
+      errorCode: error instanceof AssistantModelError ? error.code : "unknown",
+      errorMessage:
+        error instanceof Error
+          ? error.message.slice(0, 300)
+          : String(error).slice(0, 300),
+    });
   }
 
   // Start the run BEFORE any paid work (one-active-run owned by the DB).
@@ -607,9 +620,34 @@ async function executeStreamedRun(input: {
       emit(encodeStreamFrame({ kind: "data-run-start", runId: run.id, conversationId }));
       const execute = async (): Promise<Response> => {
 
-  // Resolve window + capabilities sequentially (Workers-safe).
+  const runAgent = async (): Promise<AgentRunResult> => {
+    const greeting = conversationalResult(question, (modelConfig as AssistantModelConfig).model.id);
+    if (greeting) {
+      trace("run.shortcut", "standalone greeting; skipped analytics and model setup", {});
+      return greeting;
+    }
+
+  // Product-store history/knowledge reads are independent of capability
+  // discovery. Overlap them with the analytics reads while preserving the
+  // analytics client's sequential query policy.
+  const historyPromise = input.history !== undefined
+    ? Promise.resolve(input.history)
+    : getConversation(db, { projectId: scope.projectId, userId, conversationId }).then((detail) => detail?.messages ?? []);
+  const knowledgePromise = testAgentRunner
+    ? Promise.resolve({ project: [], workspace: [], member: [] })
+    : readConfirmedKnowledge(db, {
+        organizationId: scope.organizationId,
+        projectId: scope.projectId,
+        subjectUserId: userId,
+      });
+
+  // The libSQL reads inside capability discovery remain sequential.
   trace("run.window", "metric window resolved", { ...metricWindow });
-  const { capabilities, sourceIds } = await loadRunCapabilities(ctx, scope.projectId, metricWindow.asOf);
+  const [{ capabilities, sourceIds }, priorMessages, knowledge] = await Promise.all([
+    loadRunCapabilities(ctx, scope.projectId, metricWindow.asOf),
+    historyPromise,
+    knowledgePromise,
+  ]);
   trace("run.capabilities", "capabilities resolved", {
     web: capabilities.web,
     mobile: capabilities.mobile,
@@ -647,20 +685,24 @@ async function executeStreamedRun(input: {
   });
   void authorized;
 
-  const runAgent = async (): Promise<AgentRunResult> => {
+    const eligibleHistory = priorMessages
+      .filter((message) => message.id !== userMessageId && message.status === "complete")
+      .map((message) => ({ seq: message.seq, role: message.role as "user" | "assistant",
+        text: message.parts.filter((part) => part.type === "text").map((part) => (part as { text: string }).text).join("\n").slice(0, 2000),
+      }));
+    const historyRows = selectRecentTurns(eligibleHistory).messages.map((entry) => ({ role: entry.role, text: entry.text }));
     if (testAgentRunner) {
       trace("run.agent", "using injected test agent runner", {});
       return testAgentRunner({
         question,
         tools: deps,
         capabilities,
-        history: [],
+        history: historyRows,
         signal,
         timeoutMs: quotas.config.runTimeoutMs,
         maxRunCostMicroUsd: quotas.config.maxRunCostMicroUsd,
       });
     }
-    const knowledge = await deps.readKnowledge();
     trace("run.knowledge", "confirmed knowledge loaded", {
       project: knowledge.project.length,
       workspace: knowledge.workspace.length,
@@ -671,21 +713,6 @@ async function executeStreamedRun(input: {
         ...knowledge.member.map((entry) => entry.key),
       ],
     });
-    const historyRows = await (async () => {
-      const detail = await getConversation(db, { projectId: scope.projectId, userId, conversationId });
-      const eligible = (detail?.messages ?? [])
-        .filter((message) => message.id !== userMessageId && message.status === "complete")
-        .map((message) => ({
-          seq: message.seq,
-          role: message.role as "user" | "assistant",
-          text: message.parts
-            .filter((part) => part.type === "text")
-            .map((part) => (part as { text: string }).text)
-            .join("\n")
-            .slice(0, 2000),
-        }));
-      return selectRecentTurns(eligible).messages.map((entry) => ({ role: entry.role, text: entry.text }));
-    })();
     trace("run.history", "bounded history selected for model context", {
       turns: historyRows.length,
       texts: historyRows.map((entry) => traceText(entry.text, 200)),
@@ -1036,6 +1063,7 @@ export class AssistantController {
         conversationSlug: created.conversation.slug,
         userMessageId: created.message.id,
         question: parsed.data.firstMessage,
+        history: created.createdConversation ? [] : undefined,
         queryContextToken: parsed.data.queryContextToken,
         now,
       });
@@ -1208,6 +1236,7 @@ export class AssistantController {
         conversationSlug: detail.conversation.slug,
         userMessageId: appended.message.id,
         question: parsed.data.content,
+        history: detail.messages,
         queryContextToken: parsed.data.queryContextToken,
         now,
       });

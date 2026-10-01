@@ -5,7 +5,7 @@
  * co-located with the components.
  */
 
-/* View + message mount animation (chat fades in, cards unmount instantly). */
+/* Quiet transcript transitions. */
 @keyframes po-chat-in {
   from {
     opacity: 0;
@@ -30,7 +30,27 @@
   animation: po-chat-in 0.26s ease-out forwards;
 }
 .po-msg-in {
-  animation: po-msg-in 0.28s ease-out both;
+  animation: po-msg-in 0.18s ease-out both;
+}
+
+.po-chat-turn {
+  width: min(100%, 800px);
+  margin-inline: auto;
+}
+
+.po-chat-user-message {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-raised);
+}
+
+.po-chat-trace-chevron {
+  display: inline-block;
+  transition: transform 140ms ease;
+}
+
+.po-chat-trace[open] .po-chat-trace-chevron {
+  transform: rotate(90deg);
 }
 
 /* Thin chat scrollbar. */
@@ -63,5 +83,9 @@
   .po-chat-in,
   .po-msg-in {
     animation: none !important;
+  }
+
+  .po-chat-trace-chevron {
+    transition: none;
   }
 }

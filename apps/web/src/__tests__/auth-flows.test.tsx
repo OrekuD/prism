@@ -8,13 +8,17 @@ import axe from "axe-core";
 import { CreateAccount } from "@/routes/auth/create-account";
 import { ForgotPassword } from "@/routes/auth/forgot-password";
 import { Toaster } from "@/components/ui/sonner";
+import { PublicLayout } from "@/components/layout/public-layout";
 
 const signInEmail = vi.fn();
 const signUpEmail = vi.fn();
 const signInSocial = vi.fn();
 const requestPasswordReset = vi.fn();
 const listOrganizations = vi.fn();
+const organizationUpdate = vi.fn();
 let sessionVisible = true;
+let githubConfigured = true;
+let workspaceResult: { data: unknown; error: unknown } = { data: null, error: null };
 
 vi.mock("@/lib/authClient", () => ({
   authClient: {
@@ -26,6 +30,10 @@ vi.mock("@/lib/authClient", () => ({
     // resolves immediately in tests.
     $store: {
       atoms: {
+        listOrganizations: { get: () => ({ ...workspaceResult, refetch: async () => {
+          workspaceResult = await listOrganizations(sessionVisible);
+        } }) },
+        activeOrganization: { get: () => ({ refetch: async () => undefined }) },
         session: {
           get: () => ({
             data: sessionVisible ? { session: { id: "test-session" } } : null,
@@ -40,6 +48,7 @@ vi.mock("@/lib/authClient", () => ({
     },
     organization: {
       list: () => listOrganizations(sessionVisible),
+      update: (...args: unknown[]) => organizationUpdate(...args),
     },
     signIn: {
       email: (...args: unknown[]) => signInEmail(...args),
@@ -60,7 +69,7 @@ vi.mock("@/lib/runtimeConfig", () => ({
     signupPolicy: "open",
     baseUrl: "http://localhost:8787",
     setupRequired: false,
-    providers: { github: false, google: false },
+    providers: { github: githubConfigured, google: false },
     mailConfigured: false,
   }),
 }));
@@ -77,6 +86,9 @@ function renderPage(page: React.ReactNode, initialPath = "/auth/log-in") {
 beforeEach(() => {
   vi.clearAllMocks();
   sessionVisible = true;
+  githubConfigured = true;
+  workspaceResult = { data: null, error: null };
+  organizationUpdate.mockResolvedValue({ data: null, error: null });
   listOrganizations.mockImplementation((hasSession: boolean) => ({
     data: hasSession ? [{ id: "workspace-1", slug: "workspace-one" }] : null,
     error: hasSession ? null : { status: 401 },
@@ -84,6 +96,45 @@ beforeEach(() => {
 });
 
 describe("auth failure states", () => {
+  it("starts GitHub sign-in and keeps Google hidden", async () => {
+    signInSocial.mockResolvedValue({ data: { url: "https://github.com/login/oauth/authorize" }, error: null });
+    renderPage(<PublicLayout><LogIn /></PublicLayout>);
+    expect(screen.getByRole("heading", { name: "Sign in to Prism" })).toBeVisible();
+    expect(screen.queryByText("Instance")).toBeNull();
+    expect(screen.queryByText("localhost:8787")).toBeNull();
+    expect(screen.queryByRole("contentinfo")).toBeNull();
+    expect(screen.getByRole("link", { name: "Forgot password?" })).toHaveAttribute("href", "/auth/forgot-password");
+    const submit = screen.getByRole("button", { name: "Sign in" });
+    expect(submit).toHaveClass("rounded-full", "bg-accent", "h-10");
+    expect(screen.queryByRole("button", { name: /Google/ })).not.toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: "Continue with GitHub" }));
+    expect(signInSocial).toHaveBeenCalledWith({
+      provider: "github", callbackURL: `${window.location.origin}/overview`,
+      newUserCallbackURL: `${window.location.origin}/onboarding`,
+      errorCallbackURL: `${window.location.origin}/auth/log-in`,
+    });
+    expect(signInEmail).not.toHaveBeenCalled();
+  });
+
+  it("starts GitHub sign-up from the first account step", async () => {
+    signInSocial.mockResolvedValue({ data: { url: "https://github.com/login/oauth/authorize" }, error: null });
+    renderPage(<CreateAccount />, "/auth/create-account");
+    await userEvent.click(await screen.findByRole("button", { name: "Continue with GitHub" }));
+    expect(signInSocial).toHaveBeenCalledWith({
+      provider: "github", callbackURL: `${window.location.origin}/overview`,
+      newUserCallbackURL: `${window.location.origin}/onboarding`,
+      errorCallbackURL: `${window.location.origin}/auth/create-account`,
+    });
+    expect(screen.queryByRole("button", { name: /Google/ })).not.toBeInTheDocument();
+  });
+
+  it("shows only email when GitHub is not configured", async () => {
+    githubConfigured = false;
+    renderPage(<PublicLayout><LogIn /></PublicLayout>);
+    expect(screen.queryByRole("button", { name: /GitHub|Google/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("or continue with email")).not.toBeInTheDocument();
+  });
+
   it("shows the OAuth denied state from ?error=access_denied", async () => {
     renderPage(<LogIn />, "/auth/log-in?error=access_denied");
     expect(
@@ -96,6 +147,132 @@ describe("auth failure states", () => {
     expect(
       await screen.findByText(/not linked to a Prism account/i),
     ).toBeInTheDocument();
+  });
+
+  it("advances through email → password → details and submits", async () => {
+    signUpEmail.mockResolvedValue({
+      data: { user: { emailVerified: false } },
+      error: null,
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify({ available: true })));
+    renderPage(<CreateAccount />);
+
+    // Step 1: email only.
+    await userEvent.type(
+      screen.getByLabelText("Email"),
+      "newuser@example.com",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(
+      screen.getByRole("heading", { name: "Secure your account" }),
+    ).toBeInTheDocument();
+
+    // Step 2: password; the button enables once the requirement is met.
+    const continueStep2 = screen.getByRole("button", { name: "Continue" });
+    expect(continueStep2).toBeDisabled();
+    await userEvent.type(screen.getByLabelText("Password"), "hunter2222");
+    expect(continueStep2).toBeEnabled();
+    await userEvent.click(continueStep2);
+    expect(
+      screen.getByRole("heading", { name: "Tell us about yourself" }),
+    ).toBeInTheDocument();
+
+    // Step 3: name + workspace, then create.
+    await userEvent.type(screen.getByLabelText("Your name"), "David");
+    await userEvent.type(screen.getByLabelText("Workspace name"), "Oreku");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Create account" }),
+    );
+    // The chosen workspace name rides in-band; provisioning is
+    // server-side — the client never renames.
+    await waitFor(() => expect(signUpEmail).toHaveBeenCalledTimes(1));
+    expect(signUpEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: "newuser@example.com",
+        name: "David",
+        signupWorkspaceName: "Oreku",
+      }),
+    );
+    expect(organizationUpdate).not.toHaveBeenCalled();    expect(signUpEmail.mock.calls[0][0].password).toBe("hunter2222");
+    fetchSpy.mockRestore();
+  });
+
+  it("routes taken emails to sign-in at step 1", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify({ available: false })));
+    renderPage(<CreateAccount />);
+
+    await userEvent.type(
+      screen.getByLabelText("Email"),
+      "taken@example.com",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "You already have an account." }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/taken@example.com/)).toBeInTheDocument();
+    const signInLink = screen.getByRole("link", { name: "Sign in" });
+    expect(signInLink).toHaveAttribute(
+      "href",
+      "/auth/log-in?email=taken%40example.com",
+    );
+    expect(signUpEmail).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it("falls back to the account-exists hand-off when a duplicate races the probe", async () => {
+    signUpEmail.mockResolvedValue({
+      data: null,
+      error: { status: 422, message: "User already exists" },
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify({ available: true })));
+    renderPage(<CreateAccount />);
+
+    await userEvent.type(
+      screen.getByLabelText("Email"),
+      "racer@example.com",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await userEvent.type(screen.getByLabelText("Password"), "hunter2222");
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await userEvent.type(screen.getByLabelText("Your name"), "David");
+    await userEvent.type(screen.getByLabelText("Workspace name"), "Oreku");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Create account" }),
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "You already have an account." }),
+    ).toBeInTheDocument();
+    expect(requestPasswordReset).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it("prefills the login email from ?email= hand-off", () => {
+    renderPage(<LogIn />, "/auth/log-in?email=prefill@example.com");
+    expect(
+      screen.getByLabelText("Email"),
+    ).toHaveValue("prefill@example.com");
+  });
+
+  it("records and shows the last-used sign-in method", async () => {
+    // Password method: pill sits on the email label row.
+    localStorage.setItem("prism.lastAuth:user@example.com", "password");
+    const first = renderPage(<LogIn />);
+    await userEvent.type(screen.getByLabelText("Email"), "user@example.com");
+    expect(screen.getByText("Last used")).toBeInTheDocument();
+    first.unmount();
+
+    // Social method: floating pill on the matching provider button.
+    localStorage.setItem("prism.lastAuth:oauth@example.com", "github");
+    renderPage(<LogIn />, "/auth/log-in?email=oauth@example.com");
+    expect(await screen.findByText("Last used")).toBeInTheDocument();
   });
 
   it("reports a network failure instead of invalid credentials", async () => {

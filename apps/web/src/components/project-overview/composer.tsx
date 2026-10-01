@@ -1,10 +1,4 @@
-/**
- * Ask Prism composer dock. Design-mock visuals (blurred dock, `Ask Prism`
- * frame label, ⌘K hint, arrow send button, suggestion row) with the
- * production behavior: auto-growing textarea, Enter to send,
- * suggestions fill without submitting, Stop replaces send while a run
- * is active, drafts survive remounts via the parent.
- */
+/** Persistent composer for the overview and its conversations. */
 import {
   forwardRef,
   useCallback,
@@ -12,11 +6,14 @@ import {
   useImperativeHandle,
   useRef,
 } from "react";
-import { Square } from "lucide-react";
+import { ChevronDown, Sparkles, Square } from "@/components/ui/hugeicons";
 import type { ProjectCapabilities } from "@prism-analytics/types";
-import { Kbd } from "@/components/project-overview/primitives";
-import { Frame } from "@/components/public/frame";
-import { cn } from "@/lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export type ComposerDockHandle = {
   focus: () => void;
@@ -51,6 +48,7 @@ export const ComposerDock = forwardRef<
     capabilities: ProjectCapabilities | null;
     disabled?: boolean;
     disabledReason?: string;
+    showSuggestions?: boolean;
   }
 >(function ComposerDock(
   {
@@ -62,10 +60,12 @@ export const ComposerDock = forwardRef<
     capabilities,
     disabled,
     disabledReason,
+    showSuggestions = false,
   },
   ref,
 ) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const focusAfterSuggestion = useRef(false);
   useImperativeHandle(ref, () => ({
     focus: () => inputRef.current?.focus(),
   }));
@@ -107,53 +107,92 @@ export const ComposerDock = forwardRef<
   const suggestions = suggestionsFor(capabilities);
 
   return (
-    <Frame
-      label="Ask Prism"
-      className="bg-surface/90 p-[14px_12px_12px] shadow-[0_-8px_32px_rgb(0_0_0/0.24),inset_0_1px_0_var(--border)] backdrop-blur-2xl"
+    <form
+      aria-label="Ask Prism"
+      className="pointer-events-auto mx-auto flex w-full max-w-[760px] flex-col gap-2 rounded-2xl border border-border bg-surface-raised p-3 transition-colors duration-150 focus-within:border-focus"
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit();
+      }}
     >
-        <form
-          className="flex items-end gap-2.5"
-          onSubmit={(event) => {
+      <label htmlFor="ask-prism-input" className="sr-only">
+        Ask Prism a question
+      </label>
+      <textarea
+        id="ask-prism-input"
+        ref={inputRef}
+        value={draft}
+        onChange={(event) => onDraftChange(event.target.value.slice(0, 2000))}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
             event.preventDefault();
             submit();
-          }}
-        >
-          <div className="flex min-h-11 flex-1 items-end gap-2.5 rounded-sm border border-border-strong bg-surface px-[14px] py-2 transition-colors duration-100 focus-within:border-accent">
-            <label htmlFor="ask-prism-input" className="sr-only">
-              Ask Prism a question
-            </label>
-            <textarea
-              id="ask-prism-input"
-              ref={inputRef}
-              value={draft}
-              onChange={(event) =>
-                onDraftChange(event.target.value.slice(0, 2000))
-              }
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  submit();
-                }
+          }
+        }}
+        rows={1}
+        maxLength={2000}
+        autoComplete="off"
+        placeholder={
+          disabled
+            ? (disabledReason ?? "Assistant unavailable")
+            : "Ask a question about this project…"
+        }
+        disabled={disabled && !running}
+        className="max-h-[132px] min-h-10 w-full resize-none overflow-y-auto bg-transparent px-1 py-1 text-base leading-6 text-text outline-none placeholder:text-text-muted disabled:opacity-60 sm:text-sm"
+      />
+      <div className="flex items-center justify-between gap-3">
+        {showSuggestions ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                disabled={disabled || running}
+                className="-ml-1 inline-flex h-10 items-center gap-1.5 rounded-[10px] px-2 text-xs text-text-muted transition-colors duration-150 hover:bg-surface-hover hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-45 sm:h-9"
+              >
+                <Sparkles aria-hidden="true" className="size-4" />
+                Suggestions
+                <ChevronDown aria-hidden="true" className="size-3" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="start"
+              side="top"
+              sideOffset={12}
+              className="max-w-[calc(100vw-2rem)] rounded-xl p-1.5"
+              onCloseAutoFocus={(event) => {
+                if (!focusAfterSuggestion.current) return;
+                event.preventDefault();
+                focusAfterSuggestion.current = false;
+                inputRef.current?.focus();
               }}
-              rows={1}
-              maxLength={2000}
-              autoComplete="off"
-              placeholder={
-                disabled
-                  ? (disabledReason ?? "Assistant unavailable")
-                  : "Ask a question about this project…"
-              }
-              disabled={disabled && !running}
-              className="max-h-[132px] min-h-[1lh] flex-1 resize-none overflow-hidden bg-transparent p-[2px_0] text-sm leading-[1.5] text-text outline-none placeholder:text-text-subtle disabled:opacity-60"
-            />
-            <Kbd>⌘K</Kbd>
-          </div>
+            >
+              {suggestions.map((suggestion) => (
+                <DropdownMenuItem
+                  key={suggestion}
+                  className="min-h-10 rounded-lg px-3 py-2 text-[13px]"
+                  onSelect={() => {
+                    onDraftChange(suggestion);
+                    focusAfterSuggestion.current = true;
+                  }}
+                >
+                  {suggestion}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <span className="inline-flex h-9 items-center gap-1.5 px-1 text-xs text-text-muted">
+            <Sparkles aria-hidden="true" className="size-4" />
+            Ask Prism
+          </span>
+        )}
+        <div className="flex items-center gap-2">
           {running ? (
             <button
               type="button"
               onClick={onStop}
               aria-label="Stop the running answer"
-              className="inline-flex h-11 w-11 flex-none items-center justify-center rounded-sm bg-danger text-white transition-opacity hover:opacity-90"
+              className="inline-flex size-10 flex-none items-center justify-center rounded-[10px] bg-accent text-primary-foreground transition-colors duration-150 hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus sm:size-9"
             >
               <Square aria-hidden="true" className="h-4 w-4" />
             </button>
@@ -162,10 +201,7 @@ export const ComposerDock = forwardRef<
               type="submit"
               aria-label="Send question"
               disabled={draft.trim().length === 0 || disabled}
-              className={cn(
-                "inline-flex h-11 w-11 flex-none items-center justify-center rounded-sm bg-accent text-white shadow-[inset_0_1px_0_rgb(0_0_0/0.12),0_2px_8px_color-mix(in_oklab,var(--accent)_22%,transparent)] transition-all duration-100 hover:bg-accent-hover active:translate-y-px active:bg-accent-active active:shadow-none disabled:opacity-45",
-                "[&_svg]:h-4 [&_svg]:w-4",
-              )}
+              className="inline-flex size-10 flex-none items-center justify-center rounded-[10px] bg-accent text-primary-foreground transition-colors duration-150 hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:bg-surface-hover disabled:text-text-subtle sm:size-9"
             >
               <svg
                 viewBox="0 0 16 16"
@@ -175,31 +211,14 @@ export const ComposerDock = forwardRef<
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 aria-hidden="true"
+                className="size-[18px]"
               >
-                <path d="M2.5 8h10M9 4.5 12.5 8 9 11.5" />
+                <path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" />
               </svg>
             </button>
           )}
-        </form>
-        <ul
-          aria-label="Suggested questions"
-          className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3"
-        >
-          {suggestions.map((suggestion) => (
-            <li key={suggestion}>
-              <button
-                type="button"
-                onClick={() => {
-                  onDraftChange(suggestion);
-                  inputRef.current?.focus();
-                }}
-                className="inline-flex h-7 items-center rounded-sm border border-border px-3 font-mono text-xs font-normal text-text-muted transition-colors duration-100 hover:border-border-strong hover:bg-surface-hover hover:text-text"
-              >
-                {suggestion}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </Frame>
+        </div>
+      </div>
+    </form>
   );
 });

@@ -239,6 +239,19 @@ export interface PrismClientOptions {
 	 * observable through the public API.
 	 */
 	onDiagnostic?: (diagnostic: PrismDiagnostic) => void;
+	/**
+	 * Task 29: the adapter/integration declaration sent as the batch `sdk`
+	 * descriptor. Real adapters set this internally; generic Core
+	 * integrations must declare it explicitly because a bare Core descriptor
+	 * is compatible with no source family (ingestion rejects it). When
+	 * `family` is provided, the key is checked locally before listeners,
+	 * storage, or queues are installed.
+	 */
+	readonly integration?: {
+		readonly name: string;
+		readonly version: string;
+		readonly family?: import("./source-family").SourceFamily;
+	};
 }
 
 /** A diagnostic emitted by the client (delivery failures, state transitions). */

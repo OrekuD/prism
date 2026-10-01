@@ -1,5 +1,5 @@
 import axe from "axe-core";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { Gallery } from "@/routes/gallery";
@@ -147,7 +147,9 @@ describe("calendar date selection", () => {
     const selected = new Date(2026, 7, 15);
     render(<Calendar mode="single" selected={selected} />);
     const day = screen.getByRole("gridcell", { name: "15" });
-    await user.click(day);
+    // react-day-picker v9 binds selection to the day button inside the
+    // gridcell, not the cell itself.
+    await user.click(within(day).getByRole("button"));
     expect(day).toHaveAttribute("aria-selected", "true");
   });
 });

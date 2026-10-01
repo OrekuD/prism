@@ -1,5 +1,6 @@
 import { type Client, createClient } from "@libsql/client";
 import { beforeAll, describe, expect, it } from "vitest";
+import { LATEST_MIGRATION_VERSION } from "../httpApp.js";
 import {
 	type Migration,
 	applyPendingMigrations,
@@ -28,6 +29,7 @@ beforeAll(async () => {
 describe("migration runner", () => {
 	it("applies every ordered migration exactly once with a journal", async () => {
 		const migrations = readMigrationFiles();
+		expect(migrations.at(-1)?.version).toBe(LATEST_MIGRATION_VERSION);
 		expect(migrations.length).toBeGreaterThanOrEqual(3);
 		expect(migrations.map((m) => m.version)).toEqual(
 			[...migrations.map((m) => m.version)].sort((a, b) => a - b),

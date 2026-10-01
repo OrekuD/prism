@@ -1,41 +1,44 @@
-import { Loader2 } from "lucide-react";
+import { Loader2 } from "@/components/ui/hugeicons";
 import React from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { authClient, fetchEnabledProviders } from "@/lib/authClient";
-import { AuthHeading, AuthShell, OrEmailDivider } from "@/components/auth/auth-shell";
-import { isNetworkError, oauthErrorMessage } from "@/components/auth/auth-errors";
+import { authClient } from "@/lib/authClient";
+import { AuthShell } from "@/components/auth/auth-shell";
+import {
+  isNetworkError,
+  oauthErrorMessage,
+} from "@/components/auth/auth-errors";
 import { waitForSession } from "@/lib/session";
 import { resolveDefaultWorkspacePath } from "@/lib/workspace";
+import { getLastAuthMethod, setLastAuthMethod } from "@/lib/lastAuth";
 import { PasswordInput } from "@/components/auth/password-input";
-import {
-  type EnabledProviders,
-  SocialAuthButtons,
-} from "@/components/auth/social-auth-buttons";
+import { SocialAuthButtons } from "@/components/auth/social-auth-buttons";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { loadRuntimeConfig } from "@/lib/runtimeConfig";
 
 export function LogIn() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const oauthError = oauthErrorMessage(searchParams.get("error"));
-  const [email, setEmail] = React.useState("");
+  // ?email= prefill — used by the signup "account exists" hand-off so the
+  // user lands on sign-in with their address already filled.
+  const [email, setEmail] = React.useState(
+    () => searchParams.get("email") ?? ""
+  );
+  const lastUsed = email.trim() ? getLastAuthMethod(email.trim()) : null;
   const [password, setPassword] = React.useState("");
   const [isPending, setIsPending] = React.useState(false);
+  const [githubEnabled, setGithubEnabled] = React.useState(false);
+  const [providerPending, setProviderPending] = React.useState(false);
+
+  React.useEffect(() => {
+    void loadRuntimeConfig().then((config) => setGithubEnabled(config.providers.github));
+  }, []);
 
   React.useEffect(() => {
     if (oauthError) toast.error(oauthError);
   }, [oauthError]);
-  const [pendingProvider, setPendingProvider] = React.useState<
-    "github" | "google" | null
-  >(null);
-  const [providers, setProviders] = React.useState<EnabledProviders>({
-    github: false,
-    google: false,
-  });
-
-  React.useEffect(() => {
-    fetchEnabledProviders().then(setProviders);
-  }, []);
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -52,65 +55,90 @@ export function LogIn() {
       // Wait for the session to be durable before loading organization data.
       // Better Auth's organization endpoints require the cookie session, so
       // starting this lookup earlier creates a guaranteed post-sign-in 401.
-      await waitForSession();
+      if (!(await waitForSession())) {
+        throw new Error("Session confirmation timed out");
+      }
+      // Record the successful method so future visits show the "Last used"
+      // hint on the right button (and the signup hand-off can reference it).
+      setLastAuthMethod(email.trim(), "password");
       const home = await resolveDefaultWorkspacePath();
-      // A full navigation (fresh boot) reads the confirmed session cookie, so
-      // the router never briefly sees a signed-out state and bounces back.
-      window.location.assign(home || "/overview");
-      // Leave isPending true: the page unloads on navigation.
+      navigate(home, { replace: true });
+      // Keep the button busy until the destination replaces this route.
     } catch (err) {
       toast.error(
         isNetworkError(err)
           ? "Cannot reach Prism. Check your connection and try again."
-          : "Something went wrong. Please try again.",
+          : "Something went wrong. Please try again."
       );
       setIsPending(false);
     }
   };
 
   const onSocial = async (provider: "github" | "google") => {
-    if (pendingProvider) return; // duplicate-submit guard
-    setPendingProvider(provider);
+    if (provider !== "github" || providerPending) return;
+    setProviderPending(true);
     try {
       const response = await authClient.signIn.social({
-        provider,
-        callbackURL: "/overview",
+        provider: "github",
+        callbackURL: `${window.location.origin}/overview`,
+        newUserCallbackURL: `${window.location.origin}/onboarding`,
+        errorCallbackURL: `${window.location.origin}/auth/log-in`,
       });
-      if (response.error) {
-        toast.error("Sign-in with the provider failed. Try again.");
-        return;
-      }
-      if (response.data?.url) {
-        window.location.assign(response.data.url);
-      }
-    } catch (err) {
-      toast.error(
-        isNetworkError(err)
-          ? "Cannot reach Prism. Check your connection and try again."
-          : "Sign-in with the provider failed. Try again.",
-      );
-      setPendingProvider(null);
+      if (!response.error) return; // Better Auth redirects to GitHub.
+      toast.error("Could not start GitHub sign-in. Try again.");
+    } catch {
+      toast.error("Could not start GitHub sign-in. Try again.");
     }
+    setProviderPending(false);
   };
 
   return (
-    <AuthShell>
-      <AuthHeading title="Welcome back." description="Use your Prism account to continue." />
-      <div className="mt-8 grid gap-4">
+    <AuthShell title="Sign in to Prism" redirectPaused={isPending}>
+      <div className="text-center">
+        <h1 className="text-[22px] font-semibold leading-tight tracking-[-0.03em] text-text">
+          Sign in to Prism
+        </h1>
+        <p className="mt-2 text-[13px] text-text-muted">
+          Welcome back. Pick up where you left off.
+        </p>
+      </div>
+      <div className="mt-8 grid gap-5">
         <SocialAuthButtons
-          providers={providers}
+          providers={{ github: githubEnabled, google: false }}
           onSocial={onSocial}
-          pendingProvider={pendingProvider}
+          pendingProvider={providerPending ? "github" : null}
+          lastUsed={
+            lastUsed === "github" ? lastUsed : null
+          }
         />
-        <OrEmailDivider />
+        {githubEnabled ? (
+          <div className="flex items-center gap-4 py-1">
+            <span aria-hidden="true" className="h-px flex-1 bg-border" />
+            <span className="text-[12px] text-text-muted">
+              or continue with email
+            </span>
+            <span aria-hidden="true" className="h-px flex-1 bg-border" />
+          </div>
+        ) : null}
         <form onSubmit={onSubmit} className="grid gap-4">
           <div className="grid gap-2">
-            <Label htmlFor="email">Email</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="email">Email</Label>
+              {lastUsed === "password" ? (
+                <span
+                  aria-hidden="true"
+                  className="rounded-full border border-border bg-canvas px-1.5 py-px text-[9px] font-medium leading-[1.4] tracking-normal text-text-muted"
+                >
+                  Last used
+                </span>
+              ) : null}
+            </div>
             <Input
               id="email"
               type="email"
               autoComplete="email"
               required
+              placeholder="you@company.com"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               className="h-10"
@@ -123,11 +151,17 @@ export function LogIn() {
             value={password}
             onChange={setPassword}
           />
+          <Link
+            to="/auth/forgot-password"
+            className="-mt-1 justify-self-end text-[12px] text-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus"
+          >
+            Forgot password?
+          </Link>
           <button
             type="submit"
             aria-busy={isPending}
             disabled={isPending}
-            className="flex h-10 items-center justify-center gap-2 rounded-[2px] bg-accent text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-45"
+            className="flex h-10 items-center justify-center gap-2 rounded-full bg-accent text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-45"
           >
             {isPending ? (
               <Loader2 className="size-4 animate-spin" aria-hidden="true" />
@@ -135,20 +169,15 @@ export function LogIn() {
             Sign in
           </button>
         </form>
-        <div className="flex items-center justify-between gap-4">
-          <Link
-            to="/auth/log-in"
-            className="text-[13px] text-text-muted transition-colors duration-150 hover:text-text hover:underline"
-          >
-            Forgot password
-          </Link>
+        <p className="mt-1 text-center text-[13px] text-text-muted">
+          New to Prism?{" "}
           <Link
             to="/auth/create-account"
-            className="text-[13px] font-medium text-link transition-colors duration-150 hover:underline"
+            className="font-medium text-text hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus"
           >
             Create account
           </Link>
-        </div>
+        </p>
       </div>
     </AuthShell>
   );

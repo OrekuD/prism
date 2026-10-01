@@ -23,11 +23,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CreateSourceDialog } from "@/components/sources/create-source-dialog";
 import {
   maskKey,
-  PLATFORM_LABELS,
-  sourceSnippetPlatform,
   sourceTypeLabel,
   timeAgo,
 } from "@/lib/sources";
@@ -36,7 +33,7 @@ import {
   useRevokeKeyMutation,
 } from "@/network/mutations/useSourceMutations";
 import type { SourceResource } from "@/network/queries/useSourcesQuery";
-import { Ban, ChevronDown, KeyRound, Loader2, Plus } from "lucide-react";
+import { Ban, ChevronDown, KeyRound, Loader2, Plus } from "@/components/ui/hugeicons";
 import React from "react";
 import { Link } from "react-router-dom";
 
@@ -208,7 +205,7 @@ export function SourceKeys({
   return (
     <div>
       {sources.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-2.5 rounded-[2px] p-6 text-center">
+        <div className="flex flex-col items-center justify-center gap-2.5 rounded-[16px] p-6 text-center">
           <KeyRound
             className="size-[22px] text-text-subtle"
             aria-hidden="true"
@@ -218,20 +215,12 @@ export function SourceKeys({
           </p>
           <span className="text-[12px] text-text-subtle">
             {canManage
-              ? `Create a ${label} source to generate its first key.`
+              ? `Use New source above to create a ${label} source and generate its first key.`
               : "An owner or admin can create a source."}
           </span>
-          {canManage ? (
-            <div className="mt-1">
-              <CreateSourceDialog
-                slug={slug}
-                initialPlatform={sourceSnippetPlatform(type)}
-              />
-            </div>
-          ) : null}
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-[2px] border border-border">
+        <div className="overflow-x-auto rounded-[16px] border border-border">
           <table className="w-full border-collapse text-[13px]">
             <tbody>
               {sources.map((source, idx) => {
@@ -306,19 +295,19 @@ export function SourceKeys({
                       ) : (
                         <>
                           <tr className="border-t border-border bg-canvas-subtle/50 text-text-muted">
-                            <th className="px-3.5 py-2 pl-6 text-left font-mono text-[11px] font-medium uppercase tracking-[0.09em]">
+                            <th className="px-3.5 py-2 pl-6 text-left text-[13px] font-medium tracking-normal">
                               Name
                             </th>
-                            <th className="px-3.5 py-2 text-left font-mono text-[11px] font-medium uppercase tracking-[0.09em]">
+                            <th className="px-3.5 py-2 text-left text-[13px] font-medium tracking-normal">
                               Key
                             </th>
-                            <th className="px-3.5 py-2 text-left font-mono text-[11px] font-medium uppercase tracking-[0.09em]">
+                            <th className="px-3.5 py-2 text-left text-[13px] font-medium tracking-normal">
                               Created
                             </th>
-                            <th className="px-3.5 py-2 text-left font-mono text-[11px] font-medium uppercase tracking-[0.09em]">
+                            <th className="px-3.5 py-2 text-left text-[13px] font-medium tracking-normal">
                               Last used
                             </th>
-                            <th className="px-3.5 py-2 text-right font-mono text-[11px] font-medium uppercase tracking-[0.09em]">
+                            <th className="px-3.5 py-2 text-right text-[13px] font-medium tracking-normal">
                               Actions
                             </th>
                           </tr>

@@ -22,8 +22,8 @@ export function HomeSkeleton() {
 	return (
 		<div className="flex h-[100dvh] w-full items-center justify-center bg-canvas">
 			<div className="flex flex-col items-center gap-3">
-				<span className="h-4 w-48 animate-pulse rounded-[2px] bg-surface-raised" />
-				<span className="h-4 w-32 animate-pulse rounded-[2px] bg-surface-raised" />
+				<span className="h-4 w-48 animate-pulse rounded-md bg-surface-raised" />
+				<span className="h-4 w-32 animate-pulse rounded-md bg-surface-raised" />
 			</div>
 		</div>
 	);

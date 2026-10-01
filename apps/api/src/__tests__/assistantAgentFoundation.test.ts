@@ -590,6 +590,7 @@ describe("grounded-answer validation", () => {
     const fallback = buildFallbackAnswer("x".repeat(500));
     expect(AssistantAnswerSchema.safeParse(fallback).success).toBe(true);
     expect(fallback.observations).toHaveLength(0);
+    expect(fallback.summary).not.toContain("x".repeat(120));
     expect(clampQuestion("ok")).toBe("ok");
     expect(clampQuestion("x".repeat(5000))).toHaveLength(2000);
     expect(clampQuestion(42 as unknown as string)).toBe("");
@@ -639,6 +640,16 @@ describe("model configuration", () => {
     expect(config.model.id).toBe("openai/gpt-5.6-luna-pro");
     expect(config.model.evaluated).toBe(true);
     expect(config.requireZeroDataRetention).toBe(true);
+  });
+
+  it("resolves a non-default evaluated allowlist entry via PRISM_AI_MODEL", () => {
+    const config = resolveAssistantModelConfig({
+      ...baseEnv,
+      PRISM_AI_MODEL: "openai/gpt-5.6-luna",
+    });
+    expect(config.model.id).toBe("openai/gpt-5.6-luna");
+    expect(config.model.evaluated).toBe(true);
+    expect(config.routing.allowedModels).toEqual(["openai/gpt-5.6-luna"]);
   });
 
   it("fails closed when disabled, keyless, off-allowlist, or over-cap", () => {

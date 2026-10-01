@@ -59,6 +59,7 @@ import {
   selectEligibleTools,
   toolActivityLabel,
   toolSchemaChars,
+  toolDescription,
   verifyToolOutcome,
   type AgentStage,
   type AssistantToolDeps,
@@ -78,11 +79,14 @@ import {
 } from "./assistantModel";
 import type { ConfirmedKnowledge } from "./assistantStore";
 import type { TraceFn } from "./assistantTrace";
+import { conversationalResult } from "./assistantConversation";
 
 export const AGENT_SYSTEM_PROMPT = [
-  "You are Prism, a grounded product-analytics assistant.",
+  "You are Prism, a helpful product-analytics teammate inside the member's current project. Be direct, warm, and concise, not a telemetry auditor.",
+  "Lead with the answer in one or two sentences. Add at most three useful evidence observations and a relevant widget. Do not repeat the same sentence in summary and observations. No generic optimization advice, jargon, raw IDs, or 'no question was provided' replies.",
+  "For social conversation, reply naturally without tools or invented project facts. For ambiguous analytics questions, ask one specific clarifying question. An unavailable measurement is not zero. Explain the limitation and one useful next action; never demand that the member supply telemetry or internal evidence IDs.",
   "Rules you must follow:",
-  "1. Answer only from tool results in this run. Every observation cites the fact IDs it uses.",
+  "1. Every claim about project data comes only from tool results in this run. Every observation cites the fact IDs it uses; carry IDs in structured fields, not prose. History is context, not fresh measurement.",
   "2. Numbers come only from cited evidence: measured values, prior values, comparison percents, or recorded counts.",
   "3. Direction words (up, down, rose, fell, increased, flat, stable) need cited evidence with that comparison direction.",
   "4. Never claim causation. Use association language only.",
@@ -92,12 +96,17 @@ export const AGENT_SYSTEM_PROMPT = [
   "8. Prefer one exact measurement over many. Stop calling tools once the question is answered.",
   "9. Built-in metrics below do not require business-term definitions. For errors, measure errors.occurrences first; use its comparison to verify whether there was a change before investigating associations. Never assume the question's claimed direction is true.",
   "10. Do not ask members for internal fact IDs. If evidence is unavailable, explain the unavailable measurement or tool in plain language. Issue-detail inspection may be unavailable even when error metrics are measurable.",
+  "11. measure_metric already includes the previous period and comparison; do not call compare_periods again just to obtain the same delta. Prefer the fewest reads that answer the question. Never repeat identical failed inputs without a correctable reason.",
+  "12. Once ready, call submit_answer with the final structured answer instead of writing a draft. Use only returned artifact IDs for widgets. Follow-ups are optional, at most two useful next questions with a short title and self-contained description; never suggest unsupported tools.",
   "Built-in metric IDs (use with measure_metric or compare_periods; schema filters still apply):",
   ...Object.values(METRIC_REGISTRY).map((metric) => `${metric.id}: ${metric.label}`),
 ].join("\n");
 
 /** Minimum remaining output tokens that can hold a valid answer object. */
 export const MIN_REPAIR_OUTPUT_TOKENS = 50;
+const ANSWER_TOOL_DESCRIPTION = "Submit the final answer once sufficient evidence is available, or ask one clarification. Cite measured observations and returned widget IDs. Do not invent facts.";
+export const ANSWER_TOOL_CONTEXT_CHARS = ANSWER_TOOL_DESCRIPTION.length +
+  JSON.stringify(AssistantAnswerSchema.toJSONSchema({ io: "input" })).length;
 
 export type AgentHistoryTurn = {
   role: "user" | "assistant";
@@ -318,12 +327,13 @@ export async function runToolLoopAgent(
       (eligibleToolIds as string[]).includes(toolId),
     ),
   ) as Record<string, ToolDefinitionEntry<unknown>>;
-  const schemaChars = toolSchemaChars(eligibleToolIds);
+  const schemaChars = toolSchemaChars(eligibleToolIds) + ANSWER_TOOL_CONTEXT_CHARS;
   const run: ToolRunScope = createToolRunScope();
   const steps: ActivityStep[] = [];
   const toolIds: ToolId[] = [];
   const modelMessages: ModelMessage[] = [];
   const ledger: LedgerEntry[] = [];
+  const submission: { attempted: boolean; answer: AssistantAnswer | null } = { attempted: false, answer: null };
   let currentStep = 0;
   const trace: TraceFn = input.trace ?? (() => undefined);
   trace("agent.start", "run starting", {
@@ -514,6 +524,11 @@ export async function runToolLoopAgent(
   if (signal.aborted) {
     return finishCancelled();
   }
+  const conversational = conversationalResult(question, config.model.id);
+  if (conversational) {
+    trace("agent.shortcut", "standalone greeting; no model or tool calls", {});
+    return finish(conversational);
+  }
 
   // Prompt roles (R17-F5): the system prompt is STATIC Prism-owned
   // instructions. History keeps its user/assistant roles; confirmed
@@ -566,7 +581,7 @@ export async function runToolLoopAgent(
   for (const [toolId, definition] of Object.entries(eligible)) {
     const id = toolId as ToolId;
     sdkTools[toolId] = tool({
-      description: definition.id,
+      description: toolDescription(id),
       inputSchema: zodSchema(definition.inputSchema),
       execute: async (toolInput: unknown): Promise<{
         ok: boolean;
@@ -575,6 +590,9 @@ export async function runToolLoopAgent(
       }> => {
         if (signal.aborted) {
           throw new Error("run-cancelled");
+        }
+        if (submission.attempted || toolIds.length >= AGENT_LIMITS.maxSteps) {
+          return { ok: false, error: "This run's tool allowance is complete. Answer from existing evidence or state the limitation." };
         }
         const stepId = `st_${currentStep + 1}_${toolIds.length + 1}`;
         const activity: ActivityStep = {
@@ -596,6 +614,9 @@ export async function runToolLoopAgent(
           // Never start the next queued read after abort (R17-F6).
           if (signal.aborted) {
             throw new Error("run-cancelled");
+          }
+          if (submission.attempted) {
+            return { ok: false as const, failure: { code: "tool-error" as const, message: "The answer was already submitted; no further data was fetched." } };
           }
           return executeToolCached(eligible, input.tools, run, toolId, toolInput);
         });
@@ -644,6 +665,26 @@ export async function runToolLoopAgent(
     });
   }
 
+  // A final answer is a control action, not a data tool or user-visible
+  // activity step. It shares the sequential chain so batched tool calls
+  // cannot validate against evidence that has not finished loading yet.
+  sdkTools.submit_answer = tool({
+    description: ANSWER_TOOL_DESCRIPTION,
+    inputSchema: zodSchema(AssistantAnswerSchema),
+    execute: async (answer: AssistantAnswer) => {
+      const task = chain.then(() => {
+        if (signal.aborted) throw new Error("run-cancelled");
+        if (submission.attempted) return { ok: false, error: "Answer already submitted." };
+        submission.attempted = true;
+        submission.answer = answer;
+        const validation = validateGroundedAnswer(answer, run.facts, new Set(run.artifacts.keys()));
+        return validation.ok ? { ok: true } : { ok: false, error: "Answer needs grounding repair." };
+      });
+      chain = task.catch(() => undefined);
+      return task;
+    },
+  });
+
   const recordStepUsage = (
     call: string,
     rawUsage: unknown,
@@ -670,13 +711,14 @@ export async function runToolLoopAgent(
       system: AGENT_SYSTEM_PROMPT,
       messages,
       tools: sdkTools,
-      stopWhen: [stepCountIs(maxSteps), () => remainingOutput() <= answerReserve],
+      stopWhen: [stepCountIs(maxSteps), () => submission.attempted || remainingOutput() <= answerReserve],
       maxOutputTokens: Math.max(1, remainingOutput() - answerReserve),
       prepareStep: () => ({
         maxOutputTokens: Math.max(1, remainingOutput() - answerReserve),
       }),
       ...(providerOptions ? { providerOptions } : {}),
       abortSignal: signal,
+      maxRetries: 0,
       onStepFinish: (event) => {
         currentStep += 1;
         recordStepUsage(
@@ -789,6 +831,7 @@ export async function runToolLoopAgent(
       maxOutputTokens: Math.max(1, remainingOutput()),
       ...(providerOptions ? { providerOptions } : {}),
       abortSignal: signal,
+      maxRetries: 0,
     });
     const parsed = AssistantAnswerSchema.safeParse(generated.object);
     const usage = readTokenUsage(generated.usage);
@@ -827,7 +870,7 @@ export async function runToolLoopAgent(
       evidenceFacts: [...run.facts.keys()],
       artifactIds: [...run.artifacts.keys()],
     });
-    const first = await answerCall([]);
+    const first = submission.attempted ? { answer: submission.answer } : await answerCall([]);
     const artifacts = new Map<string, AssistantArtifact>(run.artifacts);
     const check = (answer: AssistantAnswer | null) =>
       answer === null

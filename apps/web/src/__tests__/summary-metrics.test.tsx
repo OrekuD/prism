@@ -217,4 +217,27 @@ describe("ProjectSummary canonical overview", () => {
     const zeros = await screen.findAllByText("0");
     expect(zeros.length).toBeGreaterThanOrEqual(3);
   });
+
+  it("distinguishes an empty period from a calm period", async () => {
+    getMock.mockImplementation(async (url: string) => {
+      if (String(url).includes("/overview")) {
+        return {
+          data: {
+            ...overviewResource([metricFact("project.accepted_events", "Accepted events", 0)]),
+            dataQuality: {
+              hasAcceptedData: false,
+              definitionState: "confirmed",
+              definitionLabel: null,
+              warnings: [],
+            },
+          },
+          status: 200,
+        };
+      }
+      return { data: { items: [], nextCursor: null } };
+    });
+    renderSummary();
+    expect(await screen.findByText("No activity in the last 7 days.")).toBeVisible();
+    expect(screen.queryByText(/No notable changes/)).toBeNull();
+  });
 });

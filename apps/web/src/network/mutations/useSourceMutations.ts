@@ -18,6 +18,7 @@ import type {
 export function useCreateSourceMutation(slug: string | undefined) {
   const queryClient = useQueryClient();
   return useMutation({
+    gcTime: 0,
     mutationFn: async (payload: {
       name: string;
       platform: string;
@@ -31,9 +32,10 @@ export function useCreateSourceMutation(slug: string | undefined) {
     },
     onSuccess: (created: SourceResource) => {
       toast.success("Source created");
-      // The response IS the new source — append it to the list now.
+      // The one-time key belongs only in the creation handoff, not query caches.
+      const { initialKey: _initialKey, ...source } = created;
       queryClient.setQueryData<SourceResource[]>(["sources", slug], (current) =>
-        current ? [...current, created] : current,
+        current ? [...current, source] : current,
       );
       void queryClient.invalidateQueries({ queryKey: ["sources", slug] });
     },

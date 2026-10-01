@@ -32,7 +32,7 @@ import {
   useRevokeKeyMutation,
 } from "@/network/mutations/useSourceMutations";
 import type { SourceKeyResource } from "@/network/queries/useSourcesQuery";
-import { Eye, EyeOff, Loader2, Plus, RefreshCw } from "lucide-react";
+import { Eye, EyeOff, Loader2, Plus, RefreshCw } from "@/components/ui/hugeicons";
 import React from "react";
 import { toast } from "sonner";
 
@@ -155,7 +155,7 @@ export function IngestionKeys({
           keys.map((key) => (
             <div
               key={key.id}
-              className="flex items-center justify-between rounded-[2px] border border-border bg-surface p-3"
+              className="flex items-center justify-between rounded-[12px] border border-border bg-surface p-3"
             >
               <div className="min-w-0 space-y-0.5">
                 <div className="flex items-center gap-2">
@@ -164,7 +164,7 @@ export function IngestionKeys({
                   </span>
                   <span
                     className={cn(
-                      "border px-[5px] py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em]",
+                      "border rounded-full px-[8px] py-0.5 text-[10px] font-medium tracking-normal",
                       key.status === "active"
                         ? "border-success/60 text-success"
                         : "border-border-strong text-text-subtle",

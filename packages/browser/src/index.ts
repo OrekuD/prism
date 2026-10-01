@@ -11,6 +11,7 @@ import {
 	createPrismClient,
 } from "@prism-analytics/core";
 import { createBrowserRuntime } from "./browser-runtime";
+import { adapterFamily } from "@prism-analytics/core";
 import {
 	type BrowserCaptureResult,
 	type BrowserErrorReporter,
@@ -62,7 +63,16 @@ export interface BrowserClientOptions {
 	 * the client captures NO page views and exposes `pageViews: null`.
 	 */
 	pageViews?: BrowserPageViewOptions;
+	/**
+	 * Task 29 (advanced): override the integration identity declared to
+	 * ingestion — used by the React wrapper to identify itself while staying
+	 * Web-compatible. Must be a registered Web adapter.
+	 */
+	integration?: { name: string; version: string };
 }
+
+/** Keep in sync with packages/browser/package.json version. */
+const BROWSER_ADAPTER_VERSION = "0.0.4";
 
 /**
  * The Browser client surface: everything PrismClient promises plus a
@@ -124,10 +134,23 @@ export async function createBrowserClient(
 	}
 	const endpoint = normalizeEndpoint(options.endpoint);
 	const runtime = createBrowserRuntime();
+	// Task 29: declare the adapter identity. The React wrapper overrides the
+	// name (still a Web adapter); an unregistered name is a definite
+	// mismatch and fails before any listener or queue is installed.
+	const declared = options.integration ?? {
+		name: "@prism-analytics/browser",
+		version: BROWSER_ADAPTER_VERSION,
+	};
+	if (adapterFamily(declared.name) !== "web") {
+		throw new Error(
+			`[prism] unsupported browser integration "${declared.name}" — Web adapters only`,
+		);
+	}
 	const client = await createPrismClient({
 		sourceKey: options.sourceKey,
 		endpoint,
 		runtime,
+		integration: { ...declared, family: "web" },
 		collection: {
 			// Session-scoped identity by default (§4): the browser default
 			// keeps the anonymous ID for the client lifetime unless the caller

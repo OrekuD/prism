@@ -1,4 +1,4 @@
-import { Globe, Server, Smartphone } from "lucide-react";
+import { Globe, Server, Smartphone } from "@/components/ui/hugeicons";
 
 export function TypeIcon({
   type,

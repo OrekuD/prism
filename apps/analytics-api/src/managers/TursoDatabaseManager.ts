@@ -1,21 +1,23 @@
 import { type Client, createClient } from "@libsql/client";
-import dotenv from "dotenv";
-
-dotenv.config();
+import type { Context } from "hono";
 
 class TursoDatabaseManager {
   private _instance: Client | null = null;
 
   /** Lazily creates the Turso client so startup validation can run first. */
-  public get instance(): Client {
+  public getInstance(ctx?: Context): Client {
     if (!this._instance) {
       this._instance = createClient({
-        url: process.env.TURSO_DATABASE_URL ?? "",
-        authToken: process.env.TURSO_AUTH_TOKEN ?? "",
+        url: ctx?.env?.TURSO_DATABASE_URL ?? process.env.TURSO_DATABASE_URL ?? "",
+        authToken: ctx?.env?.TURSO_AUTH_TOKEN ?? process.env.TURSO_AUTH_TOKEN ?? "",
       });
     }
 
     return this._instance;
+  }
+
+  public get instance(): Client {
+    return this.getInstance();
   }
 
   /**

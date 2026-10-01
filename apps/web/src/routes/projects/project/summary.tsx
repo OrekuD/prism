@@ -1,11 +1,9 @@
 /**
  * Project overview route (Task 21 slice 7, v2 design replica).
  *
- * The dashboard shell owns the header, breadcrumbs, padding, and content
- * column — this route renders directly into it with no second header and
- * no custom page container. A slim control row holds the conversations
- * menu and the Overview/Chat toggle; the composer dock is viewport-fixed
- * beneath the shell column.
+ * The dashboard shell owns the outer frame and content column. Overview and
+ * conversations share one bottom-centered composer so it stays within reach
+ * while the widgets or transcript scroll behind it.
  *
  * Data behavior is unchanged: overview submits and insight investigation
  * create chats, in-chat submits continue, missing chats get a safe
@@ -22,13 +20,14 @@ import {
 } from "@/components/project-overview/composer";
 import { ConversationsDropdown } from "@/components/project-overview/conversations-dropdown";
 import { OverviewView } from "@/components/project-overview/overview-view";
-import { Seg, SegTab } from "@/components/project-overview/primitives";
+import { ArrowLeft, Plus } from "@/components/ui/hugeicons";
 import "@/components/project-overview/project-overview.css";
 import {
   INITIAL_STREAM_STATE,
   conversationDetailKey,
   useAssistantConversationQuery,
   useAssistantConversationsQuery,
+  usePrefetchAssistantConversation,
   useSendAssistantMessage,
   type StreamState,
 } from "@/network/queries/useAssistantConversations";
@@ -76,6 +75,8 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
 
   const overview = useProjectOverviewQuery(slug, { range });
   const conversations = useAssistantConversationsQuery(slug);
+  const conversationItems = conversations.data?.pages.flatMap((page) => page.items) ?? [];
+  const prefetchConversation = usePrefetchAssistantConversation(slug);
   const detail = useAssistantConversationQuery(
     slug,
     view === "chat" ? chatSlug : null
@@ -105,6 +106,15 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
 
   const { send, stop, active } = useSendAssistantMessage(slug);
   const decideProposal = useDecideAssistantProposal(slug);
+
+  // Warm the chats people are most likely to open without competing with
+  // the initial overview read or loading every transcript in a project.
+  useEffect(() => {
+    if (!conversations.data) return;
+    for (const item of conversations.data.pages[0]?.items.slice(0, 3) ?? []) {
+      prefetchConversation(item.slug);
+    }
+  }, [conversations.data, prefetchConversation]);
 
   const draftScope =
     view === "chat" ? (chatSlug ?? "agent-fresh") : "overview-new";
@@ -149,19 +159,12 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
     void navigate(`${projectBase}/agent`);
   }, [navigate, projectBase]);
 
-  const onViewChange = useCallback(
-    (next: "overview" | "chat") => {
-      setSendError(null);
-      if (next === "overview") {
-        goToOverview();
-      } else {
-        openFreshChat();
-      }
-    },
-    [goToOverview, openFreshChat]
-  );
-
-  const chatMissing = view === "chat" && chatSlug !== null && detail.isError;
+  const chatFetchFailed = view === "chat" && chatSlug !== null && detail.isError;
+  const chatErrorStatus = (
+    detail.error as { response?: { status?: number } } | null
+  )?.response?.status;
+  const chatMissing = chatFetchFailed && chatErrorStatus === 404;
+  const chatLoadFailed = chatFetchFailed && !chatMissing;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: refocus after any view change; the effect reads no reactive values
   useEffect(() => {
@@ -359,46 +362,82 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
     )
   );
 
+  const conversationsMenu = (
+    <ConversationsDropdown
+      items={conversationItems}
+      selectedSlug={chatSlug}
+      selectedTitle={view === "chat" ? detail.data?.conversation?.title ?? (chatSlug ? null : "New chat") : null}
+      onSelect={openChat}
+      onNewChat={newChat}
+      onPrefetch={prefetchConversation}
+      onLoadMore={() => { void conversations.fetchNextPage(); }}
+      hasMore={conversations.hasNextPage}
+      loadingMore={conversations.isFetchingNextPage}
+    />
+  );
+  const composer = (
+    <ComposerDock
+      ref={dockRef}
+      draft={draft}
+      onDraftChange={setDraft}
+      onSubmit={submitFromDock}
+      running={active || pendingChat}
+      onStop={stopRun}
+      capabilities={overview.data?.capabilities ?? null}
+      showSuggestions={view === "overview" || chatSlug === null}
+      disabled={overview.isError}
+      disabledReason="Overview unavailable — assistant paused."
+    />
+  );
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex flex-wrap items-center gap-2">
-        {view === "chat" ? (
-          <ConversationsDropdown
-            items={conversations.data?.items ?? []}
-            selectedSlug={chatSlug}
-            onSelect={openChat}
-            onNewChat={newChat}
-          />
-        ) : null}
-        <div className="ml-auto">
-          <Seg label="View">
-            <SegTab
-              selected={view === "overview"}
-              onClick={() => onViewChange("overview")}
-            >
-              Overview
-            </SegTab>
-            <SegTab
-              selected={view === "chat"}
-              onClick={() => onViewChange("chat")}
-            >
-              Chat
-            </SegTab>
-          </Seg>
+      <header className="flex min-h-14 flex-wrap items-center justify-between gap-x-6 gap-y-3">
+        <div className="flex min-w-0 items-center gap-3">
+          {view === "chat" ? (
+            <>
+              <button
+                type="button"
+                onClick={goToOverview}
+                aria-label="Back to overview"
+                className="grid size-10 shrink-0 place-items-center rounded-lg text-text-muted hover:bg-surface-hover hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
+              >
+                <ArrowLeft aria-hidden="true" className="size-4" />
+              </button>
+              {conversationsMenu}
+            </>
+          ) : (
+            <div>
+              <h1 className="font-mono text-[26px] font-semibold leading-tight tracking-[-0.035em] text-text">Overview</h1>
+              <p className="mt-1 text-[13px] text-text-muted">Last 7 days</p>
+            </div>
+          )}
         </div>
-      </div>
+        <div className="ml-auto flex items-center gap-2">
+          {view === "overview" ? conversationsMenu : (
+            <button
+              type="button"
+              onClick={newChat}
+              className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg px-3 text-sm text-text-muted hover:bg-surface-hover hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
+            >
+              <Plus aria-hidden="true" className="size-4" />
+              <span className="max-[480px]:sr-only">New chat</span>
+            </button>
+          )}
+        </div>
+      </header>
 
       {view === "overview" ? (
-        <OverviewView
-          resource={overview.data}
-          isLoading={overview.isLoading}
-          isError={overview.isError}
-          onInvestigate={investigate}
-        />
+          <OverviewView
+            resource={overview.data}
+            isLoading={overview.isLoading}
+            isError={overview.isError}
+            onInvestigate={investigate}
+          />
       ) : chatMissing ? (
         <div
           role="alert"
-          className="mt-6 rounded-[2px] border border-border p-5"
+          className="mt-6 rounded-[16px] border border-border p-5"
         >
           <h1 className="text-[26px] font-semibold leading-[1.2] tracking-[-0.022em]">
             That chat isn&apos;t available
@@ -410,19 +449,49 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
           <button
             type="button"
             onClick={goToOverview}
-            className="mt-3 inline-flex h-9 items-center justify-center gap-2 whitespace-nowrap rounded-[2px] border border-accent bg-accent px-3.5 text-[13px] font-medium text-white transition-colors duration-100 hover:border-accent-hover hover:bg-accent-hover"
+            className="mt-3 inline-flex h-9 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-accent px-4 text-sm font-medium text-primary-foreground transition-colors duration-100 hover:bg-accent-hover"
           >
             Back to overview
           </button>
         </div>
       ) : (
+        <>
+        {chatLoadFailed ? (
+          <div role="alert" className="mt-6 rounded-[16px] border border-border p-5">
+            {detail.data ? (
+              <p className="text-sm text-text-muted">
+                Couldn't refresh this chat. Showing saved messages.
+              </p>
+            ) : (
+              <>
+                <h1 className="text-[26px] font-semibold leading-[1.2] tracking-[-0.022em]">
+                  Couldn't load this chat
+                </h1>
+                <p className="mt-1.5 text-sm text-text-muted">
+                  Something went wrong while loading the conversation. Try again.
+                </p>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => { void detail.refetch(); }}
+              disabled={detail.isFetching}
+              aria-busy={detail.isFetching}
+              className="mt-3 inline-flex h-9 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-accent px-4 text-sm font-medium text-primary-foreground transition-colors duration-100 hover:bg-accent-hover disabled:opacity-50"
+            >
+              {detail.isFetching ? "Retrying…" : "Retry"}
+            </button>
+          </div>
+        ) : null}
+        {!chatLoadFailed || detail.data ? (
         <ChatView
           detail={detail.data ?? null}
           pendingMessage={
             pendingTurn && !persistedUser ? pendingTurn.content : null
           }
           stream={answerPersisted ? null : activeStream}
-          streaming={active || detail.isLoading}
+          streaming={active}
+          loading={detail.isLoading}
           sendError={pendingMessage?.chat === chatSlug ? sendError : null}
           onBack={goToOverview}
           onAsk={(prompt) => {
@@ -440,28 +509,15 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
               : undefined
           }
         />
+        ) : null}
+        </>
       )}
 
-      {/* Bottom clearance for the fixed dock. */}
-      <div aria-hidden="true" className="h-48 shrink-0" />
-
-      <div className="fixed inset-x-0 bottom-0 z-30 min-[1024px]:left-[240px]">
-        <div
-          aria-hidden="true"
-          className="po-composer-fade pointer-events-none h-12"
-        />
-        <div className="mx-auto w-full max-w-[1800px] bg-canvas px-7 pb-5 max-[1023px]:px-5 max-[767px]:px-4">
-          <ComposerDock
-            ref={dockRef}
-            draft={draft}
-            onDraftChange={setDraft}
-            onSubmit={submitFromDock}
-            running={active || pendingChat}
-            onStop={stopRun}
-            capabilities={overview.data?.capabilities ?? null}
-            disabled={overview.isError}
-            disabledReason="Overview unavailable — assistant paused."
-          />
+      <div aria-hidden="true" className="h-64 shrink-0" />
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-7 sm:pb-[max(1.5rem,env(safe-area-inset-bottom))] min-[1024px]:left-[260px]">
+        <div aria-hidden="true" className="po-composer-fade absolute inset-x-0 -top-12 bottom-0" />
+        <div className="relative mx-auto w-full max-w-[820px]">
+          {composer}
         </div>
       </div>
     </div>

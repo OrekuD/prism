@@ -8,7 +8,10 @@ vi.mock("../managers/NeonDatabaseManager.js", () => ({
   default: { instance: vi.fn() },
 }));
 vi.mock("../managers/TursoDatabaseManager.js", () => ({
-  default: { instance: { execute: vi.fn(), batch: vi.fn(), transaction: vi.fn() } },
+  default: {
+    instance: { execute: vi.fn(), batch: vi.fn(), transaction: vi.fn() },
+    getInstance() { return this.instance; },
+  },
 }));
 vi.mock("../managers/WebSocketManager.js", () => ({
   default: { emitToClient: vi.fn(() => true) },
@@ -78,8 +81,13 @@ const VALID_EVENT = {
   properties: { url: "/home", count: 2 },
 };
 
-function batch(events: unknown[]): string {
-  return JSON.stringify({ schemaVersion: 2, sentAt: Date.now(), events });
+function batch(events: unknown[], sdkName = "@prism-analytics/browser"): string {
+  return JSON.stringify({
+    schemaVersion: 2,
+    sentAt: Date.now(),
+    sdk: { name: sdkName, version: "0.0.1" },
+    events,
+  });
 }
 
 interface TestCtx {
@@ -89,7 +97,7 @@ interface TestCtx {
   };
   header: ReturnType<typeof vi.fn>;
   json: ReturnType<typeof vi.fn>;
-  get: (key: string) => string | undefined;
+  get: (key: string) => unknown;
 }
 
 function streamOf(body: string): ReadableStream<Uint8Array> {
@@ -126,6 +134,8 @@ function makeContext(body: string, overrides: Record<string, unknown> = {}): Tes
           return (overrides.platform as string) ?? "web";
         case "keyType":
           return (overrides.keyType as string) ?? "publishable";
+        case "broadcastSessionStarted":
+          return WebSocketManager.emitToClient;
         default:
           return undefined;
       }
@@ -255,8 +265,8 @@ describe("IngestController.ingest (v2 batch ingestion)", () => {
       expect.stringContaining("a_"), // derived person_id
       JSON.stringify({ url: "/home", count: 2 }),
       "{}", // no context
-      null, // no batch sdk name
-      null, // no batch sdk version
+      "@prism-analytics/browser", // batch-derived sdk name (task 29)
+      "0.0.1", // batch-derived sdk version
     ]);
   });
 
@@ -331,7 +341,7 @@ describe("IngestController.ingest (v2 batch ingestion)", () => {
     };
     // string concatenation — JSON.stringify would turn Infinity into null
     const requestBody =
-      `{"schemaVersion":2,"sentAt":${Date.now()},"events":[` +
+      `{"schemaVersion":2,"sentAt":${Date.now()},"sdk":{"name":"@prism-analytics/browser","version":"0.0.1"},"events":[` +
       `${JSON.stringify(unsupported)},${nonFiniteRaw},${JSON.stringify(oversized)}]}`;
     const ctx = makeContext(requestBody);
 
@@ -581,7 +591,7 @@ describe("release review — duplicate session safety", () => {
       unknownExtraField: "y".repeat(6_000), // stripped by the schema, counted raw
     };
     const ctx = makeContext(
-      JSON.stringify({ schemaVersion: 2, sentAt: Date.now(), events: [oversized] }),
+      JSON.stringify({ schemaVersion: 2, sentAt: Date.now(), sdk: { name: "@prism-analytics/browser", version: "0.0.1" }, events: [oversized] }),
     );
 
     const result = await ingest(ctx);
@@ -610,7 +620,7 @@ describe("identity operations (task-10 §4)", () => {
       JSON.stringify({
         schemaVersion: 3,
         sentAt: Date.now(),
-        sdk: { name: "@prism-analytics/core", version: "0.0.1" },
+        sdk: { name: "@prism-analytics/browser", version: "0.0.1" },
         identity: [
           {
             opId: "op-1",
@@ -650,6 +660,7 @@ describe("identity operations (task-10 §4)", () => {
       JSON.stringify({
         schemaVersion: 3,
         sentAt: Date.now(),
+        sdk: { name: "@prism-analytics/browser", version: "0.0.1" },
         identity: [
           { opId: "op-dup", userId: "user-123", anonymousId: "anon-1", occurredAt: Date.now() },
         ],
@@ -675,6 +686,7 @@ describe("identity operations (task-10 §4)", () => {
       JSON.stringify({
         schemaVersion: 3,
         sentAt: Date.now(),
+        sdk: { name: "@prism-analytics/browser", version: "0.0.1" },
         identity: [secondOp],
         events: [VALID_EVENT],
       }),
@@ -692,6 +704,7 @@ describe("identity operations (task-10 §4)", () => {
       JSON.stringify({
         schemaVersion: 3,
         sentAt: Date.now(),
+        sdk: { name: "@prism-analytics/browser", version: "0.0.1" },
         identity: [
           {
             opId: "op-x",
@@ -737,6 +750,7 @@ describe("identity-only envelopes (review F2)", () => {
       JSON.stringify({
         schemaVersion: 3,
         sentAt: Date.now(),
+        sdk: { name: "@prism-analytics/browser", version: "0.0.1" },
         identity: [
           {
             opId: "op-only",
@@ -806,6 +820,7 @@ describe("round-3 review fixes (R3-F4, R3-F5)", () => {
       JSON.stringify({
         schemaVersion: 3,
         sentAt: Date.now(),
+        sdk: { name: "@prism-analytics/browser", version: "0.0.1" },
         identity: [firstOp],
         events: [VALID_EVENT],
       }),
@@ -842,6 +857,7 @@ describe("round-6 review fixes (R6-F3)", () => {
       JSON.stringify({
         schemaVersion: 3,
         sentAt: Date.now(),
+        sdk: { name: "@prism-analytics/browser", version: "0.0.1" },
         identity: [
           { opId: 42 }, // malformed — must receive a coarse rejection
           { opId: "r6f3-valid", userId: "user-x", anonymousId: "anon-x", occurredAt: Date.now() },
@@ -1002,10 +1018,14 @@ describe("Standard Events ingestion (task-19 review round 1)", () => {
     expect(statementContaining("INSERT INTO events")).toBeUndefined();
   });
 
-  it("rejects Standard Events from a platform outside the frozen allowlist", async () => {
-    // An authenticated source whose platform is not web/react-native/server
+  it("accepts Standard Events from a legacy mobile platform under the family model", async () => {
+    // android maps to the Mobile family (task 29); a supported mobile
+    // adapter makes the batch compatible — no RN-only source condition.
     const ctx = makeContext(
-      batch([standardEvent("sign_up", { method: "email" }, { eventId: "evt-android", userId: "user-123" })]),
+      batch(
+        [standardEvent("sign_up", { method: "email" }, { eventId: "evt-android", userId: "user-123" })],
+        "@prism-analytics/react-native",
+      ),
       { platform: "android" },
     );
 
@@ -1013,25 +1033,30 @@ describe("Standard Events ingestion (task-19 review round 1)", () => {
 
     const body = result.__json as IngestResponseBody;
     expect(body.results).toEqual([
-      { index: 0, id: "evt-android", status: "rejected", reason: "invalid-standard-event" },
+      { index: 0, id: "evt-android", status: "accepted" },
     ]);
-    expect(statementContaining("INSERT INTO events")).toBeUndefined();
   });
 
-  it("accepts Standard Events from react-native and server sources", async () => {
+  it("accepts Standard Events from mobile and server families", async () => {
     eventInsertOutcomes = [1, 1];
     const mobile = makeContext(
-      batch([standardEvent("search", { category: "docs" }, { eventId: "evt-rn-search" })]),
+      batch(
+        [standardEvent("search", { category: "docs" }, { eventId: "evt-rn-search" })],
+        "@prism-analytics/react-native",
+      ),
       { platform: "react-native" },
     );
     const server = makeContext(
-      batch([
-        standardEvent(
-          "subscription_cancelled",
-          { subscriptionId: "sub_01", planId: "pro_monthly", reasonCode: "customer_requested" },
-          { eventId: "evt-srv-sub", userId: "user-789" },
-        ),
-      ]),
+      batch(
+        [
+          standardEvent(
+            "subscription_cancelled",
+            { subscriptionId: "sub_01", planId: "pro_monthly", reasonCode: "customer_requested" },
+            { eventId: "evt-srv-sub", userId: "user-789" },
+          ),
+        ],
+        "@prism-analytics/node",
+      ),
       { platform: "server" },
     );
 
@@ -1040,6 +1065,41 @@ describe("Standard Events ingestion (task-19 review round 1)", () => {
 
     expect((mobileResult.__json as IngestResponseBody).results[0]?.status).toBe("accepted");
     expect((serverResult.__json as IngestResponseBody).results[0]?.status).toBe("accepted");
+  });
+
+  it("rejects a whole batch when the declared adapter mismatches the source family", async () => {
+    const ctx = makeContext(
+      batch([VALID_EVENT], "@prism-analytics/react-native"),
+      { platform: "web" },
+    );
+
+    const result = await ingest(ctx);
+
+    expect(result.status).toBe(403);
+    expect(result.__json).toMatchObject({
+      ok: false,
+      error: { code: "incompatible-source" },
+    });
+    // Rejected before quota, validation, or any write.
+    expect(dbBatch).not.toHaveBeenCalled();
+  });
+
+  it("rejects a batch with no adapter declaration before any write", async () => {
+    const noSdk = JSON.stringify({
+      schemaVersion: 2,
+      sentAt: Date.now(),
+      events: [VALID_EVENT],
+    });
+    const ctx = makeContext(noSdk);
+
+    const result = await ingest(ctx);
+
+    expect(result.status).toBe(400);
+    expect(result.__json).toMatchObject({
+      ok: false,
+      error: { code: "unsupported-adapter" },
+    });
+    expect(dbBatch).not.toHaveBeenCalled();
   });
 
   it("never echoes standard event properties or actor ids in the response", async () => {

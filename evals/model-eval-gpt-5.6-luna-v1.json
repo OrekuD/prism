@@ -1,0 +1,23 @@
+{
+  "evalVersion": 1,
+  "evaluatedAt": "2026-09-06T02:42:16.689Z",
+  "requireZdr": false,
+  "modelId": "openai/gpt-5.6-luna",
+  "samples": 5,
+  "clears": true,
+  "gates": {
+    "toolSelectionExact": "5/5",
+    "structuredOutputValid": "5/5",
+    "structuredOutputCited": "5/5",
+    "groundingRefusal": "5/5",
+    "routingPrivacy": "deny (ZDR RELAXED for local eval)+no-fallback+price-sort (static assertion)"
+  },
+  "latencyMsP50": 9480,
+  "latencyMsP95": 9730,
+  "promptTokens": 2100,
+  "completionTokens": 761,
+  "costMicroUsd": 787,
+  "costEstimatedCalls": 0,
+  "recommendation": null,
+  "note": "Operator-accepted deviation: ZDR-relaxed local eval (harness yields no recommendation by construction). Correctness gates unanimous; privacy gate not tested as-shipped. A ZDR-enforced confirmation run is still owed before this counts as a full release evaluation. Base luna kept as a non-default allowlist entry: same honesty as -pro at ~1/7th cost and ~1/2 latency."
+}

@@ -60,6 +60,20 @@ vi.mock("@/network/queries/useSourcesQuery", () => ({
     isLoading: false,
   }),
 }));
+// PageHeader renders the breadcrumb trail from workspace + query data. Keep
+// those sources inert so the header adds no provider requirements or render
+// churn to these routing tests.
+vi.mock("@/network/queries/useProjectsQuery", () => ({
+  useProjectsQuery: () => ({ data: undefined }),
+}));
+vi.mock("@/lib/workspace", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/workspace")>();
+  return {
+    ...actual,
+    useSelectedWorkspace: () => ({ workspace: null, isPending: false }),
+    useActiveWorkspace: () => ({ data: null }),
+  };
+});
 
 function renderAt(path: string, route: string, element: React.ReactNode) {
   return render(

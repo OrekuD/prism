@@ -76,10 +76,10 @@ function useEventFromCache(
 function Kv({ k, children }: { k: string; children: React.ReactNode }) {
   return (
     <Frame inset className="min-w-0 px-3 py-3">
-      <div className="mb-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
+      <div className="mb-1.5 text-[13px] font-medium tracking-normal text-text-subtle">
         {k}
       </div>
-      <div className="break-words font-mono text-[12.5px] leading-[1.5] text-text">
+      <div className="break-words text-[12.5px] leading-[1.5] text-text">
         {children}
       </div>
     </Frame>
@@ -87,7 +87,7 @@ function Kv({ k, children }: { k: string; children: React.ReactNode }) {
 }
 
 function NullValue({ label = "null" }: { label?: string }) {
-  return <span className="font-mono text-text-subtle">{label}</span>;
+  return <span className="text-text-subtle">{label}</span>;
 }
 
 function ShikiJson({ code }: { code: string }) {
@@ -137,7 +137,7 @@ function JsonBlock({
        
         className="border-dashed bg-surface/40 px-3 py-6 text-center"
       >
-        <p className="font-mono text-[12px] leading-none text-text-subtle">
+        <p className="text-[12px] leading-none text-text-subtle">
           {emptyLabel}
         </p>
       </Frame>
@@ -161,7 +161,7 @@ function Tag({
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-[2px] border px-2 py-1 font-mono text-[10px] font-medium uppercase leading-none tracking-[0.07em]",
+        "inline-flex items-center rounded-full border px-2 py-1 text-[10px] font-medium leading-none tracking-normal",
         tone === "ok"
           ? "border-success/30 bg-success/10 text-success"
           : "border-border bg-surface text-text-muted"
@@ -232,16 +232,16 @@ export function EventDetails({ event, base }: { event: EventResource; base: stri
           </SheetTitle>
           {std ? (
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <span className="inline-flex items-center rounded-[2px] border border-border bg-surface px-1.5 py-0.5 font-mono text-[9px] font-medium uppercase leading-none tracking-[0.08em] text-text-subtle" aria-hidden="true">
+              <span className="inline-flex items-center rounded-full border border-border bg-surface px-1.5 py-0.5 text-[9px] font-medium leading-none tracking-normal text-text-subtle" aria-hidden="true">
                 Standard
               </span>
-              <span className="font-mono text-[10px] uppercase leading-none tracking-[0.05em] text-text-subtle" aria-hidden="true">
+              <span className="text-[10px] leading-none tracking-normal text-text-subtle" aria-hidden="true">
                 {std.category}
               </span>
-              <span className="font-mono text-[10px] leading-none text-text-subtle" aria-hidden="true">
+              <span className="text-[10px] leading-none text-text-subtle" aria-hidden="true">
                 ·
               </span>
-              <span className="font-mono text-[11px] leading-none text-text-subtle" title={event.name}>
+              <span className="text-[11px] leading-none text-text-subtle" title={event.name}>
                 {event.name}
               </span>
               <span className="sr-only">{`Standard ${std.category}, ${std.displayName}, raw name ${event.name}`}</span>
@@ -312,17 +312,17 @@ export function EventDetails({ event, base }: { event: EventResource; base: stri
             </Kv>
             <Kv k="source">
               {event.source ? (
-                <span className="font-mono text-[12.5px] font-medium leading-none tracking-[-0.01em] text-text">
+                <span className="text-[12.5px] font-medium leading-none tracking-[-0.01em] text-text">
                   {event.source.name}
                 </span>
               ) : (
-                <span className="font-mono text-[12px] leading-none text-text-subtle">
+                <span className="text-[12px] leading-none text-text-subtle">
                   —
                 </span>
               )}
             </Kv>
             <Kv k="schema">
-              <span className="font-mono">v{event.schemaVersion}</span>
+              <span className="tabular-nums">v{event.schemaVersion}</span>
             </Kv>
           </div>
         </section>
@@ -447,12 +447,12 @@ function EventDetailSkeleton() {
       <Skeleton className="h-4 w-3/4" />
       <Skeleton className="h-3 w-1/2" />
       <div className="mt-2 grid grid-cols-2 gap-3">
-        <Skeleton className="h-[76px] w-full rounded-[2px]" />
-        <Skeleton className="h-[76px] w-full rounded-[2px]" />
-        <Skeleton className="h-[76px] w-full rounded-[2px]" />
-        <Skeleton className="h-[76px] w-full rounded-[2px]" />
+        <Skeleton className="h-[76px] w-full rounded-md" />
+        <Skeleton className="h-[76px] w-full rounded-md" />
+        <Skeleton className="h-[76px] w-full rounded-md" />
+        <Skeleton className="h-[76px] w-full rounded-md" />
       </div>
-      <Skeleton className="h-[120px] w-full rounded-[2px]" />
+      <Skeleton className="h-[120px] w-full rounded-md" />
     </div>
   );
 }
@@ -463,13 +463,13 @@ function EventMissing({ base }: { base: string }) {
       <p className="font-sans text-[14px] font-medium tracking-[-0.01em] text-text">
         Event not in window
       </p>
-      <p className="max-w-[320px] text-pretty font-mono text-[12.5px] leading-[1.5] text-text-muted">
+      <p className="max-w-[320px] text-pretty text-[12.5px] leading-[1.5] text-text-muted">
         This event isn't in the loaded window. It may have fallen outside the
         latest 200 events or filters changed after the link was copied.
       </p>
       <Link
         to={base}
-        className="mt-1 inline-flex h-8 items-center rounded-[2px] border border-border bg-surface px-3 font-mono text-[12px] font-medium text-text hover:bg-surface-hover"
+        className="mt-1 inline-flex h-8 items-center rounded-full border border-border bg-surface px-3 text-[12px] font-medium text-text hover:bg-surface-hover"
       >
         Back to events
       </Link>

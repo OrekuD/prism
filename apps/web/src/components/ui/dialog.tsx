@@ -1,6 +1,6 @@
 "use client";
 
-import { XIcon } from "lucide-react";
+import { XIcon } from "@/components/ui/hugeicons";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import type * as React from "react";
 
@@ -103,7 +103,7 @@ function DialogFooter({
     <div
       data-slot="dialog-footer"
       className={cn(
-        "flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end",
+        "flex flex-col-reverse gap-2 border-t border-border pt-4 -mb-2 sm:flex-row sm:justify-end",
         className
       )}
       {...props}

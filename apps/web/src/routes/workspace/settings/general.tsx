@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Frame, SectionLabel } from "@/components/public/frame";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2 } from "lucide-react";
+import { Loader2 } from "@/components/ui/hugeicons";
 import {
   Dialog,
   DialogContent,
@@ -77,7 +77,12 @@ export function WorkspaceSettingsGeneral() {
           </p>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button disabled={!workspace}>Rename workspace</Button>
+              <Button
+                disabled={!workspace}
+                className="rounded-full border border-black/10 bg-white text-black hover:bg-neutral-200"
+              >
+                Rename
+              </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
@@ -139,8 +144,12 @@ export function WorkspaceSettingsGeneral() {
               workspace ? { id: workspace.id, name: workspace.name } : null
             }
           >
-            <Button variant="destructive" disabled={!canDelete}>
-              Delete workspace
+            <Button
+              variant="destructive"
+              disabled={!canDelete}
+              className="rounded-full"
+            >
+              Delete
             </Button>
           </DeleteWorkspace>
         </div>

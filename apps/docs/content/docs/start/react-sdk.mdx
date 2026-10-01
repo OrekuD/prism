@@ -46,7 +46,7 @@ automatically:
   `NEXT_PUBLIC_PRISM_ENDPOINT`
 
 For the hosted deployment, set the endpoint to
-`https://prism-analytics-api-gsmo.onrender.com`. For a self-hosted
+`https://prism-analytics-api.orekud.workers.dev`. For a self-hosted
 instance, use your `PUBLIC_URL`. Use the bare origin — the SDK appends
 `/api/v2/ingest` for you.
 
@@ -56,7 +56,7 @@ environment:
 ```tsx
 <PrismAnalytics
   sourceKey="psk_your_key"
-  endpoint="https://prism-analytics-api-gsmo.onrender.com"
+  endpoint="https://prism-analytics-api.orekud.workers.dev"
   collection={{ initialState: "granted" }}
 />
 ```
@@ -79,7 +79,7 @@ import { createBrowserClient } from "@prism-analytics/browser";
 
 export const prism = await createBrowserClient({
   sourceKey: "psk_your_key",
-  endpoint: "https://prism-analytics-api-gsmo.onrender.com",
+  endpoint: "https://prism-analytics-api.orekud.workers.dev",
   collection: { initialState: "granted" },
   pageViews: { mode: "history" },
 });
@@ -214,7 +214,7 @@ import { createBrowserErrorReporter } from "@prism-analytics/browser";
 
 const reporter = await createBrowserErrorReporter({
   sourceKey: "psk_your_key",
-  endpoint: "https://prism-analytics-api-gsmo.onrender.com",
+  endpoint: "https://prism-analytics-api.orekud.workers.dev",
   share: { client: prism },
 });
 

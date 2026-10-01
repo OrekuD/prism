@@ -23,7 +23,7 @@ import { useDeleteSourceMutation } from "@/network/mutations/useSourceMutations"
 import { useUpdateErrorSettingsMutation } from "@/network/mutations/useErrorSettingsMutation";
 import { useSourceQuery } from "@/network/queries/useSourcesQuery";
 import { useSourceErrorSettingsQuery } from "@/network/queries/useSourceErrorSettingsQuery";
-import { Loader2, Trash2 } from "lucide-react";
+import { Loader2, Trash2 } from "@/components/ui/hugeicons";
 import { useNavigate, useParams } from "react-router-dom";
 
 export function SourceDetail() {
@@ -74,18 +74,7 @@ export function SourceDetail() {
 
   return (
     <div className="flex flex-1 flex-col space-y-6">
-      <PageHeader
-        title={data.name}
-        description={
-          <>
-            {PLATFORM_LABELS[data.platform]} source ·{" "}
-            {formatCount(data.telemetry.events)} events
-            {data.telemetry.lastReceivedAt
-              ? ` · last ${new Date(data.telemetry.lastReceivedAt).toLocaleString()}`
-              : ""}
-          </>
-        }
-      >
+      <PageHeader>
         {canManage && (
           <AlertDialog>
             <AlertDialogTrigger asChild>

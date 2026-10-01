@@ -15,7 +15,7 @@ export function NotFound() {
         <p className="font-mono text-[64px] font-semibold leading-none tracking-[-0.04em] text-text">
           404
         </p>
-        <p className="font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-subtle">
+        <p className="text-[13px] font-medium tracking-normal text-text-subtle">
           Page not found
         </p>
         <p className="max-w-[44ch] text-[14px] leading-relaxed text-text-muted">
@@ -25,7 +25,7 @@ export function NotFound() {
         <div className="mt-3 flex items-center gap-3">
           <Link
             to={isAuthenticated ? "/projects" : "/"}
-            className="inline-flex h-10 items-center rounded-[2px] bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
+            className="inline-flex h-10 items-center rounded-full bg-accent px-4 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
           >
             {isAuthenticated ? "Back to projects" : "Back to the landing page"}
           </Link>

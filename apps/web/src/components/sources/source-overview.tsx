@@ -1,34 +1,13 @@
-import { Frame } from "@/components/public/frame";
-import { MetricCard } from "@/components/public/metric-card";
-import { CreateSourceDialog } from "@/components/sources/create-source-dialog";
-import { INSTALL_CMDS } from "@/components/sources/constants";
-import {
-  PLATFORM_LABELS,
-  formatCount,
-  sourceSnippetPlatform,
-  sourceTypeLabel,
-  timeAgo,
-} from "@/lib/sources";
-import { KeyRound } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { TypeIcon } from "@/components/sources/type-icon";
+import { ChevronRight } from "@/components/ui/hugeicons";
+import { sourceTypeLabel, timeAgo } from "@/lib/sources";
 import type { SourceResource } from "@/network/queries/useSourcesQuery";
-
-function ConfiguredTag() {
-  return (
-    <span className="inline-flex h-6 items-center gap-1.5 rounded-[2px] border border-success/40 px-2.5 font-mono text-[11px] font-medium text-success">
-      <span
-        className="size-[7px] rounded-full bg-success"
-        aria-hidden="true"
-      />
-      Configured
-    </span>
-  );
-}
+import { Link } from "react-router-dom";
 
 export function SourceOverview({
   sources,
   type,
-  wrkSlug: _wrkSlug,
+  wrkSlug,
   slug,
   canManage,
 }: {
@@ -38,106 +17,101 @@ export function SourceOverview({
   slug: string;
   canManage: boolean;
 }) {
-  const label = sourceTypeLabel(type);
-  const repPlatform = sourceSnippetPlatform(type);
-  const activeKeys = sources.flatMap((source) =>
-    source.keys.filter((key) => key.status === "active"),
-  );
-  const configured = activeKeys.length > 0;
-  const events = sources.reduce(
-    (total, source) => total + (source.telemetry?.events ?? 0),
-    0,
-  );
-  const lastAt = sources.reduce(
-    (latest, source) => Math.max(latest, source.telemetry?.lastReceivedAt ?? 0),
-    0,
-  );
-  const installCmd = INSTALL_CMDS[repPlatform] ?? "";
-
-  return (
-    <>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <MetricCard
-          label="Status"
-          caption={
-            activeKeys.length === 1
-              ? "1 active key"
-              : `${activeKeys.length} active keys`
-          }
-        >
-          {configured ? (
-            <ConfiguredTag />
-          ) : (
-            <span className="font-mono text-[14px] text-text">
-              Not configured
-            </span>
-          )}
-        </MetricCard>
-
-        <MetricCard label="Events" caption="All time">
-          <span className="font-mono text-[23px] tracking-[-0.06em] text-text">
-            {formatCount(events)}
-          </span>
-        </MetricCard>
-        <MetricCard label="Last event" caption="Reported by the source SDK">
-          <span className="font-mono text-[20px] tracking-[-0.06em] text-text">
-            {timeAgo(lastAt)}
-          </span>
-        </MetricCard>
+  const base = `/workspace/${wrkSlug}/projects/${slug}/sources/${type}`;
+  if (sources.length === 0) {
+    return (
+      <div className="flex min-h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-border px-6 py-12 text-center">
+        <span className="mb-5 grid size-12 place-items-center rounded-2xl border border-border bg-surface">
+          <TypeIcon type={type} className="size-5 text-text-muted" />
+        </span>
+        <h2 className="text-base font-medium text-text">
+          Connect your {sourceTypeLabel(type).toLowerCase()}
+        </h2>
+        <p className="mt-2 max-w-sm text-sm leading-relaxed text-text-muted">
+          {canManage
+            ? "Create a source, install the SDK, and send your first event. Your connections will appear here."
+            : "Ask a workspace owner or admin to create a source to start collecting data."}
+        </p>
       </div>
-
-      {/* Sources / Install / Key summary — hidden, not relevant
-      <Frame className="mt-[13px] px-4 py-1.5">
-        {[
-          [
-            "Sources",
-            sources.length === 1 ? "1 source" : `${sources.length} sources`,
-          ],
-          ["Install", installCmd],
-          [
-            "Key",
-            configured
-              ? "Publishable / secret"
-              : "Create a source to get a key",
-          ],
-        ].map(([k, v], index) => (
-          <div
-            key={k}
-            className={cn(
-              "flex items-center justify-between gap-3 py-2 text-[13px]",
-              index > 0 && "border-t border-border",
-            )}
-          >
-            <span className="text-text-muted">{k}</span>
-            <span className="truncate font-mono text-[13px] text-text">
-              {v}
-            </span>
-          </div>
-        ))}
-      </Frame>
-      */}
-
-      {/* keep installCmd referenced to avoid unused lint */}
-      <span className="hidden">{installCmd}</span>
-
-      {sources.length === 0 ? (
-        <div className="mt-3 flex flex-col items-center justify-center gap-2.5 rounded-[2px] p-6 text-center">
-          <KeyRound className="size-[22px] text-text-subtle" aria-hidden="true" />
-          <p className="font-mono text-[13px] text-text-muted">
-            No {label} source in this project yet.
-          </p>
-          <span className="text-[12px] text-text-subtle">
-            {canManage
-              ? `Create a ${label} source to get its key and SDK setup.`
-              : "An owner or admin can create a source."}
-          </span>
-          {canManage ? (
-            <div className="mt-1">
-              <CreateSourceDialog slug={slug} initialPlatform={repPlatform} />
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-    </>
+    );
+  }
+  return (
+    <section aria-labelledby="source-list-title">
+      <div className="mb-4 flex items-baseline gap-2">
+        <h2 id="source-list-title" className="text-sm font-medium text-text">
+          Your sources
+        </h2>
+        <span className="text-xs tabular-nums text-text-muted">
+          {sources.length}
+        </span>
+      </div>
+      <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface/40">
+        {sources.map((source) => {
+          const activeKeys = source.keys.filter(
+            (key) => key.status === "active",
+          ).length;
+          const last = source.telemetry?.lastReceivedAt;
+          const status = !activeKeys
+            ? "No active keys"
+            : last
+              ? "Data received"
+              : "No activity reported";
+          return (
+            <li key={source.id}>
+              <Link
+                to={`${base}/overview/${source.id}`}
+                className="group grid gap-4 px-5 py-5 transition-colors hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-focus md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
+              >
+                <div className="flex min-w-0 items-center gap-3.5">
+                  <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-border bg-canvas">
+                    <TypeIcon
+                      type={type}
+                      className="size-[18px] text-text-muted"
+                    />
+                  </span>
+                  <div className="min-w-0">
+                    <h3 className="break-words text-sm font-medium text-text">
+                      {source.name}
+                    </h3>
+                    <p className="mt-1 text-xs text-text-muted">
+                      {activeKeys} active {activeKeys === 1 ? "key" : "keys"} ·{" "}
+                      {type === "server" ? "Secret" : "Publishable"}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-5 md:justify-end">
+                  <div className="text-xs md:text-right">
+                    <span
+                      className={!activeKeys ? "text-warning" : "text-text"}
+                    >
+                      {status}
+                    </span>
+                    <p className="mt-1 text-text-muted">
+                      {last ? (
+                        <>
+                          Last event{" "}
+                          <time
+                            dateTime={new Date(last).toISOString()}
+                            title={new Date(last).toLocaleString()}
+                          >
+                            {timeAgo(last)}
+                          </time>
+                        </>
+                      ) : (
+                        "Last event unavailable"
+                      )}
+                    </p>
+                  </div>
+                  <ChevronRight
+                    className="size-4 shrink-0 text-text-subtle transition-transform group-hover:translate-x-0.5 motion-reduce:transform-none"
+                    aria-hidden="true"
+                  />
+                </div>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }

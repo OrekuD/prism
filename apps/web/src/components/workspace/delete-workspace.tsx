@@ -1,4 +1,4 @@
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle, Loader2 } from "@/components/ui/hugeicons";
 import React from "react";
 import { toast } from "sonner";
 import { Button } from "../ui/button";
@@ -78,7 +78,7 @@ export function DeleteWorkspace(props: {
         </div>
 
         <div className="flex-1 space-y-4 overflow-auto p-6">
-          <div className="rounded-[2px] border border-danger/20 bg-danger/5 px-3 py-2.5 text-[13px] leading-[1.5] text-text">
+          <div className="rounded-[12px] border border-danger/20 bg-danger/5 px-3 py-2.5 text-[13px] leading-[1.5] text-text">
             <p className="font-medium text-danger">This will delete:</p>
             <ul className="mt-1 list-disc space-y-0.5 pl-4 text-text-muted">
               <li>All projects in this workspace</li>
@@ -110,7 +110,7 @@ export function DeleteWorkspace(props: {
         <DialogFooter className="shrink-0 bg-surface px-6 py-4">
           <Button
             variant="outline"
-            className="h-10 flex-1 sm:flex-none"
+            className="h-10 flex-1 rounded-full sm:flex-none"
             disabled={deleting}
             onClick={() => {
               setOpen(false);
@@ -121,7 +121,7 @@ export function DeleteWorkspace(props: {
           </Button>
           <Button
             variant="destructive"
-            className="h-10 flex-1 bg-danger text-white hover:bg-danger/90 sm:flex-none"
+            className="h-10 flex-1 rounded-full bg-danger text-primary-foreground hover:bg-danger/90 sm:flex-none"
             disabled={!canConfirm}
             onClick={() => void onDelete()}
           >

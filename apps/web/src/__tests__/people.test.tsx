@@ -158,7 +158,6 @@ describe("ProjectPeople", () => {
 		expect(screen.getByText("7")).toBeDefined();
 		expect(screen.getByText("3")).toBeDefined();
 		expect(screen.getByText("11")).toBeDefined();
-		expect(screen.getByText(/identified users/i)).toBeDefined();
 	});
 
 	it("renders an empty state that explains how a person appears", async () => {

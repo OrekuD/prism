@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { MockLanguageModelV4 } from "ai/test";
-import { runToolLoopAgent, type AgentRunInput } from "../utils/toolLoopAgent";
+import { AGENT_SYSTEM_PROMPT, ANSWER_TOOL_CONTEXT_CHARS, runToolLoopAgent, type AgentRunInput } from "../utils/toolLoopAgent";
 import { createAuthorizationCache } from "../utils/assistantAuthCache";
 import {
   resolveAssistantModelConfig,
@@ -18,7 +18,7 @@ import {
 import type {
   AssistantToolDeps,
 } from "../utils/assistantTools";
-import { createToolRunScope } from "../utils/assistantTools";
+import { createToolRunScope, selectEligibleTools, toolSchemaChars } from "../utils/assistantTools";
 import {
   AssistantAnswerSchema,
   type AssistantAnswer,
@@ -276,6 +276,57 @@ describe("happy path", () => {
 });
 
 describe("repair and fallback", () => {
+  it("answers a standalone greeting without a provider call or telemetry", async () => {
+    const model = new MockLanguageModelV4({ doGenerate: [] });
+    let reads = 0;
+    const result = await runToolLoopAgent(agentInput(model, {
+      question: "yoo!",
+      tools: toolDeps({ measure: async () => { reads += 1; throw new Error("must not read"); } }),
+    }));
+    expect(result.status).toBe("answered");
+    expect(result.answer?.summary).toBe("Hey! What would you like to know about this project?");
+    expect(result.usage.costMicroUsd).toBe(0);
+    expect(reads).toBe(0);
+    expect(model.doGenerateCalls).toHaveLength(0);
+  });
+
+  it("accepts a grounded final-answer tool without another generation", async () => {
+    const model = new MockLanguageModelV4({ doGenerate: [
+      toolCallResponse("measure_metric", { metricId: "project.accepted_events" }),
+      toolCallResponse("submit_answer", validAnswer()),
+    ] });
+    const result = await runToolLoopAgent(agentInput(model));
+    expect(result.status).toBe("answered");
+    expect(result.answer).toEqual(validAnswer());
+    expect(model.doGenerateCalls).toHaveLength(2);
+    expect(result.steps).toHaveLength(1);
+  });
+
+  it("does not execute data tools queued after a final answer in the same batch", async () => {
+    let reads = 0;
+    const answer = { ...validAnswer(), summary: "Which metric would you like to check?", observations: [] };
+    const response = toolCallResponse("submit_answer", answer, "finish");
+    response.content.push(...toolCallResponse("measure_metric", { metricId: "project.accepted_events" }, "late").content);
+    const model = new MockLanguageModelV4({ doGenerate: [response] });
+    const result = await runToolLoopAgent(agentInput(model, {
+      tools: toolDeps({ measure: async () => { reads += 1; return envelopeWith([factWith({ id: "f1" })]); } }),
+    }));
+    expect(result.answer).toEqual(answer);
+    expect(reads).toBe(0);
+    expect(result.factIds).toEqual([]);
+  });
+
+  it("rejects invented evidence in a submitted answer and uses the guarded fallback path", async () => {
+    const bad = { ...validAnswer(), observations: [{ text: "120 events", factIds: ["invented"] }] };
+    const model = new MockLanguageModelV4({ doGenerate: [
+      toolCallResponse("submit_answer", bad),
+      objectResponse({ summary: "I could not verify that from this project's data.", observations: [], primaryArtifactId: null, supportingArtifactIds: [], assumptions: [], followUps: [] }),
+    ] });
+    const result = await runToolLoopAgent(agentInput(model, { question: "Hi, how many events?" }));
+    expect(result.answer?.observations).toEqual([]);
+    expect(result.answer?.summary).not.toContain("Hey!");
+    expect(model.doGenerateCalls).toHaveLength(2);
+  });
   it("repairs an uncited answer within quota", async () => {
     const model = new MockLanguageModelV4({
       doGenerate: [
@@ -480,7 +531,7 @@ describe("context budget", () => {
     await runToolLoopAgent(
       agentInput(model, {
         history,
-        config: { ...CONFIG, maxInputChars: 4000 },
+        config: { ...CONFIG, maxInputChars: AGENT_SYSTEM_PROMPT.length + ANSWER_TOOL_CONTEXT_CHARS + toolSchemaChars(selectEligibleTools({ capabilities: CAPABILITIES, stage: "general" })) + 1000 },
       }),
     );
     const sent = JSON.stringify(model.doGenerateCalls[0]);
@@ -950,7 +1001,7 @@ describe("prompt roles (R17-F5)", () => {
     await runToolLoopAgent(
       agentInput(model, {
         history,
-        config: { ...CONFIG, maxInputChars: 4000 },
+        config: { ...CONFIG, maxInputChars: AGENT_SYSTEM_PROMPT.length + ANSWER_TOOL_CONTEXT_CHARS + toolSchemaChars(selectEligibleTools({ capabilities: CAPABILITIES, stage: "general" })) + 1000 },
       }),
     );
     const firstCall = model.doGenerateCalls[0] as unknown as {

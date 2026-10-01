@@ -22,7 +22,7 @@ import {
   type AssistantStreamPart,
   type MetricFact,
 } from "@prism-analytics/types";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { axiosInstance } from "@/utils/axiosInstance";
 
 export type ConversationListItem = {
@@ -65,17 +65,22 @@ export function conversationDetailKey(slug: string, conversationSlug: string) {
 }
 
 export function useAssistantConversationsQuery(slug: string | undefined) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: conversationListKey(slug ?? ""),
-    queryFn: async (): Promise<{
+    queryFn: async ({ pageParam, signal }): Promise<{
       items: ConversationListItem[];
       nextCursor: string | null;
     }> => {
+      const query = new URLSearchParams({ limit: "50" });
+      if (pageParam) query.set("cursor", pageParam);
       const response = await axiosInstance.get(
-        `/projects/${slug}/assistant/conversations`,
+        `/projects/${slug}/assistant/conversations?${query}`,
+        { signal },
       );
       return response.data;
     },
+    initialPageParam: "",
+    getNextPageParam: (page) => page.nextCursor ?? undefined,
     enabled: Boolean(slug),
     staleTime: 10_000,
     refetchOnWindowFocus: false,
@@ -87,17 +92,36 @@ export function useAssistantConversationQuery(
   conversationSlug: string | null,
 ) {
   return useQuery({
-    queryKey: conversationDetailKey(slug ?? "", conversationSlug ?? ""),
-    queryFn: async (): Promise<ConversationDetail> => {
+    ...conversationDetailOptions(slug ?? "", conversationSlug ?? ""),
+    enabled: Boolean(slug) && Boolean(conversationSlug),
+  });
+}
+
+/** Shared key/fetch/freshness policy keeps intent-prefetch and navigation deduplicated. */
+export function conversationDetailOptions(slug: string, conversationSlug: string) {
+  return queryOptions({
+    queryKey: conversationDetailKey(slug, conversationSlug),
+    queryFn: async ({ signal }): Promise<ConversationDetail> => {
       const response = await axiosInstance.get(
         `/projects/${slug}/assistant/conversations/${conversationSlug}`,
+        { signal },
       );
       return response.data;
     },
-    enabled: Boolean(slug) && Boolean(conversationSlug),
-    staleTime: 5_000,
+    // Completed chats rarely change outside this tab; sends invalidate them.
+    // A known running chat must refresh on revisit instead of trusting its snapshot.
+    staleTime: (query) => query.state.data?.activeRun ? 0 : 30_000,
+    gcTime: 10 * 60_000,
     refetchOnWindowFocus: false,
   });
+}
+
+export function usePrefetchAssistantConversation(slug: string | undefined) {
+  const queryClient = useQueryClient();
+  return useCallback((conversationSlug: string) => {
+    if (!slug || !conversationSlug) return;
+    void queryClient.prefetchQuery(conversationDetailOptions(slug, conversationSlug));
+  }, [slug, queryClient]);
 }
 
 /* ------------------------------------------------------------------ */
@@ -431,6 +455,9 @@ export function useDeleteAssistantConversation(slug: string | undefined) {
       } catch {
         return false;
       }
+      const queryKey = conversationDetailKey(slug, conversationSlug);
+      await queryClient.cancelQueries({ queryKey, exact: true });
+      queryClient.removeQueries({ queryKey, exact: true });
       await queryClient.invalidateQueries({
         queryKey: conversationListKey(slug),
       });

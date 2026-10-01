@@ -3,11 +3,9 @@ import { INSTALL_CMDS } from "@/components/sources/constants";
 import {
   sdkSnippet,
   sourceSnippetPlatform,
-  sourceTypeLabel,
 } from "@/lib/sources";
 import { cn } from "@/lib/utils";
 import React from "react";
-import { useNavigate } from "react-router-dom";
 
 function StepRow({
   num,
@@ -26,7 +24,7 @@ function StepRow({
         {num}
       </span>
       <div className="min-w-0">
-        <div className="mb-2 font-mono text-[11px] font-medium uppercase tracking-[0.09em] text-text-muted">
+        <div className="mb-2 text-[13px] font-medium tracking-normal text-text-subtle">
           {label}
         </div>
         <CodeCopyRow command={code} language={language} />
@@ -37,15 +35,9 @@ function StepRow({
 
 export function SourceSetup({
   type,
-  wrkSlug,
-  slug,
 }: {
   type: string;
-  wrkSlug: string;
-  slug: string;
 }) {
-  const navigate = useNavigate();
-  const label = sourceTypeLabel(type);
   const repPlatform = sourceSnippetPlatform(type);
   const endpoint = `${window.location.origin}/api/v2/ingest`;
   const isServer = repPlatform === "server";
@@ -99,7 +91,7 @@ track("page_viewed", { url: window.location.href });`
             aria-selected={framework === "javascript"}
             onClick={() => setFramework("javascript")}
             className={cn(
-              "h-[30px] rounded-[2px] px-3 font-mono text-[12px] transition-colors duration-150",
+              "h-[30px] rounded-full px-3 text-[12px] transition-colors duration-150",
               framework === "javascript"
                 ? "bg-accent text-primary-foreground"
                 : "text-text-muted hover:bg-surface-hover hover:text-text"
@@ -113,7 +105,7 @@ track("page_viewed", { url: window.location.href });`
             aria-selected={framework === "react"}
             onClick={() => setFramework("react")}
             className={cn(
-              "h-[30px] rounded-[2px] px-3 font-mono text-[12px] transition-colors duration-150",
+              "h-[30px] rounded-full px-3 text-[12px] transition-colors duration-150",
               framework === "react"
                 ? "bg-accent text-primary-foreground"
                 : "text-text-muted hover:bg-surface-hover hover:text-text"
@@ -127,21 +119,6 @@ track("page_viewed", { url: window.location.href });`
         <StepRow num="01" label="Install" code={installCmd} />
         <StepRow num="02" label="Initialize" code={initCode} language={framework === "react" ? "tsx" : "typescript"} />
       </div>
-      <p className="mt-[18px] flex flex-wrap items-center gap-1.5 text-[12px] text-text-muted">
-        Use a key from the{" "}
-        <button
-          type="button"
-          onClick={() =>
-            navigate(
-              `/workspace/${wrkSlug}/projects/${slug}/sources/${type}/keys`
-            )
-          }
-          className="font-medium text-link transition-colors hover:underline"
-        >
-          {label} · Keys tab
-        </button>{" "}
-        when you initialize.
-      </p>
     </div>
   );
 }

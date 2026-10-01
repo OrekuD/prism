@@ -160,6 +160,9 @@ export function resolveClientIp(
 	ctx: Context,
 	env: Record<string, string | undefined>,
 ): string | null {
+	if (env.ANALYTICS_TRUSTED_PROXY === "cloudflare") {
+		return ctx.req.header("cf-connecting-ip")?.slice(0, 64) ?? null;
+	}
 	const realIp = ctx.req.header("x-real-ip");
 	const direct =
 		ctx.env?.REMOTE_ADDR ??

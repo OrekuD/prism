@@ -77,9 +77,12 @@ export function clientIpFrom(ctx: {
     header: (name: string) => string | undefined;
     raw: { headers: Headers };
   };
-  env?: { incoming?: { socket?: { remoteAddress?: string } } };
+  env?: {
+    ANALYTICS_TRUSTED_PROXY?: string;
+    incoming?: { socket?: { remoteAddress?: string } };
+  };
 }): string {
-  const mode = process.env.ANALYTICS_TRUSTED_PROXY ?? "none";
+  const mode = ctx.env?.ANALYTICS_TRUSTED_PROXY ?? process.env.ANALYTICS_TRUSTED_PROXY ?? "none";
   if (mode === "nginx") {
     return (
       ctx.req.raw.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local"

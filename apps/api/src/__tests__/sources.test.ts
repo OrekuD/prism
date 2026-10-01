@@ -129,12 +129,28 @@ describe("SourcesController (organization-bound source + key management)", () =>
           allowedOrigins: ["https://example.com"],
         }),
       );
-      console.log("DEBUG create result:", JSON.stringify(result).slice(0, 300));
       expect(statusOf(result) ?? 200).toBe(200);
       const source = (result as { __json?: Record<string, unknown> }).__json ?? {};
       const initialKey = String(source.initialKey ?? "");
-      expect(initialKey.startsWith("psk_")).toBe(true);
+      expect(initialKey.startsWith("psk_web_")).toBe(true);
       expect(source.keys).toHaveLength(1);
+    });
+
+    it("creates a mobile source with a publishable family key", async () => {
+      const neon = makeStore({ role: "owner" });
+      getInstance.mockReturnValue(neon as never);
+      makeTurso([{ events: 0, last_received: null }]);
+
+      const result = await SourcesController.create(
+        ctxFor(USER_ID, { slug: SLUG }, {
+          name: "Mobile app",
+          platform: "mobile",
+        }),
+      );
+      const source = (result as { __json?: Record<string, unknown> }).__json ?? {};
+      expect(String(source.initialKey ?? "").startsWith("psk_mobile_")).toBe(
+        true,
+      );
     });
 
     it("creates a server source with a SECRET initial key", async () => {
@@ -157,18 +173,19 @@ describe("SourcesController (organization-bound source + key management)", () =>
       expect(String(source.initialKey ?? "").startsWith("ssk_")).toBe(true);
     });
 
-    it("rejects allowed origins for non-web platforms", async () => {
+    it("rejects allowed origins for non-web families", async () => {
       const neon = makeStore({ role: "owner" });
       getInstance.mockReturnValue(neon as never);
 
       const result = await SourcesController.create(
         ctxFor(USER_ID, { slug: SLUG }, {
-          name: "iOS app",
-          platform: "ios",
+          name: "Mobile app",
+          platform: "mobile",
           allowedOrigins: ["https://example.com"],
         }),
       );
       expect(statusOf(result)).toBe(400);
+      expect(JSON.stringify(result)).toContain("allowed_origins_web_only");
     });
 
     it("member cannot create a source", async () => {

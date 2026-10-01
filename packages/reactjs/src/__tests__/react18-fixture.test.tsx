@@ -90,7 +90,7 @@ describe("React 18 peer compatibility", () => {
 			) as typeof import("@prism-analytics/core");
 
 			const client = await createPrismClient({
-				sourceKey: "pr_0123456789abcdef0123456789abcdef",
+				sourceKey: "psk_web_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 				endpoint: "https://self-hosted.prism.example",
 				runtime: {
 					name: "node-fake",

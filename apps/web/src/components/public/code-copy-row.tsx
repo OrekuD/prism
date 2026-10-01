@@ -1,4 +1,4 @@
-import { Check, Copy } from "lucide-react";
+import { Check, Copy } from "@/components/ui/hugeicons";
 import React from "react";
 import { cn } from "@/lib/utils";
 import { useCopy } from "@/components/ui/copy-button";
@@ -58,7 +58,7 @@ export function CodeCopyRow({
   return (
     <div
       className={cn(
-        "flex min-h-[42px] min-w-0 items-stretch overflow-hidden rounded-[2px] border border-border bg-[#0d1117]",
+        "flex min-h-[42px] min-w-0 items-stretch overflow-hidden rounded-[12px] border border-border bg-[#0d1117]",
         className,
       )}
     >

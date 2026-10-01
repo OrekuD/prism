@@ -1,0 +1,22 @@
+name = "prism-analytics-api"
+main = "src/worker.ts"
+compatibility_date = "2026-08-08"
+compatibility_flags = ["nodejs_compat"]
+
+# Secrets set separately (never in this file): DATABASE_URL,
+# TURSO_DATABASE_URL, TURSO_AUTH_TOKEN, ANALYTICS_INSTALLATION_SALT.
+
+[vars]
+AUTH_BASE_URL = "https://prism-api.orekud.workers.dev"
+ANALYTICS_TRUSTED_PROXY = "cloudflare"
+
+[[durable_objects.bindings]]
+name = "LIVE_PROJECT"
+class_name = "LiveProject"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["LiveProject"]
+
+[observability.logs]
+enabled = true

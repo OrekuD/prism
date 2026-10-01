@@ -16,7 +16,7 @@ export function MetricCard({
 }) {
 	return (
 		<Frame className="flex h-[88px] flex-col justify-between p-4 pt-5">
-			<span className="absolute -top-[7px] left-[14px] bg-canvas px-[5px] font-mono text-[10px] font-medium uppercase tracking-[0.09em] text-text-muted">
+			<span className="absolute -top-[7px] left-[14px] bg-canvas px-[6px] text-[13px] font-medium tracking-normal text-text-muted">
 				{label}
 			</span>
 			<div className="flex items-center justify-between gap-2 leading-none">{children}</div>

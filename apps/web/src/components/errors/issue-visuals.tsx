@@ -18,7 +18,7 @@ import type {
  */
 
 export const TAG =
-	"inline-flex h-[18px] items-center whitespace-nowrap rounded-[2px] border px-[6px] font-mono text-[10px] font-medium uppercase tracking-[0.05em]";
+	"inline-flex h-[18px] items-center whitespace-nowrap rounded-full border px-[8px] text-[10px] font-medium tracking-normal";
 
 const DATE_LABEL = new Intl.DateTimeFormat("en-US", {
 	month: "short",
@@ -67,7 +67,7 @@ export function DeltaTag({ delta }: { delta: ErrorIssueDelta }) {
 				Resolving
 			</span>
 		);
-	return <span className="font-mono text-[12px] text-text-subtle">–</span>;
+	return <span className="text-[12px] text-text-subtle">–</span>;
 }
 
 export function StatusTag({ status }: { status: ErrorIssueStatus }) {

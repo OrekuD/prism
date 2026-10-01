@@ -4,7 +4,7 @@ import type { Context } from "hono";
 import { AnalyticsMiddleware } from "../middlewares/AnalyticsMiddleware.js";
 
 vi.mock("../managers/NeonDatabaseManager.js", () => ({
-  default: { instance: vi.fn() },
+  default: { instance: vi.fn(), forRequest() { return this.instance; } },
 }));
 
 import NeonDatabaseManager from "../managers/NeonDatabaseManager.js";
@@ -65,6 +65,10 @@ function makeContext(
 
 const PROJECT_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 
+// Task 29: current-format keys (prefix family + 43-char suffix).
+const WEB_KEY = `psk_web_${"A".repeat(43)}`;
+const MOBILE_KEY = `psk_mobile_${"B".repeat(43)}`;
+
 describe("AnalyticsMiddleware", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -102,7 +106,7 @@ describe("AnalyticsMiddleware", () => {
 
   it("accepts a valid key and scopes project + trusted source context", async () => {
     mockKeyLookup([activeWebKey()]);
-    const ctx = makeContext("Bearer valid-key-456", "http://localhost:5173");
+    const ctx = makeContext(`Bearer ${WEB_KEY}`, "http://localhost:5173");
     const next = vi.fn();
 
     await AnalyticsMiddleware(ctx, next);
@@ -111,12 +115,34 @@ describe("AnalyticsMiddleware", () => {
     expect(ctx.get("projectId")).toBe(PROJECT_ID);
     expect(ctx.get("sourceId")).toBe("source-0001");
     expect(ctx.get("platform")).toBe("web");
+    expect(ctx.get("sourceFamily")).toBe("web");
     expect(ctx.get("keyType")).toBe("publishable");
+  });
+
+  it("rejects a credential whose family contradicts the stored source", async () => {
+    mockKeyLookup([activeWebKey()]);
+    const ctx = makeContext(`Bearer ${MOBILE_KEY}`, "http://localhost:5173");
+    const next = vi.fn();
+
+    await AnalyticsMiddleware(ctx, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(ctx.get("projectId")).toBeUndefined();
+  });
+
+  it("rejects obsolete key formats as configuration faults", async () => {
+    mockKeyLookup([activeWebKey()]);
+    const ctx = makeContext("Bearer psk_0123456789abcdef", "http://localhost:5173");
+    const next = vi.fn();
+
+    await AnalyticsMiddleware(ctx, next);
+
+    expect(next).not.toHaveBeenCalled();
   });
 
   it("rejects a revoked key like an unknown key (non-disclosing)", async () => {
     mockKeyLookup([{ ...activeWebKey(), status: "revoked" }]);
-    const ctx = makeContext("Bearer revoked-key", "http://localhost:5173");
+    const ctx = makeContext(`Bearer ${WEB_KEY}`, "http://localhost:5173");
     const next = vi.fn();
 
     await AnalyticsMiddleware(ctx, next);
@@ -127,7 +153,7 @@ describe("AnalyticsMiddleware", () => {
 
   it("rejects a publishable web key from a disallowed origin", async () => {
     mockKeyLookup([activeWebKey('["http://app.example.com"]')]);
-    const ctx = makeContext("Bearer web-key", "https://evil.example.com");
+    const ctx = makeContext(`Bearer ${WEB_KEY}`, "https://evil.example.com");
     const next = vi.fn();
 
     await AnalyticsMiddleware(ctx, next);
@@ -137,7 +163,7 @@ describe("AnalyticsMiddleware", () => {
 
   it("enforces the origin policy even when only Referer is present", async () => {
     mockKeyLookup([activeWebKey('["http://app.example.com"]')]);
-    const ctx = makeContext("Bearer web-key", "http://app.example.com/path");
+    const ctx = makeContext(`Bearer ${WEB_KEY}`, "http://app.example.com/path");
     const next = vi.fn();
 
     await AnalyticsMiddleware(ctx, next);
@@ -147,7 +173,7 @@ describe("AnalyticsMiddleware", () => {
 
   it("accepts a publishable web key from an allowed origin", async () => {
     mockKeyLookup([activeWebKey()]);
-    const ctx = makeContext("Bearer web-key", "http://localhost:5173");
+    const ctx = makeContext(`Bearer ${WEB_KEY}`, "http://localhost:5173");
     const next = vi.fn();
 
     await AnalyticsMiddleware(ctx, next);
@@ -175,12 +201,13 @@ describe("AnalyticsMiddleware", () => {
         allowed_origins: null,
       },
     ]);
-    const ctx = makeContext("Bearer native-or-server-key");
+    const ctx = makeContext(`Bearer ${MOBILE_KEY}`);
     const next = vi.fn();
 
     await AnalyticsMiddleware(ctx, next);
 
     expect(next).toHaveBeenCalled();
     expect(ctx.get("sourceId")).toBe("source-native");
+    expect(ctx.get("sourceFamily")).toBe("mobile");
   });
 });

@@ -6,6 +6,8 @@
  * authority. No advertising IDs, GPS, or hardware serials.
  */
 
+import { MOBILE_RUNTIME_PLATFORMS } from "./source-family";
+
 export type MobileOs = "ios" | "android";
 export type MobileKind = "mobile";
 export type MobilePlatform = "react-native";
@@ -29,10 +31,16 @@ export interface MobileContext {
 }
 
 export function isValidMobileContext(value: unknown): boolean {
-  if (typeof value !== "object" || value === null) return false;
-  const r = value as Record<string, unknown>;
-  if (r.platform !== "react-native") return false;
-  if (r.kind !== "mobile") return false;
-  if (r.os !== "ios" && r.os !== "android") return false;
-  return true;
+	if (typeof value !== "object" || value === null) return false;
+	const r = value as Record<string, unknown>;
+	// Task 29: registered Mobile runtime platforms (future native adapters
+	// register in source-family without a new key prefix or source).
+	if (
+		typeof r.platform !== "string" ||
+		!MOBILE_RUNTIME_PLATFORMS.includes(r.platform)
+	)
+		return false;
+	if (r.kind !== "mobile") return false;
+	if (r.os !== "ios" && r.os !== "android") return false;
+	return true;
 }
