@@ -123,8 +123,7 @@ export function ProjectSources() {
       </div>
 
       {isLoading ? (
-        <div
-          role="status"
+        <output
           aria-label="Loading sources"
           className="space-y-4 rounded-2xl border border-border p-5"
         >
@@ -132,7 +131,7 @@ export function ProjectSources() {
           <Skeleton className="h-12 w-full" />
           <Skeleton className="h-12 w-full" />
           <Skeleton className="h-12 w-full" />
-        </div>
+        </output>
       ) : isError ? (
         <ErrorState
           title="Could not load sources"
