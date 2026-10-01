@@ -18,6 +18,7 @@ import {
   Alert01Icon,
   AlertCircleIcon,
   ArrowLeft01Icon,
+  ArrowRight01Icon,
   BanIcon,
   Cancel01Icon,
   CheckmarkCircle01Icon,
@@ -110,6 +111,9 @@ export function AlertTriangle(props: IconProps) {
 }
 export function ArrowLeft(props: IconProps) {
   return <Icon icon={ArrowLeft01Icon} {...props} />;
+}
+export function ArrowRight(props: IconProps) {
+  return <Icon icon={ArrowRight01Icon} {...props} />;
 }
 export function Ban(props: IconProps) {
   return <Icon icon={BanIcon} {...props} />;

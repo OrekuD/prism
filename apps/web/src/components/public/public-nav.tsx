@@ -11,11 +11,7 @@ import { DOCS_URL } from "@/lib/docs";
 
 const docsHref = `${DOCS_URL}`;
 
-/**
- * Global public navigation (design-system.md 9.1): 2px accent top rail,
- * 72px bar, wordmark left, links center-right, Sign in ghost + white pill
- * CTA right. Mobile collapses to a full-width sheet below the bar.
- */
+/** Fixed public navigation, with one clear conversion action. */
 export function PublicNav() {
 	const [open, setOpen] = React.useState(false);
 	const { data: sessionData } = authClient.useSession();
@@ -26,13 +22,12 @@ export function PublicNav() {
 	const dashboardHref = homeSlug ? `/workspace/${homeSlug}` : "/";
 
 	return (
-		<header>
-			<div aria-hidden="true" className="h-[2px] bg-accent" />
+		<header className="fixed inset-x-0 top-0 z-40">
 			<nav
 				aria-label="Public"
-				className="relative border-b border-border bg-canvas"
+				className="relative border-b border-border bg-canvas/95 backdrop-blur-md"
 			>
-				<div className="mx-auto flex h-[72px] max-w-[1200px] items-center justify-between px-8 lg:px-10.5">
+				<div className="mx-auto flex h-[70px] max-w-[1320px] items-center justify-between px-5 sm:px-8">
 					<Link
 						to="/"
 						aria-label="Prism home"
@@ -42,7 +37,8 @@ export function PublicNav() {
 						<PrismLogo size={20} />
 					</Link>
 
-					<div className="hidden items-center gap-6 md:flex">
+					<div className="hidden items-center gap-7 md:flex">
+						<a href="/#product" className="text-[13px] text-text-muted transition-colors duration-150 hover:text-text">Product</a>
 						<a
 							href={docsHref}
 							target="_blank"
@@ -54,6 +50,7 @@ export function PublicNav() {
 						>
 							Docs
 						</a>
+						<a href="/#self-host" className="text-[13px] text-text-muted transition-colors duration-150 hover:text-text">Self-host</a>
 						{isAuthenticated ? null : (
 							<Link
 								to="/auth/log-in"
@@ -64,7 +61,7 @@ export function PublicNav() {
 						)}
 						<Link
 							to={isAuthenticated ? dashboardHref : "/auth/create-account"}
-							className="inline-flex h-[38px] items-center rounded-full bg-accent px-5 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-accent-hover"
+							className="inline-flex h-[36px] items-center whitespace-nowrap rounded-full bg-text px-5 text-[13px] font-semibold text-canvas transition-colors duration-150 hover:bg-text-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
 						>
 							{isAuthenticated ? "Dashboard" : "Get started"}
 						</Link>
@@ -87,7 +84,8 @@ export function PublicNav() {
 
 				{open ? (
 					<div className="border-t border-border md:hidden">
-						<div className="mx-auto max-w-[1200px] px-6">
+						<div className="mx-auto max-w-[1320px] px-5 sm:px-8">
+							<Link to="/#product" onClick={() => setOpen(false)} className="flex h-12 items-center border-b border-border text-[14px] text-text-muted hover:text-text">Product</Link>
 							<a
 								href={docsHref}
 								target="_blank"
@@ -97,6 +95,7 @@ export function PublicNav() {
 							>
 								Docs
 							</a>
+							<Link to="/#self-host" onClick={() => setOpen(false)} className="flex h-12 items-center border-b border-border text-[14px] text-text-muted hover:text-text">Self-host</Link>
 							{isAuthenticated ? null : (
 								<Link
 									to="/auth/log-in"
@@ -111,7 +110,7 @@ export function PublicNav() {
 								onClick={() => setOpen(false)}
 								className={cn(
 									"my-4 flex h-11 items-center justify-center rounded-full",
-									"bg-accent text-[14px] font-medium text-primary-foreground",
+									"bg-text text-[14px] font-semibold text-canvas",
 								)}
 							>
 								{isAuthenticated ? "Dashboard" : "Get started"}
