@@ -260,6 +260,18 @@ export async function loadMobileAnalytics(
 	const sw = screenWhere(params, params.from, params.to);
 	const baseJoin = `FROM mobile_screen_views w
 		JOIN events e ON e.project_id = w.project_id AND e.id = w.event_id`;
+	// Coverage must share one screen-time cohort, not session-start totals or
+	// capped rankings. A session spanning countries contributes only once.
+	const coverage = await client.execute({
+		sql: `SELECT COUNT(*) AS screen_views,
+				SUM(CASE WHEN w.os IN ('ios', 'android') THEN 1 ELSE 0 END) AS with_technology,
+				COUNT(DISTINCT e.session_id) AS sessions,
+				COUNT(DISTINCT CASE WHEN w.country_code IS NOT NULL THEN e.session_id END) AS with_geography
+			${baseJoin}
+			WHERE ${sw.clauses.join(" AND ")}`,
+		args: sw.args,
+	});
+	const coverageRow = coverage.rows[0];
 
 	const screens = await client.execute({
 		sql: `SELECT w.screen_name AS screen_name,
@@ -363,6 +375,12 @@ export async function loadMobileAnalytics(
 	return {
 		resource: assembleMobileAnalytics(params, {
 		totals,
+		coverage: {
+			screenViews: Number(coverageRow?.screen_views ?? 0),
+			withTechnology: Number(coverageRow?.with_technology ?? 0),
+			sessions: Number(coverageRow?.sessions ?? 0),
+			withGeography: Number(coverageRow?.with_geography ?? 0),
+		},
 		previousTotals,
 		bucket:
 			ms === 60 * 60 * 1000

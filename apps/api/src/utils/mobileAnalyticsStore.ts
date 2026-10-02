@@ -94,6 +94,13 @@ export interface MobileLocationRow {
 
 export interface MobileAnalyticsRawAggregates {
 	totals: MobileTotalsRow;
+	/** Uncapped enrichment counts from the same filtered screen-view cohort. */
+	coverage: {
+		screenViews: number;
+		withTechnology: number;
+		sessions: number;
+		withGeography: number;
+	};
 	previousTotals: MobileTotalsRow | null;
 	bucket: MobileAnalyticsBucket;
 	trend: MobileTrendRow[];
@@ -126,6 +133,14 @@ export function assembleMobileAnalytics(
 ): MobileAnalyticsResource {
 	const cap = MOBILE_LIMITS.rankingRowLimit;
 	const t = raw.totals;
+	const technologyPercent = share(
+		raw.coverage.withTechnology,
+		raw.coverage.screenViews,
+	);
+	const geographyPercent = share(
+		raw.coverage.withGeography,
+		raw.coverage.sessions,
+	);
 
 	const screens = raw.screens.slice(0, cap).map((row) => ({
 		name: String(row.screen_name),
@@ -238,10 +253,7 @@ export function assembleMobileAnalytics(
 				k === "ios" ? "iOS" : k === "android" ? "Android" : k,
 			),
 			sizeClasses: breakdown(raw.sizeClasses, (k) => k),
-			coveragePercent: share(
-				raw.devices.reduce((acc, r) => acc + Number(r.screen_views), 0),
-				Number(t.screens) || 1,
-			),
+			coveragePercent: technologyPercent,
 		},
 		locations: {
 			countries: raw.countries.slice(0, cap).map((r) => ({
@@ -268,20 +280,11 @@ export function assembleMobileAnalytics(
 				appSessions: Number(r.sessions),
 				sharePercent: share(Number(r.sessions), Number(t.sessions) || 1),
 			})),
-			coveragePercent: share(
-				raw.countries.reduce((acc, r) => acc + Number(r.sessions), 0),
-				Number(t.sessions) || 1,
-			),
+			coveragePercent: geographyPercent,
 		},
 		coverage: {
-			technologyPercent: share(
-				raw.devices.reduce((acc, r) => acc + Number(r.screen_views), 0),
-				Number(t.screens) || 1,
-			),
-			geographyPercent: share(
-				raw.countries.reduce((acc, r) => acc + Number(r.sessions), 0),
-				Number(t.sessions) || 1,
-			),
+			technologyPercent,
+			geographyPercent,
 		},
 	};
 }
