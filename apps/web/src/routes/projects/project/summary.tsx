@@ -432,6 +432,8 @@ export function ProjectSummary({ freshChat = false }: { freshChat?: boolean }) {
             resource={overview.data}
             isLoading={overview.isLoading}
             isError={overview.isError}
+            isRetrying={overview.isFetching}
+            onRetry={() => { void overview.refetch(); }}
             onInvestigate={investigate}
           />
       ) : chatMissing ? (

@@ -6,7 +6,7 @@
  * fabricated zeros; failed reads render unavailable, never zero.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -190,8 +190,33 @@ describe("ProjectSummary canonical overview", () => {
       return { data: { items: [], nextCursor: null } };
     });
     renderSummary();
-    await screen.findByText(/Project overview unavailable/);
-    await screen.findByText(/assistant is also paused/);
+    await screen.findByRole("heading", { name: "Couldn't load overview", level: 2 });
+    expect(screen.queryByText(/assistant is also paused/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeEnabled();
+  });
+
+  it("retries the failed overview in place", async () => {
+    let attempts = 0;
+    getMock.mockImplementation(async (url: string) => {
+      if (String(url).includes("/overview")) {
+        attempts += 1;
+        if (attempts === 1) throw new Error("network failure");
+        return {
+          status: 200,
+          data: overviewResource([
+            metricFact("project.accepted_events", "Accepted events", 16),
+            metricFact("project.sessions", "Sessions", 12),
+            metricFact("project.active_people", "Active people", 11),
+          ]),
+        };
+      }
+      return { data: { items: [], nextCursor: null } };
+    });
+    renderSummary();
+    fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+    await screen.findByText("16");
+    expect(attempts).toBe(2);
+    expect(screen.queryByText("Couldn't load overview")).toBeNull();
   });
 
   it("renders a server-returned zero as zero", async () => {
@@ -212,7 +237,7 @@ describe("ProjectSummary canonical overview", () => {
     renderSummary();
     // Successful zeros render; the unavailable alert stays absent.
     await waitFor(() => {
-      expect(screen.queryByText(/Project overview unavailable/)).toBeNull();
+      expect(screen.queryByText("Couldn't load overview")).toBeNull();
     });
     const zeros = await screen.findAllByText("0");
     expect(zeros.length).toBeGreaterThanOrEqual(3);

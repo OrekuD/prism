@@ -1,8 +1,7 @@
 /**
  * Overview view: title block + widget column bound to the canonical
  * `ProjectOverviewResource`. Geometry-preserving skeletons while
- * loading; a fail-closed alert (which also pauses the assistant) on
- * error; never a model call.
+ * loading; a compact retry state on error; never a model call.
  */
 import type {
   InsightCandidate,
@@ -12,16 +11,22 @@ import { ActivitySection } from "@/components/project-overview/activity";
 import { InsightsGrid } from "@/components/project-overview/insights";
 import { MetricGrid } from "@/components/project-overview/metrics";
 import type { MetricFact } from "@prism-analytics/types";
+import { Btn } from "@/components/project-overview/primitives";
+import { AlertCircle, RefreshCw } from "@/components/ui/hugeicons";
 
 export function OverviewView({
   resource,
   isLoading,
   isError,
+  isRetrying,
+  onRetry,
   onInvestigate,
 }: {
   resource: ProjectOverviewResource | undefined;
   isLoading: boolean;
   isError: boolean;
+  isRetrying: boolean;
+  onRetry: () => void;
   onInvestigate: (insight: InsightCandidate) => void;
 }) {
   if (isLoading) {
@@ -49,15 +54,26 @@ export function OverviewView({
     return (
       <div
         role="alert"
-        className="mt-10 rounded-[16px] border border-danger/40 bg-danger/5 p-5"
+        className="mt-8 flex max-w-xl items-start gap-3 py-4"
       >
-        <h1 className="text-[26px] font-semibold leading-[1.2] tracking-[-0.022em]">
-          Project overview unavailable
-        </h1>
-        <p className="mt-1.5 text-sm text-text-muted">
-          Prism could not load this snapshot. The assistant is also paused
-          until the overview loads — try again shortly.
-        </p>
+        <AlertCircle aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-text-subtle" />
+        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-6 gap-y-3">
+          <div>
+            <h2 className="text-sm font-medium text-text">Couldn't load overview</h2>
+            <p className="mt-1 text-[13px] leading-5 text-text-muted">Try loading it again.</p>
+          </div>
+          <Btn
+            variant="ghost"
+            size="md"
+            onClick={onRetry}
+            disabled={isRetrying}
+            aria-busy={isRetrying}
+            className="h-10 rounded-[10px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          >
+            <RefreshCw aria-hidden="true" />
+            {isRetrying ? "Retrying…" : "Retry"}
+          </Btn>
+        </div>
       </div>
     );
   }
